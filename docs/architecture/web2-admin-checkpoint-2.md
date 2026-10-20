@@ -28,7 +28,7 @@ short version of what they found:
   Failure loses the stream, success is inferred by polling.
 - swarm-hls-stream (the stack the test infra runs) has no draft concept. OBS
   pushes to SRS, the uploader mints a random topic on `on_publish`, and the
-  catalog feed entry it writes has only a date for a title. Its `main` is
+  catalogue feed entry it writes has only a date for a title. Its `main` is
   hundreds of commits behind the branches that add a per-stream publish key.
 - streaming-infra-manager models deployments, not streams, has no auth, and
   computes the SRT ingest URL in its frontend from `port_slot` arithmetic.

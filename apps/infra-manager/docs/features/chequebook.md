@@ -13,7 +13,7 @@ and instance guards, the owned transport factory and the automatic receipt
 polling. New submission preparation captures the SQL target proof from the port and firewall work and uses one
 qualified Docker and Bee connection. Local Unix and supervised SSH adapters are
 implemented, and acquisition uses a transport only with a matching qualified
-record, from the seed catalog or from the manager's own check of the image.
+record, from the seed catalogue or from the manager's own check of the image.
 The live host was first deployed on 2026-09-11, and what that pass and the
 later ones found is in
 the remediation's handover record, which the repository's history keeps. A
@@ -282,7 +282,7 @@ node over a Docker connection, the manager's own socket for `localhost` or an ss
 forward of the host's socket through its `Host` block, refused an alias with
 `@`, and ran a bash bridge inside the node's container after checking the Bee
 image for it (`bee_bridge_qualifications`). Its code, `ChequebookDockerTransports`,
-the qualification catalog and the image check among it, stays in the tree,
+the qualification catalogue and the image check among it, stays in the tree,
 unused, until a cleanup removes it. The running manager never takes it, and the
 four refusal causes only it answered, `docker_unreachable`,
 `docker_route_missing`, `docker_setting_invalid` and `bridge_not_qualified`,
@@ -325,7 +325,7 @@ the remediation's handover record, which the repository's history keeps.
 against a synthetic Bee and chain. They do not reach a real Bee node or a real
 chain, and they move no money.
 
-**The seed catalog has two entries, each from a real host.** They belong to the
+**The seed catalogue has two entries, each from a real host.** They belong to the
 retired Docker route and are kept with it.
 `PRODUCTION_BEE_BRIDGE_QUALIFICATIONS` in
 `manager/src/domain/chequebook/beeBridgeQualification.ts` carries
@@ -336,10 +336,10 @@ container of the digest-pinned 2.8.3 image, and
 host runs, with its image id, engine version, platform, harness revision and
 evidence digest recorded. Its harness revision is the git object id the script
 had then, kept as history. A unit test pins the list as non-empty and every
-entry to the live bridge revision. Since 2026-09-26 an image the catalog does
+entry to the live bridge revision. Since 2026-09-26 an image the catalogue does
 not list is checked automatically instead of refused, and the script is a thin
 wrapper over the same `beeBridgeCheck.ts` the manager runs. A synthetic pass
-qualifies nothing and must never be used to populate the catalog.
+qualifies nothing and must never be used to populate the catalogue.
 
 **What completion still requires.** A real transfer to a remote node through
 its Bee API: the connected suites use a synthetic Bee and chain.

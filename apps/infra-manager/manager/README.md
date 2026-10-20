@@ -685,13 +685,13 @@ deploy. A token the version's base `.env` sets is not held to this.
 
 **The owner rule.** Every stage signs the feeds it writes with a key of its
 own, the deployment's `STREAM_KEY`, which the wizard generates. The admin signs
-its catalog with a key no deployment holds. The stage record the manager pushes
+its catalogue with a key no deployment holds. The stage record the manager pushes
 names the stage's address as its `owner`, and the admin writes that owner into
-the catalog entry of every stream on the stage. When it starts, the uploader
+the catalogue entry of every stream on the stage. When it starts, the uploader
 asks the admin `GET /api/internal/stages/self` with its own token and refuses
 to start when the owner the admin names is another address than its stream
 key's, because every viewer would then resolve a feed nobody writes. On an
-admin older than stages, which answers that route 404, it compares the catalog
+admin older than stages, which answers that route 404, it compares the catalogue
 owner of the admin's public `/api/config` instead. Fix a
 mismatch in the deployment's stream key, or deploy so the stage is pushed with
 the key it has.
@@ -760,10 +760,10 @@ each:
 
 | Outcome                  | What it means                                                                                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalog's.                                                                                                                                                                   |
+| `linked`                 | The admin took the token, and knows the deployment's stream address as its stage's owner, or on a token of no stage as its catalogue's.                                                                                                                                                                 |
 | `token-accepted`         | The admin took the token: the registrar check answered, or there was no stream address to compare.                                                                                                                                                                                                      |
 | `owner-unconfirmed`      | The admin took the token but did not say which owner it knows for it, so the stream address was not compared. The uploader starts and checks each declaration instead.                                                                                                                                  |
-| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalog's. The uploader will refuse to start.                                                                                                                                                       |
+| `owner-mismatch`         | The admin took the token but knows another owner for it: its stage's, or on a token of no stage its catalogue's. The uploader will refuse to start.                                                                                                                                                     |
 | `token-refused`          | The admin answered its own 401: the token is wrong.                                                                                                                                                                                                                                                     |
 | `token-not-own`          | At the link's address, the deployment's token is not one the manager generated: typed, copied from the link, or the version's. An admin that takes only a stage's own token refuses it, and an older one still takes it. Rotate it and redeploy. A version's token is taken out of the version instead. |
 | `token-not-registered`   | The admin answered its own 401 to the deployment's own token while no push of the stage has been stored there, so the admin does not know the token yet. A deploy registers it.                                                                                                                         |

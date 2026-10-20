@@ -40,7 +40,7 @@ rather than the healthiest one its node holds.
   rather than bee's, which is fixed since. So the answer is still open and the next drain sitting is
   what closes it.
 - Each rung has its own upload queue and its own bee client, so a drained rung cannot block the other
-  three. One coupling remains: the catalog and every master playlist are written through the
+  three. One coupling remains: the catalogue and every master playlist are written through the
   **360p node's batch**, the coordinator. If that one batch dies, the master cannot be rewritten for
   anyone and the recording cannot be announced at the end. Coordinator failover is not implemented and
   the code says so.
@@ -111,7 +111,7 @@ What the suite asserts, all correctness, no timings:
 - The uploader process stays up, no restart, `/health` degraded with the segment-failure reason and
   with `postage_refused`, which is the one that stays after the broadcast ends because it is recorded
   against the node and batch rather than against the stream.
-- The master playlist stops offering the drained rung and offers the other three, and the catalog
+- The master playlist stops offering the drained rung and offers the other three, and the catalogue
   line `Ladder ... now produces 3 rung(s), master rewritten` is logged.
 - A real viewer keeps playing and is never told the broadcast ended, in both byte sources. ⛔ The
   step-down is recorded and not asserted, because the fill lands while the player is still settling

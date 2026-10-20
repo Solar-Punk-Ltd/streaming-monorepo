@@ -80,7 +80,7 @@ inserted.
 
 Rung 1 (`360p`) is the lowest and is the **coordinator**:
 `BeePublisherPool.coordinator()` returns `ordered[0]`, because it has the
-longest-lived batch and carries the stream catalog and master playlist, the only
+longest-lived batch and carries the stream catalogue and master playlist, the only
 two addresses a viewer needs to open a stage.
 
 ## What is stored

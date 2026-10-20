@@ -22,17 +22,17 @@ With publish key (branches): RTMP `rtmp://HOST:PORT/<app>/<stream>?key=<32hex>`.
 
 Both feeds signed by STREAM_KEY (one owner):
 
-- Catalog feed: Topic.fromString(STREAM_LIST_TOPIC default "swarm-stream"). Payload JSON ARRAY of entries, rewritten whole. src/libs/StreamCatalog.ts: makeFeedWriter(topic, signer).uploadPayload(stamp, JSON.stringify(state), {index: nextIndex, deferred:true}). Read-modify-write via makeFeedReader.downloadPayload({index}), dedupe by (owner, topic). Index recovered on boot (404 never used, 503 empty). @sec28 CatalogIndexStore persists last index to STATE_DIR/catalog/feed-index.json (two writers at one index fork the feed!).
+- Catalogue feed: Topic.fromString(STREAM_LIST_TOPIC default "swarm-stream"). Payload JSON ARRAY of entries, rewritten whole. src/libs/StreamCatalog.ts: makeFeedWriter(topic, signer).uploadPayload(stamp, JSON.stringify(state), {index: nextIndex, deferred:true}). Read-modify-write via makeFeedReader.downloadPayload({index}), dedupe by (owner, topic). Index recovered on boot (404 never used, 503 empty). @sec28 CatalogIndexStore persists last index to STATE_DIR/catalog/feed-index.json (two writers at one index fork the feed!).
 - Per-stream manifest feed: Topic.fromString(streamRawTopic = crypto.randomUUID()), payload = HLS playlist text, one index per update. Segments via bee.uploadData(stamp, data, {redundancyLevel:1}) refs into playlist (bare ref or MANIFEST_ACCESS_URL/ref). Live window 10, VOD adds ENDLIST.
   Entry (StreamEntry, StreamCatalog.ts:10-19, and @abr adds group, renditions[]): { title, owner, topic, state:'live'|'vod', mediatype:'video'|'audio', timestamp, index?, duration? }. title auto = DD/MM/YYYY. NO description/thumbnail/tags/scheduled anywhere. 'live' on first manifest publish, 'vod' on stop with index+duration.
-  ABR (@abr): one media-playlist feed per rung (random uuid topic), one master feed per ladder (topic = group uuid) written by coordinator (lowest rung) bee: MasterFeedWriter. Master playlist has #EXT-X-STREAM-INF + `swarm://<owner>/<topic>` URIs. BEE_PUBLISHERS "rung@url<batchid>", one node+batch per rung. Coordinator carries catalog + master feed.
-  Viewer needs owner + topic only. Client: GET bee/feeds/<VITE_APP_OWNER>/<Topic(VITE_APP_RAW_TOPIC)> (build-time), manifest GET bee/feeds/<owner>/<hexTopic> then Swarm-Feed-Index header. Updates GET bee/soc/<owner>/<keccak256(topic||index)>. Segments bee/bytes/<ref>. Catalog polled every 5s. No aggregator/GSOC in this stack.
+  ABR (@abr): one media-playlist feed per rung (random uuid topic), one master feed per ladder (topic = group uuid) written by coordinator (lowest rung) bee: MasterFeedWriter. Master playlist has #EXT-X-STREAM-INF + `swarm://<owner>/<topic>` URIs. BEE_PUBLISHERS "rung@url<batchid>", one node+batch per rung. Coordinator carries catalogue + master feed.
+  Viewer needs owner + topic only. Client: GET bee/feeds/<VITE_APP_OWNER>/<Topic(VITE_APP_RAW_TOPIC)> (build-time), manifest GET bee/feeds/<owner>/<hexTopic> then Swarm-Feed-Index header. Updates GET bee/soc/<owner>/<keccak256(topic||index)>. Segments bee/bytes/<ref>. Catalogue polled every 5s. No aggregator/GSOC in this stack.
 
 ## Control surface (packages/stream-uploader/src/api/routes/stream.ts)
 
 POST /stream/start {streamId, mediatype} (main: no auth, @sec28 bearer API_AUTH_TOKEN, 409 if held) | POST /stream/segment raw + x-stream-id/x-segment-index/x-duration | POST /stream/stop {streamId} (@sec28 202 + statusUrl) | GET /stream/status?streamId (@sec28) | GET /health.
 Engine webhooks: POST /engines/srs/streams (on_publish→startStream, on_unpublish→stopStream), POST /engines/srs/hls (on_hls segment), POST /engines/ome/admission.
-End-to-end today: nothing pre-creates a stream. OBS pushes → SRS on_publish → StreamOrchestrator.startStream → StreamUploader with FRESH RANDOM UUID topic → segments → first manifest write → notifyStart appends catalog entry (title=date) → on_unpublish → VOD.
+End-to-end today: nothing pre-creates a stream. OBS pushes → SRS on_publish → StreamOrchestrator.startStream → StreamUploader with FRESH RANDOM UUID topic → segments → first manifest write → notifyStart appends catalogue entry (title=date) → on_unpublish → VOD.
 No API/CLI creates a stream record or issues a credential from outside (only operator-run publish-key.sh @sec28).
 
 ## Minimal change paths
@@ -40,7 +40,7 @@ No API/CLI creates a stream record or issues a credential from outside (only ope
 - Zero-change: admin backend derives the same HMAC key with the master secret (packages/shared/src/publishKey.ts @e2e-publish-key) and renders URLs. No revocation.
 - Revocation/expiry: inject a PublishKeyVerifier at hasValidPublishKey's two call sites (srs.ts:217, ome.ts:452) → call admin API GET /streams/{id}/publish-key/verify (cached, fail-closed) or verify signed token. New env only for uploader container.
 - Metadata: seam StreamUploader.notifyStart() (:238-246 @sec28): (a) POST /stream/start accepts title/description and engine path looks up draft by streamId at on_publish (same lookup as verifier) or (b) admin writes own metadata feed.
-- Publishing a draft to the catalog: (i) new uploader endpoint handing entry to StreamCatalog (safe) vs (ii) admin writes catalog feed with same key/topic → forks the uploader's cached index. If admin writes a feed, it must be its own feed (own key or exclusive writer).
+- Publishing a draft to the catalogue: (i) new uploader endpoint handing entry to StreamCatalog (safe) vs (ii) admin writes catalogue feed with same key/topic → forks the uploader's cached index. If admin writes a feed, it must be its own feed (own key or exclusive writer).
 
 ## msrs-uploader (old system)
 

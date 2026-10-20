@@ -18,7 +18,7 @@ tests were. The answer was that neither exists. This is the plan to get them.
 
 **Every ABR test reads the uploader's log. None of them opens a browser.** Seven assertions across
 two suites prove the encoder produced four rungs, one uploader wrote all four without dropping
-anything, they stayed grouped as one catalog entry, and they came back after an engine restart.
+anything, they stayed grouped as one catalogue entry, and they came back after an engine restart.
 
 That is the plumbing. It says nothing about a viewer receiving more than one quality, and nothing
 about ever switching between them.
@@ -188,7 +188,7 @@ Where the three blockers stand:
    - ⛔ open: each rung's bytes actually leave through its own node, proven from the four nodes' **own**
      counters and not from the uploader's log
    - ✅ one node's batch runs dry and only that rung degrades, the other three keep publishing (scenario L, green live 2026-09-05)
-   - ✅ one node is killed and the ladder stays one catalog entry across the survivors ("One rung dies, others carry on", green 2026-09-04 and 2026-09-06)
+   - ✅ one node is killed and the ladder stays one catalogue entry across the survivors ("One rung dies, others carry on", green 2026-09-04 and 2026-09-06)
    - ✅ a viewer keeps a working ladder throughout (V11, green on both byte sources 2026-09-06)
 
 **Done when:** losing one node costs one quality instead of the broadcast, and a test says so.
@@ -200,22 +200,22 @@ Where the three blockers stand:
   announces itself before it finalizes, that announcement carries no `index` because it has not
   published its recording yet, and `mergeRendition` replaced the finished rendition wholesale. The
   index went, `renditions.every(r => r.index)` went false, and **the whole finished ladder went back
-  to `live` in the catalog** until the recovery timer finalized it a second time. So for about a
+  to `live` in the catalogue** until the recovery timer finalized it a second time. So for about a
   minute an ended recording was advertised as a live broadcast, which is the larger half of the harm.
   Fixed in `StreamCatalog.keepingWhatFinished`.
 
   **There was a second cause, and it cost money rather than accuracy.** The recovery timer did not
-  merely re-flip the catalog, it re-ran the whole finalize: a second VOD manifest was published and
-  paid for, and the catalog moved to name the newer one. The discriminator read zero catalog losses,
+  merely re-flip the catalogue, it re-ran the whole finalize: a second VOD manifest was published and
+  paid for, and the catalogue moved to name the newer one. The discriminator read zero catalogue losses,
   so that second finalize was honest against a feed that genuinely still said live. Fixed in
   `f2e7305`: the ladder flip announce now happens after the feed write takes, so the line means the
   entry is already vod, and a finalize on a session rebuilt from a recovery entry first reads its own
-  manifest feed head. A finished recording found there is resumed at the catalog write and never
+  manifest feed head. A finished recording found there is resumed at the catalogue write and never
   republished, through a new log line that is deliberately not a flip. An unreadable head defers to
   the next boot rather than guessing, because the guess costs a recording.
 
   ✅ **Both fixes are deployed**, on the late 2026-09-01 redeploy, and **H ran green on that stack** in
-  the fourth sitting: one flip, zero catalog losses, zero resumes, four of four renditions kept, no
+  the fourth sitting: one flip, zero catalogue losses, zero resumes, four of four renditions kept, no
   recovery entry left behind. ⚠️ That run's kill landed after finalize had completed, so the green
   proves the clean ordering and not the resume path. The resume path is covered by thirteen unit
   tests and has not yet been exercised live, because moving the announce later also moved it out of

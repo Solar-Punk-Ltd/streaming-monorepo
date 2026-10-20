@@ -1,9 +1,9 @@
-# Taking the catalog off the head lookup
+# Taking the catalogue off the head lookup
 
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
-Status, 2026-10-20: fixes 1 and 2 shipped. Fix 3 was never built. A live catalog entry still carries
+Status, 2026-10-20: fixes 1 and 2 shipped. Fix 3 was never built. A live catalogue entry still carries
 no index, so a live stream's card still finds its thumbnail through the head lookup
 (`packages/client/src/utils/thumbnailManifest.ts`).
 
@@ -13,11 +13,11 @@ The measurement is in the middle and the state of each fix is on its heading.**
 The head lookup costs **1 second at minimum and about 5 on a thousand-slot feed**, against **4ms** for
 the same chunk read by explicit address. See the `feed-head-scaling` measurement (kept outside the repository)
 and the upstream report beside this file. The player was moved onto the explicit path already. The
-catalog was not, and it is now the largest remaining consumer of the slow one.
+catalogue was not, and it is now the largest remaining consumer of the slow one.
 
 ## Three call sites, three different fixes
 
-### 1. The catalog feed itself, polled every 5 seconds forever
+### 1. The catalogue feed itself, polled every 5 seconds forever
 
 [`App.tsx`](../../packages/client/src/providers/App.tsx) `fetchAppState` resolves
 `/feeds/{appOwner}/{rawAppTopic}` on every poll, and `StreamBrowser` polls it through SWR at
@@ -27,7 +27,7 @@ catalog was not, and it is now the largest remaining consumer of the slow one.
 knows where it got to last time. `nextFeedRequest` in
 [`feedFollow.ts`](../../packages/shared/src/feedFollow.ts) already returns a head request for a reader
 with no position and a slot request for one that has a position, and both the player and the bench
-route through it. The catalog does not.
+route through it. The catalogue does not.
 
 **Fix: one head lookup on mount, then walk.** Same shape as the player, same shared function, no new
 concept. This is the cheapest of the three and the one whose cost grows without bound.
@@ -38,7 +38,7 @@ concept. This is the cheapest of the three and the one whose cost grows without 
 `/feeds/{owner}/{hexTopic}` once per card, through a queue at concurrency 1, so ten cards is ten
 lookups end to end.
 
-**The catalog entry already carries the index those lookups are searching for.** `StreamEntry` in
+**The catalogue entry already carries the index those lookups are searching for.** `StreamEntry` in
 [`StreamCatalog.ts`](../../packages/stream-uploader/src/libs/StreamCatalog.ts) has an `index` field,
 and the uploader sets it on the VOD entry to the SOC index of the final VOD manifest.
 
@@ -51,7 +51,7 @@ helper is already exported and already covered by tests against bee-js's own vec
 **Fix: use the index when the entry has one.** Nothing new is published, nothing changes on the
 uploader, and the fallback for entries without an index is the path that exists today.
 
-**Measured on the real catalog first, then built.** Probe:
+**Measured on the real catalogue first, then built.** Probe:
 [`vod-thumbnail-index.mjs`](../../e2e/src/probes/vod-thumbnail-index.mjs), 12 entries, round robin.
 
 | arm                          |    min | **median** |    max |
@@ -66,13 +66,13 @@ older manifest than today's does.
 
 Worth stating what the queue makes of that. Previews share a `PQueue` at concurrency 1, so the
 lookups are serial: **ten cards is about 26 seconds of head lookups against about 40ms of slot
-reads.** At the time of measurement the catalog held **228 entries, all VOD, all carrying an index**,
+reads.** At the time of measurement the catalogue held **228 entries, all VOD, all carrying an index**,
 so this covers every card on the page.
 
 Shipped in `1ccb891`, with the address spelled by `feedSlotPath` in the shared package (`da6b043`)
 rather than a second copy of the rule.
 
-**2026-09-25, the rung this fix never reached.** A ladder's catalog topic is its master playlist, so
+**2026-09-25, the rung this fix never reached.** A ladder's catalogue topic is its master playlist, so
 on a ladder the fix addressed the master and the card then read the first rung's playlist by head
 lookup. On 2026-09-24 a 10.1 hour ladder recording's rung lookup outlasted the preview's 10 second
 limit and its card stayed blank. A finished entry names each recorded rung's final slot in
@@ -87,7 +87,7 @@ thumbnail has no position and must search.
 
 This is the only one of the three that needs a new publish, and it is the one to think hardest about
 rather than the one to do first. A live stream's index advances every segment, so an entry carrying it
-is stale almost immediately, and refreshing it costs a catalog feed write per refresh. That is the
+is stale almost immediately, and refreshing it costs a catalogue feed write per refresh. That is the
 same trade the announce rate limit already manages, and getting it wrong turns a viewer-facing latency
 win into a per-segment postage cost.
 
@@ -122,46 +122,46 @@ twenty minutes is already showing a twenty-minute-old frame. The difference is b
 and the oldest frame, and whether an opening frame is an acceptable thumbnail is a product call
 rather than a measurement.
 
-**Refresh the index periodically.** Keeps a recent frame and costs one catalog feed write per
-refresh. The catalog is currently written twice per stream, at start and at stop, so this is a real
+**Refresh the index periodically.** Keeps a recent frame and costs one catalogue feed write per
+refresh. The catalogue is currently written twice per stream, at start and at stop, so this is a real
 new cost rather than a reshuffle, and it lengthens the feed every viewer reads.
 
 **Leave live thumbnails on the head lookup.** The status quo, and it is defensible: at the time of
-measurement the catalog held 228 entries and **none of them were live**, because the VOD entry
+measurement the catalogue held 228 entries and **none of them were live**, because the VOD entry
 replaces the live one on the same `(owner, topic)`. Fix 2 already covers every card on that page.
 
 ## What this is worth, stated as the prediction to check
 
-On a deployment that has recorded **N** broadcast events, the catalog poll currently costs the head
+On a deployment that has recorded **N** broadcast events, the catalogue poll currently costs the head
 lookup for a feed of length N, and it repeats every 5 seconds. At the measured shape that is about 1s
 at N=1, 2s at N=10, 4s at N=100 and 5s at N=1000. **Past a few hundred events the poll no longer fits
-inside its own interval**, so the catalog is never not in flight.
+inside its own interval**, so the catalogue is never not in flight.
 
-The prediction to refute: **fixes 1 and 2 take the steady-state catalog poll to a single slot read at
+The prediction to refute: **fixes 1 and 2 take the steady-state catalogue poll to a single slot read at
 about 4ms, and the thumbnail row for finished streams from N lookups to N direct fetches.** If they do
 not, the reasoning above is wrong somewhere.
 
-Both halves were then put to the deployment and both held. The catalog poll is measured below, the
+Both halves were then put to the deployment and both held. The catalogue poll is measured below, the
 thumbnail row in the fix 2 section above.
 
-## ✅ Measured against the real catalog feed, 2026-08-05, and it holds
+## ✅ Measured against the real catalogue feed, 2026-08-05, and it holds
 
-Not a synthetic feed. The bench stage app catalog, **455 slots deep**, read from its own gateway.
+Not a synthetic feed. The bench stage app catalogue, **455 slots deep**, read from its own gateway.
 Probe: [`catalog-head-vs-walk.mjs`](../../e2e/src/probes/catalog-head-vs-walk.mjs). 15 rounds, round
 robin. No deploy needed, because this measures the read pattern rather than the shipped client.
 
-| arm                                        |    min | **median** |    max |
-| ------------------------------------------ | -----: | ---------: | -----: |
-| **head lookup**, what the catalog does now | 2412ms | **5015ms** | 5018ms |
-| **walk**, slot present                     |    5ms |    **7ms** |   12ms |
-| **walk**, slot absent, the idle case       |    3ms |    **5ms** | 1529ms |
+| arm                                          |    min | **median** |    max |
+| -------------------------------------------- | -----: | ---------: | -----: |
+| **head lookup**, what the catalogue does now | 2412ms | **5015ms** | 5018ms |
+| **walk**, slot present                       |    5ms |    **7ms** |   12ms |
+| **walk**, slot absent, the idle case         |    3ms |    **5ms** | 1529ms |
 
 **5015ms to 5ms, about a thousandfold**, and closer to the synthetic prediction than it had any right
 to be given the feed is twenty times longer.
 
 **The number that matters most is the comparison to the poll interval.** `StreamBrowser` polls at
 `refreshInterval: 5000`, and the head lookup takes **5015ms**. This deployment is already past the
-point where the catalog poll does not fit inside its own interval, so the catalog was never not in
+point where the catalogue poll does not fit inside its own interval, so the catalogue was never not in
 flight. That was written above as something that would happen past a few hundred events. It has
 happened: 455.
 
@@ -177,7 +177,7 @@ the thing the change was supposed to improve.
 **So the order was: measure the prerequisite, measure the prediction, then touch the client.** Both
 measurements are above, and both could have refused the change rather than confirming it.
 [`feed-miss-cost.mjs`](../../e2e/src/probes/feed-miss-cost.mjs) asked whether a miss is cheap, since a
-walking reader on an idle catalog mostly misses.
+walking reader on an idle catalogue mostly misses.
 [`catalog-head-vs-walk.mjs`](../../e2e/src/probes/catalog-head-vs-walk.mjs) asked whether the
 prediction held on the real feed. Neither needed a broadcast or a deploy.
 

@@ -192,7 +192,7 @@ pnpm install
    Bee hosts authorize.
 
 6. **The web2 admin.** From `apps/web2-admin`, make the profile's env file from the sample and fill
-   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalog is
+   in what it asks for: `POSTGRES_PASSWORD`, `FEED_PRIVATE_KEY`, the brand key the catalogue is
    signed with, and `INTERNAL_API_TOKEN`, the registrar token: the token the manager presents when it registers
    each stage and the catalogue batch with the admin. Generate
    your own key and token. The sample's values are public and the deploy script refuses them,

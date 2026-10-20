@@ -76,7 +76,7 @@ Projects meet in two places only:
 - shared packages under `packages/`, each small, doing one thing and never importing an app,
 - their published interfaces: HTTP APIs (the admin's internal API, which the uploader calls and
   the manager's Test connection reads, and the uploader's health page, which the manager reads),
-  the Swarm catalog feed the uploader and the admin write and the viewer reads, and the arguments
+  the Swarm catalogue feed the uploader and the admin write and the viewer reads, and the arguments
   of the stack's `deploy.sh`, which the manager runs.
 
 The `boundaries` check holds this on every pull request. Every project carries two tags in the

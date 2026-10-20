@@ -201,9 +201,9 @@ names each such stream under `publisherGopStreams` with both lengths. Neither re
 refuses a segment or ends a broadcast.
 
 The uploader then writes a fifth feed: the ladder's **master playlist**, a multivariant playlist
-naming the four rung feeds, on a topic that _is_ the ladder's group id. The catalog entry points at
+naming the four rung feeds, on a topic that _is_ the ladder's group id. The catalogue entry points at
 that, so one URL yields the whole ladder. It is rewritten whenever a rung's measured bandwidth
-drifts, and always before the catalog entry referring to it. The other order would publish an
+drifts, and always before the catalogue entry referring to it. The other order would publish an
 entry whose topic resolves to nothing.
 
 ```

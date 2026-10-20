@@ -34,7 +34,7 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 
 - A project owns everything under its folder and never imports another project's code. Projects
   meet through shared packages under `packages/` and through their published interfaces: HTTP
-  APIs, the Swarm catalog feed, the stack's deploy script arguments.
+  APIs, the Swarm catalogue feed, the stack's deploy script arguments.
 - In the repository files move. On the hosts nothing that holds state moves: host folders,
   compose project names, volumes and env file names stay what `docs/self-hosting.md` lists.
 - A pull request that moves files only moves them. Renames first, each in its own commit, then

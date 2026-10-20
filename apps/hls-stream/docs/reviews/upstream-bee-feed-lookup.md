@@ -91,7 +91,7 @@ The decisive control there is worth repeating, because it rules out everything e
 step: **we ran it against the writer's own node, where every chunk was local.** `/feeds/` was still
 52.4% frozen and the explicit address read was still 0%.
 
-For a **catalog or index feed**, which grows one slot per event and is never reset, the endpoint gets
+For a **catalogue or index feed**, which grows one slot per event and is never reset, the endpoint gets
 permanently slower. A deployment that has recorded a thousand events pays about 5 seconds per read.
 
 ## What we did about it, which is a workaround rather than a fix
