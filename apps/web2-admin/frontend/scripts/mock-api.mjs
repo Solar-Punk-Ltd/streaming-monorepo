@@ -17,16 +17,16 @@
  * to see the console's "no users yet" screen and the command it prints.
  *
  * MOCK_RECORDING=true adds one more recording on the feed, one that ended weeks
- * before, so it is finished at start like the oldest of the seeded streams.
+ * before, so it is finalized at start like the oldest of the seeded streams.
  *
  * Every start seeds three published streams, one in each state the stream page
  * tells apart once a stream has gone live: one live now, one that ended five
  * minutes before the mock started and can go live again for the rest of its
  * restart window, and one that ended three days before, whose window ran out,
- * so it is finished and its key has changed. As the API does with its default
- * STREAM_RESTART_WINDOW_MINUTES, the mock finishes a recording, with a new key,
- * once 30 minutes have passed since it ended, and Finish does it at once on a
- * live or ended stream.
+ * so it is finalized and its key has changed. As the API does with its default
+ * STREAM_RESTART_WINDOW_MINUTES, the mock finalizes a recording, with a new
+ * key, once 30 minutes have passed since it ended, and Finalize does it at once
+ * on a recording. A live stream is refused, as the API refuses it.
  *
  * The mock holds one stage, as if a manager had pushed it, so the stream
  * form's picker and the OBS panel have something to show. MOCK_NO_STAGES=true
@@ -882,7 +882,7 @@ function publicStream(row) {
 
 /**
  * The end of the restart window, as the API's presenter works it out: only
- * while the stream is `vod` and not finished, and null otherwise.
+ * while the stream is `vod` and not finalized, and null otherwise.
  */
 function restartUntil(row) {
   if (row.status !== 'vod' || row.finishedAt !== null || row.endedAt === null) return null;
@@ -890,9 +890,9 @@ function restartUntil(row) {
 }
 
 /**
- * What Finish and the window's sweep both do, as the API's one conditional
- * UPDATE does: a new key, and the stream finished. An encoder already pushing
- * is not dropped; the old key is refused at its next connect.
+ * What Finalize and the window's sweep both do, as the API's one conditional
+ * UPDATE does: a new key, and the stream finalized. The old key is refused at
+ * the next connect.
  */
 function finish(row, at) {
   row.publishKey = hex(16);
@@ -902,7 +902,7 @@ function finish(row, at) {
 }
 
 /**
- * The API's sweep: a recording whose restart window has run out is finished,
+ * The API's sweep: a recording whose restart window has run out is finalized,
  * so an old encoder profile cannot bring it back. A `vod` with no end counts
  * as ended long ago. The API runs it at boot and every minute after; the mock
  * runs it at start and before it answers about streams, which shows the same.
@@ -989,8 +989,8 @@ function newStream(input) {
     durationSeconds: null,
     liveSince: null,
     endedAt: null,
-    // When the key changed for good, by Finish or once the restart window ran
-    // out. Nothing here goes live again, so nothing clears it.
+    // When the key changed for good, by Finalize or once the restart window
+    // ran out. Nothing here goes live again, so nothing clears it.
     finishedAt: null,
     // Stands in for the API's two timestamps: an edit the catalogue entry
     // does not carry yet. Cleared by a publish, which rebuilds the entry.
@@ -1037,7 +1037,7 @@ const DAYS_3 = 3 * 24 * 60;
 seedStream(
   {
     title: 'Live now',
-    description: 'Seeded live: Finish changes its key, and the broadcast carries on until its encoder stops.',
+    description: 'Seeded live. Nothing here ends it, so Finalize stays disabled on it, and the mock refuses it.',
     scheduledStartTime: minutesBefore(15),
   },
   {
@@ -1108,7 +1108,7 @@ if (process.env.MOCK_RECORDING === 'true') {
 }
 
 // The API's boot run: every recording whose window ran out before the start is
-// finished before anything is answered.
+// finalized before anything is answered.
 finishEnded(startedAt);
 
 function stageUnavailable(res, stageId) {
@@ -1625,20 +1625,23 @@ async function handle(req, res) {
   }
 
   if (sub === '/finish' && method === 'POST') {
-    // The API's two refusals, told apart in its order: a stream that never
-    // went live, then one already finished. Each body is the API's.
-    if (row.status !== 'live' && row.status !== 'vod') {
+    // Finalize, and the API's three refusals: a live stream, one that never
+    // went live, and one already finalized. Each body is the API's.
+    if (row.status === 'live') {
+      return send(res, 409, { error: 'stream_live', id: row.id, message: 'Stop the broadcast first.' });
+    }
+    if (row.status !== 'vod') {
       return send(res, 409, {
         error: 'stream_not_started',
         id: row.id,
-        message: 'Only a live or ended stream can be finished.',
+        message: 'Only an ended stream can be finalized.',
       });
     }
     if (row.finishedAt !== null) {
       return send(res, 409, {
         error: 'stream_finished',
         id: row.id,
-        message: 'This stream is already finished: its key has changed.',
+        message: 'This stream is already finalized: its key has changed.',
       });
     }
     finish(row, new Date().toISOString());
