@@ -86,7 +86,9 @@ From `apps/infra-manager` in your checkout:
 ```
 
 `--host <control-host>` and the bare `./deploy/deploy.sh <control-host>` work too. With no host
-at all the deploy goes to the SSH alias `viewer`.
+at all the deploy goes to the SSH alias `viewer`, the script's built-in default (`SSH_TARGET` in
+`deploy.sh`). Name the host every time, unless your SSH config has a `viewer` entry that points at
+the control host.
 
 What it does, in order:
 
