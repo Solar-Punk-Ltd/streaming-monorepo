@@ -877,7 +877,8 @@ which pays from its own wallet ([Stamp operations](#stamp-operations),
   with a sentence that carries neither the key nor the secret. Keep the secret
   with the env file: a wallet created under one secret opens under no other.
   There is no way yet to change the secret of an existing wallet. A secret
-  that leaked, or the sample's that a test install kept, means exporting the
+  that leaked, or the placeholder an earlier sample shipped and a test install
+  kept, means exporting the
   key with `wallet:export` and storing it, then moving the funds to a wallet
   made under a new secret. Before anything is deleted, import the exported key
   into a wallet app and check that the address it shows is the Funding page's:

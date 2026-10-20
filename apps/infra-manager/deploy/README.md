@@ -153,8 +153,8 @@ cp manager/.env.sample manager/.env.staging
 The name follows the manager's rule for a profile name,
 `^[a-z0-9][a-z0-9-]{0,30}$`, and `default` means `manager/.env`. `sample` is
 not a profile: `manager/.env.sample` is the file every profile is copied from.
-A missing file stops the deploy rather than falling back to `manager/.env`. Every check before anything leaves reads that file, and the
-deploy prints which profile and file it uses. A profile changes only which file
+A missing file stops the deploy rather than falling back to `manager/.env`.
+Every check before anything leaves reads that file, and the deploy prints which profile and file it uses. A profile changes only which file
 is sent. The server runs it as any manager host does: in the folder its
 `MANAGER_ROOT` names, on `manager/.env`, as compose project `manager` with the
 same volumes.
