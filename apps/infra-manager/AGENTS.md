@@ -6,28 +6,30 @@ those conventions change.
 
 ## Issues and decisions
 
-The review that produced the main-v2 remediation, with its issue files, briefs, fixes files and
-draft pull request bodies, and the dated narrative of that remediation, were kept under `docs/`
-until 2026-09-28. They were records of finished work, so they were taken out of the tree and are
-read from the repository's history. New work does not add records of that kind here.
+The manager keeps no issue files, review records or decision logs in the tree. Records of finished
+work are read from the repository's history, and new work does not add records of that kind here.
+Current problems belong in the repository's `docs/known-issues.md`, and planned work in
+`docs/ROADMAP.md`.
 
 `.scratch/` is gitignored and local to one machine. Working notes kept there are not a source
 anything in the repository can cite.
 
 ## Reference documentation
 
-This repository has no `CONTEXT.md` and no `docs/adr/`. Domain vocabulary and architectural
-reasoning live in the pages that describe the feature they belong to:
+This repository has no `CONTEXT.md` and no `docs/adr/`. Domain vocabulary and design reasons live
+in the pages that describe the feature they belong to:
 
-- `README.md` for the layout and the stack it bundles.
-- `deploy/README.md` for putting the manager on a server and opening it to the internet.
-- `manager/README.md` for the API, the authentication model and the environment.
-- `docs/features/` for one page per feature.
-- `docs/ci.md` for what the two workflows run and what they prove.
-- `docs/testing/` for the test topology of individual remediation rows.
+- `README.md`: what the manager is, how to run it, its layout and the list of documents.
+- `manager/README.md`: the API and settings reference. `managerEnvKeyDocs.test.ts` holds it to
+  naming every environment variable the manager reads.
+- `deploy/README.md`: the deploy guide, from server setup to opening the manager to the internet.
+  `stackBindKeyDocs.test.ts` holds it to naming every bind key the stack ships.
+- `docs/console.md`: the console's pages, the readiness checklist and the wizard.
+- `docs/features/`: one present-tense page per feature: what it does, how to use it, its settings
+  and routes, and its limits.
+- `docs/ci.md`: what the two workflows run, the pins, and how to run the same checks locally.
+  `srsImagePin.test.ts` reads its image pin table.
+- `manager/test/integration/README.md`: the signed-in integration suite.
 
-A statement in any of these carries the date and the commit it was true at.
-A status line or note that names `main-v2` or `main-v3` dates from before
-2026-09-28, the day `main-v3` became `main`. Read it as history, not as a
-branch to work on. When you change
-behaviour, change the page that describes it in the same branch.
+The pages describe the software as it is, in the present tense, without dates or build history.
+When you change behaviour, change the page that describes it in the same branch.
