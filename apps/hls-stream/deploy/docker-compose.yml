@@ -484,7 +484,7 @@ services:
       # decimals, the segment is `ceil(HLS_FRAGMENT / GOP) * GOP`, so the publisher's keyframe
       # interval decides it and the fragment only sets a floor. A default of 1.0 once put the floor
       # above the 0.5s GOP that a funded sitting found best and silently produced 1.0s segments for a
-      # broadcaster who asked for 0.5s ones. See the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository).
+      # broadcaster who asked for 0.5s ones.
       # There is no default now. The deployment names its length, 2 in the example config.
       HLS_FRAGMENT: ${HLS_FRAGMENT:?HLS_FRAGMENT is not set, the stage's segment length in seconds, for example 2}
       # SRS force-closes a segment at `HLS_FRAGMENT * HLS_AOF_RATIO` regardless of keyframes, so this

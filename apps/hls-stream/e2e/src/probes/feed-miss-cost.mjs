@@ -2,7 +2,7 @@
  * What does it cost to ask for a feed slot that does not exist yet?
  *
  * This is the prerequisite for taking the catalog off the head lookup, and it can refute that plan
- * outright. See `docs/reviews/catalog-off-the-head-lookup.md`.
+ * outright.
  *
  * The argument for walking a feed instead of resolving its head is that an explicit slot address
  * costs 4ms against 1 to 5 seconds. But a walking reader asks for the slot *after* the one it has,

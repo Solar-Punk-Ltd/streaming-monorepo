@@ -24,7 +24,7 @@ interface ErrorBody {
   statusCode?: number;
 }
 
-describe('rate limits (S1.6)', () => {
+describe('rate limits', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));
@@ -160,7 +160,7 @@ describe('rate limits (S1.6)', () => {
 
   /**
    * The bound on the per-stream limiter's own memory. It holds an entry per distinct stream id, and
-   * S1.5 bounds the length of that value but not how many different ones a caller can invent. What
+   * request validation bounds the length of that value but not how many different ones a caller can invent. What
    * bounds the count is this limit being reached first, so the ordering is asserted rather than
    * assumed: it is the reason the middleware is mounted where it is.
    */
@@ -218,9 +218,9 @@ describe('rate limits (S1.6)', () => {
  *
  * Wall-clock versions of these were tried and are the wrong instrument: a short window that the HTTP
  * tests above could roll over is also a window their own requests can straddle under contention,
- * which is how this repository acquired the flaky tests TEST-24 and TEST-31 closed.
+ * which is how this repository acquired the flaky tests a later fix closed.
  */
-describe('the rate limit window (S1.6)', () => {
+describe('the rate limit window', () => {
   const WINDOW_MS = 1_000;
   const KEY = 'one';
 

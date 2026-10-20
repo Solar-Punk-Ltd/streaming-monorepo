@@ -269,7 +269,7 @@ describe('the SRS latency knobs', () => {
    * The pair is a range, not two numbers. SRS cuts on the first keyframe at or after the fragment and
    * force-closes at `fragment * aof_ratio` whether one arrived or not, so a GOP outside
    * `[fragment, fragment * aof_ratio]` is either rounded up or yields keyframeless segments. Measured
-   * over 20 arms in the `gop-vs-fragment-2026-08-12` measurement (kept outside the repository), and the ceiling half of that rule
+   * over 20 arms, and the ceiling half of that rule
    * once invalidated twelve runs.
    *
    * The example config's segment length is chosen to match the keyframe interval the event's

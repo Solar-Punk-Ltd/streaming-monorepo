@@ -25,9 +25,9 @@ function localImportsInOrder(file: string): string[] {
  * difference.
  *
  * Asserted statically rather than by starting the service, because the only faithful functional test
- * would have to read the developer's own `.env` at the repository root. See TEST-37.
+ * would have to read the developer's own `.env` at the repository root.
  */
-describe('env is loaded before anything reads it (ARCH-4)', () => {
+describe('env is loaded before anything reads it', () => {
   it('imports utils/env.js ahead of every other local import in the entry point', () => {
     const imports = localImportsInOrder('index.ts');
 
@@ -56,11 +56,11 @@ describe('env is loaded before anything reads it (ARCH-4)', () => {
 /**
  * The root `.env` is read while `utils/env.ts` is evaluated, from a path built out of the module's
  * own location, so by the time any test runs there is nothing left to observe: the repository's
- * `.env` is gitignored, differs per developer and is absent in CI, which TEST-37 rules out reading.
+ * `.env` is gitignored, differs per developer and is absent in CI, so a test cannot read it.
  * Importing a copy of the module from a directory tree the test owns is what makes the loaded path
  * visible.
  */
-describe('the root .env is found from the module, not from the working directory (ARCH-4)', () => {
+describe('the root .env is found from the module, not from the working directory', () => {
   const ROOT_VAR = 'TEST_ROOT_ENV_VAR';
 
   it('loads the .env four directories above itself, which is the repository root', async () => {

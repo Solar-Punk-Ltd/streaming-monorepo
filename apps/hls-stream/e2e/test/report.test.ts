@@ -97,7 +97,7 @@ describe('choosing what a run reports', () => {
 
   /**
    * The whole reason a sample is chosen rather than the hops averaged. An averaged split sums to a
-   * total no segment had, and Sprint 5 measures a later run against this one, so the baseline has to
+   * total no segment had, and a later run is measured against this one, so the baseline has to
    * be something that happened.
    */
   it('reports rows that still sum to the total it prints', () => {

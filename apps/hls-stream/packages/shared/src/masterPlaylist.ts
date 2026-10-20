@@ -53,7 +53,7 @@ export function parseSwarmUri(url: string): { owner: string; topic: string } {
  * feed of its own and the client builds the same text locally as a fallback for catalog entries
  * written before masters were published. Both used to carry their own copy of this function, each
  * with a comment saying the two had to keep producing identical text, which is the arrangement
- * ARCH-1 exists to remove: a viewer switching between the published master and the synthesised one
+ * one shared definition exists to remove: a viewer switching between the published master and the synthesised one
  * mid-session would otherwise see the ladder change shape.
  *
  * No CODECS attribute. The uploader never sees the codec string and hls.js takes it from the first

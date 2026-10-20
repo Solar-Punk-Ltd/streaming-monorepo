@@ -127,7 +127,7 @@ describe('a viewer whose rung goes quiet moves to one that has not', { skip }, (
     const silencedRung = result.silencedRung;
     assert.ok(rungs && silencedRung, 'the refusal above should already have caught an arm that silenced nothing');
 
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md, asked here as everywhere else.
+    // The same quality check as every other viewer suite.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);
     assert.equal(
       wrongQuality,

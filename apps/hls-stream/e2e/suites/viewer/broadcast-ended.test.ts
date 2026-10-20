@@ -203,7 +203,7 @@ describe('V5 — the viewer is told when the broadcast ends', { skip }, () => {
     // happening.
     const notItsCondition = byteSourceArmRefusal(result, { maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS });
     assert.equal(notItsCondition, null, `this arm is not the byte source it is filed as: ${notItsCondition}`);
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md. The resolutions were already being captured and
+    // The resolutions were already being captured and
     // printed, so a viewer riding a rung nobody configured passed every suite on a reading that was
     // sitting right there. Asks whether the rung is one the ladder declares, never which one.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);

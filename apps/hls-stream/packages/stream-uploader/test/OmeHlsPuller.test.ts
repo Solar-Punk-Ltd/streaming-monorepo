@@ -65,7 +65,7 @@ async function withSilencedLogs<T>(run: () => Promise<T>): Promise<T> {
  * it is a runtime failure in whichever tests happen to reach that line, and only those. That has now
  * happened five times across this repository's stubs, twice here while adding `keepAlive`, which is
  * why the shape lives in one place. The inline stubs left in this file are the ones whose omissions
- * are load-bearing: they prove the puller does not reach for a method on some path. See TEST-33.
+ * are load-bearing: they prove the puller does not reach for a method on some path.
  */
 function makeOrchestratorStub(overrides: Record<string, unknown> = {}): OrchestratorArg {
   return {
@@ -241,7 +241,7 @@ describe('OmeHlsPuller playlist resolution', () => {
   });
 });
 
-describe('OmeHlsPuller injected fetcher (S0.6)', () => {
+describe('OmeHlsPuller injected fetcher', () => {
   const MASTER_URL = 'http://ome/hls/app/stream/ts:playlist.m3u8';
   const VARIANT_URL = 'http://ome/hls/app/stream/variant.m3u8';
   const MASTER_PLAYLIST = ['#EXTM3U', '#EXT-X-STREAM-INF:BANDWIDTH=1000', 'variant.m3u8'].join('\n');
@@ -803,7 +803,7 @@ describe('OmeHlsPuller segment loss', () => {
   });
 });
 
-describe('OmeHlsPuller abort window coverage (TEST-15)', () => {
+describe('OmeHlsPuller abort window coverage', () => {
   const MASTER_URL = 'http://ome/hls/app/stream/ts:playlist.m3u8';
   const VARIANT_URL = 'http://ome/hls/app/stream/variant.m3u8';
   const MASTER = ['#EXTM3U', '#EXT-X-STREAM-INF:BANDWIDTH=1000', 'variant.m3u8'].join('\n');
@@ -1657,7 +1657,7 @@ describe('OmeHlsPuller unusable origin', () => {
    * produced. Counting them inside a wall-clock window reports the load on the machine: under
    * contention the timers fire late, fewer polls land, and the assertion fails with
    * `got 4 polls in the grace` against code that is behaving correctly. Measured at 13 failing runs
-   * of 64 at 32 concurrent copies on 12 cores. See TEST-34, and TEST-15 for the same fix one layer up.
+   * of 64 at 32 concurrent copies on 12 cores.
    *
    * The two arms of `retryDelayMs` get a test each, rather than one test spanning the boundary,
    * because spanning it means asserting that the first retry landed inside the grace. That is the same
@@ -1737,7 +1737,7 @@ describe('OmeHlsPuller unusable origin', () => {
     const slowedAfterMs = retries[slowedAt].at - startedAt;
 
     // A lower bound, and deliberately only that: contention can delay the slowdown and can never
-    // hasten it, so this cannot bring TEST-34's flake back. Without it the grace can be shrunk to a
+    // hasten it, so this cannot bring the contention flake back. Without it the grace can be shrunk to a
     // single millisecond with every assertion here still green, which costs 4.5s of startup latency
     // on every stream at the shipped 500ms interval.
     assert.ok(

@@ -6,7 +6,7 @@
  * and a scenario that blames the uploader for never doing the thing it did. `logwatch.ts` has been
  * bitten by that shape once already, over JSON envelopes.
  *
- * One definition, so the producer and the reader cannot drift apart. See ARCH-1, and
+ * One definition, so the producer and the reader cannot drift apart. See
  * `announcedLiveTopics` in the e2e harness for what a blind parse costs.
  */
 

@@ -130,7 +130,7 @@ async function postAdmissionBody(
       },
       body,
     });
-    // Returned so a caller can assert what OME is actually told. TEST-25 records that nothing else in
+    // Returned so a caller can assert what OME is actually told. Nothing else in
     // this suite reads the admission reply, which is how an inverted allow/deny stayed green.
     return await response.json();
   } finally {
@@ -283,7 +283,7 @@ describe('createOmeEngineFromEnv validation', () => {
   });
 });
 
-describe('createOmeEngineFromEnv fetch timeout plumbing (TEST-15)', () => {
+describe('createOmeEngineFromEnv fetch timeout plumbing', () => {
   const CONFIGURED_WINDOW_MS = 150;
   const PLUMBING_SECRET = 'plumbing-secret';
   const STREAM_URL = 'srt://ome:10080/video/demo';
@@ -310,7 +310,7 @@ describe('createOmeEngineFromEnv fetch timeout plumbing (TEST-15)', () => {
    * each hop could be severed with the whole suite, typecheck and lint still green.
    *
    * The window is read back from the call the puller makes rather than timed with a clock. Timing it
-   * was the second flaky test the TEST-31 hunt exposed, twice in 160 runs: the puller creates the
+   * was the second flaky test the loopback hunt exposed, twice in 160 runs: the puller creates the
    * signal and then calls the fetcher, while the fetcher can only start its stopwatch once it is
    * running, so any scheduling stall between those two points is subtracted from what it measures.
    * Under an 8-wide parallel run that produced 120ms and 128ms against a 150ms window and a 20ms
@@ -1142,7 +1142,7 @@ describe('createOmeEngine reordered closing', () => {
     assert.deepEqual(
       staleReply,
       { allowed: true, lifetime: 0, reason: 'ok (closing for a replaced session)' },
-      'OME still needs its acknowledgement, and TEST-25 records that nothing else asserts what this route answers',
+      'OME still needs its acknowledgement, and nothing else asserts what this route answers',
     );
   });
 
@@ -1666,7 +1666,7 @@ describe('createOmeEngine reordered closing', () => {
 });
 
 /**
- * TEST-25: nothing asserted the admission webhook's allow-or-deny decision, so the ingest gate could
+ * Nothing asserted the admission webhook's allow-or-deny decision, so the ingest gate could
  * be inverted and the suite stayed green. Hand-verified when it was filed: flipping the
  * orchestrator-rejected reply to `allowed: true` left 294 of 294 passing.
  *
@@ -1678,7 +1678,7 @@ describe('createOmeEngine reordered closing', () => {
  * did afterwards, which is why an inverted decision was invisible to all of them: a denied publish
  * that starts no puller looks exactly like an allowed one whose origin never answered.
  */
-describe('createOmeEngine admission decision (TEST-25)', () => {
+describe('createOmeEngine admission decision', () => {
   const SECRET = 'admission-decision-secret';
   const HLS_BASE = 'http://ome:8081';
   const POLL_INTERVAL_MS = 20;
@@ -1707,7 +1707,7 @@ describe('createOmeEngine admission decision (TEST-25)', () => {
 
   // The flip that was hand-verified as invisible. It needs a fake orchestrator because
   // `StreamOrchestrator.startStream` returns true on all three of its paths, so `!accepted` is
-  // unreachable against the real one. See TEST-29.
+  // unreachable against the real one.
   it('denies an opening the orchestrator refuses, rather than telling OME to let it publish', async () => {
     const orchestrator = makeFakeOrchestrator({ startStream: () => false });
 

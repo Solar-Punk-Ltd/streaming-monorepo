@@ -3574,7 +3574,7 @@ export class StreamOrchestrator {
       // way round is a live broadcast with no recovery at all.
       uploader.retire();
       // `msg` is logged above and deliberately not returned. It is whatever Bee, the filesystem or a
-      // timer produced, and this value is served verbatim by `GET /stream/status`. See S1.7.
+      // timer produced, and this value is served verbatim by `GET /stream/status`.
       const reason = error instanceof DrainTimeoutError ? STOP_FAILURE_DRAIN_TIMEOUT : STOP_FAILURE_FINALIZE_FAILED;
       return { streamId, state: STREAM_LIFECYCLE_FAILED, reason, settledAt: Date.now() };
     } finally {

@@ -143,7 +143,7 @@ export const StreamPreview = ({
 
         // Spelled from the shared constants rather than by hand. These six literals were the last
         // place a tag rename could pass every type check and every test and still leave the preview
-        // player asking for a playlist no decoder accepts. See ARCH-1.
+        // player asking for a playlist no decoder accepts.
         const miniManifest = [
           HLS_M3U,
           `${HLS_VERSION}:3`,

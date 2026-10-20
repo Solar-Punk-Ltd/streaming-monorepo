@@ -533,14 +533,14 @@ describe('StreamUploader live manifest failure surfacing', () => {
  * induced failure here was a 402 chosen to keep the tests fast. So the helpers were proven, and
  * their two callers' dependence on them was not.
  *
- * TEST-1 recorded this as "the Bee mock always succeeds", which is no longer true: this file builds
+ * This was once recorded as "the Bee mock always succeeds", which is no longer true: this file builds
  * a 402, `OmeHlsPuller.test.ts` a 503, `StreamCatalog.test.ts` a real `BeeResponseError`. The
  * conclusion held anyway, for a different reason.
  *
  * One retry costs one real backoff sleep, 175-350ms, which is why these fail once rather than
  * repeatedly.
  */
-describe('StreamUploader survives a transient Bee failure (TEST-1)', () => {
+describe('StreamUploader survives a transient Bee failure', () => {
   it('retries a segment upload that fails with a retryable status, and keeps the segment', async () => {
     const control = countingControl(failFirst(1, transientError));
     const uploader = newUploader(control);

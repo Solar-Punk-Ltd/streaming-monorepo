@@ -290,7 +290,7 @@ describe('StreamOrchestrator recovery-timer cancellation (F: uploader crash reco
     await orch.cleanup();
   });
 
-  // ARCH-3, end to end. An entry claiming the catalog announce happened before the first segment
+  // End to end. An entry claiming the catalog announce happened before the first segment
   // cannot come from any live sequence. Restored as-is it passed every gate quietly and was never
   // published, so the broadcast ran correctly and no viewer could find it.
   //
@@ -945,7 +945,7 @@ describe('StreamOrchestrator re-announce (E: engine restart)', () => {
   });
 });
 
-describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)', () => {
+describe('StreamOrchestrator recovery finalization on an injected clock', () => {
   const RECOVERY_TIMEOUT_60S = 60_000;
 
   interface CatalogEntry {
@@ -984,7 +984,7 @@ describe('StreamOrchestrator recovery finalization on an injected clock (S0.5)',
     await waitFor(() => orch.getActiveStreamCount() === 0, SETTLE_CEILING_MS);
 
     assert.equal(orch.getActiveStreamCount(), 0, 'the timer fired and the stream was finalized');
-    // TEST-4: the old assertion stopped at the count above, which passes even if nothing was published.
+    // The old assertion stopped at the count above, which passes even if nothing was published.
     assert.deepEqual(
       catalogEntries.map((entry) => entry.state),
       ['vod'],
@@ -2501,14 +2501,14 @@ describe('StreamOrchestrator finalize accounting (gate on PR 52)', () => {
 });
 
 /**
- * TEST-32: the `stopOutcomeTtlMs` seam, which existed for a test that was never written.
+ * The `stopOutcomeTtlMs` seam, which existed for a test that was never written.
  *
  * Its own doc said it was injectable so the expiry could be driven, and nothing injected it, so the
  * seam was a claim about testability that nothing checked and the sweep it exists for had no
  * coverage at all. The window is driven through the injected clock rather than by sleeping, since a
  * real one long enough to be worth reading is longer than a test should take.
  */
-describe('a settled stop expires from the status map (TEST-32)', () => {
+describe('a settled stop expires from the status map', () => {
   const STREAM_ID = 'live/one';
   const TTL_MS = 60_000;
 

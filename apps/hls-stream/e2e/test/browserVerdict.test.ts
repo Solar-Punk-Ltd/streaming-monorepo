@@ -340,12 +340,12 @@ describe('whether an arm was the byte source it is filed as, in either condition
 /**
  * Whether the viewer received a quality the deployment actually configured.
  *
- * ⛔⛔ **Phase 1 of `docs/e2e-viewer-coverage-plan.md`.** Every watching suite already captured the
+ * Every watching suite already captured the
  * resolutions a viewer passed through and printed them under "observed, not asserted", so a viewer
  * silently riding a rung outside the ladder passed every test. The reading was there the whole time
  * and nothing could fail on it.
  *
- * ⭐ **It asks whether the rung is one the ladder declares, never which one.** Which rung a player
+ * **It asks whether the rung is one the ladder declares, never which one.** Which rung a player
  * picks is its own adaptive decision, and pinning it would be a performance assertion wearing a
  * correctness coat. Owner rule of 2026-08-29.
  *

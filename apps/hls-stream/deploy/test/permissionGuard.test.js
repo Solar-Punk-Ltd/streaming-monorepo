@@ -12,8 +12,8 @@ import {
  *
  * ⛔⛔ An inverted condition skips every case that uses this on every machine while the suite stays
  * green, and a skip is not a failure so nothing else would notice. The exported constant is asserted
- * as well as the predicate behind it, because the cases read the constant: a cross-provider review on
- * 2026-09-14 found exactly that gap in the equivalent helper in packages/cli, where three green cases
+ * as well as the predicate behind it, because the cases read the constant: a review found
+ * exactly that gap in the equivalent helper in packages/cli, where three green cases
  * sat in front of an export nothing touched.
  */
 describe('the deploy suite permission guard', () => {

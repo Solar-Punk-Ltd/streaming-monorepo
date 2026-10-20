@@ -7,7 +7,7 @@ import { readStatusCode, withheldBodyRequest } from './helpers/apiTestServer.js'
 import { LOOPBACK_HOST } from './helpers/loopbackServer.js';
 
 /**
- * That the raw-socket helper reads a status line however TCP delivers it. See TEST-53.
+ * That the raw-socket helper reads a status line however TCP delivers it.
  *
  * `srsWebhookAuth.test.ts` asserts `401` on four oversized and unparseable bodies through this
  * helper, and one of those failed once under a full `pnpm verify` and then passed three times in

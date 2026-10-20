@@ -303,7 +303,7 @@ describe('metrics exposition format', () => {
   });
 });
 
-describe('GET /metrics (S2.7)', () => {
+describe('GET /metrics', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));

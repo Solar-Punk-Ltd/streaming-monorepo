@@ -85,7 +85,7 @@ const MANIFEST_RETRY_BASE_MS = 2_000;
  * looking for.
  *
  * The same number was reached from a third direction, three weeks before any of this was measured:
- * `docs/reviews/roadmap.md` item 0.8b named 8s as the secondary lever if clearing the hold on a
+ * an earlier plan named 8s as the secondary lever if clearing the hold on a
  * segment arrival turned out not to be enough. On the ladder it was not enough, because a ladder then
  * held five feeds and the segment path only ever cleared one of them at a time.
  *

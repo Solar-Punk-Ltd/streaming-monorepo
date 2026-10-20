@@ -1,5 +1,5 @@
 /**
- * Where the latency of one segment went, split the way sprint task S5.1 asks for it.
+ * Where the latency of one segment went, split hop by hop.
  *
  * Two clocks feed this. The bench's own clock stamps capture and fetch, because the publisher and the
  * fetch both run here; the uploader host's clock stamps the two log lines in between. That split is

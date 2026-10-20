@@ -161,7 +161,7 @@ describe("V8 — a viewer barely notices an eight second pause of the writer's n
       maxSegmentRequests: MAX_WEEB3_SEGMENT_REQUESTS,
     });
     assert.equal(notWatching, null, `this run is not a viewer who was watching when the node paused: ${notWatching}`);
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md. The resolutions were already being captured and
+    // The resolutions were already being captured and
     // printed, so a viewer riding a rung nobody configured passed every suite on a reading that was
     // sitting right there. Asks whether the rung is one the ladder declares, never which one.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);

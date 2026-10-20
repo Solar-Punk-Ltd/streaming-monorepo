@@ -34,9 +34,6 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * change rung. So the ladder was four times the transcode and four times the publishing cost, with
  * the feature it buys unobserved.
  *
- * Recorded in `docs/e2e-viewer-coverage-plan.md` and in the memory note
- * `swarm-hls-abr-viewer-never-watched.md`.
- *
  * ## What this asserts
  *
  * That the viewer was watching and their player was choosing its own rung. That the cap reached the
@@ -140,7 +137,7 @@ describe('V2 — a viewer whose connection gets worse keeps watching, at a quali
     const quality = result.quality;
     assert.ok(quality, 'the refusal above should already have caught an artifact with no quality verdict');
 
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md, asked here as everywhere else: whatever rung this
+    // The same quality check as every other viewer suite: whatever rung this
     // viewer rode, it has to be one the deployment declares.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);
     assert.equal(

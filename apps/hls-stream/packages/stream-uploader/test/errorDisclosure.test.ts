@@ -140,7 +140,7 @@ interface StatusBody {
   reason?: string;
 }
 
-describe('responses do not carry internals (S1.7)', () => {
+describe('responses do not carry internals', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));

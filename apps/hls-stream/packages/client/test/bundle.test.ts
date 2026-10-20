@@ -77,7 +77,7 @@ function readEmittedAssets(outDir: string): EmittedAssets {
  * check: vite 8 defaults `build.target` to `baseline-widely-available`, which emits `@media
  * (width>=500px)`, and an engine that does not understand range syntax drops the whole rule and
  * reports nothing. Both assertions here were shown to fail against exactly that build before being
- * committed. See TEST-22.
+ * committed.
  *
  * The bundle is built here rather than read from `dist/`, because CI runs `pnpm test` before
  * `pnpm build` and a stale `dist/` would pass while saying nothing about the tree under test.
@@ -85,7 +85,7 @@ function readEmittedAssets(outDir: string): EmittedAssets {
  * Syntax only, which is the limit worth knowing: an API newer than the target, such as
  * `AbortSignal.timeout` against safari14, parses cleanly and is invisible here.
  */
-describe('the emitted bundle honours the declared browser target (TEST-22)', () => {
+describe('the emitted bundle honours the declared browser target', () => {
   // Undefined until the temp directory exists, because `force` does not cover an undefined path:
   // `rmSync` rejects the argument before it ever considers whether the target is there, so an
   // unguarded cleanup would throw ERR_INVALID_ARG_TYPE over whatever really failed.

@@ -37,7 +37,7 @@ function withLogger(options: Partial<LoggerOptions>, run: (lines: string[], leve
   }
 }
 
-describe('log level thresholds (ARCH-4)', () => {
+describe('log level thresholds', () => {
   it('admits everything at or above the threshold', () => {
     assert.deepEqual(
       EVERY_LEVEL.filter((level) => admits(LOG_LEVEL_WARN, level)),
@@ -68,7 +68,7 @@ describe('log level thresholds (ARCH-4)', () => {
   });
 });
 
-describe('LOG_LEVEL suppression (ARCH-4)', () => {
+describe('LOG_LEVEL suppression', () => {
   it('LOG_LEVEL=warn suppresses info and debug and keeps warn and error', () => {
     withLogger({ level: LOG_LEVEL_WARN }, (_lines, levels) => {
       const logger = Logger.getInstance();
@@ -124,7 +124,7 @@ describe('LOG_LEVEL suppression (ARCH-4)', () => {
   });
 });
 
-describe('structured output (ARCH-4)', () => {
+describe('structured output', () => {
   it('writes one json object per line carrying the level and the message', () => {
     withLogger({ level: LOG_LEVEL_DEBUG, format: LOG_FORMAT_JSON }, (lines) => {
       Logger.getInstance().warn('stream stalled:', { streamId: 'live/a' });
@@ -153,7 +153,7 @@ describe('structured output (ARCH-4)', () => {
   });
 });
 
-describe('logger configuration from the environment (ARCH-4)', () => {
+describe('logger configuration from the environment', () => {
   const sink: LogLevel[] = [];
   const noop = () => undefined;
 
