@@ -40,7 +40,10 @@ On your machine, in your checkout:
 cp manager/.env.sample manager/.env
 ```
 
-Set at least `POSTGRES_PASSWORD`. `manager/.env.sample` describes every key, and
+Set at least `POSTGRES_PASSWORD`, to a value of your own, for example from
+`openssl rand -hex 24`. The sample ships `pwd`, which is public, and the deploy refuses it. A test
+install can keep it with `--allow-sample-secrets`, which deploys with a warning.
+`manager/.env.sample` describes every key, and
 [the API and settings reference](../manager/README.md#environment) lists them all. Every deploy
 sends this file to the server, so your checkout is the only source of truth for it: an edit made
 on the server is undone by the next deploy.
@@ -57,10 +60,9 @@ cp manager/.env.sample manager/.env.staging
 ```
 
 The name follows the rule for a deployment name, `^[a-z0-9][a-z0-9-]{0,30}$`, and `default` means
-`manager/.env`. A profile needs its host named, and a missing file stops the deploy rather than
-falling back to `manager/.env`. The deploy prints which profile and file it uses. On the server
-every profile runs the same way: in the folder its `MANAGER_ROOT` names, on `manager/.env`, as
-Compose project `manager`.
+`manager/.env`. A missing file stops the deploy rather than falling back to `manager/.env`. The
+deploy prints which profile and file it uses. On the server every profile runs the same way: in the
+folder its `MANAGER_ROOT` names, on `manager/.env`, as Compose project `manager`.
 
 The deploy sends no other env file. If it finds others in the server's `manager/` folder, such as
 `.env.staging` or `.envrc`, it names each one with the command that removes it and leaves them
@@ -85,10 +87,8 @@ From `apps/infra-manager` in your checkout:
 ./deploy/deploy.sh --host=<control-host>
 ```
 
-`--host <control-host>` and the bare `./deploy/deploy.sh <control-host>` work too. With no host
-at all the deploy goes to the SSH alias `viewer`, the script's built-in default (`SSH_TARGET` in
-`deploy.sh`). Name the host every time, unless your SSH config has a `viewer` entry that points at
-the control host.
+`--host <control-host>` and the bare `./deploy/deploy.sh <control-host>` work too. The host is
+required: there is no default, and a deploy with no host stops before anything leaves your machine.
 
 What it does, in order:
 
@@ -497,7 +497,8 @@ Let's Encrypt for another one.
 The edge runs on the host's network, and Docker reports no port map for such a container. Until
 the manager is told what it holds, every removal on that host refuses with "Container removal or
 port release could not be verified", and so do port handovers and the firewall export. Add this
-line, with the ports Caddy listens on, to `manager/.env` in your checkout and deploy again:
+line, with the ports Caddy listens on, to `manager/.env` in your checkout and run
+`./deploy/deploy.sh --host=<control-host>` again:
 
 ```sh
 KNOWN_HOST_NETWORK_PORTS=edge=80/tcp,443/tcp,443/udp

@@ -960,7 +960,7 @@ which pays from its own wallet ([Stamp operations](#stamp-operations),
   with a sentence that carries neither the key nor the secret. Keep the secret
   with the env file: a wallet created under one secret opens under no other.
   The admin cannot yet change the secret of an existing wallet. To replace a
-  secret that leaked, or the sample's that a test install kept:
+  secret that leaked, or a placeholder that a test install kept:
   1. Export the key with `wallet:export` and store it.
   2. Import the exported key into a wallet app and check that the address it
      shows is the Funding page's. Once the row is gone, that key is the only

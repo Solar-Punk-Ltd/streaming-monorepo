@@ -128,8 +128,9 @@ pnpm install
    it. Nothing else: both consoles listen on the host's loopback only.
 
 3. **The manager.** From `apps/infra-manager` on your machine, make `manager/.env` from the sample
-   and set at least `POSTGRES_PASSWORD`. The file travels with every deploy, so your checkout is its
-   source. Set `MANAGER_ROOT` there if the manager should live anywhere but
+   and set at least `POSTGRES_PASSWORD`, for example with `openssl rand -hex 24`. The deploy
+   refuses the sample's `pwd` unless `--allow-sample-secrets` is given for a test install. The file
+   travels with every deploy, so your checkout is its source. Set `MANAGER_ROOT` there if the manager should live anywhere but
    `/opt/streaming/streaming-infra-manager`.
 
    ```sh
@@ -145,7 +146,8 @@ pnpm install
    builds the stack version the manager bundles.
 
    A second manager host gets an env file of its own, `manager/.env.<name>` made from the same
-   sample, and `--profile=<name>` deploys it to the host named with it. A deploy sends only the file
+   sample, and `--profile=<name>` deploys it to the host named. Every deploy names its host. There
+   is no default. A deploy sends only the file
    it uses, and every host keeps it as `manager/.env`. Both flags also take their value as the next
    word, as in `--host <control-host>`.
 
@@ -197,7 +199,8 @@ pnpm install
    signed with, and `INTERNAL_API_TOKEN`, the registrar token: the token the manager presents when it registers
    each stage and the catalogue batch with the admin. Generate
    your own key and token. The sample's values are public and the deploy script refuses them,
-   unless `--allow-sample-secrets` is given for a test install. The admin takes no stage settings:
+   unless `--allow-sample-secrets` is given for a test install. Set `BRAND_WALLET_SECRET` only to
+   fund nodes from the admin. The sample leaves it commented out. The admin takes no stage settings:
    no ingest address, port or passphrase, no Bee node and no batch. It learns each stage from the
    manager and writes the catalogue through the catalogue node the manager designates, refusing to
    publish, saying why, until the manager has.
