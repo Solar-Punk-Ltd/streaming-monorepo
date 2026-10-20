@@ -93,11 +93,12 @@ and with it the script refuses a missing `BRAND_WALLET_SECRET` and a
 printable ASCII, a space included, as the API refuses them. A
 `BRAND_WALLET_SECRET` is held to 64 hex characters whenever it is set, since
 the API's first start with one creates the brand wallet under it, and a token
-without the address is refused, as the API refuses it. The sample's token
-placeholder, and the secret placeholder earlier samples shipped, are refused as
-the published values above are, and `--allow-sample-secrets` lets a test
-install keep them. No
-value is printed. The address itself is the API's to judge: one that is not
+without the address is refused, as the API refuses it. The sample's
+`MANAGER_FUNDING_TOKEN` placeholder, and the published placeholder secret
+`0123456789abcdef` written four times over, are refused as the published values
+above are, and `--allow-sample-secrets` lets a test install keep them. The
+sample leaves `BRAND_WALLET_SECRET` commented out, so an env file copied from
+it deploys with funding off. No value is printed. The address itself is the API's to judge: one that is not
 https, or plain http to this host, stops the API with a sentence in its log,
 which the deploy prints when the API does not come up.
 
