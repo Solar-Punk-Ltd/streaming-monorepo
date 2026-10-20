@@ -563,9 +563,9 @@ describe('POST /api/admin-funding/chequebook-operations', () => {
         chequebookRefusalSentence(chequebookRefusal('bee_container_not_found')),
       ],
       [
-        'a Bee image the bridge check failed',
-        new ChequebookPreparationError('bridge_not_qualified', 'dev_tcp'),
-        chequebookRefusalSentence(chequebookRefusal('bridge_not_qualified', 'dev_tcp')),
+        'a chain endpoint that answers for another chain',
+        new ChequebookPreparationError('wrong_chain'),
+        chequebookRefusalSentence(chequebookRefusal('wrong_chain')),
       ],
       [
         'a failure that says nothing of its cause',

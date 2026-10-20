@@ -3,7 +3,7 @@ import { TransferRefusalError } from './TransferRefusalError.js';
 
 export class ChainReadError extends TransferRefusalError {
   constructor(cause: ChequebookRefusalCause = 'chain_unreachable') {
-    super('The chain could not be read. The transfer outcome remains unverified.', cause, null);
+    super('The chain could not be read. The transfer outcome remains unverified.', cause);
     this.name = 'ChainReadError';
   }
 

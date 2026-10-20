@@ -416,10 +416,9 @@ a deployment or a Bee answer, and changing one takes a restart. A URL can carry 
 value into the process rather than writing it in a committed file.
 
 A transfer the manager could not prepare is answered `503` with
-`{"error":"chequebook_preparation_unavailable","cause":...,"check":...,"message":...}`, where
-`message` is the sentence the console shows. Nothing is sent or recorded. The causes are a closed
-list in `common/src/chequebookRefusals.ts`, and none carries upstream text, an endpoint or a socket
-path.
+`{"error":"chequebook_preparation_unavailable","cause":...,"message":...}`, where `message` is the
+sentence the console shows. Nothing is sent or recorded. The causes are a closed list in
+`common/src/chequebookRefusals.ts`, and none carries upstream text or an endpoint.
 
 | `cause`                     | What is wrong                                                                                                                                  | The fix                                                                                                                      |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -433,9 +432,6 @@ path.
 | `target_changed`            | The deployment is being deployed, stopped or removed, it has two `bee-uploader` containers recorded, or its ownership could not be captured.   | Wait until it is running and settled, or deploy it again.                                                                    |
 | `bee_unreadable`            | The Bee node did not answer, or answered inconsistently.                                                                                       | Check that the node runs and is synced.                                                                                      |
 | `unavailable`               | No such deployment, one without a Bee node of its own, a Bee API address that is not plain `http`, or anything else, a timeout among them.     | Try again, and read the manager's log if it keeps failing.                                                                   |
-
-The list also holds `docker_unreachable`, `docker_route_missing`, `docker_setting_invalid` and
-`bridge_not_qualified`, which the running manager never answers.
 
 ## A deployment's own settings
 

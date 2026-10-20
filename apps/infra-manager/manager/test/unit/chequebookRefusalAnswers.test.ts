@@ -188,8 +188,7 @@ function assertRefused(answer: Awaited<ReturnType<typeof refusedDeposit>>, cause
   assert.deepEqual(answer.body, {
     error: 'chequebook_preparation_unavailable',
     cause,
-    check: null,
-    message: chequebookRefusalSentence({ cause, check: null }),
+    message: chequebookRefusalSentence({ cause }),
   });
   assert.equal(answer.repository.rows.size, 0, 'nothing was admitted');
   assert.equal(answer.posts(), 0, 'nothing was sent');

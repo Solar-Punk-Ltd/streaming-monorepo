@@ -5,7 +5,6 @@ export class ChequebookTargetChangedError extends TransferRefusalError {
     super(
       'The Bee target ownership could not be verified. Refresh the deployment before trying again.',
       'target_changed',
-      null,
     );
     this.name = 'ChequebookTargetChangedError';
   }

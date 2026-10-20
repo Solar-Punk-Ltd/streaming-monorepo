@@ -392,8 +392,7 @@ describe(
       assert.deepEqual(await response.json(), {
         error: 'chequebook_preparation_unavailable',
         cause: 'chain_endpoint_missing',
-        check: null,
-        message: chequebookRefusalSentence({ cause: 'chain_endpoint_missing', check: null }),
+        message: chequebookRefusalSentence({ cause: 'chain_endpoint_missing' }),
       });
       assert.deepEqual(h.chainEndpoints(), [], 'no chain reader was made');
       assert.equal(h.beePosts(), 0);

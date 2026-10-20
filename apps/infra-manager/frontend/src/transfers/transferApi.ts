@@ -30,7 +30,7 @@ async function body(response: Response): Promise<unknown> {
   }
 }
 
-/** The cause and check a preparation 503 names, only when both come from the shared closed lists. The body's message is never read. */
+/** The cause a preparation 503 names, only when it comes from the shared closed list. The body's message is never read. */
 function preparationRefusal(status: number, value: unknown): ChequebookRefusal | null {
   if (
     status !== 503 ||
@@ -40,10 +40,7 @@ function preparationRefusal(status: number, value: unknown): ChequebookRefusal |
     value.error !== 'chequebook_preparation_unavailable'
   )
     return null;
-  const refusal = {
-    cause: 'cause' in value ? value.cause : undefined,
-    check: 'check' in value ? value.check : undefined,
-  };
+  const refusal = { cause: 'cause' in value ? value.cause : undefined };
   return isChequebookRefusal(refusal) ? refusal : null;
 }
 

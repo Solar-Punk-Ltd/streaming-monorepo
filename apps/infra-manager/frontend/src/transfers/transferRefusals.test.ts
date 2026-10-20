@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import {
-  BEE_BRIDGE_CHECKS,
   CHEQUEBOOK_PREFLIGHT_REFUSALS,
   CHEQUEBOOK_REFUSAL_CAUSES,
   chequebookPreflightSentence,
@@ -43,10 +42,7 @@ const intent: StoredTransferIntent = {
   amountPlur: '5000000000000000',
   createdAt: '2026-09-26T00:00:00.000Z',
 };
-const everyRefusal = (): ChequebookRefusal[] => [
-  ...CHEQUEBOOK_REFUSAL_CAUSES.map((cause) => ({ cause, check: null })),
-  ...BEE_BRIDGE_CHECKS.map((check) => ({ cause: 'bridge_not_qualified' as const, check })),
-];
+const everyRefusal = (): ChequebookRefusal[] => CHEQUEBOOK_REFUSAL_CAUSES.map((cause) => ({ cause }));
 const refusedBody = (refusal: ChequebookRefusal) => ({
   error: 'chequebook_preparation_unavailable',
   ...refusal,
@@ -68,10 +64,10 @@ describe('the transfer API reads a refused submission', () => {
 
   it('never carries a cause from outside the list, and keeps the old unavailable wording for it', async () => {
     for (const body of [
-      { error: 'chequebook_preparation_unavailable', cause: 'connect ECONNREFUSED 10.0.0.7:2375', check: null },
-      { error: 'chequebook_preparation_unavailable', cause: 'docker_unreachable', check: 'bash' },
+      { error: 'chequebook_preparation_unavailable', cause: 'connect ECONNREFUSED 10.0.0.7:2375' },
+      { error: 'chequebook_preparation_unavailable', cause: 'not_a_cause' },
       { error: 'chequebook_preparation_unavailable' },
-      { error: 'chequebook_journal_unavailable', cause: 'docker_unreachable', check: null },
+      { error: 'chequebook_journal_unavailable', cause: 'wrong_chain' },
     ]) {
       answer(503, body);
       await assert.rejects(transferApi.submit(intent, new AbortController().signal), (error) => {
@@ -98,7 +94,7 @@ describe('the transfer controller keeps the refusal for the page', () => {
       },
       async recordBlocking() {},
     } as unknown as TransferIntentStore;
-    const refusal: ChequebookRefusal = { cause: 'bridge_not_qualified', check: 'dev_tcp' };
+    const refusal: ChequebookRefusal = { cause: 'wrong_chain' };
     const controller = new TransferController(
       store,
       {

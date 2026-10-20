@@ -5,7 +5,6 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
-  BEE_BRIDGE_CHECKS,
   CHEQUEBOOK_REFUSAL_CAUSES,
   chequebookPreflightSentence,
   chequebookRefusalSentence,
@@ -304,10 +303,7 @@ test('lost HTTP response and missing lookup retain one UUID until an explicit id
 });
 
 test('a refused submission says its cause in its own sentence, for every cause, and the same request can be sent again', async (t) => {
-  const refusals = [
-    ...CHEQUEBOOK_REFUSAL_CAUSES.map((cause) => ({ cause, check: null })),
-    ...BEE_BRIDGE_CHECKS.map((check) => ({ cause: 'bridge_not_qualified', check })),
-  ];
+  const refusals = CHEQUEBOOK_REFUSAL_CAUSES.map((cause) => ({ cause }));
   const h = await fixture(t);
   h.refuse({ error: 'chequebook_preparation_unavailable', ...refusals[0], message: "the manager's own words" });
   const browser = await open(t, h);
@@ -327,9 +323,9 @@ test('a refused submission says its cause in its own sentence, for every cause, 
   assert.equal(h.dispatched.length, 0, 'nothing was ever dispatched');
   assert.equal(new Set(h.refusedRequests).size, 1, 'every retry sent the same saved request');
   assert.match(text, new RegExp(h.refusedRequests[0]));
-  t.diagnostic(await screenshot(browser, h, 'refused-bridge-check', 1280));
-  t.diagnostic(await screenshot(browser, h, 'refused-bridge-check', 390));
-  h.refuse({ error: 'chequebook_preparation_unavailable', cause: 'connect ECONNREFUSED 10.0.0.7:2375', check: null });
+  t.diagnostic(await screenshot(browser, h, 'refused-last-cause', 1280));
+  t.diagnostic(await screenshot(browser, h, 'refused-last-cause', 390));
+  h.refuse({ error: 'chequebook_preparation_unavailable', cause: 'connect ECONNREFUSED 10.0.0.7:2375' });
   await click(browser, 'Retry this saved request');
   await click(browser, 'Send the same request again');
   await visible(browser, 'The submission response was lost');
