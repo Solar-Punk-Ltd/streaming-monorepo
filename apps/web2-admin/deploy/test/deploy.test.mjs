@@ -461,7 +461,10 @@ describe('deploy.sh and the funding keys', () => {
     ]);
 
     assert.equal(refused.status, 1, refused.stderr);
-    assert.match(refused.stderr, /ERROR: \S+: BRAND_WALLET_SECRET is the placeholder earlier \.env\.sample files shipped/);
+    assert.match(
+      refused.stderr,
+      /ERROR: \S+: BRAND_WALLET_SECRET is the placeholder earlier \.env\.sample files shipped/,
+    );
     assert.match(refused.stderr, /ERROR: \S+: MANAGER_FUNDING_TOKEN is the placeholder from \.env\.sample/);
     assert.match(refused.stderr, /2 problem\(s\) in /);
     assert.match(refused.stderr, /--allow-sample-secrets/);
@@ -490,7 +493,11 @@ describe('deploy.sh and the funding keys', () => {
   it("deploys the committed .env.sample's funding lines as they stand, and refuses its token once uncommented", () => {
     const sample = readFileSync(new URL('../../backend/.env.sample', import.meta.url), 'utf8');
     const fundingLines = sample.split('\n').filter((line) => /^(BRAND_WALLET_SECRET|MANAGER_FUNDING_)/.test(line));
-    assert.deepEqual(fundingLines, ['MANAGER_FUNDING_URL='], 'the sample sets funding up with nothing but an empty address');
+    assert.deepEqual(
+      fundingLines,
+      ['MANAGER_FUNDING_URL='],
+      'the sample sets funding up with nothing but an empty address',
+    );
     const token = /^# MANAGER_FUNDING_TOKEN=(\S+)$/m.exec(sample)?.[1];
     assert.ok(token, 'the sample no longer carries the token placeholder');
 

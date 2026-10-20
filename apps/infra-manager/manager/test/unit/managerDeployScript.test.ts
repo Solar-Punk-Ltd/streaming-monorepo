@@ -1242,7 +1242,9 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
 
         stoppedBeforeAnything(refused);
         assert.ok(
-          refused.stderr.includes('ERROR: POSTGRES_PASSWORD in manager/.env is the placeholder from manager/.env.sample.'),
+          refused.stderr.includes(
+            'ERROR: POSTGRES_PASSWORD in manager/.env is the placeholder from manager/.env.sample.',
+          ),
           `${JSON.stringify(envText)}: ${refused.stderr}`,
         );
         assert.match(refused.stderr, /--allow-sample-secrets/);
