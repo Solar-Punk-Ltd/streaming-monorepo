@@ -43,7 +43,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                                           |
 | `MOCK_RECORDING`      | unset                    | `true` starts with one finished recording on the catalogue, to see a recording's details and to unpublish and publish it again                                 |
 | `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)                                    |
-| `MOCK_DEFAULT_THEME`  | `default`                | the host's default look `GET /api/config` answers. The mock checks no name. `default` is a look the console does not carry, so the console falls back to Swarm |
+| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                                  |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                                 |
 
 #### The mock funding
@@ -253,9 +253,9 @@ A browser wears the first of these that applies:
    does not carry, leaves it as it is.
 4. **Swarm**, `DEFAULT_ADMIN_THEME` of web2-admin-common.
 
-The host's default is stored in the admin's database and applies to every browser that opens this
-host. An admin sets it with `PUT /api/config/default-theme`
-([the backend's README](../backend/README.md#the-consoles-look)). The console has no page for it.
+The host's default is read from the admin's database and applies to every browser that opens this
+host. The admin has no route or page that sets it, so it is Swarm unless an older version of the
+admin stored another ([the backend's README](../backend/README.md#the-consoles-look)).
 
 ### Adding or changing a look
 

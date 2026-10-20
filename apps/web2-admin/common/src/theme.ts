@@ -18,16 +18,3 @@ export const DEFAULT_ADMIN_THEME: AdminThemeName = 'swarm';
 export function isAdminThemeName(value: unknown): value is AdminThemeName {
   return typeof value === 'string' && (ADMIN_THEME_NAMES as readonly string[]).includes(value);
 }
-
-/** `PUT`, behind the session and for admins only: the look this host's console starts in. */
-export const CONSOLE_DEFAULT_THEME_PATH = '/api/config/default-theme';
-
-/** PUT /api/config/default-theme. A name the console does not carry is refused with 400 `validation_error`. */
-export interface SetDefaultThemeRequest {
-  defaultTheme: AdminThemeName;
-}
-
-/** The look stored, which `GET /api/config` answers from then on. */
-export interface SetDefaultThemeResponse {
-  defaultTheme: AdminThemeName;
-}

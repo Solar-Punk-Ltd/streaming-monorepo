@@ -125,7 +125,6 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       feed: deps.feed,
       viewerBaseUrl: deps.viewerBaseUrl,
       consoleSettings: deps.consoleSettings,
-      requireAuth,
     }),
   );
   app.use('/api/auth', createAuthRouter(deps.authService, requireAuth));

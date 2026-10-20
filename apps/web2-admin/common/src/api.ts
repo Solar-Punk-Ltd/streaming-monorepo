@@ -281,7 +281,8 @@ export interface PublicConfig {
   viewerBaseUrl: string | null;
   /**
    * The look this host's console starts in for a browser whose admin picked none of their own. `DEFAULT_ADMIN_THEME`
-   * until an admin sets another, and that again when the stored one is a look the console no longer carries.
+   * unless the host's database holds another, and that again when the stored one is a look the console no longer
+   * carries.
    */
   defaultTheme: AdminThemeName;
 }

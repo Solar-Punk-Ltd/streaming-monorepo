@@ -3,9 +3,9 @@
  * Needs Postgres, like the rest of this suite. `DATABASE_URL` overrides the connection.
  *
  * What a fake cannot stand in for is the SQL: that migration 021 applied, that `console_settings` holds one row and
- * no other, that a write answers the value it replaced, null on the first, that a name the console does not carry is
- * not refused by the table, because the API checks names and reads an unknown one as Default, and that the public
- * config answers what is stored.
+ * no other, that a name the console does not carry is not refused by the table, because the API reads an unknown one
+ * as Swarm, and that the public config answers what is stored. Nothing in the admin writes the row any more, so each
+ * test writes it with SQL.
  *
  * Every row it writes is in the suite's throwaway database, and it empties the table before each test.
  */
@@ -41,6 +41,13 @@ beforeEach(async () => {
   await database.pool.query('DELETE FROM console_settings');
 });
 
+async function storeLook(name: string, updatedBy: string): Promise<void> {
+  await database.pool.query('INSERT INTO console_settings (default_theme, updated_by) VALUES ($1, $2)', [
+    name,
+    updatedBy,
+  ]);
+}
+
 describe('migration 021, console_settings', () => {
   it('is applied', async () => {
     const ledger = await database.pool.query<{ name: string }>(
@@ -51,7 +58,7 @@ describe('migration 021, console_settings', () => {
   });
 
   it('holds one row and no other', async () => {
-    await settings.setDefaultTheme('swarm', 'alice');
+    await storeLook('swarm', 'alice');
 
     await assert.rejects(
       database.pool.query("INSERT INTO console_settings (default_theme, updated_by) VALUES ('default', 'bob')"),
@@ -65,45 +72,16 @@ describe('migration 021, console_settings', () => {
     );
   });
 
-  it('takes a name the console does not carry, which the API reads as Default', async () => {
-    await database.pool.query(
-      "INSERT INTO console_settings (default_theme, updated_by) VALUES ('retired-look', 'alice')",
-    );
+  it('takes a name the console does not carry, which the API reads as Swarm', async () => {
+    await storeLook('retired-look', 'alice');
 
     assert.equal(await settings.defaultTheme(), 'retired-look');
   });
 });
 
 describe('ConsoleSettingsRepository', () => {
-  it('reads null before any admin set a look', async () => {
+  it('reads null while there is no row', async () => {
     assert.equal(await settings.defaultTheme(), null);
-  });
-
-  it('stores a look, answers the one it replaced, and records who set it', async () => {
-    assert.equal(await settings.setDefaultTheme('swarm', 'alice'), null);
-    assert.equal(await settings.setDefaultTheme('web3privacy', 'bob'), 'swarm');
-
-    assert.equal(await settings.defaultTheme(), 'web3privacy');
-    const row = await database.pool.query<{ updated_by: string; count: number }>(
-      'SELECT updated_by, (SELECT COUNT(*)::int FROM console_settings) AS count FROM console_settings',
-    );
-    assert.deepEqual(row.rows[0], { updated_by: 'bob', count: 1 });
-  });
-
-  it('answers each of two saves made at once the look that save replaced, so the audit names it', async () => {
-    // Two first writes at once: one must replace nothing and the other the first one's look. Repeated, because
-    // which interleaving a run gets is up to the database.
-    for (let round = 0; round < 20; round += 1) {
-      await database.pool.query('DELETE FROM console_settings');
-      const [first, second] = await Promise.all([
-        settings.setDefaultTheme('swarm', 'alice'),
-        settings.setDefaultTheme('web3privacy', 'bob'),
-      ]);
-      const replaced = [first, second].sort((a, b) => String(a).localeCompare(String(b)));
-      const stored = await settings.defaultTheme();
-      assert.deepEqual(replaced.filter((value) => value !== null).length, 1, `round ${round}: ${first}, ${second}`);
-      assert.equal(stored === 'swarm' ? second : first, null, `round ${round}: the last write replaced the first`);
-    }
   });
 });
 
@@ -111,7 +89,7 @@ describe('GET /api/config', () => {
   it('answers Swarm with no row, and the stored look once there is one', async () => {
     assert.equal((await api<PublicConfig>('GET', '/api/config', { anonymous: true })).defaultTheme, 'swarm');
 
-    await settings.setDefaultTheme('web3privacy', 'alice');
+    await storeLook('web3privacy', 'alice');
 
     assert.equal((await api<PublicConfig>('GET', '/api/config', { anonymous: true })).defaultTheme, 'web3privacy');
   });

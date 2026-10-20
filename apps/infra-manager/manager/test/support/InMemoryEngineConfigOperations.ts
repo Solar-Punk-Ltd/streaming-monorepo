@@ -2,13 +2,14 @@
  * The operations table and the profile columns a rollout owns, over a Map,
  * with the conditional writes the real repository makes in SQL.
  */
+import type { EngineName } from '@streaming-infra-manager/common';
 import type {
-  BeginRollout,
   EngineConfigOperationRepository,
   RolloutStarted,
 } from '../../src/domain/engineConfig/EngineConfigOperationRepository.js';
 import {
   type EngineConfigOperation,
+  type EngineConfigOperationKind,
   type EngineConfigOperationState,
   OPEN_OPERATION_STATES,
   type RolloutOwnership,
@@ -41,6 +42,19 @@ interface FixtureDeployments {
   attempts: InMemoryDeployAttempts;
   daemonId: string;
   onClaim?: (profile: Profile) => void;
+}
+
+/** What the fake's claims write when they start a rollout. */
+interface RolloutStart {
+  profileName: string;
+  engine: EngineName;
+  kind: Exclude<EngineConfigOperationKind, 'restore-previous'>;
+  /** The file to store, null for the template. */
+  config: string | null;
+  /** The config revision the caller read. The write happens only while it is current. */
+  expectedRevision: number;
+  previousConfig: string | null;
+  previousIsTemplate: boolean;
 }
 
 export class InMemoryEngineConfigOperations implements EngineConfigOperationRepository {
@@ -103,7 +117,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
   }
 
   async beginDeploy(
-    input: PreparedRolloutDeploy & { kind: BeginRollout['kind']; config: string | null },
+    input: PreparedRolloutDeploy & { kind: RolloutStart['kind']; config: string | null },
   ): Promise<ClaimedRolloutDeploy | null> {
     const d = this.deploymentFixtures();
     if (!isDeepStrictEqual(await d.versions.findById(input.version.id), input.version)) return null;
@@ -111,7 +125,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
     const admitted = await this.admit(input, input.version);
     if (!admitted) return null;
     const previous = await this.profiles.engineConfigOf(input.profile.name);
-    const begun = (await this.begin({
+    const begun = (await this.startRollout({
       profileName: input.profile.name,
       engine: input.engine,
       kind: input.kind,
@@ -163,7 +177,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
     if (!admitted) return null;
     let begun: RolloutStarted;
     if (explicit) {
-      begun = (await this.begin({
+      begun = (await this.startRollout({
         profileName: operation.profileName,
         engine: operation.engine,
         kind: 'apply',
@@ -180,7 +194,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
         recoveryReferenceId: begun.operation.id,
       });
       this.retainedVersions.set(begun.operation.id, version);
-    } else begun = (await this.beginRevert(input.ownership, input.message))!;
+    } else begun = (await this.startRevert(input.ownership, input.message))!;
     const profile = this.profiles.write(input.profile.name, { status: 'DEPLOYING', engine_config_state: 'reverting' })!;
     const descriptor = await d.ledger.seedJob(profile.name, version, [input.engine]);
     this.profiles.activeDeployJobs.set(profile.name, descriptor.referenceId!);
@@ -211,7 +225,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
     return operation;
   }
 
-  async begin(input: BeginRollout): Promise<RolloutStarted | null> {
+  private async startRollout(input: RolloutStart): Promise<RolloutStarted | null> {
     const profile = this.profiles.rows.get(input.profileName);
     if (!profile || profile.engine_config_revision !== input.expectedRevision) return null;
     for (const row of this.rows) {
@@ -321,7 +335,7 @@ export class InMemoryEngineConfigOperations implements EngineConfigOperationRepo
     return operation;
   }
 
-  async beginRevert(ownership: RolloutOwnership, message: string): Promise<RolloutStarted | null> {
+  private async startRevert(ownership: RolloutOwnership, message: string): Promise<RolloutStarted | null> {
     const operation = this.owned(ownership);
     if (!operation || !['watching', 'applying', 'reverting'].includes(operation.state)) return null;
     const profile = await this.profiles.setEngineConfig(

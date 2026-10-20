@@ -274,7 +274,8 @@ A reachable RTMP port is not an open stream: SRS allows play only from loopback 
 
 ```bash
 deploy.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>]
-          [--release-label=<label>] [--release-commit=<commit>] [service...]
+          [--release-label=<label>] [--release-commit=<commit>]
+          [--feed-owner=<address>] [--feed-topic=<topic>] [--stamp-id=<batch>] [service...]
 ```
 
 ```bash
@@ -375,15 +376,31 @@ deployment manager passes the label and commit of the stack build it deploys.
 - A stack version without these flags reads them as unknown service names and stops with
   `Unknown service`.
 
+#### --feed-owner, --feed-topic and --stamp-id
+
+Each replaces one value of `.env.<profile>` for this deploy.
+
+- `--feed-owner=<address>` sets `VITE_APP_OWNER`, the owner of the catalogue feed the client reads, a
+  40 character hex address.
+- `--feed-topic=<topic>` sets that feed's topic for the uploader and the client, `STREAM_LIST_TOPIC`
+  and `VITE_APP_RAW_TOPIC`: letters, digits, dot, underscore or hyphen, at most 64.
+- `--stamp-id=<batch>` sets `STAMP`, the postage batch the uploader stamps with, a 64 character hex
+  id.
+
+A `0x` prefix is accepted on the address and the batch id. A value of any other shape is refused
+before anything is deployed.
+
 ### stop.sh, health.sh and clean.sh
 
 ```bash
-stop.sh   [--profile=<name>] [service...]   # stop containers, all of them if none is named
-health.sh [--profile=<name>] [service...]   # check service health, all of them if none is named
-clean.sh  [--profile=<name>] [--volumes] [--all] [--yes] [service...]
+stop.sh   [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]
+health.sh [--profile=<name>] [--portSlot=<N>] [--host=<target>] [service...]
+clean.sh  [--profile=<name>] [--portSlot=<N>] [--host=<target>] [--volumes] [--all] [--yes|-y] [service...]
 ```
 
-`stop.sh` keeps every volume and `health.sh` only reads.
+`stop.sh` stops containers, all of them if none is named, and keeps every volume. `health.sh` checks
+service health, all of them if none is named, and only reads. `--portSlot` and `--host` mean what they
+mean to `deploy.sh`.
 
 ```bash
 clean.sh                                 # remove all containers

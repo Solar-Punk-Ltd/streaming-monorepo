@@ -196,7 +196,6 @@ How sign-in works, and why, is in
 | POST   | `/api/auth/users`            | admin              | 201 `UserSummary`, or 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                 |
 | DELETE | `/api/auth/users/:id`        | admin              | 204, or 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found`                      |
 | POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204, or 403 `admin_required`, 404 `user_not_found`                                                                    |
-| PUT    | `/api/config/default-theme`  | admin              | `SetDefaultThemeResponse` ([The console's look](#the-consoles-look)), or 400 `validation_error`, 403 `admin_required` |
 
 A weak password or a bad username is `400 validation_error` with the reason in
 `errors`. In short:
@@ -277,21 +276,17 @@ its `[Boot]   version:` line.
 `GET /api/config` answers `defaultTheme` beside the feed and the viewer link:
 the look this host's console starts in for a browser whose admin picked none
 of their own. It is one of the names in `ADMIN_THEME_NAMES` of
-web2-admin-common, `swarm` or `web3privacy`, and `swarm` until an admin sets
-another. The route needs no session, so the login page wears it too.
+web2-admin-common, `swarm` or `web3privacy`. The route needs no session, so the
+login page wears it too.
 
-`PUT /api/config/default-theme` with `{ "defaultTheme": "swarm" }` sets it, for
-admins only (403 `admin_required` for anyone else, 401 without a session), and
-answers `{ "defaultTheme": "swarm" }`. A name the console does not carry is 400
-`validation_error`. It is stored in the one row of `console_settings`
-(migration 021) with who set it and when, and audited as `console.theme.set`.
-The table does not check the name: a stored look that a later console no longer
-carries, the retired `default` among them, is answered as `swarm`, so retiring
-a look needs no migration. A read of it that fails is answered as `swarm` too,
-with a warning in the log, so the feed and the viewer link stay up while the
-database is away. The console has no page that calls the PUT, so an admin
-sets it with curl. How the answer meets a browser's own pick is in
-[the frontend's README](../frontend/README.md#themes).
+It is read from the one row of `console_settings` (migration 021), and is
+`swarm` while there is no row. The admin has no route or page that writes that
+row, so a host has one only if an older version of the admin stored it. The
+table does not check the name: a stored look the console no longer carries, the
+retired `default` among them, is answered as `swarm`. A read of it that fails is
+answered as `swarm` too, with a warning in the log, so the feed and the viewer
+link stay up while the database is away. How the answer meets a browser's own
+pick is in [the frontend's README](../frontend/README.md#themes).
 
 ## Publishing
 
@@ -1718,11 +1713,10 @@ and the available balance the move was worked out from), and
 item's bulk, request id, node, label, direction, amount, target, that
 available balance, hash, state and error.
 
-The console's look ([The console's look](#the-consoles-look)):
-`console.theme.set`, one row per change an admin saves, with
-`details: { from, to }`, the look the console wore before and the one it wears
-now. A stored look the console no longer carries is recorded as the `swarm`
-it was worn as. The row has no `stream_id`.
+The log can also hold `console.theme.set` rows, which older versions of the
+admin wrote for each change of the host's default look
+([The console's look](#the-consoles-look)), with `details: { from, to }`.
+Nothing writes them now, and the stored ones stay in the log.
 
 **A failed audit write never fails the operation.** The row is written after
 the mutation it describes, which has already happened by then. The failure is

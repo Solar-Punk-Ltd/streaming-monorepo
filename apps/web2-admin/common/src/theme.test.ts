@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as common from './index.js';
 import { ADMIN_THEME_NAMES, DEFAULT_ADMIN_THEME, isAdminThemeName } from './theme.js';
 
-test('the console carries three looks, Default first', () => {
+test('the console carries two looks, Swarm first and the fallback', () => {
   assert.deepEqual([...ADMIN_THEME_NAMES], ['swarm', 'web3privacy']);
   assert.equal(DEFAULT_ADMIN_THEME, 'swarm');
 });
@@ -19,8 +19,7 @@ test('anything else is not, a retired look and a differently cased one included'
   }
 });
 
-test('both sides read the looks and the route from the package root', () => {
+test('both sides read the looks from the package root', () => {
   assert.equal(common.isAdminThemeName, isAdminThemeName);
   assert.equal(common.ADMIN_THEME_NAMES, ADMIN_THEME_NAMES);
-  assert.equal(common.CONSOLE_DEFAULT_THEME_PATH, '/api/config/default-theme');
 });
