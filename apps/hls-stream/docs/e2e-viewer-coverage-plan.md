@@ -34,7 +34,7 @@ deliberately so, for the reason at the end of phase 2.
 ⚠️ `suites/scenarios/gateway-outage-viewer.test.ts` has "viewer" in its name and opens no browser.
 It tests the upload side while a viewer's gateway is down.
 
-## Phase 1 — assert what the watching tests already observe
+## Phase 1: assert what the watching tests already observe
 
 **Free. No infrastructure, no broadcast, no BZZ.** The data is already captured and printed under
 "observations, none of them asserted".
@@ -54,7 +54,7 @@ product rather than about timing:
 
 **What it does not buy:** it cannot catch a failure to _switch_. That is phase 2.
 
-## Phase 2 — the three watching tests that were planned and never built
+## Phase 2: the three watching tests that were planned and never built
 
 Run time and harness work. No new infrastructure. Numbers reserved in `docs/e2e-coverage.md`.
 
@@ -68,7 +68,7 @@ Run time and harness work. No new infrastructure. Numbers reserved in `docs/e2e-
 > thing in it most likely to be wrong, and those warnings are worth reading before a rerun on a stage
 > that has changed under them.
 
-### V2, quality switch works — ⛔ BUILT 2026-08-30, RED across four sittings, cause measured
+### V2, quality switch works: ⛔ BUILT 2026-08-30, RED across four sittings, cause measured
 
 ✅ **Green since 2026-09-04 in both byte sources** (`docs/e2e-coverage.md`, the row "Viewer: quality switch works"). The red below is the record of the first four sittings and of what was measured to explain them.
 
@@ -106,7 +106,7 @@ an order of magnitude in request count. Run both, expect both to switch, compare
 
 **Done when:** a client that ignores bandwidth and rides one rung into a stall fails.
 
-### V3, a rung goes quiet and the viewer steps down — ✅ BUILT 2026-08-30, GREEN LIVE, three of four
+### V3, a rung goes quiet and the viewer steps down: ✅ BUILT 2026-08-30, GREEN LIVE, three of four
 
 `pnpm browser:rung-outage` and `suites/viewer/rung-outage.test.ts`. SRS runs one ffmpeg per rung, so
 the fault is a SIGSTOP on the transcode producing the rung the viewer settled on, read off the
@@ -126,7 +126,7 @@ rather than freezing, and that the overlay does not claim the broadcast ended.
 
 **Done when:** a viewer frozen on a dead rung while three healthy ones sit beside it fails.
 
-### V4, VOD playback in a browser — ✅ BUILT 2026-08-30, GREEN LIVE, every run so far
+### V4, VOD playback in a browser: ✅ BUILT 2026-08-30, GREEN LIVE, every run so far
 
 `suites/viewer/vod-playback.test.ts`, on an extended `pnpm browser:vod`.
 
@@ -149,7 +149,7 @@ advances, and the timeline is the whole broadcast.
 
 **Done when:** a recording that only plays its lowest rung fails.
 
-### Also here, cheaply — ✅ BUILT 2026-08-30
+### Also here, cheaply: ✅ BUILT 2026-08-30
 
 `suites/service/multi-stream-concurrent.test.ts` now asserts that BOTH concurrent streams carry the
 whole ladder, per ladder rather than across both, and that every rung-stream stays gapless while
@@ -163,7 +163,7 @@ It reads the log the existing case already produces, so it costs no extra broadc
 three tabs measured zero peers, never re-dialling and never erroring. Two watched ladders would be a
 measurement of that rather than of concurrency.
 
-## Phase 3 — per-rung bee nodes, the shape we meant to ship
+## Phase 3: per-rung bee nodes, the shape we meant to ship
 
 ✅ **The split is deployed. `BEE_PUBLISHERS` names one Bee node per rung, and a gate proves it before
 every sitting.** This section used to open by saying the variable had never been deployed or tested

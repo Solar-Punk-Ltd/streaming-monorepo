@@ -2,7 +2,7 @@
 
 TypeScript CLI for managing Bee nodes and postage stamps. Part of the [swarm-hls-stream](../../) monorepo.
 
-Uses [@ethersphere/bee-js](https://github.com/ethersphere/bee-js) for all Bee API interactions. Runs via `tsx` — no build step needed.
+Uses [@ethersphere/bee-js](https://github.com/ethersphere/bee-js) for all Bee API interactions. Runs via `tsx`, so no build step is needed.
 
 ## Commands
 
@@ -36,22 +36,22 @@ All commands run from the **monorepo root**.
 
 **The read-only commands run against every configured Bee node.** Which nodes those are depends on whether the deployment has been split per ABR rung.
 
-`stamp:buy` is the exception — it takes a rung and acts on exactly one node. See below.
+`stamp:buy` is the exception: it takes a rung and acts on exactly one node. See below.
 
-### With `BEE_PUBLISHERS` set — one node per rung
+### With `BEE_PUBLISHERS` set: one node per rung
 
 The publishers are read straight out of `BEE_PUBLISHERS` (see [.env.sample](../../.env.sample)), so there is one source of truth and it is the same variable the uploader reads. A node per rung means **four wallets to fund and four batches to watch per stage**, and a command that only looked at one of them would hide three quarters of that.
 
-The URLs are used as written. In a Docker deployment the host's `.env` holds host-reachable URLs while compose overrides the uploader container's copy with compose service names — the same split `BEE_URL` already has.
+The URLs are used as written. In a Docker deployment the host's `.env` holds host-reachable URLs while compose overrides the uploader container's copy with compose service names, the same split `BEE_URL` already has.
 
 `stamp:check` looks at the publishers only. The gateway ships with swap off, and even one put on the chain with `BEE_GATEWAY_SWAP_ENABLE` holds no upload batch, so it appears in the node info commands and not there.
 
-### Without it — the single-node deployment
+### Without it: the single-node deployment
 
 Falls back to the previous behaviour: the bee-uploader URL, auto-detected from
 
-1. `deploy/config.json` — deployment target for `bee-uploader`
-2. `.env` — `BEE_UPLOADER_API_PORT` (default: 1633)
+1. `deploy/config.json`: deployment target for `bee-uploader`
+2. `.env`: `BEE_UPLOADER_API_PORT` (default: 1633)
 
 | Config target             | Resolved URL                                                                |
 | ------------------------- | --------------------------------------------------------------------------- |
@@ -68,7 +68,7 @@ Narrows to a single node:
 pnpm stamp:check --url http://localhost:1663
 ```
 
-A URL that matches a configured publisher **keeps that node's identity** — its rung and its configured batch — so `stamp:check --url` can still tell you which of that node's batches is the one in use. A URL that matches nothing is reached anyway, as an anonymous node.
+A URL that matches a configured publisher **keeps that node's identity** (its rung and its configured batch), so `stamp:check --url` can still tell you which of that node's batches is the one in use. A URL that matches nothing is reached anyway, as an anonymous node.
 
 ## stamp:buy takes a rung
 
@@ -89,14 +89,14 @@ fails just as early, listing the rungs that _are_ configured:
 ✗ No node configured for rung "1080p". Configured rungs: 360p, 720p
 ```
 
-Falling back to some default node would put the batch somewhere that cannot spend it, and nothing would fail at that point — it would fail later, as a rung that stops publishing while a healthy batch sits on the wrong node.
+Falling back to some default node would put the batch somewhere that cannot spend it, and nothing would fail at that point. It would fail later, as a rung that stops publishing while a healthy batch sits on the wrong node.
 
 Validation is against `BEE_PUBLISHERS` rather than `ABR_LADDER`, which lives in the engine's own `.env` and is not loaded here. In a working config the two agree: the uploader refuses to start unless the publisher list covers the ladder exactly.
 
 **`STAMP=<batchId>` is written to the root `.env`**, the same way `stamp:setup` does it and for the
 same reason: a batch you paid for must never live only in terminal scrollback (OPS-1). It replaces any
 previous `STAMP` value, and the old batch still exists on chain. On a split deployment `STAMP` is not
-the variable that pays for the rung — `BEE_PUBLISHERS` is — and that one is not edited in place because
+the variable that pays for the rung (`BEE_PUBLISHERS` is), and that one is not edited in place because
 it holds an entry per rung, so the line to paste in is printed for you:
 
 ```
@@ -108,7 +108,7 @@ it holds an entry per rung, so the line to paste in is printed for you:
   Written STAMP=88fb1a…5628 to .env
 ```
 
-Amount and depth are the same for every rung. Sizing a batch to the rung it pays for is a real concern — 1080p exhausts a given depth roughly 7× sooner than 360p — and is deliberately left out.
+Amount and depth are the same for every rung. Sizing a batch to the rung it pays for is a real concern (1080p exhausts a given depth roughly 7× sooner than 360p), and is deliberately left out.
 
 ## stamp:setup Workflow
 
@@ -136,15 +136,15 @@ exits non-zero. It never reports success for a batch it could not record. `pnpm 
 the same way.
 
 > This is the **single-node** workflow and it is unchanged. It writes `STAMP`, which a deployment
-> using `BEE_PUBLISHERS` does not read — with the publishers split, buy per rung with `stamp:buy`
+> using `BEE_PUBLISHERS` does not read. With the publishers split, buy per rung with `stamp:buy`
 > and put each batch in `BEE_PUBLISHERS` yourself.
 
 ### Node funding
 
 A Bee node needs two tokens on Gnosis Chain to operate:
 
-- **xDAI** — gas fees for transactions
-- **BZZ** — payment for postage stamps (storage on Swarm)
+- **xDAI**: gas fees for transactions
+- **BZZ**: payment for postage stamps (storage on Swarm)
 
 `stamp:setup` checks balances and tells you the node's address if funding is needed. Send tokens to that address, then run `stamp:setup` again.
 
