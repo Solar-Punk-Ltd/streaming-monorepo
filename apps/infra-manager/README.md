@@ -1,21 +1,27 @@
 # streaming-infra-manager
 
-Deployment and orchestration tooling for testing the Swarm HLS live-streaming
-stack. Targets two dedicated servers:
+A web console and API for running the Swarm HLS live-streaming stack,
+`apps/hls-stream`, on your own hosts. It deploys, checks, stops and removes each
+piece of the stack as a deployment, keeps the ports of deployments on one host
+apart, buys and tops up postage for the Bee nodes it runs, and fills their
+chequebooks. The new-deployment wizard offers five kinds of deployment, defined in
+`frontend/src/forms/wizard/wizardGoals.ts`:
 
-- **Streamer**: Bee light node, `stream-uploader` service, SRS.
-- **Watcher**: N lightweight Docker containers running a Bee node, ultra-light
-  unless it is created light, and the React streaming client, plus a small
-  interface to start and stop them.
+- **Stream to Swarm**: `srs`, `stream-uploader` and a Bee node,
+  `bee-uploader`. It takes a live feed from OBS or FFmpeg and publishes it to
+  Swarm.
+- **Watch a stream**: the web player, `client`, and a Bee node it reads
+  through, `bee-gateway`. A player for one stream.
+- **ABR node pool**: four Bee nodes, one per quality from 360p to 1080p, as
+  the upload targets of an ABR uploader. It produces the `BEE_PUBLISHERS`
+  string.
+- **ABR uploader**: `srs` and `stream-uploader`, encoding a quality ladder and
+  publishing it to a node pool. It has no Bee node and no postage of its own.
+  The wizard copies the pool's `BEE_PUBLISHERS` string into it.
+- **Custom**: any of the components above, and the OME engine, picked by hand.
 
-It also deploys the two halves of an ABR stage, which normally run on this one
-host under this manager:
-
-- **ABR Node Pool**: a deployment group with one Bee node per quality rung, as
-  the publish targets. Produces the `BEE_PUBLISHERS` string.
-- **ABR Uploader**: `srs` and `stream-uploader` publishing to that pool. It has
-  no Bee node and no postage of its own. The wizard copies the pool's
-  `BEE_PUBLISHERS` string into it.
+An ABR node pool and its uploader together are an ABR stage, and they normally
+run on the manager's own host.
 
 An uploader on another machine is possible, and it needs two things: a
 `BEE_LOCAL_HOST` naming an address that machine can reach, and a Bee API bind

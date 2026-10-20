@@ -106,36 +106,12 @@ copy, a typed token or a version's. So an old copy of the link's token stays
 `shared` after the admin's `INTERNAL_API_TOKEN` changes, and the admin, which
 attributes only `own` tokens, refuses it.
 
-**Rolling it out.** An admin from before stages takes only its
-`INTERNAL_API_TOKEN` from an uploader and refuses a token of its own, and an
-admin that takes only a stage's own token refuses the shared one. So a host
-that runs the admin and manager from before stages moves through the
-intermediate admin, which takes both, in this order:
-
-0. **Create the catalogue node** and buy its immutable batch.
-1. **Deploy the manager that pushes stage records** and designate the catalogue node. An admin from
-   before stages has no `/api/internal/stages` or `/api/internal/catalogue-stamp` route, so every
-   push comes to `not-admin` until step 2, which is harmless: it stores nothing. Its Manager
-   settings Test connection falls back from the registrar check's 404 to the lookup, which takes the
-   token. Create no stage and rotate nothing yet: that admin refuses a token of its own.
-2. **Deploy the intermediate admin**: commit `d29616851` of `feat/stages` (tag it
-   `web2-admin/stages-intermediate` before `feat/stages` is merged to `main`, because a squash or
-   rebase merge leaves that commit unreachable). It takes both the shared token and a stage's own,
-   and refuses every catalogue write, `503`, until the manager's next push, within ten seconds.
-   Each deployment's Test connection answers `token-not-own` for every stage still to rotate.
-3. **Give every stream a stage** before any rotation: unpublish every scheduled stream, pick its
-   stage and publish it again, and pick a stage for every draft. A stage on its own token is
-   answered only about its own streams.
-4. **Rotate and redeploy every stage** (**Rotate the uploader's admin token** on its deployment
-   page, then deploy) until the admin's Stages page reads "Its own token" for all of them.
-5. **Deploy the admin that refuses the shared token.**
-
-Skipping steps 2 to 4 means every running uploader gets 401 from the admin that refuses the shared
-token until its stage is rotated and redeployed. After it, give each stage a `STREAM_KEY` of its
-own, since a stage from before stages signs with the brand key. A fresh installation needs none of
-this: every stage it creates has a token of its own from its first deploy. The whole sequence, with
-what to keep of the batch from before stages until the catalogue is moved, is "Upgrading" in the
-repository's `docs/self-hosting.md`.
+**Rolling it out.** A fresh installation needs no rollout: every stage it
+creates has a token of its own from its first deploy. A host that runs the
+admin and manager from before stages is upgraded through an intermediate admin
+that takes both the shared token and a stage's own. The steps, in order, are in
+[Upgrading a host that runs the admin and manager from before stages](../../../../docs/self-hosting.md#the-control-host)
+in the repository's self-hosting guide.
 
 **The link is https in production.** Every push carries the stored token, each
 stage's SRT passphrase and its token hash, so the link's address is the https
