@@ -359,11 +359,8 @@ images on the host itself.
    admin shows a brand's broadcasters SRT only, because streaming uses SRT. SRS allows play
    from its own container only, so an open RTMP port takes publishes and refuses playback.
 
-   RTMP is not encrypted. A broadcaster's stream key crosses the network as readable text, and a
-   key read off the network publishes over RTMP whichever protocol it was read from, because SRT
-   sends its stream id, key included, before encryption starts. With the takeover on, such a
-   publisher can also replace a live broadcast. The SRT passphrase keeps the picture private but
-   not the key.
+   RTMP is not encrypted, so an open RTMP port puts every broadcaster's stream key at risk, as
+   [Ports](architecture/overview.md#ports) in the architecture overview explains.
 
 7. **Deploy onto it.** **New deployment**, with `stage-1` as the host. The deployment's port slot
    decides its ports, as [architecture/overview.md](architecture/overview.md#ports) lists. It worked
