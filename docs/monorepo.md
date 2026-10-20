@@ -16,18 +16,20 @@ streaming-monorepo/
 │   │   ├── common/          the API contract: types shared by its backend and frontend
 │   │   └── deploy/          its deploy script and production compose file
 │   ├── hls-stream/          the streaming stack
-│   │   ├── packages/        stream-uploader, client (the viewer), shared, cli, audit-gate, gate-facts
+│   │   ├── packages/        stream-uploader, client (the viewer), shared, cli, and two development
+│   │   │                    tools that are not part of the product: audit-gate (the dependency
+│   │   │                    advisory check) and gate-facts (the figures a pull request quotes)
 │   │   ├── engines/         SRS and OME configuration
 │   │   ├── nodes/           Bee node initialisation
 │   │   ├── deploy/          deploy scripts, compose files, Dockerfiles and their tests
 │   │   ├── e2e/             fault-injection suites, the browser and bench harness
-│   │   └── docs/            bench records, reviews, scale notes
+│   │   └── docs/            the team's working records: bench results, reviews, scale notes
 │   └── infra-manager/       the manager
 │       ├── manager/         the API, and the script that builds stack versions
 │       ├── frontend/        the manager console
 │       ├── common/          types shared by its API and console
 │       ├── deploy/          its deploy script and what it sets up on a host
-│       └── docs/            its feature pages, its issue and decision record, its test notes
+│       └── docs/            its feature pages, and the team's working records: issues, decisions, test notes
 ├── infra/                   what hosts need, shared by every project
 │   └── edge/                the front door of a host
 ├── packages/                code shared by two or more apps: contracts, db-migrate, web-auth
@@ -74,7 +76,7 @@ Projects meet in two places only:
 - shared packages under `packages/`, each small, doing one thing and never importing an app,
 - their published interfaces: HTTP APIs (the admin's internal API, which the uploader calls and
   the manager's Test connection reads, and the uploader's health page, which the manager reads),
-  the Swarm catalog feed the uploader and the admin write and the viewer reads, and the arguments
+  the Swarm catalogue feed the uploader and the admin write and the viewer reads, and the arguments
   of the stack's `deploy.sh`, which the manager runs.
 
 The `boundaries` check holds this on every pull request. Every project carries two tags in the

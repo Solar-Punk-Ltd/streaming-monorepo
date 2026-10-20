@@ -1,25 +1,34 @@
-# streaming-infra-manager
+# The manager, `apps/infra-manager`
 
-Deployment and orchestration tooling for testing the Swarm HLS live-streaming
-stack. Targets two dedicated servers:
+A web console and API for running the Swarm HLS live-streaming stack,
+`apps/hls-stream`, on your own hosts. It deploys, checks, stops and removes each
+piece of the stack as a deployment, keeps the ports of deployments on one host
+apart, buys and tops up postage for the Bee nodes it runs, and fills their
+chequebooks. The new-deployment wizard offers five kinds of deployment:
 
-- **Streamer**: Bee light node, `stream-uploader` service, SRS.
-- **Watcher**: N lightweight Docker containers running a Bee node, ultra-light
-  unless it is created light, and the React streaming client, plus a small
-  interface to start and stop them.
+- **Stream to Swarm**: `srs`, `stream-uploader` and a Bee node,
+  `bee-uploader`. It takes a live feed from OBS or FFmpeg and publishes it to
+  Swarm.
+- **Watch a stream**: the web player, `client`, and a Bee node it reads
+  through, `bee-gateway`. A player for one stream.
+- **ABR node pool**: four Bee nodes, one per quality from 360p to 1080p, as
+  the upload targets of an ABR uploader. ABR, adaptive bitrate, means one
+  broadcast in several qualities, so a player can switch as its connection allows. It produces the `BEE_PUBLISHERS`
+  string.
+- **ABR uploader**: `srs` and `stream-uploader`, encoding a quality ladder and
+  publishing it to a node pool. It has no Bee node and no postage of its own.
+  The wizard copies the pool's `BEE_PUBLISHERS` string into it.
+- **Custom**: any of the components above, and the OME engine, picked by hand.
 
-It also deploys the two halves of an ABR stage, which normally run on this one
-host under this manager:
+An ABR node pool and its uploader together are an ABR stage. They can share one
+host, the manager's own included, or run on hosts of their own: the pool on a
+Bee host and the uploader on a stage host, which is the layout
+[docs/self-hosting.md](../../docs/self-hosting.md) sets up.
 
-- **ABR Node Pool**: a deployment group with one Bee node per quality rung, as
-  the publish targets. Produces the `BEE_PUBLISHERS` string.
-- **ABR Uploader**: `srs` and `stream-uploader` publishing to that pool. It has
-  no Bee node and no postage of its own. The wizard copies the pool's
-  `BEE_PUBLISHERS` string into it.
-
-An uploader on another machine is possible, and it needs two things: a
-`BEE_LOCAL_HOST` naming an address that machine can reach, and a Bee API bind
-that admits it. See [deploy/README.md](deploy/README.md) for the bind.
+When the pool runs on the manager's own host and its uploader on another
+machine, that uploader needs two things: a `BEE_LOCAL_HOST` naming an address
+that machine can reach, and a Bee API bind that admits it. See
+[deploy/README.md](deploy/README.md) for the bind.
 
 See [docs/features/abr-ladder.md](docs/features/abr-ladder.md).
 
@@ -104,14 +113,20 @@ run any of it on a laptop: [docs/ci.md](docs/ci.md).
     it is given.
   - [auth-and-public-access.md](docs/features/auth-and-public-access.md): the
     login gate, the HTTPS edge, the API binds and the host firewall.
-  - [next-features-2026-09.md](docs/features/next-features-2026-09.md): the
-    September plan, kept as the record of what was asked for and why.
 - [docs/ci.md](docs/ci.md): what each CI job proves, what it does not, and how
   to run any suite on a laptop.
 - [docs/testing/](docs/testing/): what particular suites cover and, as
   importantly, what they do not model.
-- [docs/ux/](docs/ux/): the UX rework brief and the clickable mockup it was
-  decided from. Merged 2026-09-05.
+
+### History
+
+The team's records of how the manager came to be, kept for reference rather than as documentation
+of the current behaviour:
+
+- [docs/features/next-features-2026-09.md](docs/features/next-features-2026-09.md): the September
+  2026 plan, the record of what was asked for and why.
+- [docs/ux/](docs/ux/): the brief of the console's UX rework and the clickable mockup it was
+  decided from.
 
 ## The stack this manager bundles
 
@@ -121,8 +136,5 @@ manager deploy bundles the stack of the commit it deploys, so moving the bundled
 stack on is a change to `apps/hls-stream` in the same repository, reviewed and
 merged like any other.
 
-Until the monorepo, this repository pinned the stack as a git submodule. The
-last pin was the stack's release `v3.4`, commit `dc0c55e1`, as of 2026-09-25.
-Its commits are in the monorepo's history under the same ids, so a version of
-that release can still be added on the Versions page, by its tag `stack/v3.4`
-or by its commit, and it is built as the whole tree it was then.
+An older stack release can still be added on the Versions page by its tag, such
+as `stack/v3.4`, or by its commit.

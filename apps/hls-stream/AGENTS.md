@@ -47,7 +47,7 @@ Read **both** balances on every bee node that publishes. The wallet usually hold
 chequebook, so more headroom is often a move rather than a send.
 
 A deployment publishes through four bee nodes, each with its own chequebook and wallet: the
-coordinator, which the catalog goes through, and one node for each of the 480p, 720p and 1080p
+coordinator, which the catalogue goes through, and one node for each of the 480p, 720p and 1080p
 rungs. The gateway node serves viewers. On a deployment started with
 `--portSlot <slot>` (1 to 99), `deploy/scripts/_lib.sh` gives each node's API port as its base plus
 `<slot> * 10`:

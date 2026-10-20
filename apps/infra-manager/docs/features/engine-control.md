@@ -9,6 +9,8 @@ PR 1 was built on `feat/engine-control`, went in with the remediation set, and i
 submodule tracked `main-v3` from 2026-09-09, then `feat/manager-line`, the manager's own line of
 the stack, from 2026-09-17, and has tracked `main` since 2026-09-19, when that line reached the
 stack's `main` as the manager and admin publishing integration. Its pin has moved several times since, which the update below explains.
+Since 2026-09-27 the stack is no submodule: it is `apps/hls-stream` in this repository, and a
+manager bundles the stack of the commit it is deployed from.
 `SRT_LATENCY` was left out with the rest of what a later stack reads, until it became a setting on
 2026-09-23, see the update of that date below. PR 2 is not started.
 

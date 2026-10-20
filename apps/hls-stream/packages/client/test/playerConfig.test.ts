@@ -96,10 +96,11 @@ describe('SwarmHlsPlayer hls.js tuning', () => {
    * hls.js runs two separate mechanisms off these numbers and neither one knows about the other, so
    * a pair that looks ordinary can leave a band of latency where a viewer gets neither.
    *
-   * Both formulas are transcribed from hls.js 1.6.15 rather than described, because describing them
-   * is how the gap got there: the ceiling was set to three times the target on the belief that
-   * catch-up ran the whole way up to it, and it stops at `targetLatency + targetduration` past the
-   * target instead, which left 22s to 30s with the rate pinned back at 1 and no seek coming.
+   * Both formulas are transcribed from hls.js as read at 1.6.15 (the client now pins 1.7.3) rather
+   * than described, because describing them is how the gap got there: the ceiling was set to three
+   * times the target on the belief that catch-up ran the whole way up to it, and it stops at
+   * `targetLatency + targetduration` past the target instead, which left 22s to 30s with the rate
+   * pinned back at 1 and no seek coming.
    */
   describe('catch-up and the live-edge seek meet, whatever the playlist target duration is', () => {
     /** `LatencyController.onTimeupdate`, dist/hls.js:33541: the latency at which nudging stops. */

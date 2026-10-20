@@ -6,8 +6,8 @@ Node.js service that receives HLS segments and uploads them to the Swarm decentr
 
 The uploader receives HLS segments from a media server, such as SRS, or directly via HTTP. It uploads
 each segment to Swarm and maintains a live HLS manifest as a Swarm Feed. When a stream ends, the
-manifest is finalized as VOD. A standalone deployment writes that state to the Swarm stream catalog.
-In admin mode, the uploader reports `live` and `vod` to the admin service, which owns the catalog.
+manifest is finalized as VOD. A standalone deployment writes that state to the Swarm stream catalogue.
+In admin mode, the uploader reports `live` and `vod` to the admin service, which owns the catalogue.
 
 ```
 Segments in ──▶ StreamOrchestrator ──▶ StreamUploader ──▶ Swarm
@@ -26,8 +26,8 @@ Segments in ──▶ StreamOrchestrator ──▶ StreamUploader ──▶ Swar
 With `ABR_ENABLED=true` (see [engines/srs](../../engines/srs/)) the engine publishes one stream per
 rung, and each gets its own `StreamUploader` and its own manifest feed, whose topic is **derived from
 the ladder's group id and the rung's name** (`src/utils/rungTopic.ts`, a version-5 UUID). That feed
-therefore outlives any one session: a rung that restarts mid-broadcast — SRS bouncing a transcoder,
-an encoder reconnecting — comes back onto the feed the master already names, reads its head, and
+therefore outlives any one session: a rung that restarts mid-broadcast (SRS bouncing a transcoder,
+an encoder reconnecting) comes back onto the feed the master already names, reads its head, and
 numbers its playlist on from there with a single `#EXT-X-DISCONTINUITY` at the seam, rather than
 appearing on a feed nothing points at until it re-announces. A session opening over that feed also
 **inherits the playlist at its head into its own recording**, so the head recording carries every
@@ -35,12 +35,12 @@ session the feed has held, oldest first, with an `#EXT-X-DISCONTINUITY` at each 
 duration covering the whole broadcast. The live playlists are unchanged by that: they stay a window
 over the current session's own segments. Two things then tie the rungs back together:
 
-- The four rungs merge into a **single catalog entry**, keyed by a shared group id rather than by
-  topic. Four uploaders write that entry concurrently, which is safe only because every catalog
+- The four rungs merge into a **single catalogue entry**, keyed by a shared group id rather than by
+  topic. Four uploaders write that entry concurrently, which is safe only because every catalogue
   write goes through one serialized queue.
 - That same point is where the ladder's **master playlist** is written, to a fifth feed whose topic
-  is the group id — it is the only place the whole ladder is known, since each uploader holds just
-  its own rung. The catalog entry's `topic` points at the master, so one URL yields every rung.
+  is the group id. It is the only place the whole ladder is known, since each uploader holds just
+  its own rung. The catalogue entry's `topic` points at the master, so one URL yields every rung.
 
 The ladder becomes a recording once every rung has either finalized or stopped without a recording,
 and at least one of them finalized. A rung stops without one when its stop fails, as 1080p's did on
@@ -51,7 +51,7 @@ is retried at the next boot, is added to the recording then, and nothing announc
 
 Each rung's `BANDWIDTH` in the master is measured from real segments rather than copied from the
 encoder's target, and is re-announced when it drifts more than 15% (at most every 30s, since the
-catalog is one feed shared by every stream). What tells a player that two rungs share a timeline is
+catalogue is one feed shared by every stream). What tells a player that two rungs share a timeline is
 the pair of numbers on every segment line, and they are the subject of the next section.
 
 The master also stops advertising a rung that has stopped being produced. A rung is delivering when
@@ -106,7 +106,7 @@ set of live rungs actually changes. A version of this filter shipped correct, te
 and never ran once, because only `upsertRendition` wrote a master.
 
 With `ADMIN_API_URL` set as well, everything above still happens, but the merge moves out of the
-catalog feed and into the admin and the master's topic is the declared one — see
+catalogue feed and into the admin and the master's topic is the declared one. See
 [Admin mode](#admin-mode).
 
 ### The manifest contract: timestamps and continuous published numbering
@@ -261,14 +261,14 @@ encoder returning inside the reconnect window through `resumeAfterReconnect`.
 ### An encoder that disconnects keeps its broadcast for one reap window
 
 ⛔ **Owner cases 1, 2, 3 and 6, fixed in the uploader on 2026-09-22.** SRS ends a publish within
-seconds of any interruption — immediately on a clean stop, under five seconds on a torn-down socket,
-under fifteen on a frozen one, all measured live against 6.0.184 — and the uploader used to answer
+seconds of any interruption (immediately on a clean stop, under five seconds on a torn-down socket,
+under fifteen on a frozen one, all measured live against 6.0.184), and the uploader used to answer
 that webhook by finalizing. A recording was therefore sealed one or two seconds into every outage a
 broadcaster was about to recover from, and the return opened a second one.
 
 **A disconnect is silence now, not an end.** `on_unpublish` reports it and ends nothing: the live
 playlist at the head simply stops advancing. What decides a broadcast is over is what has always
-decided it for an engine that died without saying anything — `ORPHAN_REAP_MS` (60 s) with no media
+decided it for an engine that died without saying anything: `ORPHAN_REAP_MS` (60 s) with no media
 in it.
 
 | What the encoder does        | What a viewer gets                                                                                                                                                                                                                                                                                                                                           |
@@ -300,31 +300,31 @@ anything open here.
 
 ⚠️ **The seam is armed by the reconnect, not inferred from the numbering.** SRS keeps a source and
 its HLS muxer alive for `hls_dispose × 1.1` ≈ 132 s after an unpublish, so an encoder returning inside
-the window is usually served by the same muxer and its `seq_no` carries straight on — the
+the window is usually served by the same muxer and its `seq_no` carries straight on, so the
 counter-restart detection described above sees nothing to detect. The returning segment publishes one
 above everything already published whatever index it carries, which also means an **in-order** return
 emits no gap entries: nothing was lost, because nothing was being produced. In order is what both
-engines deliver — SRS posts each segment to the webhook as it closes it, and OME's puller walks a
+engines deliver: SRS posts each segment to the webhook as it closes it, and OME's puller walks a
 playlist front to back. A lower index of the resumed run arriving afterwards would take the ordinary
-counter-restart branch and declare a second break and a second re-anchoring — not a gap, because that
+counter-restart branch and declare a second break and a second re-anchoring. That is not a gap, because that
 branch also places it at the high-water mark plus one, so the two are contiguous. It is pre-existing
 behaviour for any out-of-order arrival below a published sequence rather than something the reconnect
 path introduced, and nothing is engineered for it.
 
 **Which announces join a live broadcast, and which take the id over a finalized one.** An announce is
-first screened by the takeover rules below, which are unchanged; one that is allowed then joins the
+first screened by the takeover rules below, which are unchanged. One that is allowed then joins the
 live session only when it is the publisher that left it. Both sides having proved the publish key is
 the strongest form of that and the one every real deployment takes, because in admin mode and under
-`PUBLISH_KEY_SECRET` every publish proves a key — so an encoder that stopped and came back resumes
+`PUBLISH_KEY_SECRET` every publish proves a key, so an encoder that stopped and came back resumes
 whatever its address did in between. An announce against an incumbent nobody can name resumes if it
 proved the key, and two announces that proved nothing resume unless their addresses are both known
-and different. What is left is a provably different publisher — a key holder taking the id from an
+and different. What is left is a provably different publisher (a key holder taking the id from an
 incumbent that proved nothing, or a stranger admitted because the incumbent went quiet for the stall
-window — and that one finalizes the session it displaces and starts its own, so no publisher's
+window), and that one finalizes the session it displaces and starts its own, so no publisher's
 recording ever opens with somebody else's media.
 
 ⚠️ **Without a publish key, a broadcaster returning from a CHANGED address starts a new session.** The
-two are indistinguishable there — an address is all the evidence a keyless deployment has — and a
+two are indistinguishable there (an address is all the evidence a keyless deployment has), and a
 stranger must never join a live recording, so the stall window lets the owner retake the ID rather
 than rejoin the broadcast. Configure `PUBLISH_KEY_SECRET`, or run in admin mode, and every publish
 proves a key: the same broadcaster then resumes across an address change, which is what cases 1 and 2
@@ -332,7 +332,7 @@ ask for and what the owner's deployments do.
 
 The operator stop (`POST /stream/stop`), the recovery timeout and the reap expiry all finalize
 immediately and are unchanged, and so is OME's closing webhook. `/health` lists every id currently
-held for a returning encoder under `disconnectedStreams`; it raises no reason, because a disconnect
+held for a returning encoder under `disconnectedStreams`. It raises no reason, because a disconnect
 is an ordinary event with a designed answer.
 
 ### A segment that was lost is said with `#EXT-X-GAP`, not with a break
@@ -341,7 +341,8 @@ is an ordinary event with a designed answer.
 empty, and the playlist lists every empty sequence between two held segments as an `#EXT-X-GAP` entry
 carrying the same derived date-time, the deployment's declared fragment length and a URI of
 `gap-<sequence>`. RFC 8216bis §4.4.4.7 defines the tag as an entry whose URI holds no media and which
-a client should skip, and hls.js (1.6.15 when this was measured) reads it into `frag.gap` and skips the fragment.
+a client should skip, and hls.js (read at 1.6.15, the client now pins 1.7.3) reads it into
+`frag.gap` and skips the fragment.
 
 The alternative was leaving the hole out, which is what the playlists did until then, and HLS numbers
 the entries it lists consecutively from `#EXT-X-MEDIA-SEQUENCE`. So every entry behind a hole was
@@ -427,7 +428,7 @@ parsing error rather than as a restart.
 
 **Every restart path re-anchors, and every reconnect does, not only the first of a broadcast.** An
 encoder re-announcing a stream this service still holds resumes that session, so its epoch starts at
-the sequence the numbering continues from; so does one re-announcing a session this service rebuilt
+the sequence the numbering continues from. So does one re-announcing a session this service rebuilt
 after its own crash, and so do segments resuming inside one session after the engine's counter
 restarted. The one path that numbers from zero again is a session announced while a stop of that id is
 still finalizing, which is a genuinely new broadcast and takes its epoch at sequence 0
@@ -436,7 +437,7 @@ behaves identically.
 
 ⛔ **The rungs of one ladder share a line because they share a RETURN, not because their numbers look
 alike.** A whole-encoder outage stops all four transcoders, so each rung announces its return
-separately, seconds apart; the orchestrator is the only layer that sees those four webhooks as one
+separately, seconds apart. The orchestrator is the only layer that sees those four webhooks as one
 event, so it names the return and every rung of it asks the dating with that name. A rung joins a line
 when the line carries its own return's name, and mints one otherwise, whatever sequence either of them
 is at. The name is a uuid rather than a count, because the epochs it labels ride in the recovery entry
@@ -565,21 +566,21 @@ size there and refuses one that does not move forwards.
 
 ### One Bee node per rung
 
-A feed's address is a pure function of its signing key and topic — `makeFeedIdentifier` is
+A feed's address is a pure function of its signing key and topic: `makeFeedIdentifier` is
 `keccak256(topic ‖ index)`, and bee-js signs the single owner chunk locally before POSTing it. So a
-Bee node owns nothing here; it is a pipe with a wallet, and which pipe carries which rung is a
+Bee node owns nothing here. It is a pipe with a wallet, and which pipe carries which rung is a
 routing decision that `BeePublisherPool` holds.
 
-Set `BEE_PUBLISHERS` to split it (see [.env.sample](../../.env.sample)); unset, one node serves
+Set `BEE_PUBLISHERS` to split it (see [.env.sample](../../.env.sample)). Unset, one node serves
 everything, exactly as before. The reason to split is that postage batches drain in proportion to
-bitrate — 1080p burns roughly 7× the bytes of 360p, so equal batches expire hours apart — and one
+bitrate (1080p burns roughly 7× the bytes of 360p, so equal batches expire hours apart), and one
 node per rung makes that "a rung goes quiet and ABR steps down" instead of "the stage stops".
 
 Because nothing about a feed's address depends on the node, all four rungs still publish under one
 signing key and therefore one owner. Rung feeds differ only by topic, and moving a feed to a
 different node later changes nothing a viewer sees.
 
-The catalog and every master playlist are written through **the lowest rung's node**: its batch
+The catalogue and every master playlist are written through **the lowest rung's node**: its batch
 outlives the others by roughly 7×, and those two feeds are the only addresses a viewer needs to open
 a stage. Riding them on the 1080p node would take discovery down first, while three rungs were still
 publishing fine.
@@ -593,7 +594,7 @@ indexes a round from 0, so on a long broadcast that costs many round trips befor
 So each live ladder also writes a **time marker** every ten seconds: one small single-owner chunk that
 says where every rung's feed stood at that moment. A viewer computes the address of a recent marker
 from the clock, reads it once, and is then at most one round of parallel reads from the newest entry.
-Feeds, the master, the catalog and recordings are unchanged, and a viewer that finds no marker
+Feeds, the master, the catalogue and recordings are unchanged, and a viewer that finds no marker
 searches the feeds exactly as before. The convention lives in `@swarm-hls-stream/shared`
 (`ladderMarker.ts`), so the writer and every reader compute the same address.
 
@@ -626,7 +627,7 @@ marker is never rewritten, including when the wall clock steps back. `swarm_hls_
 counts the ones that landed.
 
 The cost is one chunk per ladder every ten seconds, 360 an hour, on the lowest rung's batch, which is
-the one the catalog and the master already ride. `LADDER_MARKERS=false` turns markers off.
+the one the catalogue and the master already ride. `LADDER_MARKERS=false` turns markers off.
 
 ## Prerequisites
 
@@ -645,7 +646,7 @@ pnpm build
 
 # Create .env from sample (if not done yet)
 cp .env.sample .env
-# Edit .env — fill in STREAM_KEY, run `pnpm stamp:setup` for STAMP
+# Edit .env: fill in STREAM_KEY, run `pnpm stamp:setup` for STAMP
 
 # Start the uploader
 pnpm uploader:start
@@ -664,7 +665,7 @@ The API server starts on port 3000 (default).
 | `BEE_URL`           | Bee node API URL                                                                                                                                                              |
 | `STAMP`             | Postage stamp ID (`pnpm stamp:setup`). Required on a single-node deployment. With `BEE_PUBLISHERS` set it is optional and unread, since each rung's batch is in its own entry |
 | `STREAM_KEY`        | Private key (hex) for signing feeds                                                                                                                                           |
-| `STREAM_LIST_TOPIC` | Feed topic for the stream catalog                                                                                                                                             |
+| `STREAM_LIST_TOPIC` | Feed topic for the stream catalogue                                                                                                                                           |
 | `API_AUTH_TOKEN`    | Bearer token for `/stream/*` and `GET /metrics`, minimum 32 characters. `openssl rand -hex 32`                                                                                |
 | `HLS_FRAGMENT`      | The stage's segment length in seconds, the same variable the engine reads and the grid a segment's date snaps to within one percent. No default, `2` in `.env.sample`         |
 
@@ -700,7 +701,7 @@ The API server starts on port 3000 (default).
 | `LOG_LEVEL`              | `debug`              | `debug`, `log`, `info`, `warn`, `error` or `silent`. `log` is per segment, `info` is per lifecycle event                                                                                                                                                                |
 | `LOG_FORMAT`             | _(empty)_            | `json` for one `{ts, level, msg}` object per line. Anything else keeps the readable format                                                                                                                                                                              |
 
-Admin mode changes who owns the stream catalog. It does not change the uploader's Bee startup
+Admin mode changes who owns the stream catalogue. It does not change the uploader's Bee startup
 requirements. `BEE_URL`, `STREAM_KEY`, `STREAM_LIST_TOPIC`, `API_AUTH_TOKEN` and `HLS_FRAGMENT` remain required.
 `STAMP` remains conditional on `BEE_PUBLISHERS`. Once `ADMIN_API_URL` is set,
 `ADMIN_API_TOKEN` is required as well.
@@ -719,8 +720,8 @@ Engine-independent HTTP interface for pushing segments directly.
 | `POST /stream/segment` | Raw body + headers                   | Push a segment. `400` on an unusable `x-duration` |
 | `POST /stream/stop`    | JSON body: `{ streamId }`            | End a stream, answered `202`                      |
 | `GET /stream/status`   | Query: `?streamId=<id>`              | What became of a stream                           |
-| `GET /metrics`         | —                                    | Prometheus exposition                             |
-| `GET /health`          | —                                    | Service health, `200` ok or `503` degraded        |
+| `GET /metrics`         | None                                 | Prometheus exposition                             |
+| `GET /health`          | None                                 | Service health, `200` ok or `503` degraded        |
 
 All four `/stream/*` routes and `GET /metrics` require `Authorization: Bearer $API_AUTH_TOKEN`, checked in constant time before the body is parsed, so an unauthenticated request neither reaches the orchestrator nor costs the process a buffered body. `GET /health` is deliberately outside the gate: it is a liveness endpoint that accepts no input and spends nothing, and both the `stream-uploader` compose healthcheck and `deploy/scripts/health.sh` read it unauthenticated.
 
@@ -851,19 +852,19 @@ answers one of:
 | ----------- | ------------------------------------------------------------------------------------------ |
 | `live`      | Registered and accepting segments                                                          |
 | `draining`  | Stopping, the VOD has not settled yet                                                      |
-| `finalized` | The VOD manifest was committed and the catalog entry published                             |
+| `finalized` | The VOD manifest was committed and the catalogue entry published                           |
 | `failed`    | The finalize did not complete, with a `reason`. There is no VOD, and no retry is scheduled |
 
 A stream the service has never seen, or one whose stop settled more than fifteen minutes ago, answers
 `404` rather than a state, so a caller polling a mistyped id is not told its broadcast is fine.
 
 **A finalize that resumes after a crash publishes nothing twice.** `finalize` writes the closing
-playlist, then the VOD manifest, then the catalog entry, and deletes the recovery entry last of all,
-so a crash between the recording and the catalog leaves a recording that is already bought under an
+playlist, then the VOD manifest, then the catalogue entry, and deletes the recovery entry last of all,
+so a crash between the recording and the catalogue leaves a recording that is already bought under an
 entry still saying the broadcast is recoverable. A recovered session therefore reads the head of its
 own manifest feed first, which is a retrieval and costs no postage: finding its finished recording
 there it logs `Resuming the finalize of <stream> at the catalog write`, publishes nothing, and
-completes only the catalog write and the entry delete. A head that did not read is not taken for an
+completes only the catalogue write and the entry delete. A head that did not read is not taken for an
 empty feed, so the finalize is deferred to the next boot rather than risking a second recording.
 
 **The recording's write carries a deadline sized to it.** A live playlist fits one 4096-byte chunk
@@ -886,10 +887,10 @@ was raised from 120 s to 330 s, the 5 minute drain deadline plus 30 s for the re
 | `queue_pressure`         | Either a segment queue above 80% of `MAX_QUEUE_SIZE`, where the next segments start being refused, or a backlog holding more than `SEGMENT_STALL_MS` of playing time, which is how far behind live a viewer is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `segment_stall`          | A stream that should be producing has sent nothing for `SEGMENT_STALL_MS`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `ladder_not_started`     | SRS accepted a ladder source and none of its rungs published within `FIRST_RUNG_DEADLINE_MS`, so its transcoders never started and viewers see the broadcast as scheduled. The source starts no stream of its own, so `segment_stall` cannot see this. `ladderNotStartedStreams` on the same body names each source, and the log carries one error per source. Cleared when a rung publishes or the source leaves. The uploader cannot drop the source itself, so the broadcaster has to stop the broadcast for longer than the encoder hold (about 15 s at the default) and then start it again. A quicker reconnect meets the same hung encoders                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `unlisted_stream`        | A live stream is absent from the catalog, so no viewer can find it. Reported from the first failed announce, with no threshold, because `StreamCatalog` has already been through its own retries by then: 10 s for the write, 15 s for the read of the list it appends to, and none for a node answering 404, which no retry changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `state_not_persisted`    | A write into `STATE_DIR` is failing, so the next restart resumes a stream from stale segments or the catalog feed from an index readers have already passed. Nothing is wrong with the running process, which is why it needs saying                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `unlisted_stream`        | A live stream is absent from the catalogue, so no viewer can find it. Reported from the first failed announce, with no threshold, because `StreamCatalog` has already been through its own retries by then: 10 s for the write, 15 s for the read of the list it appends to, and none for a node answering 404, which no retry changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `state_not_persisted`    | A write into `STATE_DIR` is failing, so the next restart resumes a stream from stale segments or the catalogue feed from an index readers have already passed. Nothing is wrong with the running process, which is why it needs saying                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `ingest_refused`         | A credential gate has turned away a request on the ingest path (an engine webhook or admission under `/engines/`, or the generic `POST /stream/start` and `POST /stream/segment`) and no segment has ever reached Swarm in this process's lifetime, which is what a wrong `SRS_WEBHOOK_TOKEN` or `OME_ADMISSION_SECRET` looks like from startup: no stream registers, so every counter stays at zero and no threshold above can be reached. One of two reasons about the media that can fire while nothing is registered, with `ladder_not_started`, since `node_unavailable` and `start_gate_warned` are about the boot rather than about a stream. Latched until the first segment lands rather than aged out, because on a service that has never ingested anything a window would let exactly that case fade back to `ok` between a broadcaster's retries. A refused operator route such as a tokenless `/metrics` scrape, `/stream/status` or `/stream/stop` is still refused, logged and counted in `swarm_hls_auth_rejections_total`, and never raises this |
-| `unrecoverable_stream`   | A recovery entry could not be parsed at boot, so a broadcast that was live when this service last died cannot be finalized: its recording stays unsealed and its catalog entry says `live`. The entry is kept as `<id>.json.corrupt` for repair rather than deleted. Latched for the life of the process, since only an operator clears it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `unrecoverable_stream`   | A recovery entry could not be parsed at boot, so a broadcast that was live when this service last died cannot be finalized: its recording stays unsealed and its catalogue entry says `live`. The entry is kept as `<id>.json.corrupt` for repair rather than deleted. Latched for the life of the process, since only an operator clears it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `fragment_mismatch`      | A rung's segments are not the length `HLS_FRAGMENT` says they are. The dating follows the media, so the recording keeps the right clock, but the declared length is what every `#EXT-X-GAP` entry is dated and sized at and what the rung GOP is pinned on, so a lost segment leaves a hole of the wrong size on a stage that is not what its configuration says. Raised only under `ABR_ENABLED`, once eight measured segments of a stream miss the configured length by over 5%. One of the two containers is running an older deploy, so redeploy the stale one                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `fragment_publisher_gop` | Segments longer than `HLS_FRAGMENT` with no ladder running. Nothing transcodes there, so the publisher's own keyframe interval decides the segment and the configured value is a floor. Raised once eight measured segments run over it by over 5%. Nothing is stale, and the dating follows the media so the recording's clock stays right. What it names is a stage cutting longer than the deployment declared, with the same wrong-sized gap entries as the row above: set `HLS_FRAGMENT` to the publisher's keyframe interval, or turn the ladder on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `postage_refused`        | Bee refused a paid write on a rung's postage batch with a status nothing retries, usually because the batch has filled or expired. Latched for the life of the process and never cleared by a segment that lands, because the batch a rung spends is read once at start: only a restart clears it, so redeploy once the batch pays again, a new batch or the same one diluted or topped up                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -908,7 +909,7 @@ signal on the body is the zero it was initialised with and reading one as health
 direction nobody checks.
 
 What the service is doing meanwhile is in `libs/NodeWait.ts`: a liveness check of the coordinator, then
-the two start gates, the catalog feed lookup and the recovery pass, retried with one log line per
+the two start gates, the catalogue feed lookup and the recovery pass, retried with one log line per
 attempt, backing off from 1s, doubling, and holding at 30s, for as long as the node takes. The liveness
 check is first so that a node which is not there costs one question rather than both gates' budgets,
 and so that nothing further down has to tell "this feed is empty" apart from "this node cannot say". A failure that says the node is not answering is waited on. A
@@ -919,7 +920,7 @@ nothing answered at all, the container exited, and a deploy refused on a restart
 for a reason nothing about this service could fix.
 
 While it waits, `/stream/*` and every engine prefix answer `503` naming the node, with `Retry-After: 5`,
-rather than reaching an orchestrator whose catalog has never been read. `/metrics` keeps answering,
+rather than reaching an orchestrator whose catalogue has never been read. `/metrics` keeps answering,
 since its counters describe this process and not the node.
 
 **What a warned gate leaves behind.** A gate that warns reads every node rather than stopping at the
@@ -928,7 +929,7 @@ restart, and the outcome of the pass that finished the boot is latched into `sta
 Under the shipped `chequebook-warn` that is the chequebook gate, and the postage gate on a batch it
 could not read at all: a batch the node answered about and the gate will not accept still ends the
 boot, because every write against it fails while the broadcast looks live to the room, the viewer
-and the catalog, while a rung whose node answered nothing has said nothing about any batch. So the
+and the catalogue, while a rung whose node answered nothing has said nothing about any batch. So the
 postage gate refuses a batch the node answered about as absent, unusable, expired or, when it is
 immutable, full, and only warns about a batch it could not read at all. The service is degraded
 while a warning stands, which is what the container's healthcheck reads and what
@@ -980,7 +981,7 @@ that lands and it disappears entirely when the broadcast ends. A filling batch r
 whose own bucket is full, so it loses a growing share of segments over a minute or two rather than all
 of them at once, which made that counter flap. A batch that was dead when the broadcast stopped then
 took the last alarm with it, while the finalize failed on that same batch, no recording was published
-and the catalog went on saying `live`. `postage_refused` is a fact about a node and a batch id rather
+and the catalogue went on saying `live`. `postage_refused` is a fact about a node and a batch id rather
 than about a broadcast, so it survives the stream that found it.
 
 **`refusedPublishers` on the same body says which rung**, because on a four rung ladder the reason on
@@ -992,9 +993,9 @@ batch id truncated, plus `statuses`, every distinct status bee answered with on 
 
 **Segment headers:**
 
-- `x-stream-id` — Stream identifier
-- `x-segment-index` — Segment sequence number
-- `x-duration` — Segment duration in seconds
+- `x-stream-id`: Stream identifier
+- `x-segment-index`: Segment sequence number
+- `x-duration`: Segment duration in seconds
 
 **Error responses:**
 
@@ -1022,9 +1023,9 @@ interface EnginePlugin {
 }
 ```
 
-Engines are thin adapters that translate media server events into `StreamOrchestrator` calls. The generic API and engine routes coexist — both feed into the same orchestrator.
+Engines are thin adapters that translate media server events into `StreamOrchestrator` calls. The generic API and engine routes coexist, and both feed into the same orchestrator.
 
-Each engine owns its configuration: a `create<Name>EngineFromEnv()` factory reads the engine's env vars, and `src/engines/registry.ts` maps the `ENGINE` value to that factory. To add an engine, create its module under `src/engines/`, register it in the registry, and add an `engines/<name>/.env.sample` with its variables — the uploader loads `engines/<name>/.env` automatically when the engine is selected.
+Each engine owns its configuration: a `create<Name>EngineFromEnv()` factory reads the engine's env vars, and `src/engines/registry.ts` maps the `ENGINE` value to that factory. To add an engine, create its module under `src/engines/`, register it in the registry, and add an `engines/<name>/.env.sample` with its variables. The uploader loads `engines/<name>/.env` automatically when the engine is selected.
 
 Currently supported: **SRS** (SRT/RTMP to HLS) and **OME** (OvenMediaEngine, MPEG-TS HLS).
 
@@ -1047,12 +1048,12 @@ When `ENGINE=ome`, webhook endpoints are mounted:
 | ----------------------------- | ------------------------------------- |
 | `POST /engines/ome/admission` | Publish start and stop, HMAC-verified |
 
-1. **Ingest** — broadcaster pushes SRT into OvenMediaEngine, which remuxes it into MPEG-TS HLS.
-2. **Admission** — OME calls the `/engines/ome/admission` webhook on publish start/stop; the uploader verifies the HMAC signature and starts/stops the stream.
-3. **Pull** — an `HlsPuller` polls `{app}/{stream}/ts:playlist.m3u8` and fetches new segments over HTTP (one
+1. **Ingest**: the broadcaster pushes SRT into OvenMediaEngine, which remuxes it into MPEG-TS HLS.
+2. **Admission**: OME calls the `/engines/ome/admission` webhook on publish start/stop, and the uploader verifies the HMAC signature and starts/stops the stream.
+3. **Pull**: an `HlsPuller` polls `{app}/{stream}/ts:playlist.m3u8` and fetches new segments over HTTP (one
    puller per stream). That is OME's **MPEG-TS** playlist, not its fMP4 one, so the segments are
    `.ts` and nothing downstream ever sees LL-HLS.
-4. **Upload** — the orchestrator uploads segments to Swarm, updates the live manifest feed (SOC), and finalizes a VOD manifest + catalog entry on stop.
+4. **Upload**: the orchestrator uploads segments to Swarm, updates the live manifest feed (SOC), and finalizes a VOD manifest + catalogue entry on stop.
 
 ### SRS Engine
 
@@ -1127,19 +1128,19 @@ is the price of deriving keys instead of storing them.
 
 ## Admin mode
 
-Setting `ADMIN_API_URL` — and nothing else — turns admin mode on. Leave it empty and nothing about
+Setting `ADMIN_API_URL`, and nothing else, turns admin mode on. Leave it empty and nothing about
 this service changes.
 
 With it set, a stream must be **declared in the admin before anything may publish to it**. The admin
-mints the feed topic and the publish key; this service stops deciding either:
+mints the feed topic and the publish key, and this service stops deciding either:
 
 | Without `ADMIN_API_URL`                            | With it                                                                       |
 | -------------------------------------------------- | ----------------------------------------------------------------------------- |
 | Any publisher with the right derived key may start | Only an ingest id the admin has declared, presenting that declaration's key   |
 | A lone rendition mints a random feed topic         | A lone rendition publishes on the declared topic, resuming from its feed head |
-| This service writes the Swarm stream catalog       | It writes none, and reports `live` then `vod` to the admin instead            |
+| This service writes the Swarm stream catalogue     | It writes none, and reports `live` then `vod` to the admin instead            |
 | `PUBLISH_KEY_SECRET` authenticates publishers      | `PUBLISH_KEY_SECRET` is ignored                                               |
-| A ladder merges its rungs in the catalog feed      | The admin merges them, and the declared topic is the ladder's master feed     |
+| A ladder merges its rungs in the catalogue feed    | The admin merges them, and the declared topic is the ladder's master feed     |
 
 A publish is refused when the ingest `app/stream` is not declared, when the admin cannot be reached,
 when the presented `key=` is not the declaration's, when the declaration is owned by a feed key this
@@ -1149,19 +1150,19 @@ any letter case, so the topic in capitals resolves to the same declaration, and 
 a second session on the same feeds. Each refusal says which it was in the log.
 
 This service has to sign as the owner the admin knows for its stage. Every stage signs with a key of
-its own, `STREAM_KEY`, the manager tells the admin each stage's owner, and the admin's catalog entry
-points a viewer at `owner/topic` with that owner; the catalog itself is signed by the admin's own key,
+its own, `STREAM_KEY`, the manager tells the admin each stage's owner, and the admin's catalogue entry
+points a viewer at `owner/topic` with that owner. The catalogue itself is signed by the admin's own key,
 which no uploader holds. With `STREAM_KEY` apart from the stage's owner the entry resolves a feed
 nobody wrote, while every report answers 200 and nothing says so. Nothing on the wire carries a key, so
 the address is what is compared, once at boot and again on every publish, against the declaration's
 `owner`. At boot:
 
-| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                                       | The uploader                                                                           |
-| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| 200 with `{ stageId, owner }`                                                                                   | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses   |
-| 404: an admin from before stages, which has no such route, or the intermediate admin answering the shared token | Compares the catalog owner of the public `/api/config`, as before stages, the same way |
-| 401: an admin that takes only a stage's own token, on any other token, the shared one included                  | Warns and starts, and every lookup and report it makes is refused the same way         |
-| Anything else, or nothing                                                                                       | Warns and starts. The publish gate compares each declaration's owner                   |
+| The admin answers `GET /api/internal/stages/self`, with `ADMIN_API_TOKEN`                                       | The uploader                                                                             |
+| --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 200 with `{ stageId, owner }`                                                                                   | Compares `owner` with its signer. A mismatch refuses to start, naming both addresses     |
+| 404: an admin from before stages, which has no such route, or the intermediate admin answering the shared token | Compares the catalogue owner of the public `/api/config`, as before stages, the same way |
+| 401: an admin that takes only a stage's own token, on any other token, the shared one included                  | Warns and starts, and every lookup and report it makes is refused the same way           |
+| Anything else, or nothing                                                                                       | Warns and starts. The publish gate compares each declaration's owner                     |
 
 A refusal says to fix the deployment's `STREAM_KEY` in the manager, or the stage the admin holds for
 it. After a 404 it says to fix `STREAM_KEY` first and, on the intermediate admin, to give the
@@ -1181,25 +1182,25 @@ becomes the ladder's master playlist feed**. It has to be: the master's feed top
 and the declared topic is the one address the admin hands a viewer before anything has published.
 
 Everything else follows. Each rung publishes its own media playlists on a topic **derived from the
-group and its rung name** — four rungs sharing the master's feed would write over each other and over
+group and its rung name**: four rungs sharing the master's feed would write over each other and over
 the master, and a rung's feed has to be found again by name after a restart rather than re-minted.
 That topic is stable for the life of the declaration, so a rung that restarts continues the same feed
 above its own last session's head, and the recording it finalizes opens with the one that was already
-there — so the entry the admin holds points at a recording of the whole broadcast, seams marked,
+there, so the entry the admin holds points at a recording of the whole broadcast, seams marked,
 however many times it was restarted. **The admin therefore accepts `live` after `vod`**: a
 broadcaster who stops and comes back is
 a stream going live again under a declaration the admin already holds as a recording. (That admin
 change ships from the `feat/ladder-feed-sessions` branch of the streaming-monorepo repository.)
 
-The ladder's merge state, one record per rung, moves out of the catalog feed and into the admin: each rung posts its own
+The ladder's merge state, one record per rung, moves out of the catalogue feed and into the admin: each rung posts its own
 `Rendition` to `POST /api/internal/streams/:id/renditions` (bearer `ADMIN_API_TOKEN`, the same
 internal-route auth as the state route, and **the admin must serve it**), the admin merges it by the
 same "a rung that has already finished stays finished" rule `StreamCatalog.keepingWhatFinished`
-states — additionally requiring the report to name the rung's own feed, which is true of every
-report a well-formed ladder sends — writes `renditions` into the catalog entry it already owns, and
+states (additionally requiring the report to name the rung's own feed, which is true of every
+report a well-formed ladder sends), writes `renditions` into the catalogue entry it already owns, and
 answers with the merged ladder. The uploader writes the master from that answer, filtered by the same `LadderLiveness` rule
 as ever, and rewrites it when a rung stops without asking the admin again. Answers are applied in the
-order the admin merged them, by the catalog write index each one carries, so four rungs whose answers
+order the admin merged them, by the catalogue write index each one carries, so four rungs whose answers
 land out of order cannot leave an older merge on the master.
 
 `live` and `vod` are then reported for the **ladder** rather than for a rung. `live` goes out once the
@@ -1218,8 +1219,8 @@ left to list the recording. `vod -> vod` is accepted, so the repeat is harmless.
 Two things a declared stream does that a **standalone single-rendition** stream does not: resume its
 SOC index and its media sequence from its topic's feed head, and hold its publishes for a re-announced
 predecessor's drain. Both exist because two sessions share one feed there. A rung now owes both as
-well, in either deployment, because its derived topic outlives its session in exactly the same way —
-the standalone lone rendition, whose topic is a fresh uuid per session, is the only one that owes
+well, in either deployment, because its derived topic outlives its session in exactly the same way.
+The standalone lone rendition, whose topic is a fresh uuid per session, is the only one that owes
 neither. The master feed writer still establishes its own index.
 
 ### Local loop with the admin API
@@ -1234,7 +1235,7 @@ cp .env.sample .env
 ```
 
 ```ini
-# engines/srs/.env — the values the local overlay needs
+# engines/srs/.env: the values the local overlay needs
 SRS_WEBHOOK_TOKEN=<same value the uploader gets>   # openssl rand -hex 32
 SRT_PASSPHRASE=<10-79 chars, or empty for no SRT encryption>
 SRS_ADAPTER_HOST=host.docker.internal              # the uploader is on the host, not in the network
@@ -1286,7 +1287,7 @@ ADMIN_API_URL is not set, running standalone`.
 
 **3. Declare the stream in the admin**, then push to the ingest id it filed the draft under. web2-admin
 uses the stream's topic (a UUID) as `<stream>` and shows the finished URLs and key on the stream's
-details page; `<app>` is `video` or `audio` and has to match the declaration's media type.
+details page. `<app>` is `video` or `audio` and has to match the declaration's media type.
 
 ```bash
 ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=30 -f lavfi -i sine \
@@ -1374,8 +1375,8 @@ curl -G http://localhost:3000/stream/status \
 
 | Module               | Description                                                                      |
 | -------------------- | -------------------------------------------------------------------------------- |
-| `StreamOrchestrator` | Central coordinator — manages stream lifecycle, queue, backpressure, recovery    |
-| `StreamUploader`     | Per-stream upload session — uploads segments, updates manifests via Swarm feeds  |
+| `StreamOrchestrator` | Central coordinator: manages stream lifecycle, queue, backpressure, recovery     |
+| `StreamUploader`     | Per-stream upload session: uploads segments, updates manifests via Swarm feeds   |
 | `StreamCatalog`      | Maintains the stream directory as a Swarm feed                                   |
 | `RecoveryStore`      | Persists stream state to disk for crash recovery                                 |
 | `ManifestManager`    | Builds and updates HLS manifests                                                 |

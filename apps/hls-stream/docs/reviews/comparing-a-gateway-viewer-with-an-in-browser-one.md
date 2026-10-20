@@ -89,7 +89,7 @@ serving one viewer for four hours.
 Each of these has already produced a wrong or wasted result once.
 
 1. **ONE tab.** One weeb-3 node gets ~200 peers, two get 82, three get **0** and never re-dial, with
-   no error shown. The arm loop is already sequential; the gate is that a second one refuses.
+   no error shown. The arm loop is already sequential. The gate is that a second one refuses.
 2. **Log peers every sample and discard any run under ~40.** A peerless node is indistinguishable
    from a broken player from the outside: traced at 0/160 peers at t=8s, 0/0 at t=12s, still 0/0 at
    t=29s, while the page looked merely slow.
@@ -99,7 +99,7 @@ Each of these has already produced a wrong or wasted result once.
    autotls is **off by default** and turning it on for our own nodes lets weeb-3 reach them at all.
    Whatever is done, the reached-peer count is reported beside every in-browser row.
 4. **Segment size dominates the in-browser path.** 90 KB segments filled 4.5% of what the node could
-   carry; 4.14 MB segments gave a 0.9962 ratio. The shipping profile's segment size must be held
+   carry, while 4.14 MB segments gave a 0.9962 ratio. The shipping profile's segment size must be held
    identical across arms or the comparison measures size, not backend.
 5. **An in-browser node serves nothing back.** Inbound is for pricing and gossip only, never
    retrieval, so a browser audience caches and supplies nothing for the next viewer. Any scaling

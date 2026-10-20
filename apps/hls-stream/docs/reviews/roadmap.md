@@ -3,6 +3,9 @@
 > This is a dated record of one test deployment, not a description of the product. Any raw
 > measurement it cites is kept outside the repository.
 
+Status, 2026-10-20: closed. This was the stack's roadmap from 2026-08-05 to 2026-09-17, kept as a
+record. The plan the platform follows today is [the repository's roadmap](../../../../docs/ROADMAP.md).
+
 **2026-08-05, re-ordered 2026-08-08.** Ordered by what unblocks what, not by appeal. Every claim below
 is either measured and cited, or marked as a guess. Items already tracked carry their task number.
 
@@ -73,7 +76,7 @@ and the runs are in the `the-crash-scenarios-nobody-had-run-2026-08-09` measurem
 
 ⭐⭐ **It was priced at 60 broadcast-minutes and cost 1.37 minutes of publishing.** One full pass of all
 four scenarios spent **0.0174 BZZ and moved postage not at all**. The estimate assumed five browser runs
-at 45s settle plus fault plus 60s recovery; four of the five questions are uploader-side and need only
+at 45s settle plus fault plus 60s recovery. Four of the five questions are uploader-side and need only
 enough segments to have a stream. ⭐ **The cost of a measurement is set by the instrument it needs, not
 by the question it asks**, and asking "does this need a viewer?" before pricing moved this by two
 orders of magnitude.
@@ -110,18 +113,18 @@ topology, at 0.0002 BZZ/min.
 | Live latency        | **1.074s** capture-to-fetchable at 720p 2500kbps, 0.25s GOP, gated over three 10-minute runs (the `ten-minute-gate-2026-08-05` measurement, kept outside the repository) with a 29ms spread and no drift. ✅ **Glass to glass at a viewer is 6.4 to 7.3s and flat**, read off a burned-in clock, after the client fix (the `the-loop-fixed-2026-08-05` measurement, kept outside the repository). It was 17.9s and growing before it.                                                                       |
 | What a viewer sees  | ✅ **1.000 and 1.003 media seconds per wall second at 0.25s, nothing frozen, no rebuffers**, holding 5.86s behind live against a 6s target. It was 0.82x and 17.3% frozen: the client took one feed slot per playlist reload. Fixed and measured (the `the-loop-fixed-2026-08-05` measurement, kept outside the repository), diagnosed (the `what-starves-the-viewer-2026-08-05` measurement, kept outside the repository).                                                                                 |
 | Which profile ships | ✅ **0.25s GOP, and 1080p at 6000kbps with it.** Gated at ten minutes at a viewer: 30.0fps, advance 1.000, nothing stalled, nothing rebuffered. Latency across a 2.4x bitrate range differs by 70ms, so the best picture costs bandwidth (2.24x the BZZ) rather than seconds.                                                                                                                                                                                                                               |
-| Seeking             | ✅ **A recording plays and seeks**, five runs, every seek landing in 17-48ms and resuming in 338-359ms. ⚠️ Still unreached: seeking **past a discontinuity** and into a region **whose chunks left the local gateway**, because a 27-second recording fits in the buffer whole. ⭐ The client uses `HashRouter`, so a watch URL is `#/watch/...` and the path form silently renders the catalog.                                                                                                            |
+| Seeking             | ✅ **A recording plays and seeks**, five runs, every seek landing in 17-48ms and resuming in 338-359ms. ⚠️ Still unreached: seeking **past a discontinuity** and into a region **whose chunks left the local gateway**, because a 27-second recording fits in the buffer whole. ⭐ The client uses `HashRouter`, so a watch URL is `#/watch/...` and the path form silently renders the catalogue.                                                                                                          |
 | Live DVR            | One chunk of manifest. On the bench stage at the best profile that is **9.0 seconds**, up from 2.5.                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Crash recovery      | 6 e2e scenarios pass on the **uploader's** side. ✅ **A viewer has now been watched through five**, and one of them plays through a **discontinuity** and survives it. ✅ The largest client-side cost is fixed: recovery from an uploader crash went **46.7s → 4.1s** by asking what is behind a refused slot instead of parking on it. ⛔ A write outage the upload side calls clean still freezes a viewer, because lossless is the uploader's 15s retry window and invisible is the viewer's 6s buffer. |
 | Browser validation  | ✅ **Unblocked 2026-08-05.** `pnpm browser:selfcheck` proves the browser is a valid instrument in ten seconds for no cost, and `browser:watch` reports VOID rather than a number when it is not.                                                                                                                                                                                                                                                                                                            |
 
 ---
 
-## Phase 0 — finish what today's measurement started
+## Phase 0: finish what today's measurement started
 
 Cheap, no new infrastructure, and the first item blocks shipping the profile we just chose.
 
-### 0.1 ✅ done — the live window is budgeted in bytes, not counted in segments
+### 0.1 ✅ done: the live window is budgeted in bytes, not counted in segments
 
 `LIVE_WINDOW_SIZE = 10` counted segments, so the media a joining viewer could hold was
 `10 × segment length` and collapsed exactly where a viewer had least time to recover.
@@ -145,8 +148,8 @@ costs, so a deployment that left it empty got 50 segments where that one got 36.
 | --------- | -----------------: | --------------------------- | -----------------: | -------: | ---------------------- |
 | **0.25s** |          **2.50s** | **9.00s** (36 seg)          |             12.50s |    2.67s | **short by 172-550ms** |
 | 0.5s      |              5.00s | 18.00s (36 seg)             |             25.50s |    4.91s | fits, by **91ms**      |
-| 1.0s      |             10.00s | 37.00s (37 seg)             |             52.00s |        — | fits                   |
-| 2.0s      |             20.00s | 74.00s (37 seg)             |            104.00s |        — | fits                   |
+| 1.0s      |             10.00s | 37.00s (37 seg)             |             52.00s |      n/a | fits                   |
+| 2.0s      |             20.00s | 74.00s (37 seg)             |            104.00s |      n/a | fits                   |
 
 `required` is the worst edge-to-fetchable delay in that configuration's clean runs, plus the cadence
 hls.js reloads a live playlist at, plus one segment of margin. **The ten-segment window was adequate
@@ -163,7 +166,7 @@ covering it.
 segments appear in no manifest any viewer reads and no discontinuity tag is armed, so the loss is
 silent. Five times the window is five times the tolerance and it does not close the hole.
 
-### 0.2 ✅ diagnosed — the encoder never missed its GOP, the publisher was throttled
+### 0.2 ✅ diagnosed: the encoder never missed its GOP, the publisher was throttled
 
 Filed twice with the wrong cause, first as a 1080p limit and then as an encoder that misses its GOP.
 It is neither (the `publisher-backpressure` measurement, kept outside the repository). `-g` is set in **frames** and is honoured exactly
@@ -185,7 +188,7 @@ rate on passing runs so a mildly throttled one is visible rather than silent.
 throttle cannot be read out of any run already taken. Recording it costs nothing extra, since the
 probe already downloads each segment and discards the size.
 
-### 0.3 ✅ done — the 0.25s winner holds at 10 minutes
+### 0.3 ✅ done: the 0.25s winner holds at 10 minutes
 
 Six 10-minute runs, 6 of 6 usable (the `ten-minute-gate-2026-08-05` measurement, kept outside the repository). **0.25s measured 1055,
 1081 and 1084ms, a 29ms spread and the tightest repeatability this project has recorded**, against
@@ -203,7 +206,7 @@ and the off-loop watcher drew a run with nothing to watch.
 
 ---
 
-## Phase 0.5 — the long-run campaign, now that it is funded
+## Phase 0.5: the long-run campaign, now that it is funded
 
 **Funded 2026-08-06.** Postage batch `0cd0eff9…` at depth 24 is 256 buckets and 30 days, immutable,
 which is about **1100 broadcast-minutes** at the 0.22 buckets a minute measured on 10-minute runs.
@@ -220,7 +223,7 @@ themselves are the check on it.
 |     | run | why it is on the list | broadcast-min |
 | --- | --- | --------------------- | ------------- |
 
-## Phase 0.6 ✅ MEASURED AT BOTH PROFILES — light against ultra-light
+## Phase 0.6 ✅ MEASURED AT BOTH PROFILES: light against ultra-light
 
 ⛔⛔ **The owner ruled the other way on 2026-09-15 and nothing in this section was rewritten.**
 `deploy/docker-compose.yml` ships the viewer gateway ultra-light and unfunded, with the cost stated
@@ -306,7 +309,7 @@ read out of the `.requests.json` companions already in this repository.
 ⭐ **Between the two nights the median moved 1.18x and the one-second rate moved 10 to 40x.** On
 2026-08-08 the unfunded arm had **fewer** one-second stalls than the funded arm.
 
-⚠️ **Every one of them is 1.0 to 1.1s** — a retry timer, not a slow transfer — and **they arrive in
+⚠️ **Every one of them is 1.0 to 1.1s**, a retry timer and not a slow transfer, and **they arrive in
 bursts**: six of twelve inside a 3% window of one arm. One costs a 267ms-budget player four segments,
 which a 4.8s buffer absorbs. Six in a row is a rebuffer. Twelve events in 689 requests is 1.7% of
 them, so they cannot move a median and they are the entire failure.
@@ -446,7 +449,7 @@ differently cold. ⚠️ An earlier run controlled for exactly this and found th
 |     | run | broadcast-min |
 | --- | --- | ------------- |
 
-## Phase 0.7 ✅ DONE 2026-08-06 — quality, which no viewer had ever been shown
+## Phase 0.7 ✅ DONE 2026-08-06: quality, which no viewer had ever been shown
 
 **Every browser run this project has done was 720p, 2500kbps, 30fps.** That is
 `publish-clock.sh`'s default and it was never moved. Segment length is the only variable a viewer has
@@ -474,7 +477,7 @@ kind of thing only a viewer sees.
 |     | run | broadcast-min |
 | --- | --- | ------------- |
 
-## Phase 0.8 — lowering recovery, which is mostly ours to lower
+## Phase 0.8: lowering recovery, which is mostly ours to lower
 
 A freeze is not one thing. It is what the outage costs minus what the buffer absorbs, plus whatever
 this side adds on top. Both crash runs reconcile to that identity exactly:
@@ -488,7 +491,7 @@ this side adds on top. Both crash runs reconcile to that identity exactly:
 `LIVE_SYNC_DURATION_S` is invisible to a viewer already.** Everything above the floor is this side's,
 and in the uploader case it is six times the floor.
 
-### 0.8a ✅ DONE 2026-08-06 — the walk cannot pass its oldest missing slot, **46.7s → 4.1s**
+### 0.8a ✅ DONE 2026-08-06: the walk cannot pass its oldest missing slot, **46.7s → 4.1s**
 
 The walk asks for slot N+1 and stops on a 404, because a 404 is also how a caught-up viewer learns
 there is nothing more. Those two cases are indistinguishable from one request, so a slot that will
@@ -521,7 +524,7 @@ has, the one that is 50-57% frozen. The probe answers in one poll and costs one 
 **Expected: 46.7s becomes a few seconds.** Detection is K polls, the jump is one round trip, and the
 walk already drains 16 slots per poll.
 
-### 0.8b ⚠️ DONE 2026-08-06 — the backoff outlives the outage, and the shortfall was the instrument
+### 0.8b ⚠️ DONE 2026-08-06: the backoff outlives the outage, and the shortfall was the instrument
 
 `MANIFEST_RETRY_BASE_MS = 2000` doubles and is stamped from the failure, so attempts fall at t=0, 2,
 6, 14, 30. The gateway returned at 20.5s and the next attempt was not due until 30s. At the
@@ -648,7 +651,7 @@ in this phase, deliberately, because two variables at once answers neither.
 through its second has a respectable median and is a broken stream, which is why `stability.ts` cuts
 a run into five-minute windows and reports each on its own.
 
-## Phase 0.9 — scale readiness, measured here so the other repo does not have to guess
+## Phase 0.9: scale readiness, measured here so the other repo does not have to guess
 
 **Added 2026-08-08.** A second repository will run thousands of light nodes against a high-scale
 streaming event. This phase answers, at current scale, the questions whose answers change that design,
@@ -663,7 +666,7 @@ load, and its 37 wasted iterations per chunk are **local**.
 ⭐ **Therefore the constraint on running many unfunded nodes is host CPU and node density, not network
 capacity.** Nothing has measured that spin's CPU cost, and it is now the first thing worth measuring.
 
-### 0.9a ✅ DONE 2026-08-08 — it is a switch, and it flips at zero
+### 0.9a ✅ DONE 2026-08-08: it is a switch, and it flips at zero
 
 Report: the `the-funding-cliff-is-at-zero-2026-08-08` measurement, kept outside the repository. The chequebook was drained to a known
 balance by the owner and sampled every five seconds beside the retrieval counters.
@@ -692,7 +695,7 @@ Arms at several deposit sizes through `retrieval-debt-probe.sh`, reading
 `gateway-retrieval-metrics.sh` per arm. ⛔ Needs owner approval before any deposit: bring exact
 commands, fund nothing.
 
-### 0.9b ✅ DONE 2026-08-08, extended 2026-08-09 — size the cache for the hot set
+### 0.9b ✅ DONE 2026-08-08, extended 2026-08-09: size the cache for the hot set
 
 Three sittings, all free. Eviction (the `a-cache-that-does-not-fit-does-nothing-2026-08-08` measurement, kept outside the repository).
 The bisect that located the cliff (the `the-cache-cliff-is-at-one-hundred-percent-2026-08-08` measurement, kept outside the repository).
@@ -713,7 +716,7 @@ its share**, so a small cache is worth buying and there is no threshold to clear
 ⚠️ The 100% cliff is real **only for a cyclic scan**, which has no hot set because every reference is
 equally popular. ⚠️ Capacity is counted in **chunks, not bytes**: 1 GB is roughly 280,000.
 
-### 0.9c ✅ DONE 2026-08-08, free — sixteen viewers cost the network what one costs
+### 0.9c ✅ DONE 2026-08-08, free: sixteen viewers cost the network what one costs
 
 Report: the `sixteen-viewers-cost-what-one-costs-2026-08-08` measurement, kept outside the repository. Concurrency alternated 1, 2, 1,
 4, 1, 8, 1, 16 against an unfunded gateway. **Network peer contacts held at 3,167 to 3,287 while
@@ -729,7 +732,7 @@ chunk" are rates divided by whatever throughput their arm ran at. Valid for the 
 they came from, not general. ⬅ Nothing above 16 is measured, and this sweep cannot see feed staleness,
 which LAT-11 found goes 1.30x at eight.
 
-### 0.9c-ii ✅ DONE 2026-08-08, free — the knee is a byte rate
+### 0.9c-ii ✅ DONE 2026-08-08, free: the knee is a byte rate
 
 The ceiling (the `the-ceiling-is-bytes-not-viewers-2026-08-08` measurement, kept outside the repository).
 What actually limits it (the `a-synchronised-audience-is-the-failure-2026-08-08` measurement, kept outside the repository).
@@ -750,7 +753,7 @@ doing nothing**, because the constraint is chunk diversity rather than arrival i
 the viewer count had varied moved the metric by up to 1.95x with nothing happening, so a ladder cannot
 resolve anything under ~2x.
 
-### 0.9d ✅ DONE 2026-08-08, free — the CPU model, halved by pacing
+### 0.9d ✅ DONE 2026-08-08, free: the CPU model, halved by pacing
 
 The probe now samples host load every two seconds during every arm (the host load sampler), so a starved probe client
 can no longer be mistaken for a slow gateway, and the same sampler is the neighbour-safety ceiling that
@@ -761,14 +764,14 @@ properly the model is **~0.67 cores fixed plus ~0.046 per viewer**, against the 
 before. ⭐ The control that makes it credible is that the same sitting's flat-out arms reproduce the
 old model. **Per-MB figures are duty-cycle insensitive and all stand. Per-viewer figures halve.**
 
-### 0.9e ✅ DONE 2026-08-08 — the node's own retrieval duration histogram
+### 0.9e ✅ DONE 2026-08-08: the node's own retrieval duration histogram
 
 Shipped in the metrics reducer as `durSum`, `durCount`, `durLe0p25` and `durLe1`, so
 `durCount - durLe1` is **the node's own count of retrievals that took a second or more**, which is the
 statistic a median cannot see. ⚠️ ⬅ The retry timer's **wall-clock shape** is still inferred from the
 client side. The count is now measured at the node, the shape is not.
 
-### 0.9f ✅ DONE 2026-08-09, free — the feed does not care how many are reading it
+### 0.9f ✅ DONE 2026-08-09, free: the feed does not care how many are reading it
 
 Report: the `the-feed-does-not-care-how-many-are-reading-it-2026-08-09` measurement, kept outside the repository. The last
 measurable item before Phase 3. **54,400 feed slot reads across 20 alternating arms**, no broadcast, no
@@ -791,12 +794,12 @@ which **the client no longer uses**. On the explicit-address path the client doe
 absent at 8, at 32 and at 128.
 
 ⚠️ **What it cannot say**: there is no live publisher, so this is what a feed read **costs**, not how
-far behind live a viewer ends up. And 128 is the ceiling reached rather than a ceiling found — the box
+far behind live a viewer ends up. And 128 is the ceiling reached rather than a ceiling found: the box
 carries forty other bee nodes and averaged 28 runnable at that arm against a ceiling of 48.
 
-## Phase 1 — the viewer features
+## Phase 1: the viewer features
 
-### 1.1 ✅ done — browser validation is unblocked, and it found something
+### 1.1 ✅ done: browser validation is unblocked, and it found something
 
 Real Chrome, headed against an Xvfb display on the deployment host, driven by `playwright-core`.
 The page is genuinely foregrounded, so the hidden-pane failure that produced the 578-second reading
@@ -812,7 +815,7 @@ byte-budgeted window works, twice measured at 5.96 and 5.97s against a 6s target
 cannot hold it: 12-17% of the wall clock frozen in 3 of 3 sessions, and a true glass-to-glass gap
 that reached **17.9s while the player reported 1.16s**.
 
-### 1.1b ✅ diagnosed — the client asks for segments one at a time (the `what-starves-the-viewer-2026-08-05` measurement, kept outside the repository)
+### 1.1b ✅ diagnosed: the client asks for segments one at a time (the `what-starves-the-viewer-2026-08-05` measurement, kept outside the repository)
 
 Both obvious causes are **refuted by the request log**: 0 refusals in 469 segment requests, 0ms spent
 on retry delays, and a 125ms median transfer from a gateway that served everything asked of it.
@@ -831,7 +834,7 @@ client already addresses segments by computed slot, so neither needs new informa
 lower priority than that client fix, because a seek feature on a stream that freezes a sixth of the
 time is not the thing to build next.
 
-### 1.2 ✅ mostly done 2026-08-06 — a recording plays and seeks
+### 1.2 ✅ mostly done 2026-08-06: a recording plays and seeks
 
 `pnpm browser:vod`, five runs against two recordings. **Every seek lands in 17-48ms and resumes in
 338-359ms**, forward and backward, with no `pause` event in the whole run.
@@ -848,7 +851,7 @@ so it built an audio-only buffer set and refused every later video sample with a
 **non-fatal**. Sound over a blank picture for 209 seconds, with nothing saying so.
 Report: the `a-recording-that-opens-without-video-2026-08-09` measurement, kept outside the repository.
 
-⭐ The cause is old — 5 video packets in 2.51s is about 2fps against a requested 30, which is the
+⭐ The cause is old: 5 video packets in 2.51s is about 2fps against a requested 30, which is the
 publisher throttle of 0.2. What is new is that a throttle **at second zero** does not degrade
 the picture, it removes it for the whole recording. `make:recording` now refuses on it.
 
@@ -886,7 +889,7 @@ uploader publishes a rolling index.
 ⚠️ Related and already known: the client's manifest state **never trims**, so a long broadcast grows
 it without bound. Fix these together.
 
-### 1.4 ✅ DONE — shipped as 0.8a, **46.7s → 4.1s**
+### 1.4 ✅ DONE: shipped as 0.8a, **46.7s → 4.1s**
 
 `handleFollowupFetch` pinned its slot and re-asked it forever, so a viewer's recovery was bounded by
 the oldest slot they could not retrieve rather than by the outage. Fixed by probing N+1+D after K
@@ -898,12 +901,12 @@ was **not** what shipped: it waits 30 polls and then pays for the slowest reques
 
 ---
 
-## Phase 2 — crash recovery, the scenarios that are missing
+## Phase 2: crash recovery, the scenarios that are missing
 
-**Covered today** (`e2e/suites/scenarios/`): uploader hard crash resumes without a spurious VOD;
-engine restart yields a fresh stream on reconnect; an 8s bee outage loses nothing and announces
-nothing; a long bee outage loses the segment in flight, says so, and resumes; a viewer-gateway outage
-does not stop uploads; a clean stop finalizes a VOD.
+**Covered today** (`e2e/suites/scenarios/`): uploader hard crash resumes without a spurious VOD.
+Engine restart yields a fresh stream on reconnect. An 8s bee outage loses nothing and announces
+nothing. A long bee outage loses the segment in flight, says so, and resumes. A viewer-gateway outage
+does not stop uploads. A clean stop finalizes a VOD.
 
 ⚠️ Since the owner's ruling of 2026-09-06 a lost segment leaves a hole the playlist lists as
 `#EXT-X-GAP` entries rather than a break, so a bee outage no longer arms an `#EXT-X-DISCONTINUITY`.
@@ -925,15 +928,15 @@ real browser watching while the fault is injected. Two scenarios run so far
 
 **Missing, ordered by likelihood times damage:**
 
-| #   | scenario                                     | why it ranks here                                                                                                                                                                                                                                           |
-| --- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1 | **Chequebook exhausted mid-stream**          | **Known to occur.** It emptied at run 7 of 12 on 2026-08-05 and 64 of 247 peers went past -9.0e6 debt. Runs on either side were not comparable and nothing said so. The sweep now has a preflight, but the **uploader itself** has no behaviour for it.     |
-| 2.2 | **Postage batch full or expired mid-stream** | A batch went 9.4% to 64/64 in one day. Mutable batches then evict **silently**.                                                                                                                                                                             |
-| 2.3 | Crash during `finalize`                      | ✅ **scenario H.** ⛔ The window described here is wrong: `finalize` deletes the entry **last**, after the catalog write, so a crash cannot leave the entry gone with nothing published. The real window is the reverse and it costs a **second paid VOD**. |
-| 2.4 | Whole-stack restart                          | ✅ **scenario I.** Sharpened: the interesting part is not that everything restarts, it is that the uploader's 60s recovery timer races **its own bee node's cold start**, and finalizing means uploading through it.                                        |
-| 2.5 | Recovery entry corrupt or hand-edited        | ✅ **scenario J, and the defect it found is fixed.** ⛔ The repair path was never the dangerous one. An **unparseable** entry was deleted on the next boot; it is now **quarantined** as `<id>.json.corrupt` and `/health` reports `unrecoverable_stream`.  |
-| 2.6 | Disk full                                    | ✅ **done 2026-08-09 for nothing.** ⛔ Premise stale and the answer is the opposite: `state_not_persisted` fires on the first failed write, and the broadcast **keeps running with no recovery entry**, so a crash from there loses it whole.               |
-| 2.7 | Two uploaders on one stream id               | ✅ **scenario K.** The guard under test is `retire()`: the outgoing drain must stop owning the recovery entry, or a live broadcast runs with nothing on disk to recover it from.                                                                            |
+| #   | scenario                                     | why it ranks here                                                                                                                                                                                                                                             |
+| --- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1 | **Chequebook exhausted mid-stream**          | **Known to occur.** It emptied at run 7 of 12 on 2026-08-05 and 64 of 247 peers went past -9.0e6 debt. Runs on either side were not comparable and nothing said so. The sweep now has a preflight, but the **uploader itself** has no behaviour for it.       |
+| 2.2 | **Postage batch full or expired mid-stream** | A batch went 9.4% to 64/64 in one day. Mutable batches then evict **silently**.                                                                                                                                                                               |
+| 2.3 | Crash during `finalize`                      | ✅ **scenario H.** ⛔ The window described here is wrong: `finalize` deletes the entry **last**, after the catalogue write, so a crash cannot leave the entry gone with nothing published. The real window is the reverse and it costs a **second paid VOD**. |
+| 2.4 | Whole-stack restart                          | ✅ **scenario I.** Sharpened: the interesting part is not that everything restarts, it is that the uploader's 60s recovery timer races **its own bee node's cold start**, and finalizing means uploading through it.                                          |
+| 2.5 | Recovery entry corrupt or hand-edited        | ✅ **scenario J, and the defect it found is fixed.** ⛔ The repair path was never the dangerous one. An **unparseable** entry was deleted on the next boot. It is now **quarantined** as `<id>.json.corrupt` and `/health` reports `unrecoverable_stream`.    |
+| 2.6 | Disk full                                    | ✅ **done 2026-08-09 for nothing.** ⛔ Premise stale and the answer is the opposite: `state_not_persisted` fires on the first failed write, and the broadcast **keeps running with no recovery entry**, so a crash from there loses it whole.                 |
+| 2.7 | Two uploaders on one stream id               | ✅ **scenario K.** The guard under test is `retire()`: the outgoing drain must stop owning the recovery entry, or a live broadcast runs with nothing on disk to recover it from.                                                                              |
 
 ### ✅ 2.6 is done, and it cost nothing
 
@@ -956,17 +959,17 @@ loses this broadcast whole**. Page on it.
 its state directory unwritable, and `STATE_DIR` is a volume mount point, so it cannot be replaced with a
 file. ⛔ Filling that volume would fill the **host disk**, and the host carries forty other bee nodes and
 five other compose projects. ⛔ Pointing the deployed uploader at an empty state directory is out too,
-because the same directory holds the catalog feed index and losing it is the fork `CatalogIndexStore`
+because the same directory holds the catalogue feed index and losing it is the fork `CatalogIndexStore`
 exists to prevent.
 
 ⭐ So the probe is a **throwaway container**, not the deployment: the uploader's own image with a **1 MB
 tmpfs** state dir, a **freshly generated signer key** and its own list topic so it cannot reach the real
-catalog, and an **unusable stamp** so nothing can be spent. `persistState` runs on the segment
+catalogue, and an **unusable stamp** so nothing can be spent. `persistState` runs on the segment
 **failure** path as well as the success path, which is what makes the whole thing free.
 
 ---
 
-## Phase 2.5 — the scale-up handover document
+## Phase 2.5: the scale-up handover document
 
 **Added 2026-08-08, and it is a gate on Phase 3 rather than a nice-to-have.** The other repository
 needs to run a multi-stage, thousands-of-viewers load test, and everything it needs to avoid paying
@@ -991,7 +994,7 @@ covers four things:
 viewers. Every scale claim it carries is a prediction with a mechanism behind it, not a result, and
 the document is worthless if a reader cannot tell those apart.
 
-## Phase 2.6 — can a segment be fetched without being announced?
+## Phase 2.6: can a segment be fetched without being announced?
 
 **Moved out of Phase 4 on 2026-08-08 at the owner's direction**, because it is the question Phase 4
 turns on and it can be measured long before anyone builds LL-HLS.
@@ -1067,7 +1070,7 @@ not-found delivers no bytes, so no peer is owed. ⛔ A whole-run delta said the 
 because spending is lumpy and quantised. **So speculative reads are free in money and expensive in
 time**, and ⚠️ the 43-44 MB/s throughput ceiling cannot see them at all, because they move no bytes.
 
-## Phase 2.7 — in-browser viewer nodes, phase 1 🔎 **assessed and measured 2026-08-09, steps 1, 3, 7, 8 done**
+## Phase 2.7: in-browser viewer nodes, phase 1 🔎 **assessed and measured 2026-08-09, steps 1, 3, 7, 8 done**
 
 Full write-up: the in-browser phase 1 hand-over, which the repository's history keeps. Raw data
 service time n=500 (the `in-browser-service-time-2026-08-09` measurement, kept outside the repository), harness
@@ -1127,8 +1130,8 @@ path is the limit.
 ⚠️ **`HLS_LIVE_SYNC_SEGMENTS = 8` is a new input to the fragment-profile question**, not a decision.
 hls.js counts the live sync target in segments, so against our 9.0s window, 1.0s fragments leave the
 player **one segment** of margin while 0.25s leaves 28. One non-fatal stall then raises hls.js's
-latency target permanently. The campaign's cost, postage and refusal evidence still favours 1.0s;
-this says the question has to be re-opened **if in-browser viewers ship**, and that the cheapest fix
+latency target permanently. The campaign's cost, postage and refusal evidence still favours 1.0s.
+This says the question has to be re-opened **if in-browser viewers ship**, and that the cheapest fix
 is a configurable `liveSyncDurationCount` rather than a different fragment length.
 
 ⚠️ **Time to first frame was ~150s, and that is ONE observation** against oversized content on a cold
@@ -1138,12 +1141,12 @@ node. A verdict taken at 56s would have said "does not play at all" and would ha
 1-5 and 7 are free. Only step 6 needs broadcast minutes, and it is priced in bytes before it is
 booked. See the doc for what each one answers.
 
-## Phase 3 — OME, then the engine comparison ⏸ **deferred to last, 2026-08-08**
+## Phase 3: OME, then the engine comparison ⏸ **deferred to last, 2026-08-08**
 
 ### 3.1 OME to parity
 
 **6 of 11.** Still failing: engine restart, gateway outage, catalog-via-gateway, happy-path,
-multi-stream. ⚠️ **Swap the existing profile rather than standing up a second stack** — a second stack
+multi-stream. ⚠️ **Swap the existing profile rather than standing up a second stack**: a second stack
 needs a new bee identity, which is owner-only on-chain funding. Three blockers were already cleared to
 reach 6.
 
@@ -1158,7 +1161,7 @@ adds over raw ffmpeg is what the engine costs.
 
 ---
 
-## Phase 4 — LL-HLS, and why it is last ⏸ **deferred to last, 2026-08-08**
+## Phase 4: LL-HLS, and why it is last ⏸ **deferred to last, 2026-08-08**
 
 ⚠️ **The question this phase turns on now lives in 2.6** and should be answered before any of the
 below is acted on.

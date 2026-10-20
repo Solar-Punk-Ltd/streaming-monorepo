@@ -1,7 +1,7 @@
 /* eslint-env browser */
 /**
- * Fragment-profile sweep for an in-browser Swarm node (weeb-3). Answers in-browser question 5: does a
- * browser node prefer larger fragments, and by how much.
+ * Fragment-profile sweep for an in-browser Swarm node (weeb-3). Answers question 5 of the in-browser
+ * list (kept outside the repository): does a browser node prefer larger fragments, and by how much.
  *
  * The premise being tested is that the ~790ms service-time floor is paid PER REQUEST rather than per
  * byte, so a fragment holding four times the bytes should cost far less than four times the time.

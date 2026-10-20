@@ -21,7 +21,8 @@ refused until both are cleaned. To see it: set the key in `bundled/.env`, build,
 **The viewer goes blank after the catalogue moves to a catalogue node (P2).** The viewer is built
 with the address of the catalogue feed's owner, and the manager hands it that address only from the
 viewer deployment's own feed owner setting. After the stages upgrade the catalogue is written by the
-catalogue node, so its owner changes, but the upgrade steps in [self-hosting.md](self-hosting.md)
+catalogue node, so its owner changes, but the upgrade steps in
+[self-hosting.md](self-hosting.md#upgrading-an-existing-installation)
 name only the viewer's feed topic. A viewer redeployed without the owner builds with none: the page
 stays empty and the browser console says `Missing env var: VITE_APP_OWNER`. The fix by hand is the
 viewer deployment's **Edit** drawer: the owner the admin publishes at `/api/config` (its
@@ -70,8 +71,8 @@ it comes back in the same broadcast it rejoins the ladder live at the siblings' 
 recording written at the end numbers that rung's returning segments on from its own last segment instead, so after
 the gap its sequences sit below its siblings' by the gap in segments, counted from the rung's last segment before it to
 its first after the return. Every segment is kept and every date agrees, but a player that places a recording's
-segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on a
-release candidate of v1.2.1, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
+segments by summed durations can land the gap's length off at a quality switch after it. Measured on 2026-10-15 on the
+build tagged `v1.2.1-rc.1`, with 2 s segments: 1080p's encoder was paused for 70 s, and about 92 s passed from its
 last segment before the pause to its first after the return. It rejoined live at sequence 1057, and its recording
 numbered the same segments from 1011, 46 below its siblings. To see it: during a
 broadcast pause one rung's encoder for more than 60 s, let it go, and after the recording is written compare that
@@ -87,7 +88,7 @@ stream, and compare the rungs' sequences at the same date.
 **A rung rejoining a live ladder can land one segment off (P3).** Which sequence a rejoining rung's first segment
 takes is decided from the gap between a sibling being handed its newest segment and this rung handing over its first,
 divided by the segment length and rounded. A gap of half a segment or more makes it the next segment, a shorter one the
-same. The dev stage ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
+same. The test deployment ran 2 s segments, so the tipping point there is 1 s. On that stage on 2026-10-15 the time between
 the first and last rung closing the same segment was 0.79 s typically, 0.96 s at the 90th percentile and 1.40 s at
 worst, with 1080p last on nearly every segment. A viewer switching quality exactly there sees about one segment skipped or repeated. To see
 it: read the close times from SRS's per-segment log lines for all rungs of one broadcast.
@@ -100,7 +101,7 @@ but the admin does not show it.
 **Two encoders on one stream's details take it from each other (P2, SPDV-1681).** A stage lets an encoder
 with the right key take over a stream that is already live, so a broadcaster whose OBS crashed comes straight back.
 OBS reconnects by itself when it is pushed off, so two encoders with the same details push each other off every 2 to
-3 seconds for as long as both run. Measured on 2026-10-15 on v1.2.0: the stream carried about 9 of its 30 segments a
+3 seconds for as long as both run. Measured on 2026-10-15 on the build tagged `v1.2.0`: the stream carried about 9 of its 30 segments a
 minute, with three encoders none at all, and the admin showed Live throughout. When one encoder stops, the stream is
 back to normal within about 10 seconds. A wrong or missing passphrase or key, another stream's key and malformed
 stream ids are refused without touching the live stream. Kept as it is for now: a stream's details belong in one
@@ -153,7 +154,7 @@ catalogue feed first lists it as live.
 
 ## Manager
 
-**A pool's quality nodes show "Reading balances" with no figures (P3).** On the dev stage on 2026-10-15 every node of
+**A pool's quality nodes show "Reading balances" with no figures (P3).** On a test deployment on 2026-10-15 every node of
 an ABR pool showed "Reading balances", with funding, chequebook and wallet as a dash, and the pool's card said "Not
 ready yet" while all four nodes ran with usable stamps. The manager reached each node's API, and its balance requests
 answered 304. Cause not found. To see it: open an ABR pool's page in the manager and compare with the nodes'

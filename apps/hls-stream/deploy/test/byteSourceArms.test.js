@@ -544,8 +544,8 @@ describe('the mid-arm floor check has something that writes its file', () => {
  * Swarm node in the tab.
  *
  * ⛔⛔ A reading nobody took is not a cheap viewer. The assertions below decide the COUNT before any
- * property of the samples, which is gate lesson AHU and the reason the trap line in this driver read
- * as evidence of wiring that was not there.
+ * property of the samples, which is gate lesson AHU (kept outside the repository) and the reason the
+ * trap line in this driver read as evidence of wiring that was not there.
  */
 describe('what the browser cost, per arm', () => {
   const cpuCalls = (result) => result.docker.filter((argv) => Array.isArray(argv) && argv[0] === 'stats');
