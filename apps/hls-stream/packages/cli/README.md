@@ -1,8 +1,6 @@
 # CLI
 
-TypeScript CLI for managing Bee nodes and postage stamps. Part of the [swarm-hls-stream](../../) monorepo.
-
-Uses [@ethersphere/bee-js](https://github.com/ethersphere/bee-js) for all Bee API interactions. Runs via `tsx`, so no build step is needed.
+The CLI manages the stack's Bee nodes and postage batches: it buys batches, lists them, and reports each node's health, addresses and balances. It is part of the [stack](../../), `apps/hls-stream`, and this page is its reference. It uses [@ethersphere/bee-js](https://github.com/ethersphere/bee-js) for every Bee call and runs through `tsx`, so it needs no build step.
 
 ## Commands
 
@@ -30,7 +28,7 @@ no terminal: without one the confirmation is declined rather than assumed.
 | `pnpm node:addresses` | Ethereum + overlay addresses  |
 | `pnpm node:wallets`   | Wallet balances (BZZ + xDAI)  |
 
-All commands run from the **monorepo root**.
+Run every command from the stack's folder, `apps/hls-stream`.
 
 ## Target Resolution
 
@@ -48,7 +46,7 @@ The URLs are used as written. In a Docker deployment the host's `.env` holds hos
 
 ### Without it: the single-node deployment
 
-Falls back to the previous behaviour: the bee-uploader URL, auto-detected from
+The commands use the bee-uploader node, whose URL is found from
 
 1. `deploy/config.json`: deployment target for `bee-uploader`
 2. `.env`: `BEE_UPLOADER_API_PORT` (default: 1633)
@@ -93,8 +91,8 @@ Falling back to some default node would put the batch somewhere that cannot spen
 
 Validation is against `BEE_PUBLISHERS` rather than `ABR_LADDER`, which lives in the engine's own `.env` and is not loaded here. In a working config the two agree: the uploader refuses to start unless the publisher list covers the ladder exactly.
 
-**`STAMP=<batchId>` is written to the root `.env`**, the same way `stamp:setup` does it and for the
-same reason: a batch you paid for must never live only in terminal scrollback (OPS-1). It replaces any
+**`STAMP=<batchId>` is written to the stack's `.env`**, the same way `stamp:setup` does it and for the
+same reason: a batch you paid for must never live only in terminal scrollback. It replaces any
 previous `STAMP` value, and the old batch still exists on chain. On a split deployment `STAMP` is not
 the variable that pays for the rung (`BEE_PUBLISHERS` is), and that one is not edited in place because
 it holds an entry per rung, so the line to paste in is printed for you:
@@ -108,7 +106,7 @@ it holds an entry per rung, so the line to paste in is printed for you:
   Written STAMP=88fb1a…5628 to .env
 ```
 
-Amount and depth are the same for every rung. Sizing a batch to the rung it pays for is a real concern (1080p exhausts a given depth roughly 7× sooner than 360p), and is deliberately left out.
+Amount and depth are the same for every rung. The CLI does not yet size a batch to the rung it pays for, although 1080p fills a given depth roughly seven times sooner than 360p.
 
 ## stamp:setup Workflow
 
@@ -119,23 +117,22 @@ pnpm stamp:setup
 ```
 
 1. Polls the bee node until it's healthy
-2. Checks for existing usable stamps. If one is found it is written to the root `.env` and the run ends there, without the wallet ever being checked. Listing needs no chain while the balance needs a working Gnosis RPC, so a failing RPC cannot block the path that spends nothing
+2. Checks for existing usable stamps. If one is found it is written to the stack's `.env` and the run ends there, without the wallet ever being checked. Listing needs no chain while the balance needs a working Gnosis RPC, so a failing RPC cannot block the path that spends nothing
 3. Checks the wallet balance against the batch's cost. If the BZZ does not cover the batch, or there is no xDAI for gas, prints the node's ethereum address and stops so you can fund it
-4. Checks the root `.env` can be written, and **refuses to buy anything if it cannot**. A batch id that cannot be recorded is worth nothing, so this is checked while refusing is still free
+4. Checks the stack's `.env` can be written, and **refuses to buy anything if it cannot**. A batch id that cannot be recorded is worth nothing, so this is checked while refusing is still free
 5. Asks to confirm the purchase, unless `--yes` is given
 6. Buys a new stamp via `createPostageBatch` (default: amount `10000000000`, depth `20`)
-7. Writes `STAMP=<batchId>` to the root `.env` **immediately**, before anything else that can fail
+7. Writes `STAMP=<batchId>` to the stack's `.env` **immediately**, before anything else that can fail
 8. Waits for the stamp to become usable (~5 minutes)
 
-Steps 7 and 8 are in that order deliberately. The wait routinely times out on a slow chain, and it
-used to sit between the purchase and the only write, so a timeout meant a batch you had paid for
-whose id existed only in terminal scrollback.
+Step 7 comes before step 8 because the wait often times out on a slow chain, and a timeout must never
+leave a paid batch whose id exists only in terminal scrollback.
 
 If the write fails after the purchase, the command writes the id to a recovery file, prints it, and
 exits non-zero. It never reports success for a batch it could not record. `pnpm stamp:buy` behaves
 the same way.
 
-> This is the **single-node** workflow and it is unchanged. It writes `STAMP`, which a deployment
+> This is the **single-node** workflow. It writes `STAMP`, which a deployment
 > using `BEE_PUBLISHERS` does not read. With the publishers split, buy per rung with `stamp:buy`
 > and put each batch in `BEE_PUBLISHERS` yourself.
 

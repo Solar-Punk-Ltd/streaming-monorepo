@@ -1,6 +1,6 @@
 // One definition, in the shared package, because the client reads the same catalog entries this
 // writes and the two used to carry their own copies of these literals. Re-exported here rather than
-// imported at every call site so the move stays invisible to the rest of the package. See ARCH-1.
+// imported at every call site so the move stays invisible to the rest of the package.
 export {
   MEDIA_TYPE_AUDIO,
   MEDIA_TYPE_VIDEO,
@@ -707,7 +707,7 @@ export const STOP_FAILURE_FINALIZE_FAILED = 'finalize_failed' as const;
  * and it used to carry `getErrorMessage()` of whatever the finalize rejected with, which is a Bee
  * URL, a host and port, a filesystem path or an internal timeout constant depending on the failure.
  * Typing it closed means no message built inside `src/libs/` can reach a response body by accident,
- * which a sanitizer on the way out would not guarantee. The detail still goes to the log. See S1.7.
+ * which a sanitizer on the way out would not guarantee. The detail still goes to the log.
  */
 export type StopFailureReason = typeof STOP_FAILURE_DRAIN_TIMEOUT | typeof STOP_FAILURE_FINALIZE_FAILED;
 

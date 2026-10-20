@@ -194,7 +194,7 @@ describe('E — media-engine restart: broadcaster resumes', () => {
     // derivation then declines to call the playlist the broadcast's first. A drain that was empty
     // leaves it exact and `#EXT-X-MEDIA-SEQUENCE:0` is asserted. Either way the dates, their step and
     // their gaps are asserted, and the printed summary says which sequence the playlist declared.
-    // See `docs/e2e-coverage.md` under "What the sequence column is saying".
+    // See `e2e/README.md`, section "What the sequence column says".
     const resumedLog = async (): Promise<string> => host.logsSince(uploader, restartedAt);
     const verdict = await checkPublishedTimeline(host, cfg, {
       owner: feed.owner,

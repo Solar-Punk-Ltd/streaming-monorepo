@@ -13,7 +13,7 @@ fi
 # further down would open all of it. The character check in `require_safe_data_dir` cannot make
 # this call: `.`, `/etc` and the deployment account's home are ordinary-looking paths, so refusing
 # `../..` there while accepting the same directory spelled absolutely is the whole of the gap. Only
-# the host holding the directory can answer it, which is here. See SEC-21.
+# the host holding the directory can answer it, which is here.
 if [ -d "$DATA_DIR" ] && [ -n "$(ls -A "$DATA_DIR" 2>/dev/null)" ]; then
   echo "Refusing to use a non-empty directory as a bee data dir: $DATA_DIR" >&2
   echo "Point BEE_UPLOADER_DATA_DIR or BEE_GATEWAY_DATA_DIR at a new or empty directory." >&2

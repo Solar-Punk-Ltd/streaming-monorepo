@@ -22,10 +22,9 @@ import { waitFor } from '../../src/harness/wait.js';
 /**
  * Scenario H — the uploader is killed *inside* `finalize`, the one path that both spends and forgets.
  *
- * ## The window, read from `StreamUploader.finalize` rather than from the roadmap
+ * ## The window, read from `StreamUploader.finalize`
  *
- * The roadmap ranked this as "the one window where the entry is gone and the VOD is not published".
- * That is not the ordering. `finalize` publishes the closing live manifest, then the VOD manifest,
+ * This is not a window where the entry is gone and the VOD is not published, because of the ordering. `finalize` publishes the closing live manifest, then the VOD manifest,
  * then writes the catalog entry, and **deletes the recovery entry last of all**. So a crash cannot
  * leave the entry gone with nothing published. What it can leave is the opposite, and that is worse
  * than it sounds:

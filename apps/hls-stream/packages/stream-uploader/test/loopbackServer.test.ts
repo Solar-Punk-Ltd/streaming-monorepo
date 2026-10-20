@@ -8,7 +8,7 @@ import { after, describe, it } from 'node:test';
 import { listenOnLoopback, LOOPBACK_HOST } from './helpers/loopbackServer.js';
 
 /**
- * TEST-31, pinned deterministically rather than statistically.
+ * The loopback address-family hazard, pinned deterministically rather than statistically.
  *
  * The failure it closes was a one-in-roughly-ninety full-suite run answering `TypeError: fetch
  * failed` from a test helper, and the two lenses that saw it never named it. It was not flaky
@@ -20,7 +20,7 @@ import { listenOnLoopback, LOOPBACK_HOST } from './helpers/loopbackServer.js';
  * instead. The squatter below is what the real conflict was, reduced to its essentials: something
  * holding the IPv4 wildcard on a port and answering in a protocol that is not HTTP.
  */
-describe('listenOnLoopback binds the family it dials (TEST-31)', () => {
+describe('listenOnLoopback binds the family it dials', () => {
   const servers: net.Server[] = [];
   const squatterSockets: net.Socket[] = [];
 
@@ -165,7 +165,7 @@ describe('listenOnLoopback binds the family it dials (TEST-31)', () => {
     assert.equal(
       (server.address() as AddressInfo).family,
       'IPv4',
-      `the helper bound a different family from the ${LOOPBACK_HOST} its origin dials, which is the TEST-31 hazard`,
+      `the helper bound a different family from the ${LOOPBACK_HOST} its origin dials, which is the wrong-address-family hazard`,
     );
     assert.ok(
       baseUrl.startsWith(`http://${LOOPBACK_HOST}:`),

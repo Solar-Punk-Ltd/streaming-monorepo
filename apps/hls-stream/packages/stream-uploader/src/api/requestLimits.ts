@@ -32,7 +32,7 @@ export const MAX_SEGMENT_BODY = '50mb';
 export const MAX_CONTROL_BODY = '100kb';
 
 /**
- * The key the per-stream limit counts by. Bounded by S1.5 before this shipped: the limiter holds one
+ * The key the per-stream limit counts by. Bounded by request validation before this shipped: the limiter holds one
  * entry per distinct value, so an unvalidated header would have made this middleware the memory
  * exhaustion it exists to prevent.
  */

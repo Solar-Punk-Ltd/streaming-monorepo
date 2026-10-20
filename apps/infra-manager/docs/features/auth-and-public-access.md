@@ -1,387 +1,336 @@
-# Sign in, and opening the manager to the internet
+# Sign-in and public access
 
-Status, 2026-09-16. The login gate and the HTTPS edge are merged to `main-v2`. They were written
-at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set, which landed. Both have since
-run on a host: the manager was deployed on 2026-09-11 and a second pass on 2026-09-13 reached it
-over its own public domain with a certificate, rather than through the ssh tunnel. That pass is
-recorded in the remediation's handover record, which the repository's history keeps.
-Corrected 2026-09-23 against the code at `87673c99`: what reads `GET /health`, the Endpoints
-table, and the Access page under "What the operator sees". The last two predated the admin role
-added in `7346d880` on 2026-09-07, which now has a paragraph under Endpoints.
+The manager's console and API sit behind a login. Every user signs in with a username and a
+password, and some users are admins who may add and remove the others. This page is a feature page
+of the manager (`apps/infra-manager`, the web console and API that deploys the streaming stack,
+`apps/hls-stream`, onto hosts). It covers the login gate, the Access page, and what keeps a
+manager safe once it answers on a public name: the HTTPS edge, the API binds of the stack and the
+host firewall. The steps that open a manager to the internet are in
+[Opening the manager to the internet](../../deploy/README.md#opening-the-manager-to-the-internet)
+in the deploy guide.
 
-**The host steps at the end of this page are superseded.** They were written before the stack
-stopped travelling with a deploy and before the firewall generator took an inventory export, and
-following them now would leave the Bee APIs open while appearing to close them. The current
-procedure is "Opening the manager to the internet" in
-[../../deploy/README.md](../../deploy/README.md), which is the one to follow. What is kept below
-is the reasoning, because the order of the steps is the part worth understanding.
+## What it does
 
-**The manager's own edge is gone** (2026-09-28). It had an `edge` service of its own, with a
-`public` compose profile and `MANAGER_DOMAIN` in `manager/.env`, and all three were removed. HTTPS
-for the manager is the host's edge in `infra/edge/`, one Caddy per host for every console the host
-runs, and "Opening the manager to the internet" in the deploy README says how to use it.
+### Users and admins
 
-The decisions this page rests on were taken on 2026-09-05: Caddy for HTTPS, several users, and closing
-the host doors first.
+A **user** is a username and a password hash in the manager's database. There is no sign-up. The
+first user is created on the host with a command (see [The first user](#the-first-user)), and
+admins add the rest from the Access page.
 
-## Where we are
+- A username is 2 to 32 characters of `a-z`, `0-9`, dot, underscore or dash, starting with a
+  letter or a digit (`USERNAME_RE` in `packages/web-auth/src/rules.ts`). The database holds the
+  same rule as a check constraint.
+- A password is 12 to 128 characters (`PASSWORD_MIN_LENGTH`, `PASSWORD_MAX_LENGTH`). Anything
+  printable is allowed and there are no composition rules. It must not contain the username.
+- A password is stored as an scrypt hash written as `scrypt$N$r$p$<salt>$<key>`, with
+  `N = 2^15, r = 8, p = 3` (`CURRENT_PARAMS` in `packages/web-auth/src/passwordHash.ts`), a 32
+  byte random salt and a 64 byte key. The parameters travel with each hash, so they can be raised
+  without invalidating stored passwords.
 
-As it stood on 2026-09-05, when this was written. The manager had no authentication of any kind,
-and its own README listed that under limitations as "No auth" with "deploy behind a firewall" as
-the advice. On the host the `web` container (nginx serving the frontend and
-proxying the API) publishes only `127.0.0.1:8080`, the `api` container publishes nothing, and the
-team reaches the UI through an SSH tunnel. Postgres is bound to loopback. The last three are still
-true. The first is not: the login gate below was built and the README limitation is gone.
+An **admin** is a user who can manage users: add one, remove one, and sign someone else out.
+"Who can manage users" under [Endpoints](#endpoints) has the rules.
 
-Making the manager public therefore has three parts, and the login is the smallest of them:
+### Sessions
 
-1. **A login gate in the manager.** Users, passwords, sessions, a sign-in page, and every API
-   route behind it. This brief's first PR.
-2. **HTTPS in front.** A password over plain HTTP is a password given away.
-3. **Closing the other doors.** The stack the manager deploys publishes ports on the host with no
-   authentication: every Bee node's API (10005 and 10007 plus slot times 10), which can buy stamps
-   and, with a whitelist, send the node's money away, the uploader's API (10000 plus slot times
-   10), which accepts segments that spend postage, and the media server's HTTP port. When this
-   was written those were open to the internet already, unless the host had a firewall nobody had
-   written down. A login on the manager does nothing for them. They close first, and the current steps are
-   in [../../deploy/README.md](../../deploy/README.md).
+Signing in opens a **session**. The browser holds its token in the cookie `sim_session`
+(`SESSION_COOKIE_NAME`), marked `HttpOnly`, `SameSite=Lax` and `Path=/`. The token is 32 random
+bytes. The database stores only its SHA-256, so a copy of the sessions table signs nobody in.
 
-"Secure enough" here means: passwords stored with a slow salted hash, sessions that expire and can
-be revoked, brute force throttled and logged, cross-site request forgery blocked, HTTPS with
-strict transport, browser hardening headers, and no plaintext secret in any file. It does not
-mean two-factor or single sign-on. Both can be added later without changing the model.
+- `Secure` is set when the browser reached the manager over HTTPS: the edge says so with
+  `X-Forwarded-Proto: https`, or the connection itself is TLS. Over the plain HTTP of an SSH
+  tunnel the cookie is not marked `Secure`, because the browser would drop it and sign-in would
+  loop.
+- A session has two clocks, and the earlier one ends it. It ends after twelve hours without a
+  request (`SESSION_IDLE_TIMEOUT_MS`) and fourteen days after sign-in however busy it was
+  (`SESSION_ABSOLUTE_TIMEOUT_MS`). The idle clock is written at most once a minute
+  (`LAST_SEEN_REFRESH_MS`), so a request is not a write.
+- The cookie has no expiry of its own. The session row is the only clock.
+- Expired sessions are deleted at each sign-in and by a daily sweep
+  (`manager/src/domain/auth/sessionSweep.ts`).
+- Ending a session also closes the live event streams it opened. Signing out, a revoke, removing a
+  user and changing a password close them at once. A session that runs out has its streams closed
+  within a minute (`manager/src/domain/auth/streamRevalidation.ts`). An open stream does not count
+  as activity, so a page left open idles out like any other.
+- Changing your password signs out every other session of yours. The one you changed it from
+  stays.
 
-## What the operator sees
+### Lockout
 
-- Opening the manager while signed out shows one page: **Sign in**, with Username, Password, and a
-  Sign in button. A wrong pair says `Wrong username or password.` and nothing more specific. After
-  repeated failures it says `Too many attempts. Try again in 4 minutes.` The page is the same
-  light or dark theme as the app.
-- Signed in, the sidebar header shows the instance name and the build the manager runs, such as
-  `swarm-dev · v1.1.1 (7af4ec443)`, read from `GET /config` and `GET /version`, and the build
-  alone when `MANAGER_INSTANCE_NAME` is unset. The host deployments publish on is shown as Ingest on
-  each deployment's Publish card, not in the sidebar.
-- Signed in, the sidebar footer shows the username and a **Sign out** item. Sessions last twelve
-  hours of inactivity and fourteen days at most, then the sign-in page comes back with
-  `Your session ended. Sign in again.`
-- A sidebar page **Access** (`#/access`), there for every signed-in user. It exists because the
-  manager has several users. As built, everyone sees the **Users** table: each user's last sign-in
-  (or `Never`) and open sessions, `manages users` beside each admin and `you` beside themselves,
-  and a **Sign out everywhere** and a **Remove** button on every row. Everyone also gets the
-  **Change my password** form (current, new, new again).
-  - An admin reads `You can add and remove users here.` above the table and gets the **Add user**
-    form below it: a username, a starting password typed twice and handed over in person, and a
-    `Can manage users: add and remove them, sign anyone out` box. Their own row's Remove is
-    disabled.
-  - Anyone else reads `Only a user who can manage users adds or removes one.` and gets no Add
-    user form. The buttons are still on every row, disabled: Remove on every row, and Sign out
-    everywhere on every row but their own, each with a tooltip saying why. The API refuses the
-    same actions with 403 `admin_required` if they are sent anyway.
-  - Sign out everywhere is disabled for anyone on a row with no open sessions, and both actions
-    ask for confirmation first.
-- If the API answers 401 in the middle of a session (revoked, expired), the app returns to Sign
-  in with the message above and reloads what it needs after.
+Failed sign-ins are counted per username and per client address, in memory in the API process
+(`LoginLimiter` in `packages/web-auth`).
 
-## Design
+- Four failures are free (`LOGIN_FREE_ATTEMPTS`). The fifth locks the key for one minute
+  (`LOGIN_FIRST_LOCKOUT_MS`), and each further failure doubles the wait, up to one hour
+  (`LOGIN_MAX_LOCKOUT_MS`).
+- A locked attempt answers 429 with `Retry-After`. The sign-in page says how long to wait.
+- A key with no failure for two hours starts again from zero (`LOGIN_FORGET_MS`).
+- A right password clears the username's count. It takes only its own attempt off the address,
+  so one good sign-in does not reset an address that is guessing other accounts.
+- Every failure is logged with the username and the address.
+- A sign-in for a username that does not exist is checked against a throwaway hash, so it takes
+  as long as one for a real user.
+- The current password asked by a password change is counted the same way, on a key of its own,
+  so a stolen session cannot guess the password behind it without limit.
+- At most 10,000 keys are held (`MAX_TRACKED_KEYS`). Past that, the keys that failed longest ago
+  are dropped first.
 
-### Users and sessions
+The client address is the last hop of `X-Forwarded-For`, which the manager's web server sets. In
+front of the API, that web server also limits `/auth/login` to ten requests a minute per address
+with a burst of five, and answers 429 past it. This stops a flood before each attempt pays for a
+slow scrypt hash.
 
-Since the monorepo, the hashing, cookie, lockout and same-site rules below are the shared
-package `packages/web-auth`, which the web2 admin uses too. The manager wraps it in
-`api/middleware/requireSameSite.ts` and `api/sessionCookie.ts`.
+### The write header
 
-Migration `008_auth.sql`:
+Every request that changes something (anything but `GET` and `HEAD`) must carry the header
+`X-Requested-With: streaming-infra-manager` (`REQUESTED_WITH_VALUE`). The console's fetch wrapper
+adds it. A page on another site cannot add it without a CORS preflight, and the manager answers
+no preflight and sets no CORS headers.
 
-```sql
-CREATE TABLE users (
-  id            SERIAL PRIMARY KEY,
-  username      TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_login_at TIMESTAMPTZ,
-  CONSTRAINT users_username_format CHECK (username ~ '^[a-z0-9][a-z0-9._-]{1,31}$')
-);
+A write is refused with 403 `cross_site_request` when any of these holds:
 
-CREATE TABLE sessions (
-  token_hash    TEXT PRIMARY KEY,
-  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  expires_at    TIMESTAMPTZ NOT NULL,
-  ip            TEXT,
-  user_agent    TEXT
-);
-CREATE INDEX sessions_user_idx ON sessions (user_id);
+- `Sec-Fetch-Site` says `cross-site`.
+- `Origin` is present and names a host other than the `Host` the request was sent to.
+- The header above is missing or has another value.
+
+The gate runs before the request body is read. `SameSite=Lax` on the cookie is the first layer: a
+browser does not send it on a cross-site POST. Reads are never refused, because they change
+nothing and `EventSource` cannot set headers.
+
+### What stays open
+
+Four routes answer without a session: `GET /health`, `POST /auth/login`, `GET /auth/session` and
+`POST /auth/logout`. Every other route needs one, both Server-Sent Events streams, `/config`,
+`/version` and `/metrics` included.
+
+`GET /health` runs a database query and answers `{"status":"ok"}` and nothing else. Docker's
+healthcheck for the `api` service reads it every 30 seconds after a 60 second start period, and
+`manager:upgrade` waits on it during a deploy.
+
+The admin's funding API under `/api/admin-funding` has a credential of its own. See
+[Endpoints](#endpoints).
+
+## Using it in the console
+
+### Signing in
+
+Opened without a session, the manager shows one page, **Sign in**, with Username, Password and a
+**Sign in** button.
+
+- A wrong pair reads `Wrong username or password.`, never which half was wrong.
+- A locked key reads `Too many attempts. Try again in 4 minutes.`, with the wait the API returned.
+- With no users yet it reads `No users yet. Create the first one on the host.` and shows the
+  command from [The first user](#the-first-user).
+- When the API answers 401 during a session (revoked or expired), the console returns to Sign in
+  with `Your session ended. Sign in again.`
+
+Signed in, the sidebar footer shows your username and a **Sign out** item.
+
+### The Access page
+
+**Access** in the sidebar (`#/access`) is there for every signed-in user. Its first line says
+`A session lasts twelve hours of inactivity, and fourteen days at most.`
+
+- The **Users** card lists every user with their last sign-in (or `Never`) and their open
+  sessions. `manages users` marks each admin and `you` marks your own row. Each row has a **Sign
+  out everywhere** and a **Remove** button. Both ask for confirmation.
+- The **Change my password** card takes the current password and the new one twice.
+- An admin reads `You can add and remove users here.` and gets the **Add user** card: a username,
+  a starting password typed twice, and the box
+  `Can manage users: add and remove them, sign anyone out`. Hand the starting password over in
+  person. An admin's own Remove button is disabled.
+- Anyone else reads `Only a user who can manage users adds or removes one.` and gets no Add user
+  card. Remove is disabled on every row, and Sign out everywhere on every row but their own, each
+  with a tooltip saying why.
+- Sign out everywhere is disabled on a row with no open sessions.
+
+### The first user
+
+The first user is created on the host, in the api container:
+
+```bash
+docker compose exec -it api node dist/cli.js user:add <username>
 ```
 
-- **Password hashing**: Node's built-in `crypto.scrypt`, no new dependency. Parameters
-  `N = 2^15, r = 8, p = 3`, 32 byte random salt, 64 byte key, `maxmem` raised to 64 MiB. Stored
-  as `scrypt$N$r$p$<salt b64>$<key b64>` so the parameters can rise later and old hashes still
-  verify. Comparison with `timingSafeEqual`. A password is 12 to 128 characters, anything
-  printable, no composition rules, must not contain the username.
-- **Session token**: 32 random bytes, base64url, sent only in the cookie. The database stores
-  its SHA-256, so a dump of the table signs nobody in. Idle timeout twelve hours (sliding,
-  `last_seen_at` refreshed at most once a minute to avoid a write per request), absolute limit
-  fourteen days from `created_at`. Expired rows are deleted on each sign-in and by a daily sweep.
-- **Cookie**: `sim_session=<token>; HttpOnly; Secure; SameSite=Lax; Path=/`. `Secure` is set when
-  the browser reached the manager over HTTPS and only then, read from the request itself:
-  `X-Forwarded-Proto: https` from the edge, which nginx forwards, or a TLS connection to the
-  manager. It is left off over the plain HTTP of the SSH tunnel, because a browser drops a
-  `Secure` cookie that did not arrive over TLS and the sign-in would loop. Parsed by a ten line
-  function, no `cookie-parser`.
-- **Cross-site request forgery**: three layers, all cheap. `SameSite=Lax` stops the browser
-  sending the cookie on cross-site POSTs. Every non-GET request must carry
-  `X-Requested-With: streaming-infra-manager`, a header a cross-origin page cannot add without a
-  CORS preflight the API never grants (the manager sets no CORS headers, and this brief keeps it
-  that way). And when `Origin` or `Sec-Fetch-Site` is present and says cross-site, the request
-  is refused with 403.
-- **Brute force**: an in-memory limiter in the single API process, keyed by username and by
-  client IP (from `X-Forwarded-For`'s last hop, which nginx sets). Five failures start a lockout
-  of one minute that doubles per further failure up to one hour. Locked answers 429 with
-  `Retry-After`. Every failure is logged with username and IP. Successful sign-in resets the
-  username key.
-- **What stays open**: `GET /health` (it returns `{status:'ok'}` and nothing else) and
-  `POST /auth/login`. Docker's own healthcheck reads `/health`: the `api` service in
-  `manager/docker-compose.yml` asks it every 30 seconds, with a 60 second start period, and
-  `web`'s `depends_on` does not wait on it. The check runs a query, so healthy means the
-  database answers as well, and it is logged like any request. `manager:upgrade`
-  waits for the new api to answer it during a deploy, the integration suite asks it in its
-  preflight and its CI job in the root workflow `.github/workflows/infra-manager-docker.yml` waits
-  for it first, and the
-  quick start in `manager/README.md` curls it. Everything else, including both Server-Sent
-  Events streams, `/config`, `/metrics` and `/services`, requires a session. `EventSource` sends
-  cookies on same-origin requests, so the live updates keep working unchanged.
+It asks for the password twice with nothing echoed and writes only the hash. It runs the database
+migrations first, so it works before the API has started. When stdin is not a terminal it
+refuses, unless `--password-stdin` is given, which reads the password from a pipe:
 
-### Endpoints
+```bash
+<command that prints the password> | docker compose exec -T api node dist/cli.js user:add <username> --password-stdin
+```
 
-`manager/src/api/routes/auth.ts`, all JSON, all validated with yup:
+`--admin` makes the new user an admin. The first user ever added is an admin whether the flag is
+given or not. There is no environment variable and no seed file for a password, so a password never
+lands in a file or a process argument. Step 5 of the
+[deploy guide](../../deploy/README.md#5-create-the-first-user) has the host-side steps.
+
+## Endpoints
+
+`manager/src/api/routes/auth.ts`, all JSON, all bodies validated with yup:
 
 | Method | Path                              | Body                             | Answer                                                                                                                 |
 | ------ | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/auth/login`                     | `{ username, password }`         | 204 and the cookie, 401 wrong pair, 429 locked, 409 `no_users` when none has been created                              |
+| POST   | `/auth/login`                     | `{ username, password }`         | 204 and the cookie, 401 `invalid_credentials`, 429 `locked_out`, 409 `no_users` when none has been created             |
 | POST   | `/auth/logout`                    |                                  | 204, cookie cleared, session row deleted. Also 204 without a valid session, so a stale cookie is cleared               |
 | GET    | `/auth/session`                   |                                  | `{ id, username, isAdmin, expiresAt }`, or 401 with `not_signed_in` or `no_users`                                      |
-| POST   | `/auth/password`                  | `{ current, next }`              | 204, all other sessions of the user revoked                                                                            |
+| POST   | `/auth/password`                  | `{ current, next }`              | 204, every other session of yours revoked. 401 wrong current password, 429 locked                                      |
 | GET    | `/auth/users`                     |                                  | `[{ id, username, isAdmin, createdAt, lastLoginAt, sessions }]`                                                        |
 | POST   | `/auth/users`                     | `{ username, password, admin? }` | 201 and the new user's row, 403 `admin_required` unless you are an admin, 409 taken                                    |
 | DELETE | `/auth/users/:id`                 |                                  | 204, 403 `admin_required` unless you are an admin, 404 no such user, 409 for yourself, the last user or the last admin |
 | POST   | `/auth/users/:id/revoke-sessions` |                                  | 204 for your own id, and for anyone's if you are an admin, otherwise 403 `admin_required`. 404 no such user            |
 
-Middleware `requireSession` in `manager/src/api/middleware/requireSession.ts` runs before every
-router in `server.ts` except the two open routes and the funding API below, attaches `req.user`,
-refreshes `last_seen_at`. `requireSameSite` runs on every non-GET outside the funding API. The
-request logger logs the username, never the token.
+A username or password that breaks the rules answers 400 `validation_error` with the reason. The
+middleware `requireSession` (`manager/src/api/middleware/requireSession.ts`) runs before every
+router except `/health`, `/auth` and the funding API. It attaches the signed-in user to the
+request and clears a cookie that no longer opens a session. The request log names the user, never
+the token. The full API is in the [API reference](../../manager/README.md).
 
-**A second credential, for the web2 admin's funding API** (2026-10-05, `feat/funds`). The routes
-under `/api/admin-funding` take `Authorization: Bearer <FUNDING_API_TOKEN>` and refuse a session
-cookie, and while that setting is unset they answer 404 `funding_off`. They are mounted ahead of
-`requireSameSite` and `requireSession`, since the admin calls them server to server.
-`refuseFundingBearer`, mounted right after them, makes every other route refuse a request that
-carries a bearer, `/health` and `/auth` included, so neither credential opens the other's routes.
-The rules and the routes are "Funding API" in [manager/README.md](../../manager/README.md#funding-api-the-web2-admins-on-a-bearer-token).
+**Who can manage users.** A user may be an admin, `isAdmin` in the answers above. Through the API
+only an admin adds a user, removes one or signs someone else out, and anyone else gets 403
+`admin_required` (`requireAdmin`, in the same file as `requireSession`, and a check inside the
+revoke route). Every signed-in user lists the users, changes their own password and signs
+themselves out everywhere. A user is made an admin when added, and no route or command changes
+that later: `user:add --admin` on the host, or `admin: true` on `POST /auth/users` from an admin,
+which is the Add user card's "Can manage users" box. The first user ever added is an admin
+whatever was asked, so the account created with the command can add the next. On a database
+whose users predate the admin role, the oldest user is the admin. The last admin cannot be
+removed.
 
-**Who can manage users.** Since `7346d880` on 2026-09-07 a user may be an admin, `isAdmin` in the
-answers above. Through the API only an admin adds a user, removes one or signs someone else
-out, and anyone else gets 403 `admin_required` there (`requireAdmin`, in the same file as
-`requireSession`, and a check inside the revoke route). Every signed-in user still lists
-the users, changes their own password and signs themselves out everywhere. A user is made an
-admin when added, and no route or command changes that later: `user:add --admin` on the host, or
-`admin: true` on `POST /auth/users` from an admin, which is the Add user form's "Can manage
-users" box. The first user ever added is an admin whatever was asked, so the account created
-with the CLI can add the next, and migration `011_admin_users.sql` made the oldest user an admin
-on a manager that already had users. The last admin cannot be removed.
+The role gates those three actions and nothing else. `requireAdmin` is used in
+`manager/src/api/routes/auth.ts` alone, so every other route in `manager/src/api/server.ts` is
+open to any signed-in user. That includes deploying and stopping a deployment, buying a stamp, a
+chequebook deposit or withdrawal, engine settings and config files, restarting containers and
+reading an SRT passphrase.
 
-The role gates those three actions and nothing else. Every other route is open to any signed-in
-user: `requireAdmin` is used in `manager/src/api/routes/auth.ts` alone, so every other mount in
-`manager/src/api/server.ts` is open to them, apart from the web2 admin's funding API, which takes
-a bearer token of its own. That includes
-deploying and stopping it, buying a stamp, a chequebook deposit or withdrawal, its engine
-settings and config file, restarting its containers and reading its SRT passphrase.
+**The funding API's credential.** The routes under `/api/admin-funding`, which the admin calls
+server to server, take `Authorization: Bearer <FUNDING_API_TOKEN>` and refuse a session cookie.
+While `FUNDING_API_TOKEN` is unset they answer 404 `funding_off`. They are mounted ahead of the
+write header gate and `requireSession`. Right after them, `refuseFundingBearer` makes every other
+route answer 401 to a request that carries a bearer token, `/health` and `/auth` included, so
+neither credential opens the other's routes. The rules and routes are
+[Funding API](../../manager/README.md#funding-api) in the API
+reference.
 
-### First user, with no secret in any file
+## What a signed-in user can read
 
-There is no sign-up. The first user is created on the host, once, with a small CLI in the api
-image:
+- A deployment's private key is never returned. The deployment's JSON carries `has_private_key`
+  instead.
+- A deployment's SRT passphrase is not in its JSON either, only `has_srt_passphrase`. It is
+  answered one deployment at a time by `GET /profiles/:name/srt-passphrase`, with
+  `Cache-Control: no-store`. The console asks for it when the publish URL is opened or copied.
+  Each read is logged with who read which deployment's.
+- Reading a deployment's effective engine config, which holds the passphrase in clear, is logged
+  the same way.
+- When a deployment's passphrase changes, the publish URL drops the old one at once. The Publish
+  card's copy control waits until the new one has arrived, so it never copies a stale or partial
+  URL.
+- `GET /config` answers the host-wide SRT passphrase to any signed-in user.
 
-```bash
-docker compose exec -it api node dist/cli.js user:add operator
+## Opening the manager to the internet
+
+The manager has three layers between a browser on the internet and the things it controls. The
+login above is one. The others are HTTPS in front, and closing the stack's own ports, which ask
+for no password. The order matters: a login on the manager protects nothing while a Bee node's API
+sits open beside it, because that API can spend the node's postage and, with a whitelist, send its
+money away. The deploy guide's
+[Opening the manager to the internet](../../deploy/README.md#opening-the-manager-to-the-internet)
+has the steps and commands in the order to run them.
+
+### How the manager is reached
+
+- The `web` container (nginx, serving the console and proxying the API) publishes one port,
+  `WEB_PORT`, on `MANAGER_WEB_BIND`, which is `127.0.0.1` unless set.
+- The `api` container publishes nothing. `web` reaches it on the compose network.
+- Postgres publishes nothing.
+- Without an edge, you reach the console through an SSH tunnel to that loopback port. The tunnel
+  stays the way back in when the edge is down or its certificate is stuck.
+
+### The HTTPS edge
+
+The manager has no HTTPS of its own. The host's edge in `infra/edge/` does it: one Caddy per host,
+serving every console the host runs under its own name, with a certificate from Let's Encrypt. It
+sends `Strict-Transport-Security` with `includeSubDomains` for a year, so give the manager a name
+of its own rather than an apex domain that serves other things.
+
+The edge sends `X-Forwarded-Proto: https`, and nginx passes it on, which is how the manager knows
+to mark the cookie `Secure`. nginx trusts `X-Forwarded-For` from the private address ranges, where
+the edge talks to it from, so the lockout sees the browser's address and not the edge's.
+
+nginx adds these headers to every response:
+
+```
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+X-Content-Type-Options: nosniff
+Referrer-Policy: no-referrer
+X-Frame-Options: DENY
+Permissions-Policy: camera=(), microphone=(), geolocation=()
 ```
 
-It prompts for the password twice with echo off and writes only the hash to Postgres. When
-stdin is not a terminal it refuses, unless `--password-stdin` is given, which reads the password
-from a pipe, so a password manager's command line can supply it without the value ever landing in
-a file or an argv:
+`style-src 'unsafe-inline'` is there because MUI writes its styles into the page at runtime.
+Every script is bundled, so `script-src 'self'` holds.
 
-```bash
-<command that prints the password> | docker compose exec -T api node dist/cli.js user:add operator --password-stdin
-```
+### The API binds
 
-No `ADMIN_PASSWORD` environment variable and no seed file exist, deliberately. The manager
-refuses to start any route but `/health` and `/auth/login` when the users table is empty, and the
-sign-in page then says `No users yet. Create the first one on the host.` with the command.
+Each stack deployment publishes the API of each Bee node it runs and the HTTP ports of its
+engines. None of them asks for a password. Docker publishes a container port with rules of its
+own, which a host firewall such as ufw never sees. So the stack's deploy binds each of them to
+the host's Docker bridge address wherever its `*_BIND` setting is empty. Containers on the host,
+the manager's `api` among them, reach that address as `host.docker.internal`, and nothing outside
+the host reaches it.
 
-### Frontend
+Do not set these to `127.0.0.1` for the Bee ports or OME's HLS port on a Linux host. The manager
+reaches them through `host.docker.internal`, so loopback cuts off stamp management and engine
+rollout checks for every deployment on the host without an error that names the cause. The eight
+keys, where they live, and `BEE_LOCAL_HOST` for a bridge the manager reaches by another address
+are in the deploy guide's step 2.
 
-- `app/useSession.ts`: on boot `GET /auth/session`, state `loading | signedOut | signedIn`.
-  `http.ts` gains one fetch wrapper used everywhere that adds the `X-Requested-With` header on
-  writes and turns any 401 into a `signedOut` transition with the "session ended" message.
-  `EventSource` cannot set headers, it does not need to, it only reads.
-- `auth/SignInPage.tsx` rendered by `App.tsx` instead of the shell while signed out.
-- `Sidebar.tsx` footer: username and Sign out. `access/AccessPage.tsx` with the user table and
-  the two forms. Route `#/access` in `router.ts`, nav item in `Sidebar.tsx`.
-- Mock manager: `/auth/*` routes with one user `dev` and password `dev-password-1234`, an
-  in-memory session set, the same lockout behaviour, so the whole flow is playable offline.
+### The host firewall
 
-### Headers and HTTPS
+`deploy/host/firewall-rules.sh` prints a draft nftables table, `inet streaming_infra_manager`, and
+applies nothing. It needs the external interface (`--iface`) and an inventory export downloaded
+from the signed-in manager at `/targets/firewall?alias=<alias>` (`--inventory`), and refuses to
+print without either. The draft replaces only its own table.
 
-`frontend/nginx.conf` adds, on every response:
+- The input chain defaults to deny. It allows SSH, 80 and 443 over TCP, 443 over UDP for the
+  edge's HTTP/3, and the public stack ports.
+- The forward chain covers the ports Docker publishes for containers, which an input chain never
+  sees. It matches the original destination port, before Docker rewrote it.
+- In the stack's port range, 10000 to 19999 (`PROTECTED_PORT_MIN`, `PROTECTED_PORT_MAX`), four
+  bands are public, one per role, each moving by ten per slot (`PORT_SLOT_STRIDE`) for up to 100
+  slots (`MANAGER_SLOT_CAP`): SRT ingest on UDP (`10001`), the viewer page (`10004`) and the two
+  Bee peer ports (`10006`, `10008`), from `PUBLIC_PORT_ROLES` in `common/src/portPolicy.js`.
+  Everything else in the range is dropped: the Bee APIs, the uploader API, the engines' HTTP ports,
+  RTMP and the SRS API.
+- `--bee-api-source <address>/32` opens a slot's Bee API port to named addresses only, for a Bee
+  host whose nodes serve uploaders on other hosts.
 
-```
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" always;
-add_header X-Content-Type-Options nosniff always;
-add_header Referrer-Policy no-referrer always;
-add_header X-Frame-Options DENY always;
-add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
-```
+So the three controls work together: the API binds keep the unprotected ports on the bridge, the
+forward chain drops everything else Docker publishes, and the input chain covers the host itself.
+Step 3 of the deploy guide has the command and what to check in the draft.
 
-`style-src 'unsafe-inline'` is needed by MUI's emotion styles. Vite bundles every script, so
-`script-src 'self'` holds. Links to deployments' own pages (viewer, SRS) open in new tabs and are
-unaffected.
+## Settings
 
-HTTPS comes from the host's edge in `infra/edge/` at the repository root. The edge sends
-`X-Forwarded-Proto`, and nginx passes it on rather than overwriting it with its own plain `http`,
-which is the whole of how the manager knows whether to mark the cookie `Secure`. Through the
-tunnel there is no edge and no such header, so it is not marked, and both answers are the right
-one for the transport in use. Two more things in `frontend/nginx.conf` follow from having an edge
-at all. `set_real_ip_from` for the private ranges, so the last `X-Forwarded-For` hop is the browser
-rather than the edge's address, which is the address the login lockout would otherwise blame for
-everybody. And `limit_req` on `/auth/login` only, ten a minute per address with a burst of five,
-because the manager's own lockout counts an attempt after it has paid for a scrypt, so a flood is
-expensive before it is refused.
+Keys in `manager/.env`:
 
-### What the API still hands to a signed-in user
+| Key                 | Default                | What it does                                                                                                                             |
+| ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEB_PORT`          | `8080`                 | The host port the console is published on                                                                                                |
+| `MANAGER_WEB_BIND`  | `127.0.0.1`            | The host address `WEB_PORT` is published on. Docker publishes past a host firewall, so widen it only behind one                          |
+| `FUNDING_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                              |
+| `BEE_LOCAL_HOST`    | `host.docker.internal` | The address the manager reaches a local Bee node's API and OME's HLS port on. Set it when the binds name something other than the bridge |
 
-Profile JSON carries each stream's private key and SRT passphrase, and `GET /config` the host
-passphrase. Today that is by design: the operator needs the publish URL. Once several people
-share the tool it is worth a follow-up that returns the key only on the deployment page and
-never in the list. Noted, not in this PR.
+The stack's `*_BIND` and `*_API_LISTEN` keys are in the deploy guide's step 2. The manager's other
+settings are in the [API reference](../../manager/README.md).
 
-**Changed on 2026-09-16.** The profile JSON carries neither value any more. Two flags,
-`has_private_key` and `has_srt_passphrase`, say whether a deployment holds them. The private key is
-never returned at all. The SRT passphrase is answered one deployment at a time by
-`GET /profiles/:name/srt-passphrase`, which the publish URL fetches when it is opened or copied, and
-the manager logs who read which deployment's. Reading a deployment's effective engine config, which
-carries the passphrase in clear, logs its reader the same way. `GET /config` still answers the
-host-wide passphrase to a signed-in user. So the follow-up above landed, and went further than the
-list-versus-page split it proposed.
+## Limits
 
-**Changed on 2026-09-19.** A revealed passphrase is scoped to the profile instance, intent
-revision and update time that requested it. Saving a new passphrase under the same deployment name
-immediately removes the old one from the rendered publish URL while the new reveal is pending. A
-late answer for the earlier revision cannot replace the new URL or become the value copied after
-the rotation. While that revision's reveal is pending, the deployment page explains the wait and
-disables its Publish copy control so it cannot copy an incomplete URL. Deployments with no own
-passphrase and OvenMediaEngine publish URLs remain available immediately.
-
-## PR split
-
-1. **Login gate**: migration, hashing, sessions, limiter, middleware, routes, CLI, sign-in page,
-   Access page, mock, headers in nginx, docs. Nothing changes on the host until deployed.
-2. **Edge**: HTTPS in front of the manager, which is now the host's edge in `infra/edge/`, the real
-   client address and the sign-in rate limit in nginx, the host firewall generator script (below)
-   and the runbook in `deploy/README.md`.
-
-## Host steps, for the host's operator to run
-
-**Superseded. Follow "Opening the manager to the internet" in
-[../../deploy/README.md](../../deploy/README.md) instead.** That page has the current five steps
-with the commands to run. What follows is the reasoning as it was set out on 2026-09-05, kept
-because the order matters and the argument for it has not changed. Two of the steps have since
-moved and are marked where they do.
-
-1. Deploy the manager with PR 1. Create the first user with the CLI above. Sign in through the
-   tunnel and confirm the gate before anything is opened.
-2. Check where the node and engine APIs answer. They live on the server, in the bundled version's
-   own config root, and are edited with the settings page or the editing script.
-   `deploy/README.md` step 2 names all eight. Left empty, each answers on the host's Docker bridge
-   address, which the stack's deploy reads at deploy time, because Docker publishes a container
-   port by rewriting the destination and forwarding the packet, which never reaches the input hook
-   a host firewall filters. Never `127.0.0.1` for the Bee ports or OME's HLS port on a Linux host,
-   because the manager reaches those through `host.docker.internal`, which is the bridge address,
-   and loopback would cut off stamp management for every deployment on the host without saying
-   so. Each node and engine picks a new binding up on its next deploy.
-
-3. Firewall, default deny inbound. Allowed: 22 (or `--ssh-port`), 80 and 443 TCP, and 443 UDP for
-   the edge's HTTP/3. In the 10000 to 19999 band the stack uses, allowed only: TCP on the Bee P2P
-   ports (last digit 6 and 8), TCP on the viewer ports (last digit 4), UDP on the SRT ingest ports
-   (last digit 1), plus the second band `main-v3` uses for its per rung Bee nodes (11002, 11004,
-   11006). Everything else in the band, above all the Bee APIs (5 and 7), the uploader API (0),
-   the media server HTTP (3) and RTMP (2) and the SRS API (9), falls to the drop policy. PR 2
-   ships `deploy/host/firewall-rules.sh`, which shifts each band by ten per slot up to
-   `--max-slot` so nobody types three hundred port numbers by hand. It prints, it does not apply.
-   `--max-slot` stops at 100 and refuses more: first-band slot 101 has its RTMP port on 11012,
-   which is the second band's slot 1 P2P port, so above 100 the two bands cannot both be opened
-   without opening RTMP with them.
-
-   **What the generator emits has changed.** This step used to describe a second section of
-   `DOCKER-USER` rules. It now prints one nftables table, `inet streaming_infra_manager`, with its
-   own input and forward chains, and it replaces only that table. It also requires an inventory
-   export that this step never mentioned: download `/targets/firewall?alias=<alias>` from the
-   signed-in manager first and pass it as `--inventory`, or the script refuses to print. See
-   `deploy/README.md` step 3 for the current command.
-
-   The reasoning is unchanged, and it is why there are two chains. The input chain governs the
-   host's own listeners and the whole stack when that runs with `COMPOSE_NETWORK=host`. The
-   forward chain governs the ports Docker publishes for containers, which no input chain ever
-   sees, and it matches the connection's original destination port because Docker has rewritten
-   it by then. That chain needs the name of the external interface, passed as `--iface`, and the
-   script refuses to print without it. So the three controls are: the API binds of step 2 keep
-   those ports on the bridge, the forward chain closes everything else that is published, and the
-   input chain covers the host itself.
-
-   **The per-rung band closed on 2026-09-16.** The step above lists a second band for the three
-   per-rung Bee nodes. The generator opens it no longer, because this manager starts no rung
-   service, so those 297 ports never carried a listener and now fall to the drop policy like every
-   other private port. Four bands stay open, one per role: SRT ingest on UDP, the viewer page, and
-   the two Bee peer ports, each for 100 slots. With the rung band gone, the slot-101 argument above
-   is gone with it: `--max-slot` refuses anything above 100 because that is the manager's own slot
-   cap, not because a second band would meet RTMP there. `deploy/README.md` step 3 carries the
-   current wording, and a port the deployment page calls public has to be one of those four bands,
-   which a test holds.
-
-   **RTMP.** The step above lists RTMP (2) among the ports that fall to the drop policy, and the
-   draft still opens no RTMP band. That is the draft's choice: the consoles offer RTMP on every SRS
-   stage, because which ports are reachable is the firewall's job, and an operator who wants
-   broadcasters on RTMP opens the port in the host firewall. What an open RTMP port does to a
-   stream key is in the [architecture overview's ports section](../../../../docs/architecture/overview.md#a-stack-deployment).
-
-4. Point a DNS A record at the host and put the manager behind the host's edge in `infra/edge/`.
-   Open the domain and sign in.
-5. Keep the tunnel. `web` still publishes `127.0.0.1:8080`, which is the way back in when the edge
-   is down, the certificate is stuck or the domain is wrong.
-
-## Tests
-
-- Unit (`node:test`, as the manager does today): hash and verify round trip, wrong password,
-  stored parameters honoured, token hash never equals the token, cookie parser edge cases, the
-  limiter's schedule (5 failures lock, doubling, cap, reset), the same-site check for each
-  header combination, password policy, `requireSession` with an in-memory repository.
-- Route level: the app started on a random port with an in-memory `SessionRepository`, `fetch`
-  against it: login sets the cookie, a protected route without it is 401, with it 200, logout
-  clears, a POST without `X-Requested-With` is 403.
-- Browser pane against the mock: sign in, wrong password message, lockout message, sign out,
-  session ended message after the mock revokes, Access page flows, dark mode.
-
-## Done means
-
-- Every route except `/health`, `/auth/login`, `/auth/logout` and the funding API under
-  `/api/admin-funding` answers 401 without a session, including both SSE streams. A sign-out without
-  one answers 204 and clears the cookie. The funding API takes its own bearer and refuses a session
-  (2026-10-05).
-- Passwords are scrypt hashes with recorded parameters. No plaintext password or session token
-  appears in any file, log line, environment variable or the browser's JavaScript.
-- Brute force locks and is logged. Cross-site POSTs are refused.
-- The first user is created by the CLI with a hidden prompt or a pipe, never an env var.
-- Security headers present on every response, checked in the Browser pane.
-- Docs updated: `manager/README.md` loses "No auth", `deploy/README.md` gains the runbook.
-- No new npm dependency in PR 1, and none in PR 2 either.
+- The login does not yet offer two-factor sign-in or single sign-on.
+- There is no password reset. A user who forgets theirs is removed by an admin and added again.
+- A user's admin role cannot be changed after the user is added.
+- The admin role gates user management only. Every signed-in user can deploy, spend postage and
+  chequebook funds, and read SRT passphrases.
+- The lockout lives in the API process's memory, so a restart clears it.
+- `GET /config` answers the host-wide SRT passphrase to any signed-in user.
+- The firewall generator prints a draft. Applying it is the host operator's step.
+- The firewall draft opens no RTMP port. A host that takes broadcasts over RTMP needs that port
+  opened by hand.

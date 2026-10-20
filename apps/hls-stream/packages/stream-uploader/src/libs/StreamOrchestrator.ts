@@ -98,8 +98,9 @@ const DRAIN_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Where a replacement session's playlist starts numbering again. A later broadcast on the same stream
- * does not start here: each rung continues above what its feed already holds, see the restarted
- * broadcast entry in `docs/known-issues.md`.
+ * does not start here: each rung continues above what its feed already holds. The lower rungs often
+ * end a broadcast one short segment after the higher ones, so a later broadcast's rungs can open one or
+ * two numbers apart.
  */
 const FIRST_BROADCAST_SEQUENCE = 0;
 
@@ -3574,7 +3575,7 @@ export class StreamOrchestrator {
       // way round is a live broadcast with no recovery at all.
       uploader.retire();
       // `msg` is logged above and deliberately not returned. It is whatever Bee, the filesystem or a
-      // timer produced, and this value is served verbatim by `GET /stream/status`. See S1.7.
+      // timer produced, and this value is served verbatim by `GET /stream/status`.
       const reason = error instanceof DrainTimeoutError ? STOP_FAILURE_DRAIN_TIMEOUT : STOP_FAILURE_FINALIZE_FAILED;
       return { streamId, state: STREAM_LIFECYCLE_FAILED, reason, settledAt: Date.now() };
     } finally {

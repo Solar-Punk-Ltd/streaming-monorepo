@@ -15,8 +15,8 @@
  *
  * ## Why this exists
  *
- * Phase 1.2 left two questions unreached, and the roadmap blamed the harness for both: seeking **past
- * a break in the timeline**, and seeking into a region **whose chunks have left the local gateway**.
+ * Two questions look like harness gaps: seeking **past a break in the timeline**, and seeking into a
+ * region **whose chunks have left the local gateway**.
  * Neither is a harness gap. `browser:vod` already seeks to 0.5, 0.9 and then back to 0.2 of the
  * duration, so it crosses anything sitting in the middle, forwards and backwards.
  *

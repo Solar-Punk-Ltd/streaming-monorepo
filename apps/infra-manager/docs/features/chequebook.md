@@ -1,351 +1,327 @@
-# Chequebook funding and transfer recovery
+# Chequebook funding
 
-A Bee node's wallet and chequebook are different balances. A deposit moves BZZ
-from the node's wallet into its chequebook. A withdrawal moves it back. The
-manager presents these transfers as recorded operations whose outcome must be
-checked from transaction evidence. A balance change cannot confirm a transfer.
+A Bee node pays the peers that forward its uploads with cheques drawn on its
+**chequebook**, a contract on the chain that holds BZZ. The chequebook is a
+different balance from the node's **wallet**, which holds xDAI for gas and BZZ
+for buying postage and for filling the chequebook. This is a feature page of
+the manager (`apps/infra-manager`, the web console and API that deploys the
+streaming stack onto hosts). It covers how the manager shows a node's balances
+and how it moves BZZ between the wallet and the chequebook: a **deposit** fills
+the chequebook from the wallet, a **withdrawal** moves BZZ back to the wallet.
 
-Status, 2026-09-16. Everything on this page is on `main`. It was
-written at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set,
-which landed, and `main` has moved a long way past it since. It carries the
-journal, receipt recovery, the durable browser workflow, history, the account
-and instance guards, the owned transport factory and the automatic receipt
-polling. New submission preparation captures the SQL target proof from the port and firewall work and uses one
-qualified Docker and Bee connection. Local Unix and supervised SSH adapters are
-implemented, and acquisition uses a transport only with a matching qualified
-record, from the seed catalogue or from the manager's own check of the image.
-The live host was first deployed on 2026-09-11, and what that pass and the
-later ones found is in
-the remediation's handover record, which the repository's history keeps. A
-postage batch was bought with real money on 2026-09-13. No chequebook transfer
-has been made with real money. Corrected twice on 2026-09-17: the paragraph on
-new uploader starts, first against the code at `0c0354c` for the ruling that a node that does not answer no longer refuses a start, then
-in `50363c5` for the further ruling that the chequebook check never refuses a
-start, which `667aee5` built.
+## What it does
 
-Updated 2026-09-26 at `9e4e8c8f` (the chequebook funding change), for the ruling of
-2026-09-25 that funding must work on any host a clone deploys to. A transfer no
-longer needs `CHEQUEBOOK_RPC_ENDPOINTS` or `CHEQUEBOOK_DOCKER_TRANSPORTS`: it
-reads the chain through the node's own endpoint, reaches Docker the way the
-manager already does for that host, and checks a Bee image nothing has checked
-before the first transfer through it. Every refusal now names its cause.
+- **Balances.** The manager reads the node's wallet, its chequebook address,
+  the chequebook's total and available balance, and the settlement totals.
+  A reading the node did not give stays unknown. It never shows as zero.
+- **Units.** Amounts on the wire are **PLUR**, BZZ's integer unit. 1 BZZ is
+  10^16 PLUR (`PLUR_PER_BZZ` in `common/src/chequebook.ts`).
+- **The floor.** `CHEQUEBOOK_FLOOR_BZZ`, default `0.5`
+  (`DEFAULT_CHEQUEBOOK_FLOOR_BZZ`), is the balance a node should hold before its
+  uploader is worth starting. A chequebook under the floor is a warning. It
+  never refuses an uploader start: a node that does not answer, a balance that
+  cannot be read and a balance under the floor are each a line in the
+  manager's log, and the start goes ahead.
+- **Transfers are recorded operations.** Every deposit or withdrawal is saved
+  in the manager's journal, the `chequebook_operations` table, before anything
+  is sent. Its outcome is decided by evidence from the chain, a transaction
+  receipt at finality, never by a balance change. An unrelated deposit,
+  withdrawal or cheque settlement can move a balance too.
+- **One transfer at a time per node.** The journal holds at most one
+  unresolved operation per chain and node. A second transfer for that node is
+  refused as busy until the first one is resolved.
+- **The manager never resends a transfer by itself.** A lost answer, a
+  restart or a failed save leaves the operation unresolved, and recovery is the
+  operator's action.
 
-Updated 2026-10-15, for the owner's rule that the manager uses Bee's API. A
-transfer reaches the node through its Bee API, as stamp operations do, and no
-longer through a Docker connection, so a host written as `user@host` needs no
-`Host` block, and `CHEQUEBOOK_DOCKER_TRANSPORTS` and `DOCKER_HOST` are no longer
-read for it. The chain is read through the manager's own settings. The sections
-"Where a transfer reaches the node and the chain" and "Evidence and remaining
-acceptance" below describe that code, and the operator's view is "Funding a
-chequebook on a new host" in `manager/README.md`.
+The manager offers only these two moves. It does not send BZZ from a node's
+wallet to any outside address.
 
-## Balances and new uploader starts
+## In the console
 
-The storage card shows wallet balances, the chequebook address, total and
-available chequebook balances, and settlement totals when the node answers.
-Unavailable readings remain unknown and must not appear as zero or a fresh
-successful reading. The manager's configured floor is shown consistently in
-the UI. On the paths that start an uploader a balance under it is a warning,
-never a refusal, on the owner's ruling of 2026-09-17. The default floor is
-0.5 BZZ. The protocol amount uses PLUR, with 10^16 PLUR per BZZ.
+1. Open a deployment that runs its own Bee node. The **Storage and funding**
+   card shows the wallet, the chequebook address with a copy button, the
+   balances and the floor.
+2. Press **Fill chequebook** or **Withdraw**. The dialog takes an amount in
+   BZZ, shows **Review transfer**, then **Confirm transfer**.
+3. On confirm the browser saves the request (see below), then sends it. The
+   dialog stays open and shows the transfer's state and its evidence. It does
+   not close by itself and does not read completion from a balance.
+4. While the manager checks the chain for the receipt, the dialog and the
+   transfer's detail page re-read the saved record every 10 seconds
+   (`RECEIPT_READ_INTERVAL_MS`) and say so. A transfer that settles shows as
+   settled without a click.
+5. **Transfers** in the navigation (`#/transfers`) lists every transfer the
+   manager recorded, newest first, and the requests saved in this browser.
+   A transfer's detail page, **Saved transfer**, shows its saved identity, its
+   hashes, every answer the node gave, and the last check. It carries the
+   recovery actions described under "Recovery".
 
-The deployment page scopes its node readings to the profile's instance UUID.
-If a deployment is deleted and recreated under the same name, the old wallet
-address and its copy action disappear as soon as the replacement profile
-arrives. They stay absent while the replacement node is unreadable, then only
-the replacement address is shown.
+Reopening the dialog, also through the opposite button, restores the saved
+request with its amount, direction and request id. **Refresh saved status**
+reads the journal again. **New transfer** starts a different request after an
+explicit second confirmation.
 
-Since 2026-09-17, amending the rule of 2026-09-07, a node that
-does not answer no longer refuses a new uploader start. The chequebook check
-never refuses at all, on the owner's further ruling the same day: a node that
-says nothing, a balance that cannot be read and a balance under the floor are
-each a warning in the manager's log, and the start proceeds. The one refusal
-left is the batch check, and only for a batch the node itself reports as
-unknown, expired or not usable yet. Neither policy automatically stops an
-existing stream. Engine-only recovery and node bootstrap remain separate from
-starting an uploader.
+## The saved request in the browser
 
-A read-only balance or readiness check does not submit money. Filling the
-chequebook requires an explicit confirmed transfer intent. The manager does
-not offer arbitrary transfers from a node wallet to an outside address as
-part of the transaction work.
+Each transfer has a **request id**, a UUID the browser creates. Before the
+first POST the browser saves the confirmed request in IndexedDB, in one
+transaction: the request id, the signed-in account id, the deployment's name
+and its instance id (`profileInstanceId`, the UUID of one deployment
+lifetime), the direction and the exact PLUR amount. It never saves a password,
+a key, a session token or an endpoint. If the save fails, nothing is sent.
 
-## Confirm once and retain the request
+- **The same id never sends twice.** The manager answers a repeated request id
+  with the operation it already recorded, and prepares nothing new. The same id
+  with a different body is a conflict.
+- **A lost answer keeps the id.** The browser asks
+  `GET /chequebook/operations/by-request/:requestId` for the saved id. A 404 or
+  a failed read does not prove the earlier POST never arrived, so the id is
+  kept. **Retry this saved request** sends the same id and body again, after an
+  explicit step. There is no automatic resend.
+- **The saved request survives** navigation, reload and a final result. A
+  second tab restores the same saved request and cannot replace it silently.
+- **Scoped to one account and one deployment lifetime.** A deployment deleted
+  and recreated under the same name gets a new instance id, so an old saved
+  request never targets the new one.
+- **The account is checked on every write.** Each submission and recovery
+  write carries `expectedAccountId`, the account the page expects. The manager
+  compares it with the signed-in user and refuses a mismatch with
+  `409 account_changed`. The actor recorded is the signed-in user,
+  `user:<id>`, derived by the manager.
 
-Before the first money POST, the browser must durably save the confirmed
-intent and its request UUID in one IndexedDB transaction. The intent includes
-the original signed-in account, deployment instance, direction and exact
-amount. If persistence fails, submission is refused. Only the invocation whose
-transaction commits the new intent may make its initial POST.
+## How a transfer reaches the node and the chain
 
-Keep the intent after navigation, reload and terminal results. Another tab
-restores the saved intent. It cannot silently replace it. New transfer is an
-explicit action followed by a confirmation that checks the current saved
-pointer again. Browser notifications refresh views but do not provide the lock.
+No address is taken from a request, an operation record or a Bee answer. The
+node's address comes from the deployment, the chain endpoint from the
+manager's own settings. A transfer opens no Docker connection and no ssh
+session, so a remote host needs nothing beyond what stamp operations already
+need.
 
-After a lost response, query the original request id. An error or 404 does not
-prove that an earlier POST can never reach the manager. Preserve the UUID.
-Any explicit resend uses the same UUID and immutable payload under the same
-account and deployment instance. There is no automatic resend. Deleting and
-recreating a deployment under the same name must not retarget an old intent.
+**The node.** `ConfiguredBeeTargetResolver` works out the node's Bee API from
+the deployment's row: the address stamp operations use (`beeApiUrlFor`), over
+plain `http`, on the port its `bee-uploader` container recorded
+(`BEE_UPLOADER_API_PORT`). That port must be the one the deployment's port
+reservation owns, read by `PostgresChequebookTargetOwnership.capture`, or the
+transfer is refused before any connection opens. A port given since to another
+deployment is never dialled.
 
-Submission and recovery writes carry the account that the page expects. The
-server compares it with the current signed-in account before doing the work.
-An account change in another tab therefore cannot silently send a reviewed
-request as a different user. The authenticated user remains the recorded actor.
+`PinnedBeeSession` then opens one private HTTP connection to that address. It
+reads `/addresses`, `/wallet` and `/chequebook/address`, which must agree on the
+node, the chain and the chequebook, and sends the single
+`POST /chequebook/deposit` or `POST /chequebook/withdraw`. The connection
+follows no redirect and retries nothing.
 
-The server stores the operation before dispatch. Its immutable identity includes
-chain, node address, chequebook, token, amount, direction, actor, deployment
-instance, start-block evidence and observed nonce lower bound. The nonce
-observation is not a nonce reservation. Request ids remain unique even after
-an operation finishes. One unresolved operation per chain and node protects
-against concurrent aliases and managers.
+| Limit                         | Value  | Source                                     |
+| ----------------------------- | ------ | ------------------------------------------ |
+| One HTTP read from the node   | 10 s   | `readTimeoutMs` in `PinnedBeeSession`      |
+| The last check before sending | 30 s   | `preflightTimeoutMs` in `PinnedBeeSession` |
+| The one POST                  | 180 s  | `postTimeoutMs` in `PinnedBeeSession`      |
+| One answer from the node      | 64 KiB | `maxResponseBytes` in `PinnedBeeSession`   |
+| Preparing a transfer          | 30 s   | `ChequebookTransferPreparation`            |
 
-Dispatch is a durable one-shot claim. A lost Bee response or a failure to save
-the returned hash leaves an unresolved operation. The manager never sends it
-again automatically after a restart.
+**The last check before sending.** With the operation already recorded, the
+manager works out the target again, reads the node again, and checks the
+wallet holds some xDAI for gas and enough BZZ (in the wallet for a deposit, in
+the chequebook's available balance for a withdrawal). A failure here records
+the operation as `rejected` and sends nothing.
 
-## Reading the outcome
+**The chain.** `ChequebookChainRegistry` reads each chain through
+`CHEQUEBOOK_RPC_ENDPOINTS` for a chain it names, else the manager's default
+endpoint, `FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`. Each endpoint must be
+`http` or `https` with no user information and no fragment, and must answer
+`eth_chainId` with the node's chain before it is used. Preparation, receipt
+checks, finality and recovery all read the chain there. The endpoint the node
+itself was started with is not read. An endpoint is never logged, answered or
+put in an error.
 
-| Stored state | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `submitting` | The operation was durably admitted. This state alone does not prove whether Bee received the POST.                                                                                                                                                                                                                                                                                                                                                                  |
-| `submitted`  | A transaction hash was recorded. Mining and finality are not yet established. The manager checks the chain for its receipt about every 20 seconds while the operation's `receiptPollUntil` deadline is ahead. Three kinds of `submitted` row are never checked automatically: one with no deadline, which is every operation recorded before this behaviour existed, one whose deadline has passed, and one whose failure reason is `hash_conflict`.                |
-| `unknown`    | Submission or later evidence could not establish an outcome. Keep the original request and inspect recovery evidence.                                                                                                                                                                                                                                                                                                                                               |
-| `settled`    | A matching successful receipt and the required canonical, finalized history were verified.                                                                                                                                                                                                                                                                                                                                                                          |
-| `reverted`   | A matching reverted receipt and the required canonical, finalized history were verified.                                                                                                                                                                                                                                                                                                                                                                            |
-| `rejected`   | A positive preflight refusal prevented dispatch. `failureReason` says why: `preflight_no_gas` for a wallet with no xDAI, `preflight_insufficient_balance` for less BZZ than the amount in the wallet, or in the chequebook for a withdrawal, and `preflight_failed` for anything else the last check found, which is also every row written before 2026-09-26. The page shows one sentence for each. This state is never inferred from a timeout during submission. |
-| `asserted`   | An operator recorded the explicit duplicate-risk assertion. It is not verified settlement or proof that submission never happened.                                                                                                                                                                                                                                                                                                                                  |
+## States and confirmation
 
-Conflicting attribution or direct-response evidence takes precedence over an
-older terminal label. The detail view must show the saved identity, hashes,
-response evidence and last check. A bounded candidate list is not necessarily
-all recorded evidence. When its limit is reached, the response journal may
-contain additional conflicting hashes.
+| State        | Meaning                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `submitting` | The operation is recorded and the send was claimed. This state alone does not prove whether the node received the POST.                                        |
+| `submitted`  | A transaction hash is recorded. Mining and finality are not established yet.                                                                                   |
+| `unknown`    | No outcome could be established. Keep the request id and use recovery.                                                                                         |
+| `settled`    | A matching successful receipt, on the canonical chain at or below the finalized block, was verified.                                                           |
+| `reverted`   | A matching reverted receipt, on the canonical chain at or below the finalized block, was verified.                                                             |
+| `rejected`   | The last check before sending refused it, and nothing was sent. `failureReason` is `preflight_no_gas`, `preflight_insufficient_balance` or `preflight_failed`. |
+| `asserted`   | An operator recorded the duplicate-risk assertion (see "Recovery"). It is not a verified settlement and not proof that nothing was sent.                       |
 
-Balances remain useful context, but neither total nor available balance closes
-or settles a transfer. An unrelated deposit, withdrawal or cheque settlement
-can move those values.
+The page shows one sentence per `failureReason`
+(`chequebookPreflightSentence` in `common/src/chequebookRefusals.ts`).
 
-## Checking and resolving an unresolved operation
+**Receipt polling.** When an operation enters `submitted` the manager writes
+`receiptPollUntil`, a deadline 30 minutes ahead (`RECEIPT_POLL_BUDGET_MS`).
+Until then `ChequebookReceiptPoller` asks the chain for the receipt about every
+20 seconds (`RECEIPT_POLL_INTERVAL_MS`), at most 20 operations a pass. A pass
+waits for each check's own timeout, so during a chain outage the gap between
+checks grows. The deadline is set once and never renewed. A restart resumes
+only the operations whose deadline has not passed. When the deadline passes
+without a final receipt, the operation stays `submitted`, the page says the
+automatic checks ended, and **Check** stays available.
 
-An operation that enters `submitted` gets one polling budget of 30 minutes,
-written to `receiptPollUntil` at that moment. While the budget lasts the manager
-asks the chain for the receipt about every 20 seconds, and the page showing the
-operation re-reads the saved record every 10 seconds so the outcome appears
-without a click. A settled or reverted receipt ends the polling by changing the
-state.
+Never polled automatically: an operation in `submitting` or `unknown`, one with
+no deadline, and one whose `failureReason` is `hash_conflict`.
 
-The gap between checks grows when the chain endpoint stops answering. One pass
-takes at most 20 operations and each one waits out the receipt inspector's own
-timeout, so a pass during a complete outage can take about five minutes instead
-of a few seconds. Nothing is lost by that, the budget is still the same 30
-minutes and the page says the checks are about every 20 seconds and longer while
-the endpoint does not answer.
+**Finality.** `ChequebookReceiptInspector` accepts a receipt only when the
+transaction matches the saved identity, and the receipt's block is canonical
+and at or below the chain's `finalized` block. It walks parent hashes from the
+finalized block down to the receipt and to the block recorded when the
+transfer was prepared. One inspection has a 15 second deadline and walks at
+most 512 parents (`maxAncestryBlocks`). A longer walk saves its progress and
+resumes on the next check. A mined receipt before finality stays pending. A
+missing `finalized` tag, an incomplete walk, a reorg or contradictory answers
+leave the operation unresolved.
 
-The budget is never renewed. Nothing an operator does extends it, a restart
-resumes only the operations whose budget has not passed, and every operation
-recorded before this behaviour existed keeps an empty deadline and is never
-polled. When the budget ends without a final receipt the operation stays
-`submitted` with its last observation, the page says that automatic checks
-ended, and Check remains the operator's own action, exactly as before. The page
-holds itself to that same budget from its own side. It never re-reads a record
-for longer than 30 minutes after that record last changed, whatever deadline the
-record carries. An operation in `submitting` or `unknown` is never polled:
-recovery stays explicit. An operation whose failure reason is `hash_conflict` is
-never polled either, whatever deadline its row still carries, and the page shows
-no automatic checking sentence for it.
+**What identifies a transfer.** The saved identity holds the chain, the node
+address, the chequebook, the token, the amount, the direction, the actor, the
+deployment instance, the block recorded at preparation and a lower bound on
+the node's nonce. The nonce bound is an observation, not a reservation.
 
-Check uses the recorded identity and reads the chain through the endpoint that
-"Where a transfer reaches the node and the chain" below describes, one of the
-manager's own settings. It first examines the known hash when
-available. Receipt verification checks identity, canonical block ancestry and
-finality. Missing receipts remain pending. Unavailable RPC, incomplete history,
-contradictory evidence and reorgs remain unresolved. Checks are bounded and
-persist progress where supported.
+## Recovery
 
-If the hash was lost, recovery inspects matching pending transactions and then
-performs a bounded block scan. An already-started scan must finish its recorded
-range before a candidate can be treated as unique. An ambiguous or incomplete
-search cannot authorize an assertion. Operations that might still broadcast
-late remain relevant even after an operator assertion.
+The detail page offers three actions. Each sends `expectedAccountId`, and none
+of them sends or resends a transfer.
 
-A supplied transaction hash is a request to verify that transaction against
-the saved identity. It is not a force-settlement control. History remains
-available after a deployment is deleted, and so do checks while the chain can
-still be read for it, as the end of "Where a transfer reaches the node and the
-chain" below says.
+- **Check** (`Check transaction receipt`, or `Search transaction history` when
+  no hash is known). With a hash, it checks that transaction's receipt. Without
+  one, it reads the node's pending transactions and then scans the chain from
+  the recorded start block, 64 blocks a pass (`maxBlocks` in
+  `ChequebookRecoveryInspector`), 15 seconds at most. A scan that has started
+  must finish its range before a match counts as the only one.
+- **Resolve by hash** (`Check this transaction hash`). The operator supplies a
+  transaction hash. The manager verifies it against the saved identity on the
+  chain. It is a request to check, never a way to force a state.
+- **Assert.** Allowed only after a complete current search found no match. The
+  operator types the exact confirmation text the manager gives, which says that
+  sending the amount again may pay twice. The request carries the recorded
+  amount and the journal revision the operator reviewed (`expectedRevision`).
+  If the operation changed since, the answer is `409 operation_changed`. The
+  journal keeps the actor, time, amount and confirmation. A later check can
+  still find a transaction.
 
-The manager permits a separate operator assertion only after a complete current
-no-match result. The operator types the exact server-provided acknowledgement
-that retrying the recorded amount may pay twice. The journal retains the actor,
-time, amount and confirmation. A later result may still reveal a transaction
-or conflicting evidence. The assertion does not submit a replacement transfer.
+History and recovery keep working after the deployment is deleted, through the
+manager's endpoint for the transfer's chain. Reading the node's pending
+transactions needs the original deployment instance and the same node.
+
+When answers conflict, the conflict wins over any earlier final label. The
+detail page shows every hash and answer it holds. The candidate list in an
+answer is bounded. When `additionalEvidenceInResponseJournal` is true, the
+journal holds more hashes than the list shows.
 
 ## API contract
 
-All routes require the existing session and write-request protections. The
-server derives the actor from the authenticated user, not request JSON. Amounts
-are positive integer PLUR strings. New submissions require both `requestId`
-and `profileInstanceId` UUIDs plus the positive integer `expectedAccountId`.
-Existing exact-request replay is checked before looking up the current
-deployment, so deletion does not break recovery. Recovery writes also require
-`expectedAccountId`. An assertion additionally requires the reviewed journal
-revision as a decimal string. A later journal change invalidates that assertion.
+All routes sit behind the session gate, and writes behind the same-site
+header check. Bodies are strict: an unknown field is a 400. The actor always
+comes from the session. A body cannot choose an actor, a chain, a contract, an
+RPC endpoint or a Bee address. `amount` and `amountPlur` are positive integer
+PLUR strings of at most 30 digits. The full reference is in
+[manager/README.md](../../manager/README.md#chequebook).
 
-| Method | Path                                                | Purpose                                                                                                                                                                                 |
-| ------ | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/profiles/:name/chequebook`                        | Read node balances and chequebook summary.                                                                                                                                              |
-| POST   | `/profiles/:name/chequebook/deposit` or `/withdraw` | Submit `{ requestId, profileInstanceId, amount, expectedAccountId }`. An accepted or replayed result returns 202. Busy or conflicting identity returns 409 with the relevant operation. |
-| GET    | `/chequebook/operations`                            | Bounded history with optional profile filter and cursor.                                                                                                                                |
-| GET    | `/chequebook/operations/by-request/:requestId`      | Recover the exact original request.                                                                                                                                                     |
-| GET    | `/chequebook/operations/:id`                        | Read the operation and its response evidence together.                                                                                                                                  |
-| POST   | `/chequebook/operations/:id/check`                  | Request another evidence check with `{ expectedAccountId }`.                                                                                                                            |
-| POST   | `/chequebook/operations/:id/resolve`                | Supply `{ transactionHash, expectedAccountId }` for verification.                                                                                                                       |
-| POST   | `/chequebook/operations/:id/assert`                 | Submit `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` using the recorded amount, exact duplicate-risk confirmation and reviewed revision.                          |
+| Method | Path                                           | Body                                                                | Answer                                                                                                                       |
+| ------ | ---------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/chequebook`                   |                                                                     | Address, balances, settlement totals and the health verdict against the floor.                                               |
+| POST   | `/profiles/:name/chequebook/deposit`           | `{ requestId, profileInstanceId, amount, expectedAccountId }`       | 202 with `{ kind, operation }`, `kind` `admitted` or `replayed`. 409 with the operation in the way when busy or conflicting. |
+| POST   | `/profiles/:name/chequebook/withdraw`          | `{ requestId, profileInstanceId, amount, expectedAccountId }`       | As deposit.                                                                                                                  |
+| GET    | `/chequebook/operations`                       | Query: `limit` (default 50, at most 100), `cursor`, `profileName`   | A page of history, newest first, with the next cursor.                                                                       |
+| GET    | `/chequebook/operations/by-request/:requestId` |                                                                     | The operation saved under that request id, with its evidence. 404 when none.                                                 |
+| GET    | `/chequebook/operations/:id`                   |                                                                     | The operation, its answers from the node and the assertion text.                                                             |
+| POST   | `/chequebook/operations/:id/check`             | `{ expectedAccountId }`                                             | 200 with the updated operation detail.                                                                                       |
+| POST   | `/chequebook/operations/:id/resolve`           | `{ transactionHash, expectedAccountId }`                            | 200 with the updated operation detail.                                                                                       |
+| POST   | `/chequebook/operations/:id/assert`            | `{ amountPlur, confirmation, expectedAccountId, expectedRevision }` | 200 with the updated detail. 409 `chequebook_recovery_required` without a complete no-match search.                          |
 
-A busy response can name another operation. The browser must not attach that
-operation to its own saved intent as though its submission succeeded. History
-is available independently of the deployment page.
+A 202 never means settled. It can carry a `rejected` or `unknown` operation.
+Other answers:
 
-Since 2026-10-08 the web2 admin's funding API submits deposits and withdrawals
-through this same path and journal, on its bearer token rather than these
-routes: `POST /api/admin-funding/chequebook-operations`, under "Chequebook
-operations" in `manager/README.md`. The actor it records is `web2-admin`, never
-a `user:<id>`, and there is no browser intent behind it: the admin keeps its
-own request and asks again under the same request id. The history and the
-detail page show such an operation like any other, with `web2-admin` as the
-requester, and the page never takes it for the signed-in operator's own, since
-that match requires `user:<accountId>` (`isExactTransfer`). Check, resolve and
-assert work on it as on any other.
+- `409 account_changed`: `expectedAccountId` is not the signed-in user.
+- `409 chequebook_profile_changed`: the deployment was removed or replaced, or
+  `profileInstanceId` is not its current instance. Nothing was sent.
+- `409 operation_changed`: the operation changed after the operator reviewed
+  it.
+- `503 chequebook_preparation_unavailable` with
+  `{ error, cause, check, message }`: the manager could not prepare the
+  transfer. Nothing was recorded or sent. `cause` is one of
+  `CHEQUEBOOK_REFUSAL_CAUSES` in `common/src/chequebookRefusals.ts`, and
+  `message` is that cause's sentence. The answer carries no upstream text and
+  no endpoint. The saved request can be sent again once the cause is fixed.
+- `503 chequebook_journal_unavailable`: the journal could not be read or
+  written.
 
-A submission the manager could not prepare answers `503` with
-`{ error: 'chequebook_preparation_unavailable', cause, check, message }`.
-`cause` is one of the closed list in `common/src/chequebookRefusals.ts`, set
-where the refusal is decided and kept through every rewrap, and `check` names
-the failed bridge check when the cause is `bridge_not_qualified`, which only the
-retired Docker route answered. `message` is the cause's own sentence. Nothing in the
-answer is upstream text, an endpoint or a socket path. The page shows the same
-sentence from the same list and ignores any cause it does not know. Nothing is
-recorded or sent for such a submission, and the saved request can be sent again
-from the dialog once the cause is fixed. A deployment removed or replaced while
-the transfer was being prepared answers `409 chequebook_profile_changed`
-instead, and nothing is sent either.
+The causes a running manager answers:
 
-## Where a transfer reaches the node and the chain
+| Cause                       | When                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `bee_container_not_found`   | No `bee-uploader` container is recorded for the deployment.                                             |
+| `bee_container_unsupported` | The recorded Bee API port is missing, out of range or not the reserved one.                             |
+| `target_changed`            | The deployment is deploying, stopping or removing, has two `bee-uploader` containers, or changed.       |
+| `bee_unreadable`            | The node did not answer, or its answers disagree.                                                       |
+| `chain_endpoint_missing`    | No endpoint is set for the node's chain.                                                                |
+| `chain_setting_invalid`     | `CHEQUEBOOK_RPC_ENDPOINTS` is malformed, or the default endpoint is not a usable `http` or `https` URL. |
+| `chain_unreachable`         | The chain endpoint did not answer.                                                                      |
+| `wrong_chain`               | The endpoint answered for a different chain than the node's.                                            |
+| `unsupported_chain`         | The node runs on a chain whose BZZ token the manager does not know.                                     |
+| `unavailable`               | No such deployment, no Bee node of its own, or a Bee API address that is not plain `http`.              |
 
-No route is taken from a money request, an operation record or a Bee answer.
-The node's address comes from the deployment, and the chain endpoint from the
-manager's process settings.
+The list also holds `docker_unreachable`, `docker_route_missing`,
+`docker_setting_invalid` and `bridge_not_qualified`. The running manager never
+answers them, and `check` is always `null` from it.
 
-**The node.** `ConfiguredBeeTargetResolver` works out the node's Bee API from
-the deployment's own row: `beeApiUrlFor`, the address stamp operations and the
-inventory use, over plain `http`, with the port its `bee-uploader` container
-recorded, `BEE_UPLOADER_API_PORT`. It takes the transfer's target from the SQL
-ownership capture, `PostgresChequebookTargetOwnership.capture`, which the journal
-admits a transfer under and which never touches Docker. That target carries the
-port the deployment's reservation owns, and the recorded port must be that port,
-or the transfer is refused before any session opens. So a port another
-deployment has since been given is never dialled. `PinnedBeeSession` then reads
-the node's addresses, wallet and chequebook over that address, and sends the one
-`POST /chequebook/deposit` or `/chequebook/withdraw`. The last check before
-the POST works the target out again, and a deployment whose address, port or
-shape changed since makes it refuse the recorded transfer, `rejected` with
-`preflight_failed`. The refusals before anything is recorded are:
+The admin moves chequebooks through the same preparation, the same last
+check and the same journal, on its own bearer-token route,
+`POST /api/admin-funding/chequebook-operations`
+([manager/README.md](../../manager/README.md#chequebook-operations)). Its
+operations are recorded as requested by `web2-admin` and appear in the history
+like any other. The page never treats them as the signed-in operator's own, and
+Check, Resolve and Assert work on them as on any other operation.
 
-- no `bee-uploader` container recorded: `bee_container_not_found`,
-- a deployment that is deploying, stopping or removing, two `bee-uploader`
-  containers recorded, or a capture that refuses: `target_changed`,
-- a recorded port that is missing, out of range or not the reserved one:
-  `bee_container_unsupported`,
-- no such deployment, one without a Bee node of its own, or a Bee API address
-  that is not plain `http`: `unavailable`,
-- a deployment the capture finds removed or replaced keeps its own error,
-  answered as `409 chequebook_profile_changed`.
+## Settings
 
-No ssh alias is involved, so a host written as `user@host` is reached like any
-other.
+| Setting                        | What it does                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `CHEQUEBOOK_FLOOR_BZZ`         | The floor in BZZ, default `0.5`, above zero with at most 16 decimal places. A malformed value stops the manager at startup.    |
+| `CHEQUEBOOK_RPC_ENDPOINTS`     | Optional JSON object from chain id to endpoint, for example `{"100":"https://rpc.example.com"}`. Wins for each chain it names. |
+| `FUNDING_RPC_URL`              | The default chain endpoint for any chain the setting above does not name.                                                      |
+| `BEE_RPC_ENDPOINT`             | The default when `FUNDING_RPC_URL` is unset.                                                                                   |
+| `CHEQUEBOOK_DOCKER_TRANSPORTS` | Not read by the running manager.                                                                                               |
 
-**The chain.** `ChequebookChainRegistry` reads every chain through the manager's
-settings alone: `CHEQUEBOOK_RPC_ENDPOINTS` for a chain it names, else the
-default, `FUNDING_RPC_URL`, else `BEE_RPC_ENDPOINT`, the pair the funding API
-uses. Each endpoint is held to the same shape rules, `http` or `https` with no
-user information and no fragment, and is used only after it answered
-`eth_chainId` with the node's chain. A default endpoint that breaks those rules
-refuses every transfer with `chain_setting_invalid`, and a chain with no
-endpoint at all refuses with `chain_endpoint_missing`. Preparation, receipt
-polling, finality and recovery all read the chain there. The endpoint the node
-was started with is no longer read.
+The chain settings are read at startup. A change takes effect after a restart.
 
-**The Docker route, retired on 2026-10-15.** Until then a transfer reached the
-node over a Docker connection, the manager's own socket for `localhost` or an ssh
-forward of the host's socket through its `Host` block, refused an alias with
-`@`, and ran a bash bridge inside the node's container after checking the Bee
-image for it (`bee_bridge_qualifications`). Its code, `ChequebookDockerTransports`,
-the qualification catalogue and the image check among it, stays in the tree,
-unused, until a cleanup removes it. The running manager never takes it, and the
-four refusal causes only it answered, `docker_unreachable`,
-`docker_route_missing`, `docker_setting_invalid` and `bridge_not_qualified`,
-stay in the shared list, unused.
+## Supported chains and contracts
 
-History and exact replay do not require current transport configuration.
-Pending Bee reads require the saved deployment instance and matching node
-identity. Missing pending observations remain unavailable, while receipt and
-manual chain recovery can still use the frozen operation after profile deletion,
-through the manager's endpoint for its chain, while that endpoint answers.
+`transactionIdentity.ts` in `manager/src/domain/chequebook` pins one BZZ
+token per chain. A transfer on any other chain is refused as
+`unsupported_chain`.
 
-## Evidence and remaining acceptance
+| Chain id   | Chain        | BZZ token                                    |
+| ---------- | ------------ | -------------------------------------------- |
+| `1`        | Ethereum     | `0x19062190b1925b5b6689d7073fdfc8c2976ef8cb` |
+| `100`      | Gnosis Chain | `0xdbf3ea6f5bee45c02255b2c26a16f300502f68da` |
+| `11155111` | Sepolia      | `0x543ddb01ba47acb11de34891cd86b675f04840db` |
 
-**The composition is exercised whole, and only the Bee, the chain and the
-database are synthetic.** `manager/test/database/chequebookConnected.test.ts`
-signs in over HTTP, goes through the real router behind the real session and
-same-site gates into a real PostgreSQL journal, out through the node's Bee API
-to a synthetic Bee, and reads the outcome back.
-`frontend/test/transfer-connected-browser.test.mjs` does the same with the
-browser as the only client, against that manager run as a forked process. Both
-need a disposable PostgreSQL on `CHEQUEBOOK_TEST_PG_PORT` and skip out loud without it,
-and the browser runner treats a silent skip as a failure.
+A transaction matches a saved transfer only when it comes from the node's
+address, carries zero native value, has a nonce at or above the recorded
+bound, lies at or after the recorded start block, and has the exact call data:
 
-**The rest of the suites.** Four database files cover this feature:
-`chequebookConnected`, `chequebookOperations`, which holds the polling
-behaviour, `chequebookTargets`, and `beeBridgeQualifications`, which holds the
-retired Docker route's stored checks and their race. Eight browser suites cover the durable
-intent, the dialog, the history, the recovery actions, the two API surfaces and
-the polling itself. A ninth file, `transfer-fixture.test.mjs`, starts no
-browser: it checks what the browser fixtures leave on the machine. The unit
-suites cover the poller, the receipt check, the receipt inspector, the routes,
-the schemas, submission, recovery, the route through the Bee API and its port
-check, the chain endpoint order, the retired Docker route's code, and the answer
-for every refusal cause. All of them pass on a laptop, and all of them
-are in the jobs the checks workflow declares for a pull request. A full run
-taken at `e857994` is recorded in
-the remediation's handover record, which the repository's history keeps.
+- a deposit calls the token's `transfer(address,uint256)`, selector
+  `a9059cbb`, with the chequebook as recipient and the saved amount,
+- a withdrawal calls the chequebook's `withdraw(uint256)`, selector
+  `2e1a7d4d`, with the saved amount.
 
-**What the tests cannot establish.** They exercise protocol and ownership code
-against a synthetic Bee and chain. They do not reach a real Bee node or a real
-chain, and they move no money.
+## Limits
 
-**The seed catalogue has two entries, each from a real host.** They belong to the
-retired Docker route and are kept with it.
-`PRODUCTION_BEE_BRIDGE_QUALIFICATIONS` in
-`manager/src/domain/chequebook/beeBridgeQualification.ts` carries
-`bee-2.8.3-docker-29.1.3`, qualified on 2026-10-15 against a throwaway
-container of the digest-pinned 2.8.3 image, and
-`bee-2.8.2-docker-29.1.3`, qualified on 2026-09-14 by
-`manager/scripts/qualify-bee-bridge.mjs` against the Bee image the deployment
-host runs, with its image id, engine version, platform, harness revision and
-evidence digest recorded. Its harness revision is the git object id the script
-had then, kept as history. A unit test pins the list as non-empty and every
-entry to the live bridge revision. Since 2026-09-26 an image the catalogue does
-not list is checked automatically instead of refused, and the script is a thin
-wrapper over the same `beeBridgeCheck.ts` the manager runs. A synthetic pass
-qualifies nothing and must never be used to populate the catalogue.
-
-**What completion still requires.** A real transfer to a remote node through
-its Bee API: the connected suites use a synthetic Bee and chain.
-Real-money testing is a separately authorised part of the live acceptance run, which waits for
-its spending cap and duration to be set and keeps strict ownership of cleanup.
-
-The historical 0.5 BZZ fill on the funded `review-20260907` deployment remains
-unverified. Without transaction evidence, this document does not establish
-whether it was submitted, whether it settled or whether a retry is safe.
+- A transfer needs the node's Bee API to answer the manager on its reserved
+  port, as stamp operations do.
+- A transfer needs a chain endpoint in the manager's settings for the node's
+  chain. The manager does not use the node's own endpoint.
+- The connection boundary is the node's Bee API address. It cannot pin the
+  signer behind a proxy that routes requests to different nodes.
+- Some xDAI in the wallet is checked before sending. It does not guarantee the
+  gas is enough, and Bee or the chain can still refuse the transaction.
+- A node with any operation whose `failureReason` is `hash_conflict` accepts
+  no new transfer.
+- Receipt polling stops after 30 minutes. A transaction mined later is found
+  by **Check**.
+- The chain endpoint must support the `finalized` block tag. Without it no
+  transfer settles.
+- An assertion accepts the risk of paying twice. It proves neither that
+  nothing was sent nor that anything settled.

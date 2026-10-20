@@ -150,7 +150,7 @@ describe('a viewer whose gateway is taken away, and given back', { skip }, () =>
       null,
       `this run is not a viewer who was watching when the gateway went away: ${notWatching}`,
     );
-    // ⭐ Phase 1 of docs/e2e-viewer-coverage-plan.md. The resolutions were already being captured and
+    // The resolutions were already being captured and
     // printed, so a viewer riding a rung nobody configured passed every suite on a reading that was
     // sitting right there. Asks whether the rung is one the ladder declares, never which one.
     const wrongQuality = ladderResolutionRefusal(result, cfg.abrLadderResolutions);

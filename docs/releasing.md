@@ -1,8 +1,9 @@
 # Releasing
 
-Every deploy names the build it sends after the git tag on its commit and builds that name into its images, and the
-consoles show it to signed-in users. So a release is tagged first and deployed after, in this order.
-[tools/release/README.md](../tools/release/README.md) says what each script checks.
+This guide takes a release from a commit to running hosts. Every deploy names the build it sends after the git tag on
+its commit and builds that name into its images, and the consoles show it to signed-in users. So you tag a release
+first and deploy it after, in the order below. [tools/release/README.md](../tools/release/README.md) says what each
+script checks.
 
 Run every step from your own checkout of this repository, on the commit you deploy. `<ssh-target>` stands for a host's
 ssh alias and `<profile>` for the profile whose env file a host runs on, as in [self-hosting.md](self-hosting.md).
@@ -19,11 +20,11 @@ node tools/release/tag.mjs
 
 It fetches the tags, shows the commit and the tags there are, asks for a name and a message, and asks before it
 creates an annotated tag on the commit and pushes it. Any name works within letters, digits and `. _ + / -`, starting
-with a letter or a digit and at most 80 characters long, such as `QA-build-2026-10-07`, `v2.4.0` or
-`release/2026.10`. A name a tag already has on another commit, here or on the remote, is refused. On a commit that
+with a letter or a digit and at most 80 characters long (`TAG_NAME_MAX_LENGTH`), such as `qa-build-7`, `v2.4.0` or
+`release/2.4`. A name a tag already has on another commit, here or on the remote, is refused. On a commit that
 already has an annotated tag, Enter keeps it. A tag also names the release's published images, which take letters,
 digits and `. _ -` only, so a name with a `/` or a `+` is tagged but not published, and the `publish-images` run for
-that tag fails on purpose, saying why. `vX.Y.Z`, such as `v2.4.0`, is the shape a deploy's version list offers.
+that tag fails, saying why. `vX.Y.Z`, such as `v2.4.0`, is the shape a deploy's version list offers.
 
 It worked when it ends with "Pushed <tag> to origin." or, for a tag it kept, "origin already has <tag>."
 
@@ -69,7 +70,7 @@ which `?qoe=1` on a watch URL opens, under the overlay's header as `Player <rele
 
 A deploy of a commit with no tag of its own still names its build:
 
-- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `QA-build-2026-10-07+3`.
+- the nearest tag before the commit and how many commits past it, `<tag>+<n>`, as `v2.4.0+3`.
 - the short commit, as `635b4e175`, when there is no tag behind it at all.
 - either of them, or the tag, followed by `-dirty` when the app, `packages/` or the root's install files held a change
   git had not committed.

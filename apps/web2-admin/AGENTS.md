@@ -12,12 +12,15 @@ of the repository holds the rules that apply everywhere. This file adds the admi
   host is set up and deployed to.
 - The host's HTTPS edge is not the admin's. It lives in `../../infra/edge/` and serves the
   manager's console as well.
-- The docs are at the repository root. `../../docs/architecture/web2-admin.md` is the text
-  version of the interactive MVP model and the reference for what the admin layer is and is not.
-  `../../docs/architecture/web2-admin-auth.md` is the login gate. `../../docs/ROADMAP.md` is the
-  plan and the checkpoint log. `../../docs/self-hosting.md` says how a host is set up.
-  `../../docs/research/` holds condensed reports on the sibling systems (the manager and the
-  stack). Read the relevant one before touching anything that talks to those systems.
+- The docs: `README.md` is the admin's front door. `backend/README.md` is the API and settings
+  reference with a short account of how it works. `frontend/README.md` covers running and
+  developing the console, its pages and its looks. `deploy/README.md` is the deploy guide.
+  `backend/test/integration/README.md` is the integration tests' page.
+- At the repository root, `../../docs/architecture/web2-admin.md` says what the admin is for and
+  how it relates to the manager and the stack, and `../../docs/architecture/web2-admin-auth.md`
+  how sign-in works. `../../docs/self-hosting.md` says how a
+  host is set up. The manager and the stack document themselves under `../infra-manager/` and
+  `../hls-stream/`. Read the relevant pages before touching anything that talks to them.
 
 ## Conventions
 

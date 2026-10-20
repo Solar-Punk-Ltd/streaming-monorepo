@@ -375,8 +375,8 @@ describe('lastUploadedSegmentRefByRung', () => {
  *
  * A whole-stack restart takes the engine with it, so the session that reconnects afterwards numbers
  * its segments from near zero while the recovered session's own numbering is wherever it had run to.
- * The uploader taking those low numbers is the whole of what finding 1 of the 2026-09-05
- * cross-provider review is about, and the merged view cannot say it: four rungs are four independent
+ * The uploader taking those low numbers, rather than dropping them as duplicates, is the whole of what
+ * this guards, and the merged view cannot say it: four rungs are four independent
  * counters, so one rung's maximum standing in for all of them is a number about a different rung.
  */
 describe('maxSegmentIndexByStream', () => {

@@ -51,7 +51,7 @@ async function postStreams(query: string, options: SrsEngineOptions = { webhookT
   }
 }
 
-describe('SRS webhook auth (S1.2)', () => {
+describe('SRS webhook auth', () => {
   it('rejects an unauthenticated webhook and never reaches the orchestrator', async () => {
     // The acceptance criterion, and the reason it matters: this route reaches the same
     // stamp-spending path /stream/segment reaches, so an open webhook is the same funds drain.

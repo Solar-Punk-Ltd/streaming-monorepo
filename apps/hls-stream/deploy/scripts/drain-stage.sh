@@ -8,7 +8,7 @@
 # broadcast. Nothing has ever tested that, because a batch cannot be made to expire inside a test:
 # Bee refuses to create one that would live under 24 hours. Filling one is the lever that works, and
 # the smallest batch Bee allows fills in about twenty seconds of 1080p. The sitting this arms, and
-# everything it asserts, is `docs/e2e-batch-drain-plan.md`.
+# everything it asserts, is in `e2e/README.md`, under "One rung's postage runs out".
 #
 # ## Two owners, one step each
 #
@@ -77,7 +77,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # ⚠️ It is the DEFAULT depth rather than the only one. A batch this small is what a short broadcast
 # can fill, which is the whole point of a drain and the whole problem of a sustained run:
-# `docs/e2e-batch-drain-plan.md` measures it gone in about 20 seconds of 1080p. So a run may name its
+# the smallest batch Bee allows fills in about 20 seconds of 1080p. So a run may name its
 # own depth, and one that is not this depth is warned about rather than refused, because a sitting
 # that quietly armed a batch it cannot fill would report a rung that never ran dry and read as the
 # product surviving.

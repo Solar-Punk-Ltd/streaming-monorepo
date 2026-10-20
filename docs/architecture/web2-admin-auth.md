@@ -1,259 +1,170 @@
-# Sign in: the web2-admin login gate
+# How sign-in works in the admin
 
-What the admin API does about who you are, ported from the manager's
-[`auth-and-public-access.md`](../../apps/infra-manager/docs/features/auth-and-public-access.md)
-and the code under `apps/infra-manager/manager/src/domain/auth/`. That page is
-the reasoning, and this one is the port: what was taken as it stood, what was
-adapted to this codebase, and what was deliberately left behind.
+This page explains how the admin decides who you are: passwords, sessions, the lockout, the
+cross-site check, users and roles, and why each is shaped as it is. It is a concept page. The route
+reference is in [the backend's README](../../apps/web2-admin/backend/README.md#sign-in-and-users).
 
-Status: on `main` since 2026-09-18, migration `005_auth_users.sql`. The
-manager's design has run on a host since 2026-09-11 and is public behind a TLS
-edge. This is the same design on a database that already had users in it.
+The admin and the manager sign people in the same way, from one shared package,
+`packages/web-auth`, so a fix lands in both. Each app passes it its own cookie name and header
+value. The manager's page,
+[auth-and-public-access.md](../../apps/infra-manager/docs/features/auth-and-public-access.md),
+covers the parts only the manager has.
 
-The pieces the two apps then held alike, named below, have since moved into the
-shared package `packages/web-auth`, which both backends import, so a fix to one
-of them lands once. Each app passes it its own cookie name and header value.
+## Passwords
 
-## Why port rather than design
+`packages/web-auth/src/passwordHash.ts` hashes with Node's `crypto.scrypt`, no dependency, at
+`N = 2^15, r = 8, p = 3`, with a 32-byte salt and a 64-byte key. `maxmem` is raised to 64 MiB,
+because Node's 32 MiB default is exactly what `N = 2^15, r = 8` needs for its mixing buffer alone,
+and scrypt would otherwise refuse to run. A hash is stored as `scrypt$N$r$p$<salt>$<key>`, so a row
+keeps verifying with the parameters it was written with, and the cost can be raised later without
+invalidating anything stored.
 
-The admin layer had a login already: a users table, a sessions table holding
-only the sha256 of the cookie value, scrypt hashes in a self-describing format.
-What it did not have was everything around them: one operator was assumed, the
-first user came from `SEED_ADMIN_PASSWORD` in a file, sessions never slid or
-expired other than on a fixed TTL, the throttle counted only usernames that
-existed and could be beaten by sending guesses together, and nothing stopped a
-page on another site making the operator's browser publish a stream.
+A password is 12 to 128 characters and must not contain the username. The login body is not
+trimmed: a wrong pair answers the same way whatever it looked like, and a username with a space can
+never match a row, since the database refuses spaces in usernames.
 
-Each of those has an answer in the manager, each answer has a comment saying
-which failure it came from, and several of them came from a real incident on a
-real host. Writing a second answer would have been writing the same thing twice
-and being wrong about a different half of it.
+A sign-in for a username that does not exist is still checked, against a throwaway hash built at
+startup, so the time an answer takes does not say which usernames exist.
 
-## What was taken unchanged
+## Sessions
 
-- **Hashing** (`packages/web-auth/src/passwordHash.ts`). Node's `crypto.scrypt`, no
-  dependency. `N = 2^15, r = 8, p = 3`, 32 byte salt, 64 byte key, `maxmem`
-  raised to 64 MiB because node's 32 MiB default is exactly what `N=2^15, r=8`
-  needs for its mixing buffer alone and scrypt would otherwise refuse to run.
-  Stored as `scrypt$N$r$p$<salt b64>$<key b64>`, which is the format this
-  backend already wrote, so **the rows written with the old `N=16384, r=8, p=1`
-  keep verifying with the parameters they were written with**. A test pins that
-  against a hash built the old way.
-- **Sessions, two clocks** (`packages/web-auth/src/sessionLifetime.ts`). Idle 12 hours sliding on
-  `last_seen_at`, absolute 14 days in `expires_at`, and the session ends at
-  `min(expires_at, last_seen_at + idle)`. `last_seen_at` is written at most once
-  a minute, or an open console would be a database write per request.
-- **The cookie** (`src/api/cookies.ts`, over
-  `packages/web-auth/src/cookies.ts`). httpOnly, SameSite=Lax, Path=/, and no
-  `Max-Age` or `Expires` at all: the sessions row is the only clock, and a
-  cookie with a deadline of its own would be a second one to keep in step.
-  `Secure` is computed **per request** from the first `X-Forwarded-Proto` hop or
-  `req.secure`, never from configuration. That is the manager's bug fix, ported
-  with its comment: `Secure` used to be set for any production build, the image
-  always is one, and a browser reaching the API over plain HTTP at anything but
-  localhost then dropped the cookie it had just been given, so signing in came
-  straight back to the sign-in page with nothing to show for it. `COOKIE_SECURE`
-  is gone.
-- **The limiter** (`packages/web-auth/src/LoginLimiter.ts`). Keys are `username:<lowercased>` and
-  `ip:<last X-Forwarded-For hop>`. A wrong current password on a password change, or on a write that asks the
-  password again, counts under the account's `username:` key like a failed sign-in, so either one locks both
-  (SPDV-1664). The manager still keeps the password change under its own `password-change:<userId>`. Four free
-  attempts, the fifth locks for a minute, every failure after that doubles up to
-  an hour, and a key with no failure for two hours is forgotten. The important
-  part is **reserve-then-settle**: `begin()` increments a pending counter
-  synchronously _before_ the awaited scrypt, and pending attempts count towards
-  the lockout. The `LoginRateLimiter` this replaced read the count and recorded
-  the failure on either side of that await, so twenty sign-ins sent together all
-  read zero failures and all got their guess. A test sends twenty and asserts at
-  most five reached a password check.
-- **The decoy hash.** A sign-in for a username that does not exist is still
-  checked, against a throwaway hash built at startup, so the clock does not say
-  which usernames exist. The old code skipped the hash entirely for an unknown
-  name and said so in a comment. That comment is now wrong and is gone.
-- **The cross-site check** (`src/api/middleware/requireSameSite.ts`, built by
-  `packages/web-auth/src/requireSameSite.ts`). Three layers, mounted ahead
-  of the body parser so a write from another site is refused before its body is
-  read: the browser's own `Sec-Fetch-Site: cross-site`, the `Origin` host
-  against the `Host` asked for (compared by host, not origin, because a TLS edge
-  makes the schemes differ while the host always matches), and a mandatory
-  `x-requested-with: web2-admin` that no cross-origin page can add without a
-  CORS preflight this API never answers. GET and HEAD are exempt.
-- **Users and roles** (`packages/web-auth/src/authSql.ts`,
-  `PostgresUserRepository.deleteUnlessLast`).
-  The count and the DELETE run in one transaction under
-  `pg_advisory_xact_lock`, because two browsers each removing the other both saw
-  two users and both deleted, leaving a console nobody could sign in to. The
-  first user ever added is an admin whatever the caller asked, because somebody
-  has to be able to add the second.
-- **The CLI** (`src/cli.ts`, `src/cli/userAdd.ts`, `packages/web-auth/src/secretInput.ts`).
-  Runs the migrations itself, validates the username before prompting so a bad
-  name is not found out after the password has been typed twice, prompts twice
-  with echo off, accepts `--password-stdin` for a vault, and takes a password
-  from no argument and no environment variable.
-- **`GET /auth/session`** answering 401 either way, so the console can tell
-  "signed out" from "no users have been created yet".
+A session is 32 random bytes, sent as an httpOnly, SameSite=Lax cookie named `web2_admin_session`
+on path `/`. The database stores only the sha256 of the cookie value.
 
-## What was adapted, and why
+The session row is the only clock. A session ends twelve hours after it was last used or fourteen
+days after it began, whichever comes first (`packages/web-auth/src/sessionLifetime.ts`).
+`last_seen_at` is written at most once a minute, or an open console would cost a database write per
+request. The cookie has no `Max-Age` or `Expires`, because a cookie with a deadline of its own would
+be a second clock to keep in step.
 
-| The manager                                        | Here                                                                     | Why                                                                                                                                                                         |
-| -------------------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SERIAL` user ids                                  | `UUID`                                                                   | The table was already UUID-keyed. `userIdParamSchema` matches a UUID, not `^[1-9]\d*$`.                                                                                     |
-| `StoredSession` carries `username` and `isAdmin`   | carries the whole `UserRow`                                              | `/api/auth/me` answers its `User`, `POST /api/streams` records its id as the drafter, and every change behind the gate names it as its actor: one join, no second lookup.   |
-| `SESSION_COOKIE_NAME = 'sim_session'`              | `web2_admin_session`                                                     | Different product, and the two run on the same laptop.                                                                                                                      |
-| `REQUESTED_WITH_VALUE = 'streaming-infra-manager'` | `web2-admin`                                                             | Same.                                                                                                                                                                       |
-| `POST /login` → 204                                | → `MeResponse`                                                           | The console already had the user from the login answer, and taking it away would have been a change to a working contract for nothing.                                      |
-| `POST /users/:id/revoke-sessions`                  | `POST /users/:id/revoke`                                                 | Shorter, and nothing was using the longer name yet.                                                                                                                         |
-| `LockedOutError` → `locked_out`                    | `TooManyAttemptsError` → `too_many_attempts`                             | The console already renders that code. The body gained `retryAfterSeconds` beside the `Retry-After` header, as in the manager.                                              |
-| `NoUsersError` → 409                               | → 401                                                                    | It is an answer to "who am I", and the console's fetch wrapper already treats `/auth/session` and `/auth/login` as routes where a 401 is an answer rather than an eviction. |
-| `GET /auth/users` → a bare array                   | → `{ users: [...] }`                                                     | `UserListResponse` in web2-admin-common.                                                                                                                                    |
-| One password check throttled per route             | Same, but the wrong _current_ password answers 401 `invalid_credentials` | The manager's choice, kept: the console's wrapper exempts `/auth/password` from the sign-out-on-401 rule, and signs out there only on 401 `unauthenticated`.                |
-| No audit log, and user add and remove log no actor | takes an `AuditLog`: every user action names its actor and is audited    | Every operator can act on every stream, so who did what is kept in `audit_log` (migration 007), and changing the users is one of those things.                              |
-| `manager/src/domain/auth/*`                        | `apps/web2-admin/backend/src/domain/auth/*`                              | Same shape, under this repo's `src/domain/`.                                                                                                                                |
+`Secure` is decided per request, from the first `X-Forwarded-Proto` hop or from the connection
+itself, never from a setting. A browser reaching the API over plain http at any address other than
+localhost drops a `Secure` cookie, and signing in would then return to the sign-in page with
+nothing to show for it.
 
-The login body is **not** trimmed, which the old `loginSchema` did. That is the
-manager's choice and the reason is in its comment: a wrong pair must answer the
-same way whatever it looked like. A username with a space in it could never
-match a row anyway, since the CHECK forbids spaces.
+Ended sessions are pruned on sign-in and by a daily sweep. A password change ends every other
+session of that user.
 
-## What was deliberately left out
+## The lockout
 
-**`OpenStreams` and `streamRevalidation`.** The manager holds a registry of open
-Server-Sent Events connections and closes the ones whose session has been signed
-out, revoked, removed or has idled past its deadline, on a timer. It needs that
-because a stream outlives the request that opened it: a page doing nothing but
-listening would otherwise keep receiving deployment events after its session had
-ended, and no request would ever come along to notice.
+`packages/web-auth/src/LoginLimiter.ts` counts failures under two keys, the lowercased username and
+the client address (the last `X-Forwarded-For` hop). Four attempts are free. The fifth locks for a
+minute, every failure after that doubles the lock up to an hour, and a key with no failure for two
+hours is forgotten. A locked-out request is `429 too_many_attempts` with `Retry-After` and
+`retryAfterSeconds`.
 
-web2-admin has no SSE and no long-lived connection of any kind. Every response
-ends within its request, so `requireAuth` is the only place an ended session has
-to be noticed on the server. Porting `OpenStreams` would have been a registry
-that never held anything and a timer that never closed anything. **It is absent
-on purpose, not by oversight.** If this backend ever grows a live-updates
-stream, that is the moment to port both files. The manager's
-`AuthService.closeStreamsOfEndedSessions` is the whole of it, and the comment
-there about a stream deliberately not counting as activity is the part that is
-easy to get wrong.
+An attempt is reserved before the password check starts and settled after it, and reserved attempts
+count towards the lockout. So twenty sign-ins sent together cannot all read zero failures and all
+get their guess: a test sends twenty and asserts that at most five reached a password check.
 
-An idle tab is the console's job, not the server's. A session revoked from
-another browser ("Sign out everywhere", a password change, a removed user)
-would otherwise go unnoticed until the operator clicked something. So while
-someone is signed in, the console's `AuthProvider` asks `GET /api/auth/me`
-again whenever the operator comes back to the tab, on `window` focus and on
-`visibilitychange` to visible, at most once every five seconds. The route is
-behind `requireAuth`, so a 401 goes through the fetch wrapper's sign-out like
-any other, and the tab lands on the login page with "Your session ended. Log in
-again." A failure that is not a 401 is left for the next request to report.
-There is deliberately no timer: every gated request refreshes `last_seen_at`,
-so a poll would keep an unattended console signed in past the 12-hour idle
-limit. The other tabs of the same browser hear about it at once on a
-`BroadcastChannel` and each asks the server for itself.
+A wrong current password on a password change, or on a write that asks for the password again (a
+funding pin or send), counts under the account's username key like a failed sign-in, so either
+kind of guess locks both.
 
-A reload after a revoke says the same thing. The cookie is `httpOnly`, so the
-console keeps a one-bit mark in `localStorage` while someone is signed in (no
-token, nothing about the user). A 401 on the boot probe with the mark present
-reads as a session that ended rather than one that never was. A deliberate
-sign-out clears the mark, so it shows no notice.
+## The cross-site check
 
-Also left out, with less to say about them: the manager's nginx security
-headers and its host firewall generator. Those are deployment, this is the API,
-and web2-admin's own deployment story is `apps/web2-admin/deploy/README.md`,
-with the host it runs on set up by `docs/self-hosting.md`.
+`requireSameSite` runs ahead of the body parser, so a write from another site is refused before its
+body is read, as `403 cross_site_request`. It has three layers:
 
-## The surface
+1. The browser's own `Sec-Fetch-Site: cross-site`.
+2. The `Origin` host against the `Host` asked for. They are compared by host, not by origin,
+   because a TLS edge makes the schemes differ while the host always matches.
+3. A mandatory `x-requested-with: web2-admin` header, which no page on another site can add
+   without a CORS preflight this API never answers.
 
-Everything is under `/api`. The open routes are `GET /api/health`,
-`GET /api/config`, all of `/api/internal`, and `POST /api/auth/login`,
-`POST /api/auth/logout` and `GET /api/auth/session`. Everything else needs a
-session.
+GET and HEAD are exempt.
 
-| Method | Path                         | Who                | Answer                                                                                                                                                                    |
-| ------ | ---------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/auth/login`            | anyone             | `MeResponse` + the cookie, or 401 `invalid_credentials`, 401 `no_users`, 429 `too_many_attempts`                                                                          |
-| POST   | `/api/auth/logout`           | anyone             | 204, cookie cleared, session row deleted                                                                                                                                  |
-| GET    | `/api/auth/session`          | anyone             | `MeResponse`, or 401 `no_users` when the table is empty, 401 `unauthenticated` otherwise                                                                                  |
-| GET    | `/api/auth/me`               | signed in          | `MeResponse`, kept for compatibility                                                                                                                                      |
-| POST   | `/api/auth/password`         | signed in          | `MeResponse`, or 401 `invalid_credentials`, 400 `validation_error`, 429                                                                                                   |
-| GET    | `/api/auth/users`            | signed in          | `UserListResponse`                                                                                                                                                        |
-| POST   | `/api/auth/users`            | admin              | 201 `UserSummary`, or 409 `user_exists`, 400 `validation_error`, 403 `admin_required`                                                                                     |
-| DELETE | `/api/auth/users/:id`        | admin              | 204, and the user's streams stay, with `user_id` set to null (migration 008), or 409 `cannot_remove_user` (yourself, the last user, the last admin), 404 `user_not_found` |
-| POST   | `/api/auth/users/:id/revoke` | admin, or yourself | 204, or 403 `admin_required`, 404 `user_not_found`                                                                                                                        |
+### Why `/api/internal` is outside it
 
-New error codes: `cross_site_request` 403, `admin_required` 403, `no_users` 401,
-`user_exists` 409, `user_not_found` 404, `cannot_remove_user` 409, and
-`too_many_attempts` 429 now carries `retryAfterSeconds` beside `Retry-After`. A
-weak password or a bad username is a 400 `validation_error` with the reason in
-`errors`, the same shape a schema rejection has. No token is logged anywhere.
+The uploader and the manager are servers. They send no `Origin`, no `Sec-Fetch-Site` and no custom
+header, and they authenticate with a bearer token no browser holds. Behind the cross-site check,
+every report an uploader makes would be refused, and a broadcast would never go live on the
+catalogue. So `src/api/server.ts` mounts `/api/internal` before the check, with a body parser of
+its own. A page on another site cannot forge the bearer token either, and a session cookie is never
+accepted on those routes. `test/unit/authRoutes.test.ts` and `test/integration/auth.test.ts` hold
+it.
 
-Adding a user, removing one, revoking sessions and changing a password each
-write a row to the audit log (migration 007, `audit_log`) with the acting user
-and the username acted on. The `user:add` CLI acts as `system (cli)`. Neither
-signing in nor signing out is audited: a sign-in has a log line of its own, and
-a sign-out logs nothing beyond the `[HTTP]` request line. No row carries a
-password, a hash or a token, and a failed audit write never fails the change it
-records. The backend README has the table. Removing a user no longer deletes
-the streams they drafted: a stream is the installation's, and since migration
-008 its `user_id` goes null instead.
+## Users and roles
 
-## `/api/internal` is outside the cross-site check
+A user is a plain operator or an admin. An admin adds and removes users and signs anyone out.
+Everyone can see the list, change their own password and sign themselves out everywhere.
 
-The uploader is a machine. swarm-hls-stream posts from a server with no
-`Origin`, no `Sec-Fetch-Site` and no custom header, and it authenticates with a
-bearer token no browser holds. Behind `requireSameSite` every report it makes
-would be a 403 and the live streaming loop would stop: a broadcast would never
-flip to `live` and its catalogue entry would never be rewritten.
+The first user ever added is an admin whatever the caller asked, because somebody has to be able to
+add the second. Removing a user runs the count and the delete in one transaction under
+`pg_advisory_xact_lock`, so two admins removing each other at once cannot leave a console nobody can
+sign in to. The last user and the last admin cannot be removed, and nobody can remove themselves.
+A removed user's streams stay, with `user_id` set to null.
 
-So `/api/internal` is mounted in `src/api/server.ts` **before**
-`app.use(requireSameSite)`, with a body parser of its own, and the check never
-sees those requests. It costs nothing: a page on another site cannot forge the
-bearer token either, and a session cookie is never accepted on those routes.
-Two tests hold it: one in `test/unit/authRoutes.test.ts` against a harness
-wired the same way, one in `test/integration/auth.test.ts` against the real
-server.
+Adding a user, removing one, signing a user out and changing a password each write a row to the
+audit log, naming who acted and on whom. Signing in and out are not audited: a sign-in has a log
+line of its own. No row or log line carries a password, a hash or a token.
 
-## No seeding
+## The first user
 
-`SEED_ADMIN_USERNAME` and `SEED_ADMIN_PASSWORD` are gone, with the `seedAdmin.ts`
-that read them. A password in a file is a password, and a default one that
-nobody changes is the account an attacker tries first.
+There is no seeded account and no sign-up route, because a default password is the account an
+attacker tries first. A fresh database has no users, and every sign-in answers `401 no_users` until
+the first one is made with the `user:add` command, as
+[The first user](../../apps/web2-admin/backend/README.md#the-first-user) shows.
 
-A fresh database has no users and refuses every sign-in with 401 `no_users`
-until the first one is made with the `user:add` CLI, as
-[The first user](../../apps/web2-admin/backend/README.md#the-first-user) in the
-backend README shows.
+`user:add` runs the migrations itself, checks the username before prompting so a bad name is not
+found out after the password has been typed twice, prompts twice with echo off, and takes
+`--password-stdin` for a password manager's command line. It never takes a password from an
+argument or an environment variable.
 
-## Migration 005 on a database that was already in use
+`GET /api/auth/session` answers 401 either way, `no_users` or `unauthenticated`, so the console can
+tell "signed out" from "no users have been made yet".
 
-`005_auth_users.sql` adds `users.is_admin` (defaulting false), `users.last_login_at`,
-a username CHECK mirroring `USERNAME_RE`, and `sessions.last_seen_at`,
-`sessions.ip`, `sessions.user_agent`. Two details matter on an existing install:
+## The console's side
 
-- The oldest user is set to `is_admin = true` before the CHECK is added, so the
-  account the console was set up with keeps being able to manage users.
-- `last_seen_at` defaults to `NOW()`, which is the kindest reading: whoever is
-  signed in when the migration runs stays signed in.
+The console notices a session that ended elsewhere, such as Sign out everywhere, a password change
+or a removed user. While someone is signed in, it asks `GET /api/auth/me` again whenever the
+operator comes back to the tab, on window focus and when the tab becomes visible, at most once every
+five seconds. A 401 signs the tab out with "Your session ended. Log in again." There is no timer,
+because every request refreshes `last_seen_at`, so polling would keep an unattended console signed
+in past the twelve-hour idle limit. Other tabs of the same browser hear about it at once over a
+`BroadcastChannel`.
 
-An existing username that the CHECK would refuse would fail the migration. The
-one install this landed on had a single user, `admin`, which it accepts.
+A reload after a revoke says the same thing. The cookie is httpOnly, so the console keeps a one-bit
+mark in `localStorage` while someone is signed in, with no token and nothing about the user. A 401
+on the first request with the mark present reads as a session that ended rather than one that never
+was. Signing out on purpose clears the mark.
+
+The API has no long-lived connection, such as a stream of server-sent events. Every response ends
+within its request, so the session check on each request is the only place an ended session has to
+be noticed on the server.
+
+## Where the admin differs from the manager
+
+| The manager                                    | The admin                                |
+| ---------------------------------------------- | ---------------------------------------- |
+| numeric user ids                               | UUIDs                                    |
+| cookie `sim_session`                           | `web2_admin_session`                     |
+| `x-requested-with: streaming-infra-manager`    | `x-requested-with: web2-admin`           |
+| `POST /login` answers 204                      | answers `MeResponse`, the signed-in user |
+| `POST /users/:id/revoke-sessions`              | `POST /users/:id/revoke`                 |
+| `locked_out`                                   | `too_many_attempts`                      |
+| no users is 409                                | no users is 401 `no_users`               |
+| `GET /auth/users` answers an array             | answers `{ users: [...] }`               |
+| server-sent events, closed when a session ends | no long-lived connections                |
 
 ## Tests
 
-Unit (`pnpm test`, `node:test` under tsx):
+The shared rules are tested in `packages/web-auth/src/*.test.ts`: hashing, session tokens, the two
+session clocks, the lockout (reserved attempts counting among them), cookies, the cross-site check,
+the SQL of user removal, and reading a password without echo.
 
-| File                      | What it pins                                                                                                                                                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `passwordHash.test.ts`    | round trip, wrong passwords, the recorded parameters, **an old-parameter hash still verifying**, salting, an unreadable row refusing everyone                                                                                                                      |
-| `sessionToken.test.ts`    | 32 random bytes as base64url, sha256, hash ≠ token                                                                                                                                                                                                                 |
-| `sessionLifetime.test.ts` | 12 hours idle, 14 days absolute, the earlier clock winning, the one-minute touch throttle                                                                                                                                                                          |
-| `loginLimiter.test.ts`    | the schedule, the countdown, forgetting, per-key isolation, the shared-key give-back, **pending attempts counting**, eviction at the cap, the password-change key                                                                                                  |
-| `cookies.test.ts`         | the hand-written parser's edges, and the cookie's attributes including `Secure` per request and no expiry                                                                                                                                                          |
-| `requireSameSite.test.ts` | every combination of the three headers                                                                                                                                                                                                                             |
-| `requireAuth.test.ts`     | the gate over real HTTP with in-memory repositories: both clocks, the touch throttle, a removed user's sessions                                                                                                                                                    |
-| `authRoutes.test.ts`      | the routes over real HTTP: the empty-users state, the cookie, the lockout as an operator meets it, a burst of twenty, cross-site refusals, roles, user removal races, and `/api/internal` reachable in front of all of it                                          |
-| `authAudit.test.ts`       | the audit rows for adding and removing a user, revoking sessions and changing a password: the acting user, the target, nothing secret, no row for a refusal, a failed audit write not failing the change, and the user routes naming the signed-in admin over HTTP |
+The admin's own, in `apps/web2-admin/backend/test/unit/` (`pnpm test`):
 
-Integration (`pnpm test:integration`) starts **its own backend**: its own
-database, its own port, `FEED_GATEWAY=fake`, and a first user made by running
-the `user:add` CLI. It never talks to the development backend on :9877, which
-runs against a real Bee node and the real catalogue. `test/integration/auth.test.ts`
-covers the CLI-made admin, the session route, the cross-site refusals, the user
-routes, a password change dropping the other sessions, and the lockout.
+| File                                | What it holds                                                                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cookies.test.ts`                   | the cookie's attributes, `Secure` per request and no expiry                                                                                                            |
+| `requireSameSite.test.ts`           | every combination of the three headers                                                                                                                                 |
+| `requireAuth.test.ts`               | the gate over real HTTP with in-memory repositories: both clocks, the once-a-minute touch, a removed user's sessions                                                   |
+| `authRoutes.test.ts`                | the routes over real HTTP: no users yet, the cookie, the lockout, a burst of twenty, cross-site refusals, roles, removal races, and `/api/internal` ahead of all of it |
+| `authAudit.test.ts`                 | the audit rows for user changes: the actor, the target, nothing secret, no row for a refusal, and a failed audit write not failing the change                          |
+| `authCredentialConcurrency.test.ts` | a password replaced while a sign-in or a second change was being checked                                                                                               |
+
+The integration suite (`pnpm test:integration`) starts its own backend with its own database and
+covers the CLI-made admin, the session route, the cross-site refusals, the user routes, a password
+change ending the other sessions, and the lockout
+([its README](../../apps/web2-admin/backend/test/integration/README.md)).

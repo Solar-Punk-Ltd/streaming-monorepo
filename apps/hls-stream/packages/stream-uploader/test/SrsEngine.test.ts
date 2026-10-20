@@ -217,7 +217,7 @@ describe('SRS /hls route reaches the filesystem only inside the media root', () 
   }
 
   // The request body is an unchecked cast at the handler boundary, so `file` can be absent at
-  // runtime whatever the type says. Validating it belongs with the request schemas in S1.5. What
+  // runtime whatever the type says. Validating it belongs with the request schemas. What
   // belongs here is that the boundary fails closed instead of reaching the media volume on its way
   // to failing, which is the property a future refactor could quietly lose.
   it('fails closed when the body carries no file field', async () => {

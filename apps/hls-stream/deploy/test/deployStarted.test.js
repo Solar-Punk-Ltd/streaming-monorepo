@@ -46,7 +46,7 @@ function looks(sandbox, service) {
  * every mode but warn on a batch the node answered about. The compose healthcheck cannot close it
  * either, because it deliberately reports without acting and nothing declares a dependency on it.
  *
- * Found by a cross-provider review on 2026-09-14, prompted by the commit that made
+ * Found in review, prompted by the commit that made
  * STAMP_MIN_TTL_HOURS and STAMP_MAX_UTILIZATION reach the container: two settings that were inert
  * became able to refuse a start, which is right, and there was nothing to notice the refusal.
  */

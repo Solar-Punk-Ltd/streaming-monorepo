@@ -1,89 +1,98 @@
 # streaming-monorepo
 
-Solar Punk's live streaming platform on [Swarm](https://www.ethswarm.org/), for several brands,
-each with its own console users, signing key and stream list. A brand signs in to a console,
-creates a stream and gets its OBS settings. The streaming stack takes the broadcast in, puts the
-video on Swarm as it happens and serves a viewer that plays it back without a CDN. A manager
-deploys stack versions onto hosts and looks after the Bee nodes they need, with the postage stamps
-that prepay their Swarm storage and the chequebooks that pay their peers for bandwidth.
+A live streaming platform on [Swarm](https://www.ethswarm.org/), the decentralised storage network
+run by Bee nodes. A broadcaster streams from OBS or ffmpeg, the platform writes every video segment
+to Swarm as it happens, and viewers play the stream straight from Swarm, with no CDN and no server
+of the broadcaster's in the path. One installation serves a brand: an organisation with its own
+console users, its own signing key and its own list of streams.
 
-Every project of the platform lives here, each in its own folder with only its own dependencies.
-How the folders relate and the rules that keep them apart are in
-[docs/monorepo.md](docs/monorepo.md).
+This README is the front door. It says what the platform is made of, how to get it running, and
+where the rest of the documentation is.
 
 ## What is here
 
-| Folder                                                                       | What it is                                                                                                                                                                                                       |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`apps/web2-admin`](apps/web2-admin/README.md)                               | The brand console: an API on Postgres, a React front end, the API contract the two share, and its deploy script.                                                                                                 |
-| [`apps/hls-stream`](apps/hls-stream/README.md)                               | The streaming stack: two ingest engines, SRS and OvenMediaEngine, the uploader that writes HLS segments to Swarm, the viewer, Bee node setup, the deploy scripts, and the end-to-end test and benchmark harness. |
-| [`apps/infra-manager`](apps/infra-manager/README.md)                         | The manager: an API and a console that deploy stack versions onto hosts and handle profiles, port slots, stamps and chequebooks.                                                                                 |
-| [`packages`](docs/monorepo.md)                                               | Code two apps share, once: the shapes they send each other (`contracts`), the sign-in and session code of the two backends (`web-auth`) and their migration runner (`db-migrate`).                               |
-| [`infra/edge`](apps/web2-admin/deploy/README.md#public-https-the-hosts-edge) | The front door of a host: one Caddy that holds ports 80 and 443, gets the HTTPS certificates and sends each domain to the console behind it.                                                                     |
-| [`docs`](docs/)                                                              | How the pieces fit: the layout and its rules, the host roles, the roadmap, the design briefs, and notes on the neighbouring systems.                                                                             |
+| Part                                                    | What it is                                                                                                                                                                                    |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [The admin](apps/web2-admin/README.md)                  | The brand console, `apps/web2-admin`. Brand users sign in, create streams, get the encoder settings for each, and publish the stream list (the catalogue) to Swarm. It also funds the nodes.  |
+| [The stack](apps/hls-stream/README.md)                  | The streaming software, `apps/hls-stream`: the ingest engine (SRS or OvenMediaEngine), the uploader that writes HLS segments to Swarm, Bee node setup, the deploy scripts and the e2e suites. |
+| [The viewer](apps/hls-stream/packages/client/README.md) | A web player inside the stack, `apps/hls-stream/packages/client`. It reads the catalogue and plays each stream from a Bee gateway or from a light Swarm node in the browser tab.              |
+| [The manager](apps/infra-manager/README.md)             | The operator's console, `apps/infra-manager`. It deploys the stack onto hosts over ssh, runs the Bee nodes, buys postage and tells the admin about every stage it runs.                       |
 
-Scripts that serve the whole repository go under `tools/`: the boundary check, which keeps the apps
-from depending on each other, the cut of each app's own lockfile out of the root one, and the release
-scripts, which name the build each deploy sends and guide the tag a release is made under.
+A stage is one stack deployment that takes broadcasts in, with the Bee nodes behind it.
+[docs/architecture/overview.md](docs/architecture/overview.md) explains how the parts fit.
 
-## Working in an app
+Beside the apps: `packages/` holds code two apps share, `infra/edge` the HTTPS front door of a
+host, `tools/` the scripts that serve the whole repository, and `scripts/public-leaks` the check
+that keeps real addresses and secrets out of the tree.
 
-The repository is one pnpm workspace, so one install at the root, from its one lockfile, installs
-all three apps. Then go into an app and use its own commands, which cover that app alone:
+## Quick start
+
+To run the platform yourself, follow [docs/self-hosting.md](docs/self-hosting.md). It takes you from
+empty Linux machines to a first live stream: the hosts to rent, the deploy scripts to run, how to
+fund the Bee nodes and which ports to keep closed. One machine can carry every role for a first try.
+
+To work on the code, you need Node 24 and corepack:
 
 ```sh
-pnpm install            # at the root, once
+corepack enable
+pnpm install
+pnpm test
+```
+
+## Working in the repository
+
+The repository is one pnpm workspace. One install at the root, from its one lockfile, installs all
+three apps. Then go into an app and use its own commands, which cover that app alone:
+
+```sh
 cd apps/web2-admin      # or apps/hls-stream, or apps/infra-manager
 pnpm test
 ```
 
-Each app keeps its own `package.json`, with its scripts and its dependencies, and pnpm lets a
-package import only what it declares, so the apps stay apart. The pnpm release is the
-`packageManager` field of the root `package.json`, which each app's `package.json` repeats, and
-with corepack enabled `pnpm` is that release. The security overrides, the builds allowed and the
-other workspace settings are in the root `pnpm-workspace.yaml`. The Node release is the root
-`.nvmrc`, one for every app: the workflows read it, and the Node base image of every Dockerfile
-matches it.
+Each app keeps its own `package.json`, and pnpm lets a package import only what it declares, so the
+apps stay apart. The pnpm release is the `packageManager` field of the root `package.json`, which
+each app repeats. The Node release is the root `.nvmrc`, which the workflows read and every
+Dockerfile's Node base image matches. Overrides and workspace settings live in the root
+`pnpm-workspace.yaml`.
 
-At the root, `pnpm build`, `pnpm typecheck`, `pnpm test` and `pnpm lint` run that script in every
-package of every app that has it, through Nx, which runs a package after the packages it depends
-on. Nx replays a type check or a lint whose files and dependencies have not changed from its cache
-in `.nx/`, and runs everything else each time. It never contacts Nx Cloud. `pnpm boundaries` checks
-that no app depends on another ([the rules](docs/monorepo.md#projects-never-import-each-others-code)).
+Commands at the root run over every app:
 
-`pnpm lint` is oxlint, and `pnpm format` and `pnpm format:check` are oxfmt, over the whole
-repository but `infra/`. Each reads its one settings file at the root, `.oxlintrc.json` and
-`.oxfmtrc.json`, and an app's own `lint`, `format` and `format:check` read the same files.
+| Command                                     | What it does                                                                                                 |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pnpm build`, `pnpm typecheck`, `pnpm test` | runs that script in every package that has it, through Nx, after the packages it depends on                  |
+| `pnpm lint`                                 | oxlint over every package, with the settings in `.oxlintrc.json`                                             |
+| `pnpm format`, `pnpm format:check`          | oxfmt over the repository except `infra/`, with the settings in `.oxfmtrc.json`                              |
+| `pnpm boundaries`                           | fails when one app depends on another ([the rules](docs/monorepo.md#projects-never-import-each-others-code)) |
 
-Each app's README says what its commands are and what a development setup needs:
-[the admin's](apps/web2-admin/README.md), [the stack's](apps/hls-stream/README.md) and
-[the manager's](apps/infra-manager/README.md).
+Nx replays a type check or a lint whose inputs have not changed from its cache in `.nx/`, and never
+contacts Nx Cloud. Each app's README lists its own commands and what a development setup needs.
 
-## Where the work happens
+## Documentation
 
-All work on the platform happens here. The stack and the manager were imported on 2026-09-27 from
-their own repositories, with every commit under its own id, and a plain clone holds everything.
-[docs/monorepo.md](docs/monorepo.md#how-the-history-came-along) says how to read that history.
+Running the platform:
+
+- [docs/self-hosting.md](docs/self-hosting.md): a guide from empty hosts to a first live stream, the firewall, funding the Bee nodes, and the host names that never change.
+- [docs/releasing.md](docs/releasing.md): a guide to tagging a release and deploying it.
+
+How it works:
+
+- [docs/architecture/overview.md](docs/architecture/overview.md): the parts, how a stream travels, the ports, and what must never be public.
+- [docs/architecture/stages.md](docs/architecture/stages.md): how the admin learns every stage from the manager, the tokens and keys, and the catalogue batch.
+- [docs/architecture/funding.md](docs/architecture/funding.md): how a brand funds its nodes, stamps and chequebooks from the admin.
+- [docs/architecture/](docs/architecture/): the admin's own design pages.
+
+Working on the code:
+
+- [docs/monorepo.md](docs/monorepo.md): the layout, the rules between apps, the workflows, and how to read the history.
+- Each app's README, and its deploy guide: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), [the manager](apps/infra-manager/deploy/README.md).
 
 ## Related repositories
 
 - [stream-event-client](https://github.com/Solar-Punk-Ltd/stream-event-client): a web app for watching an event's live streams and recordings over Swarm, with a chat beside each stream. It reads what this platform publishes ([how they are coupled](docs/architecture/overview.md#who-reads-what-we-publish)).
 
-## Documents
-
-- [docs/monorepo.md](docs/monorepo.md): the layout, the rules between projects, and how the history came along.
-- [docs/architecture/overview.md](docs/architecture/overview.md): how the pieces fit, the ports each one listens on, and what must never be public.
-- [docs/self-hosting.md](docs/self-hosting.md): running your own deployment, the three kinds of host, the edge, a recipe for each kind of fresh host, and the names on the hosts that never change.
-- [docs/releasing.md](docs/releasing.md): releasing: tag the build, deploy each manager and admin, and check the version each console shows.
-- [docs/ROADMAP.md](docs/ROADMAP.md): the roadmap and the checkpoint log.
-- [docs/known-issues.md](docs/known-issues.md): what the live test rounds found and what was decided not to fix yet.
-- [docs/architecture/](docs/architecture/): the design briefs, starting with the [admin layer](docs/architecture/web2-admin.md).
-- [docs/research/](docs/research/README.md): condensed notes on the systems the admin talks to.
-- Deploying: [the admin](apps/web2-admin/deploy/README.md), [the stack](apps/hls-stream/deploy/README.md), and [the manager](apps/infra-manager/deploy/README.md).
-
 ## Licence
 
-The whole repository is under the MIT licence in the root [LICENSE](LICENSE): every app, package
-and folder. The two packages that keep a licence file of their own, the stack's
+The whole repository is under the MIT licence in the root [LICENSE](LICENSE). The two packages that
+keep a licence file of their own, the stack's
 [uploader](apps/hls-stream/packages/stream-uploader/LICENSE) and
 [viewer](apps/hls-stream/packages/client/LICENSE), hold the same text.

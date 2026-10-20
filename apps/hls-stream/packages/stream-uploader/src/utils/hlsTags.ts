@@ -1,6 +1,6 @@
 // The tags moved to the shared package when the client stopped keeping its own spelling of them.
 // Kept as a re-export so ManifestManager and the engine-side playlist parsers keep their existing
-// import path. See ARCH-1.
+// import path.
 export {
   HLS_DISCONTINUITY,
   HLS_DISCONTINUITY_SEQUENCE,

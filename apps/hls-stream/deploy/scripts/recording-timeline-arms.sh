@@ -6,7 +6,7 @@
 # ## ⭐⭐⭐ WHY THIS COSTS NOTHING
 #
 # The 2026-08-16 gateway-less sitting found the native viewer's thread cost rising 0.435 to 0.746
-# with the broadcast's age at join, and `gateway-less-live-2026-08-16.md` then withdrew the mechanism
+# with the broadcast's age at join, and a follow-up reading then withdrew the mechanism
 # it offered, because within an arm the cost does not move at all. What sets the level at join was
 # left open, and the obvious next move looked like a longer broadcast.
 #

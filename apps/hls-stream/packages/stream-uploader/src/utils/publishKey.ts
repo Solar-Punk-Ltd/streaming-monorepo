@@ -8,7 +8,7 @@ import { timingSafeEqual } from 'node:crypto';
  * e2e publisher have to derive exactly the value this verifies, and a second implementation of that
  * one line does not fail loudly: it authenticates nobody, which looks from the outside like a
  * broadcaster typing their key wrong. Re-exported here rather than imported at every call site, so
- * the move stays invisible to the rest of the package. See ARCH-1.
+ * the move stays invisible to the rest of the package.
  *
  * What stays here is what only the service does. The constant-time compare, and the two engines'
  * webhook shapes, neither of which the publisher side has any use for.

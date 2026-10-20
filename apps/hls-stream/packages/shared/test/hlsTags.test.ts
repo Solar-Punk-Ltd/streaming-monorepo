@@ -6,8 +6,8 @@ import * as tags from '../src/hlsTags.js';
 /**
  * The tag spellings pinned against RFC 8216 rather than against the source that defines them.
  *
- * Moving these into one shared module made client and uploader unable to disagree, which is what
- * ARCH-1 asked for, and it also made a rename invisible to the round-trip test: both sides would
+ * Moving these into one shared module made client and uploader unable to disagree, which is the point,
+ * and it also made a rename invisible to the round-trip test: both sides would
  * move together and still agree with each other while emitting something no player accepts. This is
  * the arm that fails on a rename. Written as literals on purpose, so it cannot be satisfied by
  * whatever the module happens to say today.
@@ -31,7 +31,7 @@ const RFC_8216_TAGS: Record<keyof typeof tags, string> = {
   HLS_PLAYLIST_TYPE_VOD: '#EXT-X-PLAYLIST-TYPE:VOD',
 };
 
-describe('HLS tag spellings (ARCH-1)', () => {
+describe('HLS tag spellings', () => {
   for (const [name, spelling] of Object.entries(tags)) {
     it(`${name} is ${RFC_8216_TAGS[name as keyof typeof tags]}`, () => {
       assert.equal(spelling, RFC_8216_TAGS[name as keyof typeof tags]);

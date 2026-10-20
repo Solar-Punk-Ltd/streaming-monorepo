@@ -51,7 +51,7 @@ export interface PullerOptions {
   /**
    * Arms the next poll. Injectable only so a test can read the delay the puller polls at rather than
    * timing the polls it produces, since counting polls inside a wall-clock window reports the load on
-   * the machine instead. See TEST-34.
+   * the machine instead.
    *
    * The seam is the timer itself rather than a callback reporting the delay beside it, because those
    * two values can disagree and a test reading the report cannot tell. Flooring the armed delay while

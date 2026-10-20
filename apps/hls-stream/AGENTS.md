@@ -1,5 +1,20 @@
 # Working rules for this repository
 
+## Where the docs live
+
+The stack's docs are its READMEs, one per part, linked from `README.md`. There is no `docs/` folder.
+
+- `README.md`: what the stack is, how to run it, and the map of the pages below.
+- `deploy/README.md`: the deploy guide.
+- `packages/stream-uploader/README.md`: the uploader's reference. `test/metrics.test.ts` reads its
+  metric table and `deploy/test/uploaderEnv.test.js` its two settings tables.
+- `packages/stream-uploader/concepts.md`: how the uploader publishes, and why.
+- `engines/README.md`: the engines reference.
+- `packages/client/README.md` and `packages/cli/README.md`: the viewer's and the CLI's references.
+- `e2e/README.md`: the testing page. `e2e/test/readmeSuiteTables.test.ts` reads its suite tables.
+
+Platform-wide pages live in the monorepo's `docs/`.
+
 ## ⛔⛔⛔ Never engineer around money
 
 **This rule overrides any instinct to be careful with the balance, and any earlier judgement written

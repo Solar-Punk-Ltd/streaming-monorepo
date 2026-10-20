@@ -224,7 +224,7 @@ describe('switch frequency is a rate over elapsed time, not over playback time',
  * of anything, and a session that stalled longer than it played read above 100% on the overlay,
  * which does not clamp.
  *
- * Reported by a cross-provider review on 2026-09-15. The same error was found and fixed for the
+ * Reported in review. The same error was found and fixed for the
  * quality switch rate, in the line directly below this one, and the ratio was left on the old
  * denominator.
  */

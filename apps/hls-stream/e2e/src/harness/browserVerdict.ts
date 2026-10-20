@@ -234,12 +234,12 @@ function normaliseResolution(resolution: string): string {
 /**
  * Why the quality this viewer received is not one the deployment configured, or null.
  *
- * ⛔⛔ **Phase 1 of `docs/e2e-viewer-coverage-plan.md`.** Every watching suite already captured the
+ * Every watching suite already captured the
  * resolutions a viewer passed through and printed them under "observed, not asserted". A viewer
  * silently riding a rung nobody configured therefore passed every test, on a reading that was
  * already being taken.
  *
- * ⭐ **It asks whether the rung is one the ladder declares, never which one.** Which rung a player
+ * **It asks whether the rung is one the ladder declares, never which one.** Which rung a player
  * settles on is its own adaptive decision, and pinning it here would be a performance threshold
  * wearing a correctness coat. Owner rule of 2026-08-29: these suites check that the feature works,
  * not how well.

@@ -5,7 +5,7 @@
  * That is not a convenience, it is the requirement that makes the whole thing work. The publisher
  * runs here, so capture is stamped by this machine's clock; if the fetch were stamped by the
  * deployment host's, every total would carry the skew between two machines, which is routinely larger
- * than the seconds Sprint 5 is trying to detect. Fetching here keeps both ends on one clock, and it
+ * than the seconds the bench is trying to detect. Fetching here keeps both ends on one clock, and it
  * is also the path a real viewer takes: the client makes exactly these two requests against exactly
  * this gateway.
  *

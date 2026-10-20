@@ -33,7 +33,7 @@
  * Run 35446479777 exercised this path against stack v3.1 on 2026-09-19. The
  * startup command refused the poisoned file and recovery brought the template
  * back. The first expectation incorrectly called that `reverted`, which is the
- * state for a later manager watch failure. See docs/ci.md.
+ * state for a later manager watch failure.
  */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';

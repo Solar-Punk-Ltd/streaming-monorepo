@@ -53,8 +53,7 @@ function isPeerStoppedReading(error: unknown): boolean {
  * message boundary: TCP may split a response anywhere, so a response arriving as `HTTP/1.1 40` then
  * `1 Unauthorized` missed the regex and the helper returned `NaN`, failing whatever asserted `401`.
  * That is why `srsWebhookAuth.test.ts` failed once under a full `pnpm verify` and passed in
- * isolation: load changes where the chunk boundaries land, and nothing else about the test. See
- * TEST-53.
+ * isolation: load changes where the chunk boundaries land, and nothing else about the test.
  *
  * **Reading and sending are settled separately**, which is the second reason it is not a plain
  * `for await` over the socket. Iterating couples them: the send failing tears down the read, so an

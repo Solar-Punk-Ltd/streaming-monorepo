@@ -112,7 +112,7 @@ export interface NodeStampReading {
    * `2 ^ (depth - bucketDepth)` buckets, and the batch is full when THAT one fills.
    *
    * ⚠️ So on a small batch the percentage jumps in coarse steps and reads alarmingly early. The
-   * depth 17 batch `docs/e2e-batch-drain-plan.md` fills on purpose has a bucket capacity of two
+   * depth 17 batch the drain sitting fills on purpose has a bucket capacity of two
    * chunks, so one chunk in its fullest bucket prints as 50% full. That is the arithmetic being
    * honest about a two-chunk bucket, not a batch half spent, and it is still not a refusal here.
    */

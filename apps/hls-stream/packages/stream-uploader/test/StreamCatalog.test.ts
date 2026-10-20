@@ -287,9 +287,9 @@ describe('StreamCatalog Swarm write options', () => {
  * The catalog announce is the write that decides whether a broadcast is discoverable at all, and it
  * is the one write here with no fallback: a segment that never lands is one missing segment, a
  * catalog entry that never lands is a stream nobody can find. Its retry was covered only by
- * `common.test.ts` testing the helper in isolation. See TEST-1.
+ * `common.test.ts` testing the helper in isolation.
  */
-describe('StreamCatalog survives a transient Bee failure (TEST-1)', () => {
+describe('StreamCatalog survives a transient Bee failure', () => {
   it('retries a feed write that fails with a retryable status', async () => {
     const writes: CapturedWrite[] = [];
     let attempts = 0;

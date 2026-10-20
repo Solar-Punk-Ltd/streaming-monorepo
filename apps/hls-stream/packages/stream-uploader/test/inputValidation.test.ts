@@ -17,7 +17,7 @@ interface CatalogEntry {
   state?: string;
 }
 
-describe('request validation at the API boundary (S1.5)', () => {
+describe('request validation at the API boundary', () => {
   const servers: ApiTestServer[] = [];
   after(async () => {
     await Promise.all(servers.map((server) => server.close()));

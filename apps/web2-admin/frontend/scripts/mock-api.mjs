@@ -90,7 +90,7 @@ const stages =
       ];
 
 /**
- * The Funding page's API, phase 1 of docs/architecture/funding.md: the brand wallet, every stage's nodes with their
+ * The Funding page's wallet API (docs/architecture/funding.md): the brand wallet, every stage's nodes with their
  * wallet balances, confirming their addresses, and sends from the wallet. Nothing reaches a chain. A send takes its
  * amount off the wallet at once and lands on the node when its transfer reads as confirmed, a few seconds later.
  * MOCK_FUNDING=off answers configured false, the page's "not set up" state. MOCK_FUNDING=refuse answers every

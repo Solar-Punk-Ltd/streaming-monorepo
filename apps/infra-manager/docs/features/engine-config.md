@@ -1,257 +1,99 @@
 # Engine configuration
 
-A deployment can use its own SRS or OvenMediaEngine configuration file when
-its selected stack version advertises support. The manager checks the file,
-recreates the engine, then records the outcome of startup verification.
-Recovery can fail. Saving a file is not proof that publishing or playback works.
+Engine configuration lets one deployment run its own SRS or OvenMediaEngine config file instead of the template its stack version ships. This is a feature page of the manager (`apps/infra-manager`), the web console and API that deploys the streaming stack (`apps/hls-stream`) onto hosts. The manager checks the file, recreates the engine, watches it start, and records the outcome. A saved file is not proof that publishing or playback works.
 
-Status, 2026-09-16. What this page described on that day is merged to
-`main-v2`, and the paragraphs dated after it describe `main`. It was
-written at `6dc33d1` on `feat/ai-remediation`, the head of the remediation set,
-which landed. It carries the engine config ownership work's service caller integration, the isolated SRS
-checks, the OvenMediaEngine validation and the effective engine settings. The branch
-has since been deployed twice, on 2026-09-11 and 2026-09-13, recorded in
-the remediation's handover record, which the repository's history keeps, so
-some of this has now been seen on a host. The engine-configuration decisions
-were accepted on 2026-09-07.
+## What it does
 
-## File editing and effective settings
+- The **engine** is the deployment's media server, SRS or OvenMediaEngine (OME). See [engine-control.md](engine-control.md).
+- The **template** is the config file the stack version ships for that engine. The engine's entrypoint fills its **placeholders**, such as `SRT_LATENCY_PLACEHOLDER`, from environment variables at container start.
+- A **custom file** is the deployment's own config, stored in the manager's database in place of the template.
+- A **rollout** is one apply or reset of a custom file, stored as an operation with a state.
 
-Open the deployment's engine configuration editor to inspect the selected
-version's template or the stored custom file. Check and apply checks the proposed file
-before storing it and starting the engine recreation. Back to the template
-removes the custom override and recreates the engine from that version's
-normal template. The editor uses a plain text area and accepts at most
-128 KiB of nonempty UTF-8 text.
+Support comes from the version contract's `engineConfig` flag for each engine. A version name alone does not prove support. See [Stack versions](stack-versions.md).
 
-Support comes from the version contract's `engineConfig` flag for that engine.
-A version name alone does not prove support. New deployments can explicitly
-choose a version in the wizard. Moving an existing deployment to another
-version is outside the accepted scope of the engine-configuration feature.
-See [Stack versions](stack-versions.md).
+## How to use it in the console
 
-The stack fills recognized placeholders at container startup. Keep placeholders
-for values managed by the stack, including generated credentials, callback
-addresses and ports. Do not paste credentials into documentation or test
-fixtures. A custom file is stored as text, so replacing a placeholder with a
-literal also stores that literal.
+On the deployment page, the Engine card's **Config file** button opens the editor. It shows the version's template, or the stored custom file when there is one, in a plain text area. The editor takes at most `ENGINE_CONFIG_MAX_BYTES` (128 KiB) of nonempty UTF-8 text.
 
-The Engine card and the summary show configured values with their source.
-For a setting read from the environment, the manager combines the selected
-version's defaults, valid host overrides and deployment overrides. Resetting
-a deployment override in the Stack settings card uses the effective default,
-which can differ between versions. A reliably parsed literal is labeled "Set
-in config file". Changing an environment override does not change that
-literal, and since 2026-09-26 the setting's row in the Stack settings card
-says so: a key the file no longer reads says a value there has no effect
-until the file reads it again.
+- **Check and apply** checks the file, stores it and recreates the engine on it.
+- **Back to the template** removes the custom file and recreates the engine from the version's template.
+- **Verify now** and **Back to the previous file** appear on the Engine card when a rollout needs them, see [States](#states). They are not offered for a stopped deployment, and the card says why when they are unavailable.
 
-Since 2026-09-23 the SRT latency is the one setting whose default does not
-come from the version. The manager writes its own 2000 milliseconds into the
-deployment's env file wherever the host sets no value of its own, labeled
-"Manager default". In a file of the deployment's own it is read at
-`recvlatency` in `srt_server`, the directive that decides SRS's side of the
-wait on ingest, since `f42fba2` on 2026-09-23. A literal there is labeled "Set
-in config file" like any other. A block that sets no `recvlatency` is shown
-as SRS's own 120 milliseconds, labeled "Engine default", with one sentence
-saying why, and changing the setting does not change it. SRS ignores
-`latency` for ingest without `recvlatency`, measured on 2026-09-23 as
-[engine-control.md](engine-control.md) records. A file that still carries
-only the `latency` placeholder, as one copied from the `v3.1` template does,
-therefore reads as 120. One started from the bundled template since the pin
-moved on 2026-09-24 carries both placeholders and reads as the setting,
-while a file stored before then keeps the lines it was copied with. The
-entrypoint fills only the first placeholder on each line, so since `d6951fa` a
-file with a line that carries the SRT latency placeholder twice, such as
-`recvlatency SRT_LATENCY_PLACEHOLDER; latency SRT_LATENCY_PLACEHOLDER;`, is
-shown as "Unverified" in either order. The second one reaches SRS as the token
-itself. Keep each placeholder on a line of its own.
+Keep placeholders for every value the stack manages, such as generated credentials, callback addresses and ports. A custom file is stored as text, so a literal that replaces a placeholder is stored as that literal. Keep each placeholder on a line of its own: the entrypoint fills only the first placeholder on a line, so a second one reaches the engine as the placeholder text itself. A line that carries the SRT latency placeholder twice is shown as **Unverified**.
 
-The ABR ladder's rung settings, each rung's width, height and bitrate, have no
-placeholder of their own. The stack reads them as one key, `ABR_LADDER`, which
-the entrypoint turns into the generated transcode block. The Engine card shows
-them as "Unverified" in every config, because the manager does not read sizes
-or bitrates out of an `engine` block, neither a generated one nor one written by
-hand. A file of the deployment's own that writes its own `engine` blocks encodes
-at the sizes it writes, whatever the rung settings say, while the uploader still
-describes each rung from `ABR_LADDER`. See
-[Each rung's size and bitrate](abr-ladder.md#each-rungs-size-and-bitrate).
+## What the Engine card reads from a file
 
-Omitted settings are labeled "Not specified". Conflicting values, unsupported
-syntax and other uncertain readings are "Unverified", with a reason. The
-manager checks relevant sections together instead of choosing the first
-value it finds. Generated SRS sections can prevent a reliable reading of the
-fields they control. OME's uploader poll interval is read independently of
-the XML file. These observations describe configured input, not proof of what
-the running engine loaded. Inspect its running configuration under Logs.
+The Engine card and the **At a glance** summary show each configured value with its source. For a setting read from the environment, the manager combines the version's defaults, valid host overrides and the deployment's own values. A value the manager can read reliably as a literal in the file is labelled **Set in config file**. Changing the deployment's setting does not change that literal, and the setting's row in the Stack settings card says a value there has no effect until the file reads the placeholder again.
 
-When the page receives a changed deployment or configuration revision, the
-Engine card hides old observations immediately. Failed or timed-out refreshes
-do not restore stale values. The engine settings are edited in the Stack
-settings card since the Engine card's drawer went on 2026-09-26, and a
-deployment deleted and recreated under its name is a page of its own there,
-with nothing typed for the old one carried over.
+An omitted setting is **Not specified**. Conflicting values, unsupported syntax and other uncertain readings are **Unverified**, with a reason. The manager reads all relevant sections together instead of taking the first value it finds. Generated SRS sections can prevent a reliable reading of the fields they control. OME's uploader poll interval is read from the environment, not from the XML. These readings describe the configured file, not what the running engine loaded. The running config is under **Logs**, on the **Effective config** tab.
 
-A write through the engine settings route, which scripts use to save and
-recreate in one call, is bound to the exact deployment job that reserved it.
-Losing that ownership returns a conflict. Since 2026-09-26 it is also bound to
-the settings revision it read, so a save from the Stack settings card that
-landed in between refuses it rather than being written over. Validation and
-job admission use one captured published build. Publication of another build
-before the locked claim refuses the save before settings or job state changes.
-Capturing mutable host inputs before execution remains open, and it closes with
-the exact-execution slice described at the end of this page.
+- **SRT latency.** In a custom SRS file it is read at `recvlatency` in `srt_server`, the directive that decides SRS's wait on ingest. A literal there is **Set in config file**. A block with no `recvlatency` is shown as SRS's own 120 milliseconds, labelled **Engine default**, with one sentence saying why, and changing the setting does not change it. A file that carries only the `latency` placeholder therefore reads as 120. [engine-control.md](engine-control.md) explains how SRS applies the two directives.
+- **ABR rung sizes and bitrates.** The rung settings have no placeholder of their own. The stack reads them as one key, `ABR_LADDER`, which the entrypoint turns into the generated transcode block. The Engine card shows them as **Unverified** in every config, because the manager does not read sizes or bitrates out of an `engine` block. A custom file that writes its own `engine` blocks encodes at the sizes it writes, whatever the rung settings say, while the uploader still describes each rung from `ABR_LADDER`. See [Each rung's size and bitrate](abr-ladder.md#each-rungs-size-and-bitrate).
+
+When the page receives a changed deployment or configuration revision, the Engine card hides old readings at once. A failed or timed-out refresh does not bring stale values back.
 
 ## What validation establishes
 
-| Engine          | Before recreation                                                                                                                                                                                                         | After recreation                                                                                                               | What a pass does not establish                                                     |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| SRS             | The selected image's `srs -t -c` parses a temporary copy with dummy placeholder values. Each check owns its temporary directory and mounts its file read-only with `--mount`. Cleanup cannot delete another check's file. | The manager watches the recreated container for 20 seconds, checking its identity, running state and restart count.            | Successful ingestion, uploader admission, Swarm delivery or playback.              |
-| OvenMediaEngine | Strict XML parsing and a comparison against protected paths and values from the selected version's own template. This is manager-side validation, not OME's own parser.                                                   | The same startup watch, followed by a TCP reachability check of the mapped HLS port from the manager, with a 10-second budget. | A working admission callback, usable stream or playlist, or end-to-end publishing. |
+| Engine          | Before recreation                                                                                                                                                                                                       | After recreation                                                                                                                                             | What a pass does not establish                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| SRS             | The selected image's `srs -t -c` parses a temporary copy with dummy placeholder values. Each check owns its temporary directory and mounts its file read only with `--mount`, so one check cannot touch another's file. | The manager watches the recreated container for 20 seconds (`DEFAULT_ENGINE_WATCH`), checking its identity, running state and restart count every 2 seconds. | Successful ingest, uploader admission, Swarm delivery or playback.                   |
+| OvenMediaEngine | Strict XML parsing, and a comparison against protected paths and values from the version's own template. This is the manager's check, not OME's own parser.                                                             | The same startup watch, then a TCP reachability check of the mapped HLS port from the manager, with a 10 second budget.                                      | A working admission callback, a usable stream or playlist, or end-to-end publishing. |
 
-OME's protected set includes placeholder-bearing elements, bind ports,
-admission providers, application names, provider and publisher element names,
-and output stream mappings. Paths, values and multiplicity must match the
-version's template. Sibling order can differ. A setting mapped to a supported
-engine setting, such as segment duration or count, can replace its
-placeholder with a literal that passes the same field validation.
+OME's protected set includes placeholder-bearing elements, bind ports, admission providers, application names, provider and publisher element names, and output stream mappings. Paths, values and multiplicity must match the version's template. Sibling order can differ. A setting mapped to an engine setting, such as segment duration or count, can replace its placeholder with a literal that passes the same field validation.
 
-Changing a callback route while retaining every placeholder is refused.
-Malformed XML, duplicate protected structures and a faithful copy beside a
-changed duplicate are refused too. Removing admission callbacks is not an
-access-control measure. It can bypass the uploader's admission workflow.
+The manager refuses a changed callback route even when every placeholder is kept, malformed XML, duplicate protected structures, and a faithful copy beside a changed duplicate. OME itself tolerates some malformed XML and exits on other kinds, so the manager refuses all of it before recreation. Removing admission callbacks is not an access-control measure. It can bypass the uploader's admission workflow.
 
-A failed OME TCP connection is a diagnostic about reachability. If the engine
-stayed running, that failure alone does not prove the file is bad and does not
-trigger a revert. The UI retains the diagnostic. An `applied` rollout means
-these bounded checks completed. It is not a publishing-ready verdict.
+A failed OME TCP connection is a diagnostic about reachability. If the engine stayed running, that failure alone does not prove the file is bad and does not trigger a revert. The card keeps the diagnostic. An `applied` rollout means these bounded checks completed. It is not a verdict that publishing works.
 
-## Stored operations and recovery
+## Rollouts and recovery
 
-Every apply or reset has a persisted operation. It records the deployment's
-lifetime identity, configuration and operator-intent revisions, previous file,
-container identity and current state. The deployment lifetime identity changes
-when a deployment is deleted and recreated, even under the same name.
+Every apply or reset is a stored operation. It records the deployment's lifetime identity, its configuration and intent revisions, the previous file, the container identity and the current state. The lifetime identity changes when a deployment is removed and created again, even under the same name.
 
-Apply, reset and recovery callers use the atomic configuration-operation and
-deployment claim. They carry the captured build reference through execution and
-check ownership again when recording completion. A failure during preparation
-keeps the still-owned operation interrupted, its previous file and its original
-failure evidence. A refused recovery claim does not mean the previous file was
-restored. These callers do not close the remaining immutable execution and
-build-hold release work, which the last section of this page describes.
+Apply, reset and recovery take one atomic claim on the configuration operation and the deployment. They carry the captured build through execution and check ownership again when they record completion. A failure during preparation leaves the operation `interrupted`, with its previous file and its original failure. A refused recovery claim does not mean the previous file was restored.
 
-Startup verification begins after the engine recreation has finished and
-RUNNING is committed. A stopped engine, a restart or another demonstrated
-startup failure can trigger one recovery attempt with the previous file.
-Every recovery claim and write checks that the operation still owns the same
-deployment and revisions. A newer edit, stop, start, deletion or replacement
-supersedes the old operation. An old watcher must not undo the newer action.
+Startup verification begins after the engine is recreated and the deployment is `RUNNING`. A stopped engine, a restart or another startup failure can trigger one recovery attempt with the previous file. Every recovery step checks that the operation still owns the same deployment and revisions. A newer edit, stop, start, removal or replacement supersedes the old operation, and an old watcher does not undo the newer action.
 
-The selected stack can also refuse its own startup command before the manager
-commits RUNNING. That is an apply failure rather than a manager-watch failure.
-If recovery then recreates the previous file successfully, the deployment is
-RUNNING again while the operation remains `failed`, its reason says the
-previous file is back, and the card offers Verify now. A failure detected later by
-the manager's watch ends `reverted` when the same recovery succeeds. These two
-states distinguish where the candidate failed, while both preserve the actual
-recovery outcome.
+The stack can also refuse its own startup command before the deployment reaches `RUNNING`. That is an apply failure. If recovery then recreates the previous file, the deployment is `RUNNING` again while the operation stays `failed`, its reason says the previous file is back, and the card offers **Verify now**. A failure the manager's watch detects later ends `reverted` when the same recovery succeeds. The two states tell you where the file failed.
 
-| State         | Meaning and next action                                                                                                                                                                                              |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `applying`    | The operation is storing or recreating on the selected file or template. Wait for its outcome.                                                                                                                       |
-| `watching`    | Recreation completed and startup verification is in progress.                                                                                                                                                        |
-| `applied`     | The configured checks completed. A reset to the template completes after recreation without a custom-file watch. Inspect any OME reachability diagnostic separately.                                                 |
-| `reverting`   | An owned recovery attempt is restoring the recorded previous file and recreating the engine.                                                                                                                         |
-| `reverted`    | The new file failed startup verification and recreation on the previous file completed.                                                                                                                              |
-| `failed`      | Applying the file failed. Read the recorded reason, which also reports a failed recovery attempt when applicable. Verify now starts another explicit attempt.                                                        |
-| `interrupted` | The manager could not finish verification or recovery. Verify now recreates on the stored file. Back to the previous file uses the file saved by the interrupted operation.                                          |
-| `superseded`  | A newer action or container replaced the operation's authority. The older operation does no further recovery work, and the card says the last file was not verified. Verify now starts an attempt on what is stored. |
+### States
 
-The engine card and open editor follow the current stored state. Recovery
-actions explain when they are unavailable. They are not offered for a stopped
-deployment. Recreating on the previous file can itself fail and leave ERROR.
-There is no promise of uninterrupted service or guaranteed restoration.
+| State         | Meaning and next action                                                                                                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `applying`    | The operation is storing the file or template and recreating the engine. Wait for its outcome.                                                                                        |
+| `watching`    | Recreation completed and startup verification is running.                                                                                                                             |
+| `applied`     | The checks completed. A reset to the template completes after recreation without a watch. Read any OME reachability diagnostic separately.                                            |
+| `reverting`   | Recovery is restoring the previous file and recreating the engine.                                                                                                                    |
+| `reverted`    | The new file failed startup verification and the engine was recreated on the previous file.                                                                                           |
+| `failed`      | Applying the file failed. Read the recorded reason, which also reports a failed recovery. **Verify now** starts another attempt.                                                      |
+| `interrupted` | The manager could not finish verification or recovery. **Verify now** recreates on the stored file. **Back to the previous file** uses the file saved by the interrupted operation.   |
+| `superseded`  | A newer action or container took over. The old operation does no more recovery, and the card says the last file was not verified. **Verify now** starts an attempt on what is stored. |
 
-After a manager restart, an unfinished apply or recovery becomes interrupted.
-For a saved watch, the manager checks ownership and container identity again.
-The same running container with zero restarts starts a fresh full watch.
-Demonstrated failure can take the owned recovery path. A replacement container
-supersedes the watch. An inspection outage leaves the result interrupted,
-never verified. A stopped deployment is not restarted by this reconciliation.
+The Engine card and an open editor follow the stored state. Recreating on the previous file can itself fail and leave the deployment in `ERROR`. There is no promise of uninterrupted service or guaranteed restoration.
 
-## Persistence and API
+After a manager restart, an unfinished apply or recovery becomes `interrupted`. For a saved watch, the manager checks ownership and container identity again. The same running container with zero restarts starts a fresh full watch. A demonstrated failure can take the recovery path. A replacement container supersedes the watch. An inspection outage leaves the result `interrupted`, never verified. A stopped deployment is not restarted by this.
 
-The database stores the custom text and the operation history. Deployment
-preparation writes the engine override to the deployment's data directory.
-Backing up the manager checkout alone does not back up this state. Removal of
-a deployment also removes its deployment data under the normal removal flow.
+## Persistence
 
-All engine-config routes require a signed-in session, like other deployment
-edits. Reading uses `GET /profiles/:name/engine-config`. Saving uses `PUT` with
-`{ "config": "..." }`. `DELETE` resets to the template. Explicit recovery uses
-`POST /profiles/:name/engine-config/verify` and
-`POST /profiles/:name/engine-config/restore-previous`. An accepted recreation returns
-202 with a deployment snapshot. Observe the later operation state for its
-outcome. A successful HTTP response does not prove playback.
+The database stores the custom file and the operation history. Deployment preparation writes the custom file into the deployment's data directory. Backing up the manager's files alone does not back up this state. Removing a deployment removes its data in the normal removal flow.
 
-## What has been checked, and where the containers are missing
+## Routes
 
-The container-backed harnesses below were first measured on a laptop. Since
-2026-09-19 the two container harnesses also run on a GitHub runner through the
-docker-backed workflow, as the paragraph on them says. The unit, database and
-browser suites run on GitHub's runners on every push, and the branch has been
-deployed to the host twice, as the status above says.
+All routes need a signed-in session. The full reference is in [the API reference](../../manager/README.md).
 
-Unit, database and browser suites cover operation ownership, restart
-reconciliation, isolated SRS check files, XML parsing and protected paths, and
-the sources of an effective setting. They also cover the configured-value UI on
-a desktop width and at 390 pixels. Every one of them substitutes the engine: the
-container control is a test double and no SRS or OvenMediaEngine process starts.
-A passing suite therefore proves the manager's own decisions, and never that an
-engine read a file.
+| Method | Path                                             | Body                  | Answer                                                                                                            |
+| ------ | ------------------------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| GET    | `/profiles/:name/engine-config`                  |                       | `{ engine, supported, unsupportedReason, config, template, placeholders, ... }` with the latest rollout, no-store |
+| PUT    | `/profiles/:name/engine-config`                  | `{ "config": "..." }` | 202 and a deployment snapshot                                                                                     |
+| DELETE | `/profiles/:name/engine-config`                  |                       | 202 and a deployment snapshot                                                                                     |
+| POST   | `/profiles/:name/engine-config/verify`           |                       | 202 and a deployment snapshot                                                                                     |
+| POST   | `/profiles/:name/engine-config/restore-previous` |                       | 202 and a deployment snapshot                                                                                     |
 
-Two container harnesses exist for this feature and both run only when someone
-starts them. `manager/test/docker/srs-check-isolation.sh` puts eight files
-through the manager's own checker at once and asserts that each refusal names
-the directive of its own file and no directive of any of the other seven.
-`manager/test/docker/ome-admission-gate.sh` drives the isolated
-publish-to-admission-to-playlist path. Both have a job in the docker-backed
-workflow, now the root `.github/workflows/infra-manager-docker.yml`, which starts by
-hand or when a pull request gets the label `docker-checks`. Both passed on a runner
-in its first dispatch, run 35444459944 of the manager's own repository on
-2026-09-19, and on this laptop on 2026-09-10.
+A 202 means the recreation was accepted. Read the operation's later state for its outcome. A successful HTTP answer does not prove playback.
 
-The gap between a parse and a start now has a test of its own, and it has never
-executed. `manager/test/integration/engine-startup-failure.test.ts` is the only
-place the whole rollout path would run against real containers: it takes the
-version's own template with `work_dir /no/such/directory;` added, which the
-manager's check accepts and the engine dies on. The observations that establish
-that, taken on this laptop on 2026-09-10 against the SRS image the stack pins,
-are in the file's own header. It needs the whole stack deployed on a runner, so
-its first run is a manual dispatch of the workflow. See
-[../ci.md](../ci.md).
+## Limits
 
-The local OvenMediaEngine validation evidence of 2026-09-08 records OvenMediaEngine `v0.21.0` with
-manifest-list digest
-`sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6`.
-On arm64, the healthy template started, a second root and an undefined entity
-were tolerated by OvenMediaEngine, and an unquoted attribute exited with code 1.
-This is why the manager rejects malformed XML before recreation. That is a
-recorded arm64 run from a laptop, not an amd64 result and not a funded-host
-result, and it has not been repeated since.
-
-## What is still open
-
-Private execution copies landed on 2026-09-11, so a deployment now runs out of a
-copy of its build rather than out of the immutable build directory. See "The
-tree a deployment runs in" in [stack-versions.md](stack-versions.md). What that
-leaves open here is the creator receipt, which has no code. A rollout starts and
-reverts through the deploy claims (`beginDeploy`, `beginRevertDeploy` and
-`beginRestorePreviousDeploy` in `EngineConfigOperationRepository`), and an
-operation's build hold is released when its recovery ends or the operation is
-superseded.
-
-The live acceptance run separately verifies authorised live Swarm delivery, and it waits for
-its spending cap and duration and a separate authorisation to spend. Unit tests do not substitute
-for any of these execution results.
+- An existing deployment cannot yet move to another stack version, so a custom file stays tied to the version it was written for.
+- The checks do not prove that a stream publishes, reaches Swarm or plays. They are bounded parse, start and reachability checks.
+- OME validation is the manager's own XML check, not OME's parser.
+- Recovery restores the previous file at most once per rollout, and that recovery can fail.
+- The Engine card reads the configured file, not what the running engine loaded.

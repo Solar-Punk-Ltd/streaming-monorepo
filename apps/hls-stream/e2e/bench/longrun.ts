@@ -396,7 +396,7 @@ function renderLongRun(run: BenchRun, runMinutes: number, watch?: UnservedSegmen
       `${seconds(demand.growthMs)}.`,
     demand.growthMs > 0
       ? `- **a player configured from this run's opening third would eventually stall**, by ` +
-        `${seconds(demand.growthMs)}. That is what every buffer recommendation in \`profiles.md\` was ` +
+        `${seconds(demand.growthMs)}. That is what every earlier buffer recommendation was ` +
         'derived from, since each of those runs is roughly one third of this one long.'
       : '- the demand did not grow, so a buffer derived from this run’s opening third would still have held ' +
         'at the end of it.',

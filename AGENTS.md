@@ -18,15 +18,12 @@ Each `CLAUDE.md` is the one line `@AGENTS.md`, so every tool reads the same text
 `infra/`, shared code under `packages/` when there is any, repository-wide scripts under `tools/`,
 and how the pieces fit under `docs/`. Read it before moving anything.
 
-- `docs/ROADMAP.md` is the plan and the checkpoint log. Update it when a checkpoint closes or a
-  decision lands.
-- `docs/architecture/` holds the design briefs.
-- `docs/self-hosting.md` holds the host roles, the edge, the recipe for each kind of fresh host,
-  and the names on the hosts that never change.
+- `docs/architecture/` holds the concepts pages: `overview.md`, `stages.md`, `funding.md`, and the
+  admin's own pages.
+- `docs/self-hosting.md` is the guide from empty hosts to a first stream: the host roles, the edge,
+  the recipe for each kind of fresh host, and the names on the hosts that never change.
 - `docs/releasing.md` is the release procedure: tag the build with `tools/release/tag.mjs`, then
   deploy. Change it with the deploy scripts and the tag script it describes.
-- `docs/research/` holds condensed reports on the neighbouring systems. Read the relevant one
-  before touching anything that talks to those systems.
 - Another repository reads what this one publishes to Swarm. `docs/architecture/overview.md`,
   "Who reads what we publish", says which formats it copies and must change with ours.
 
@@ -40,9 +37,8 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - A pull request that moves files only moves them. Renames first, each in its own commit, then
   the smallest path edits they need. No logic change and no upgrade rides along.
 - A bug gets its own pull request, with a test that fails before the fix, never inside a move.
-- `apps/hls-stream` and `apps/infra-manager` are developed here like everything else, since
-  2026-09-27. The repositories they came from get nothing new, and
-  nothing more is pulled from them.
+- `apps/hls-stream` and `apps/infra-manager` are developed here like everything else. The
+  repositories they came from get nothing new, and nothing more is pulled from them.
 - Nothing is deployed to a host without the owner's word. Every check that can be made without
   a host is made first.
 - Real host names, addresses and domains stay out of the repository. Name a host by its role and
@@ -65,5 +61,4 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 ## Working model
 
 Work arrives with a self-contained brief, and every change is reviewed before it
-lands. The docs, the roadmap and the verification move with the code they
-describe.
+lands. The docs and the verification move with the code they describe.

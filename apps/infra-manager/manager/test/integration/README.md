@@ -1,155 +1,124 @@
 # Integration tests
 
-This setup describes the authenticated integration test harness. These instructions are not
-authorization for a deployment run. The first runs of the manual Docker workflow failed before
-the deployment cases could complete, and the fixes they led to are described below.
+This is the testing page for the manager's integration suite: end-to-end tests that drive a
+running manager over HTTP the way the browser does, signed in, with the session cookie on every
+request and the write header on every write. They create real deployments through the API, wait
+for them to come up, exercise edit, stop and remove, and the group features.
 
-End-to-end tests that drive a **running** manager over HTTP, the way the browser does: signed in, with the session cookie on every request and the write header on every write. They create real deployments through the API, wait for them to come up, exercise modify, stop and remove, and the group features.
-
-These are **not** unit tests. They start real containers through the deploy scripts, take minutes and remove confirmed resources created by their run. They run only against a manager explicitly declared as a test target. The client and manager must both include the ownership guards described below. A test-target declaration does not replace the agreed capacity, spending and cleanup limits for an actual run.
+They are not unit tests. They start real containers through the stack's deploy scripts, take
+minutes, and remove what their run created. They run only against a manager you declare as a test
+target. Never point them at a manager whose deployments hold funds.
 
 ## What the suite needs
 
-1. The stack, running and reachable, the same setup the UI uses:
+1. A running manager, with Docker running beside it. The deploys start Bee, SRS and client
+   containers.
 
    ```sh
    # from manager/
    pnpm database:start      # Postgres
-   pnpm dev                 # manager API on :9876
+   pnpm dev                 # the API on :9876
    ```
 
-   Docker must be running. The deploys start Bee, SRS and client containers.
-   A separately configured Docker manager started by `pnpm stack:start` uses
-   Compose project `streaming-infra-manager`. Its API port 9876 is internal.
-   The web proxy publishes `http://127.0.0.1:8080` by default, or the configured
-   `WEB_PORT`. Set both target URL variables to that proxy URL when using it.
-   Do not use the development API URL for an unpublished container port.
+   A manager started with `pnpm stack:start` runs in Compose project `streaming-infra-manager`.
+   Its API port is internal, and the web proxy publishes `http://127.0.0.1:8080`, or the configured
+   `WEB_PORT`. Use that proxy URL for both target variables below.
 
-2. A user to sign in as. The manager has no sign-up. Keep the pair in your password manager, for example with the username `itest`, and put the same password in the repository secret `ITEST_PASSWORD` the Docker-backed workflow signs in with (see [Authentication and public access](../../../docs/features/auth-and-public-access.md)). The user itself is per manager, so create it on whichever manager you are testing. In the api container:
+2. A user to sign in as. The manager has no sign-up, so create one on the manager you are testing,
+   for example `itest`:
 
    ```sh
-   # from manager/, for the configured Docker stack
+   # from manager/, for the Compose stack
    <command that prints the password> | docker compose -p streaming-infra-manager -f ./docker-compose.yml exec -T api node dist/cli.js user:add itest --password-stdin
    ```
 
-   Against a manager started with `pnpm dev`, the same CLI runs from `manager/` as `pnpm exec tsx --conditions=development src/cli.ts user:add itest --password-stdin`.
+   Against a manager started with `pnpm dev`, run the same CLI from `manager/` as
+   `pnpm exec tsx --conditions=development src/cli.ts user:add itest --password-stdin`. The
+   Docker-backed workflow signs in with the password in the repository secret `ITEST_PASSWORD`.
 
-3. The environment of the shell that runs the suite. Put the pair there from wherever you keep it, for example your password manager's command line, so it is never written to a file:
+3. These variables in the shell that runs the suite. Put the sign-in pair there from wherever you
+   keep it, so it is never written to a file:
 
-   | Variable                | What it is                                                                                                                                                                                     |
-   | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | `MANAGER_URL`           | Development API URL, default `http://localhost:9876`, or the configured Docker web-proxy URL, default `http://127.0.0.1:8080`.                                                                 |
-   | `MANAGER_TEST_TARGET`   | The same URL, written again. It says this manager is a test target the suite may create and remove deployments on. The suite refuses to start when it is missing or names a different manager. |
-   | `MANAGER_TEST_USERNAME` | The user to sign in as.                                                                                                                                                                        |
-   | `MANAGER_TEST_PASSWORD` | Its password.                                                                                                                                                                                  |
-   | `MANAGER_TEST_RUN`      | Optional, one to eight lowercase letters or digits. Gives every suite file the same run id. Without it each file is a run of its own, which is fine.                                           |
+   | Variable                | What it is                                                                                                                                                                   |
+   | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `MANAGER_URL`           | The API's URL, `http://localhost:9876` by default, or the Compose web proxy's URL, `http://127.0.0.1:8080` by default                                                        |
+   | `MANAGER_TEST_TARGET`   | The same URL, written again. It declares this manager a test target the suite may create and remove deployments on. The suite refuses to start when it is missing or differs |
+   | `MANAGER_TEST_USERNAME` | The user to sign in as                                                                                                                                                       |
+   | `MANAGER_TEST_PASSWORD` | Its password                                                                                                                                                                 |
+   | `MANAGER_TEST_RUN`      | Optional, one to eight lowercase letters or digits. Gives every suite file the same run id. Without it each file is a run of its own                                         |
 
-   Copy `env.example` to `env.itest` in this directory, which git ignores. It holds the URLs and the run id. The pair stays out of it.
+   Copy `env.example` to `env.itest` in this directory, which git ignores. It holds the URLs and the
+   run id, never the sign-in pair.
 
 ## Run
 
 ```sh
-# from manager/, with MANAGER_TEST_USERNAME and MANAGER_TEST_PASSWORD already in the environment
+# from manager/, with MANAGER_TEST_USERNAME and MANAGER_TEST_PASSWORD in the environment
 set -a; . test/integration/env.itest; set +a
 pnpm test:integration
 ```
 
-A suite that cannot start fails in its first hook, in words, and creates nothing. Missing declaration, unreachable manager and a refused sign-in are three different messages. No message ever contains the password.
-
-## Resource ownership and cleanup
-
-Requested resources are named `itest-<run>-<what>-<random>`. Teardown refuses
-names outside that run prefix. The prefix alone is not deletion authority.
-Successful creation responses register validated deployment instance identities
-before test assertions run. A refused or lost response grants no cleanup
-authority. Malformed responses grant authority only for independently validated
-identities, and unresolved coverage is reported for operator inspection.
-
-Every profile removal sends its confirmed instance ID. The manager compares
-that identity atomically when claiming removal, before scripts or file cleanup.
-A same-name replacement is retained. Cleanup does not acquire new authority
-from current group membership. An empty-group deletion checks the recorded group
-identity and empty membership together and never cascades to new members.
-
-An accepted creation response confirms identity and starts deployment work. It
-does not mean the returned profile has left `DEPLOYING`. Tests that finish or
-remove a newly created profile first wait for that exact instance to reach the
-state their assertions require. An early run exposed two missing waits when
-cleanup reached the profiles before their deploys completed. Cleanup does not retry a refused write.
-
-Cleanup continues across independent resources and reports all failures in an
-aggregate error. Cleanup requests carry an explicit five-second signal, and
-accepted deletion is observed for up to 60 seconds with one-second polls.
-Timeouts do not automatically retry a write. Unknown creation coverage is also
-reported. No failed cleanup is silently counted as a clean run.
-
-These guards are locally accepted at `284790c`, including the integration
-after hooks. The 2026-09-19 Docker jobs exercised them against disposable
-workflow deployments. Their unresolved creation reports preserved the rule
-that a lost response grants no cleanup authority. The funded review deployment
-is never a disposable target.
+A suite that cannot start fails in its first hook, in words, and creates nothing. A missing
+declaration, an unreachable manager and a refused sign-in are three different messages, and no
+message contains the password.
 
 ## What it covers
 
-| Test                                                                    | Asserts                                                                                                                                                                                                                    |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| signed in (`auth.test.ts`)                                              | a read with the cookie is answered, a read without it is refused with 401, a write without the request header is refused with 403 before the body is read, the cookie of a session that was signed out is refused with 401 |
-| viewer lifecycle (`profiles.test.ts`)                                   | deploys exactly `client + bee-gateway`, modify changes `feed_owner` and `notes` and redeploys, stop gives `STOPPED`, remove leaves nothing                                                                                 |
-| streamer lifecycle                                                      | deploys `srs + bee-uploader` with `stream-uploader` held back (`pendingStamp`), modify, stop, remove                                                                                                                       |
-| custom lifecycle                                                        | deploys exactly the chosen `components`, stop, remove                                                                                                                                                                      |
-| group config edit (`groups.test.ts`)                                    | 2-viewer group, edit `feed_owner` for the whole group in one call, every member picks up the new feed and stays up, removing the members deletes the empty group                                                           |
-| group resize (`group-resize.test.ts`)                                   | two flows: grow a group by one member, deploy the grown group, remove a member, remove the rest, the group deletes itself. And removing the middle member, then re-adding one, fills the freed index                       |
-| ABR pool and uploader (`abr-node-pool.test.ts`, `abr-uploader.test.ts`) | the pool's publisher assembly and the uploader's Bee target rules, see each file's header                                                                                                                                  |
-| engine config startup failure (`engine-startup-failure.test.ts`)        | a stored SRS file the manager's own check accepts and the engine exits on ends the rollout in `reverted`, the deployment comes back `RUNNING` on the previous file, and the card's notice offers nothing to press          |
+| Test                                                                    | Asserts                                                                                                                                                                                                               |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| signed in (`auth.test.ts`)                                              | A read with the cookie is answered, a read without it is refused with 401, a write without the request header is refused with 403 before the body is read, and the cookie of a signed-out session is refused with 401 |
+| viewer lifecycle (`profiles.test.ts`)                                   | Deploys exactly `client` and `bee-gateway`, an edit of `feed_owner` and `notes` redeploys, stop gives `STOPPED`, remove leaves nothing                                                                                |
+| streamer lifecycle (`profiles.test.ts`)                                 | Deploys `srs` and `bee-uploader` with `stream-uploader` held back (`pendingStamp`), then edit, stop and remove                                                                                                        |
+| custom lifecycle (`profiles.test.ts`)                                   | Deploys exactly the chosen `components`, then stop and remove                                                                                                                                                         |
+| group config edit (`groups.test.ts`)                                    | A two-viewer group, `feed_owner` edited for the whole group in one call, every member picks up the new feed and stays up, and removing the members deletes the empty group                                            |
+| group resize (`group-resize.test.ts`)                                   | Grow a group by one member and deploy it, remove members until the group deletes itself. And remove the middle member, add one back, and the freed index is filled                                                    |
+| ABR pool and uploader (`abr-node-pool.test.ts`, `abr-uploader.test.ts`) | The pool's publisher string and the uploader's Bee target rules. Each file's header has the details                                                                                                                   |
+| engine config startup failure (`engine-startup-failure.test.ts`)        | A stored SRS file the manager's own check accepts and SRS exits on ends the rollout `failed`, and the deployment comes back `RUNNING` on the previous file                                                            |
 
-This whole suite also has a job of its own, `integration`, in the monorepo's root
-workflow `.github/workflows/infra-manager-docker.yml`. It starts by hand, with Run
-workflow once the file is on the default branch, or when a pull request gets the
-label `docker-checks`. Two jobs ran on GitHub-hosted runners on 2026-09-19, from
-the manager's own repository.
-The clean rerun reached `engine-startup-failure.test.ts`, where its first create
-lost the response at the former 30-second client limit. See
-[../../../docs/ci.md](../../../docs/ci.md).
+The Docker-backed workflow's `integration` job runs the whole suite on a GitHub runner. See
+[CI and local checks](../../../docs/ci.md).
 
-## Notes and limitations
+## What it creates, and what it removes
 
-- Viewer-group cases use two members. The ABR pool cases create a fixed four-rung pool. Multiple suite files can run concurrently, so two is not a whole-suite resource cap.
-- Ordinary reads and authentication wait at most 30 seconds for a response. Deployment writes wait at most 300 seconds, matching the production JSON proxy budget. After an accepted write, `waitForStatus` separately polls readiness for up to 240 seconds, the `DEPLOY_TIMEOUT` every file passes it. Its own default is 180 seconds. Cleanup supplies its own five-second request signal.
-- A lost creation response may leave a resource whose identity was never confirmed. The suite reports that uncertainty and does not search by prefix and delete candidates.
-- The harness branch's own checks, at `284790c`, passed 960 manager, 288 common and 31 real SQL tests plus types. Those are the numbers of that branch as it was merged, not a rerun of the repository as it stands. The 2026-09-19 Docker jobs establish that this deployment integration suite ran, but they do not establish a passing suite.
+- Every resource the suite asks for is named `itest-<run>-<what>-<random>`, and teardown refuses a
+  name outside its run's prefix. The prefix alone does not allow a deletion.
+- A successful create registers the deployment's instance id before any assertion runs. A refused
+  or lost create grants no right to clean up, so the suite never searches by prefix and deletes
+  what it finds. It reports what it could not confirm instead.
+- Every removal sends the confirmed instance id, which the manager compares before it removes
+  anything, so a deployment created again under the same name is kept. An empty group's deletion
+  checks the recorded group and its empty membership together.
+- An accepted create starts the deploy and does not mean the deployment has left `DEPLOYING`.
+  Tests wait for that exact instance to reach the state they need before they finish or remove it.
+- Cleanup carries on across independent resources and reports every failure together. Each cleanup
+  request has a five second budget, and an accepted removal is watched for up to 60 seconds. A
+  refused or timed out write is not retried. A failed cleanup never counts as a clean run.
 
-## Separate local regression suites
+## Timeouts
 
-Three files moved out of this directory on 2026-09-10. `localDockerUnix.test.ts`,
-`nativeSupervisedForward.test.ts` and `sshForwardSupervisor.test.ts` are now in
-`manager/test/native/`. They own temporary Unix sockets and fork synthetic Node
-children, and they need no manager, no Docker socket and no target declaration.
-Here they were picked up by `test:integration`, which refuses to start without
-`MANAGER_TEST_TARGET`, so they ran nowhere. Run them from `manager/` with
-`pnpm test:native`, which needs no environment at all: run on 2026-09-10 with
-`DATABASE_URL` unset, 7 of 7 passed. The `checks` workflow runs them on every
-pull request and still hands them the placeholder the manager unit step gets,
-which costs nothing and keeps the two steps alike.
+- Reads and authentication wait at most 30 seconds for an answer (`FAST_REQUEST_TIMEOUT_MS`).
+- Deployment writes wait at most 300 seconds (`DEPLOYMENT_WRITE_TIMEOUT_MS`), the console's own
+  proxy budget.
+- After an accepted write, `waitForStatus` polls for up to 240 seconds, the `DEPLOY_TIMEOUT` every
+  file passes it. Its own default is 180 seconds.
 
-The integration suite above creates deployments. The remediation's SQL suites
-use disposable local PostgreSQL databases with synthetic data instead. Each
-suite checks an explicit task-specific port variable and owns its test schemas.
-`manager/test/database/run-all.mjs` names the nine databases and the nine port
-variables in one table, and `pnpm test:database` from `manager/` runs them all
-through it. That runner refuses in words when a variable is unset or is not a
-port, connects to all nine before anything starts, refuses a suite gated on a
-database the run does not create, and refuses a database whose schema already
-holds the manager's own tables. Setting only `DATABASE_URL` does not select
-these suites' test target. Never point them at a deployment database. A skipped
-SQL suite is not a passing database check, and the runner now enforces that
-rather than only saying it.
+## Limits
 
-Offline browser regressions use a mock manager and an isolated browser profile.
-They exercise UI behavior without Bee, chain RPC or funds. Their harness owns
-its browser processes and listeners. Cleanup must target those exact resources,
-not other sessions' browsers, shared development servers or containers.
+- Viewer groups use two members and the ABR cases a fixed four-rung pool. Several files can run at
+  once, so that is not a cap on the whole suite.
+- A lost create answer can leave a deployment whose identity was never confirmed. The suite
+  reports it and leaves it for you to inspect.
 
-The SRS, OME and shared-image Docker regressions are separate again. They build
-or start real test containers and require their own execution authorization.
-Neither a unit run nor permission to run a disposable database authorizes them.
-The funded `review-20260907` deployment is never a disposable integration target.
+## The other suites
+
+- The native transport suites in `manager/test/native/` own temporary Unix sockets and fork Node
+  children. They need no manager, no Docker and no environment: `pnpm test:native` from `manager/`.
+- The SQL suites in `manager/test/database/` use disposable PostgreSQL databases with synthetic
+  rows, one per suite family, through `pnpm test:database`. Setting `DATABASE_URL` does not select
+  their target, and the runner refuses a database that already holds the manager's tables.
+- The browser suites in `frontend/test/` run against a mock manager or a forked manager on a
+  disposable database, with an isolated browser profile. They touch no Bee node, chain or funds.
+- The SRS, OvenMediaEngine, shared-image and version-build harnesses in `manager/test/docker/` start
+  real containers of their own.
+
+[CI and local checks](../../../docs/ci.md) has the commands for each.
