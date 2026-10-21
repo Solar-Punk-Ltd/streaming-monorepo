@@ -38,12 +38,12 @@ const logger = Logger.getInstance();
 
 function settleOnce(attempt: LoginAttempt) {
   let settled = false;
-  const settle = (outcome: 'fail' | 'succeed'): void => {
+  const settle = (outcome: 'fail' | 'succeed' | 'release'): void => {
     if (settled) return;
     settled = true;
     attempt[outcome]();
   };
-  return { fail: () => settle('fail'), succeed: () => settle('succeed') };
+  return { fail: () => settle('fail'), succeed: () => settle('succeed'), release: () => settle('release') };
 }
 
 export interface SignedInUser {
@@ -158,7 +158,8 @@ export class AuthService {
       logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
       return { token };
     } catch (err) {
-      settlement.succeed();
+      // An error before the outcome was known gives the attempt back and forgives nothing; one already settled stays.
+      settlement.release();
       throw err;
     }
   }
@@ -315,7 +316,8 @@ export class AuthService {
       this.openStreams.closeUser(user.id, session.tokenHash);
       logger.info(`[Auth] password changed: ${user.username}`);
     } catch (err) {
-      settlement.succeed();
+      // An error before the outcome was known gives the attempt back and forgives nothing; one already settled stays.
+      settlement.release();
       throw err;
     }
   }
