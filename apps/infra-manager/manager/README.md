@@ -86,8 +86,11 @@ Signing out, revoking a user's sessions, removing a user or changing a password 
 session's open event and command streams at once. Closing an output stream does not cancel an
 accepted deploy, stop or version build. A health check stops when its stream closes.
 
-Five wrong passwords for a username, or from one address, start a one minute lockout that doubles
-per further attempt up to an hour, answered 429 with `Retry-After`.
+Five wrong passwords for a username from one address, or from one address whatever the username,
+start a one minute lockout that doubles per further attempt up to an hour, answered 429 with
+`Retry-After`. A username's hundredth wrong password from all addresses together locks its sign-in
+for everyone, on the same doubling, while sessions already signed in keep working.
+[Lockout](../docs/features/auth-and-public-access.md#lockout) on the auth page has the details.
 
 Every request that is not a GET must carry `X-Requested-With: streaming-infra-manager`, and one
 whose `Origin` or `Sec-Fetch-Site` says it came from another site is refused with 403. The manager

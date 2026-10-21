@@ -56,17 +56,29 @@ bytes. The database stores only its SHA-256, so a copy of the sessions table sig
 
 ### Lockout
 
-Failed sign-ins are counted per username and per client address, in memory in the API process
-(`LoginLimiter` in `packages/web-auth`).
+Failed sign-ins are counted in memory in the API process (`LoginLimiter` in `packages/web-auth`),
+on the three keys `signInKeys` gives:
 
-- Four failures are free (`LOGIN_FREE_ATTEMPTS`). The fifth locks the key for one minute
+- **The account at that address** (`accountAtAddressKey`), the username together with the client
+  address. Four failures are free (`LOGIN_FREE_ATTEMPTS`). The fifth locks the key for one minute
   (`LOGIN_FIRST_LOCKOUT_MS`), and each further failure doubles the wait, up to one hour
   (`LOGIN_MAX_LOCKOUT_MS`).
+- **The address** (`clientIpKey`), whatever usernames it tries, on the same curve, so one address
+  guessing many accounts gets four free failures in all.
+- **The account from every address together** (`usernameKey`). 99 failures are free, and the 100th
+  (`LOGIN_ACCOUNT_CEILING`) locks the account's sign-in for everyone, on the same curve from one
+  minute up to an hour. A hundred is the figure NIST SP 800-63B gives. Sessions already signed in
+  keep working.
+
+So nobody can lock you out of signing in with five wrong passwords from their own address. That
+locks only them. Locking you out takes about a hundred failures, from many addresses.
+
 - A locked attempt answers 429 with `Retry-After`. The sign-in page says how long to wait.
 - A key with no failure for two hours starts again from zero (`LOGIN_FORGET_MS`).
-- A right password clears the username's count. It takes only its own attempt off the address,
-  so one good sign-in does not reset an address that is guessing other accounts.
-- Every failure is logged with the username and the address.
+- A right password clears the count of the account at that address. It takes only its own attempt
+  off the address and off the account's count from every address, so one good sign-in neither
+  resets an address that is guessing other accounts nor wipes the failures made from elsewhere.
+- Every failure is logged with the username and the address as it arrived.
 - A sign-in for a username that does not exist is checked against a throwaway hash, so it takes
   as long as one for a real user.
 - The current password asked by a password change is counted the same way, on a key of its own,
@@ -74,8 +86,17 @@ Failed sign-ins are counted per username and per client address, in memory in th
 - At most 10,000 keys are held (`MAX_TRACKED_KEYS`). Past that, the keys that failed longest ago
   are dropped first.
 
-The client address is the last hop of `X-Forwarded-For`, which the manager's web server sets. In
-front of the API, that web server also limits `/auth/login` to ten requests a minute per address
+The client address is the last hop of `X-Forwarded-For`. The edge sets that header, and the
+manager's web server restores the visitor's address from it and passes it on as the last hop. The
+keys count an address as `limiterAddress` gives it:
+
+- An IPv4 address as it is.
+- An IPv4 address written as IPv6 (`::ffff:a.b.c.d`) as that IPv4 address.
+- An IPv6 address by its /64 network, written like `2001:db8:0:1::/64`, with any zone dropped,
+  since one machine can take any address in its /64.
+- Anything that does not read as an address, as it was sent.
+
+In front of the API, the web server also limits `/auth/login` to ten requests a minute per address
 with a burst of five, and answers 429 past it. This stops a flood before each attempt pays for a
 slow scrypt hash.
 
@@ -330,6 +351,8 @@ settings are in the [API reference](../../manager/README.md).
 - The admin role gates user management only. Every signed-in user can deploy, spend postage and
   chequebook funds, and read SRT passphrases.
 - The lockout lives in the API process's memory, so a restart clears it.
+- Enough addresses together can still lock an account's sign-in for everyone: about a hundred
+  failures, from many addresses. Its sessions keep working, and so does its password change.
 - `GET /config` answers the host-wide SRT passphrase to any signed-in user.
 - The firewall generator prints a draft. Applying it is the host operator's step.
 - The firewall draft opens no RTMP port. A host that takes broadcasts over RTMP needs that port
