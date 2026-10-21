@@ -94,8 +94,10 @@ about to be dropped.
   that the entry a viewer reads says it, and only the second one matters.
 - Everything created goes with the throwaway database in `after`, including
   after a failed test. No row of any other database is touched.
-- The lockout counts the client address as well as the username, and every
-  request in a test process comes from `127.0.0.1`. Anything that exhausts it
-  has to be the last thing that file does. See the end of `auth.test.ts`.
+- The lockout counts the username at the client address, the client address
+  whatever the username, and the username from every address together, and
+  every request in a test process comes from `127.0.0.1`. Five failures there
+  lock that address for a minute, so anything that exhausts it has to be the
+  last thing that file does. See the end of `auth.test.ts`.
 - The stream lifecycle is one ordered scenario sharing a stream, so a failure
   early in it will cascade, so read the first failure, not the last.
