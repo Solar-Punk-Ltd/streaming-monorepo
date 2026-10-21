@@ -12,6 +12,7 @@ import {
   idleSince,
   LoginLimiter,
   needsTouch,
+  type LoginAttempt,
   usernameKey,
   verifyPassword,
 } from '@streaming-monorepo/web-auth';
@@ -37,6 +38,21 @@ import type { SessionRepository } from './SessionRepository.js';
 import type { UserRepository } from './UserRepository.js';
 
 const logger = Logger.getInstance();
+
+/**
+ * An attempt the limiter reserved, settled once whatever happens after: a pending attempt counts towards the lockout
+ * and is never forgotten, so an error between the reservation and the outcome must settle it too, as the manager's
+ * sign-in does.
+ */
+function settleOnce(attempt: LoginAttempt) {
+  let settled = false;
+  const settle = (outcome: 'fail' | 'succeed'): void => {
+    if (settled) return;
+    settled = true;
+    attempt[outcome]();
+  };
+  return { fail: () => settle('fail'), succeed: () => settle('succeed') };
+}
 
 /** A live session: who it is, which session it is, and when it runs out. */
 export interface SessionInfo {
@@ -123,38 +139,44 @@ export class AuthService {
       );
       throw new TooManyAttemptsError(attempt.lockedForSeconds);
     }
+    const settlement = settleOnce(attempt);
+    try {
+      const user = await this.users.findByUsername(input.username);
+      // The decoy keeps the cost of an unknown name the same as a known one, so
+      // the clock does not say which usernames exist.
+      const matches = await verifyPassword(input.password, user ? user.password_hash : await this.decoyHash);
 
-    const user = await this.users.findByUsername(input.username);
-    // The decoy keeps the cost of an unknown name the same as a known one, so
-    // the clock does not say which usernames exist.
-    const matches = await verifyPassword(input.password, user ? user.password_hash : await this.decoyHash);
+      if (!user || !matches) {
+        settlement.fail();
+        logger.warn(`[Auth] failed sign-in: username="${input.username}" ip=${input.ip}`);
+        throw new InvalidCredentialsError();
+      }
 
-    if (!user || !matches) {
-      attempt.fail();
-      logger.warn(`[Auth] failed sign-in: username="${input.username}" ip=${input.ip}`);
-      throw new InvalidCredentialsError();
+      settlement.succeed();
+
+      const now = new Date();
+      await this.sessions.deleteExpired(now, idleSince(now));
+
+      const token = createSessionToken();
+      const expiresAt = absoluteExpiryFrom(now);
+      const admitted = await this.credentials.admitSession(
+        user.id,
+        user.password_hash,
+        { tokenHash: hashSessionToken(token), userId: user.id, expiresAt, ip: input.ip, userAgent: input.userAgent },
+        now,
+      );
+      if (!admitted) {
+        logger.warn(`[Auth] sign-in refused, the password changed while it was checked: username="${input.username}"`);
+        throw new InvalidCredentialsError();
+      }
+
+      logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
+      return { user: { ...user, last_login_at: now }, token, expiresAt };
+    } catch (err) {
+      // Anything that threw before the outcome was known settles the attempt as no failure; one already settled stays.
+      settlement.succeed();
+      throw err;
     }
-
-    attempt.succeed();
-
-    const now = new Date();
-    await this.sessions.deleteExpired(now, idleSince(now));
-
-    const token = createSessionToken();
-    const expiresAt = absoluteExpiryFrom(now);
-    const admitted = await this.credentials.admitSession(
-      user.id,
-      user.password_hash,
-      { tokenHash: hashSessionToken(token), userId: user.id, expiresAt, ip: input.ip, userAgent: input.userAgent },
-      now,
-    );
-    if (!admitted) {
-      logger.warn(`[Auth] sign-in refused, the password changed while it was checked: username="${input.username}"`);
-      throw new InvalidCredentialsError();
-    }
-
-    logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
-    return { user: { ...user, last_login_at: now }, token, expiresAt };
   }
 
   async signOut(session: SessionInfo): Promise<void> {
@@ -347,17 +369,23 @@ export class AuthService {
       );
       throw new TooManyAttemptsError(attempt.lockedForSeconds);
     }
+    const settlement = settleOnce(attempt);
+    try {
+      const user = await this.users.findById(session.user.id);
+      if (!user) throw new UserNotFoundError(session.user.id);
 
-    const user = await this.users.findById(session.user.id);
-    if (!user) throw new UserNotFoundError(session.user.id);
-
-    if (!(await verifyPassword(password, user.password_hash))) {
-      attempt.fail();
-      logger.warn(`[Auth] ${purpose} refused, wrong current password: ${user.username}`);
-      throw new InvalidCredentialsError();
+      if (!(await verifyPassword(password, user.password_hash))) {
+        settlement.fail();
+        logger.warn(`[Auth] ${purpose} refused, wrong current password: ${user.username}`);
+        throw new InvalidCredentialsError();
+      }
+      settlement.succeed();
+      return user;
+    } catch (err) {
+      // As in sign-in: an error before the outcome settles the attempt as no failure; one already settled stays.
+      settlement.succeed();
+      throw err;
     }
-    attempt.succeed();
-    return user;
   }
 
   async deleteExpiredSessions(): Promise<number> {
