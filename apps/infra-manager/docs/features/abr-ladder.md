@@ -228,7 +228,8 @@ A member on a declared remote host keeps that host's address, and its API has to
 somewhere this host can reach. An uploader running off this host needs `BEE_LOCAL_HOST` set to an
 address it can reach, and a bind that admits it.
 
-`profiles.host` is a deploy target, which can be an ssh alias or `user@host`.
+`profiles.host` is a deploy target: an ssh alias for a new deployment, and possibly `user@host` on one
+stored before aliases were required.
 `resolveNetworkHost` (`manager/src/utils/deployHost.ts`) turns it into an address: it drops the
 ssh user, resolves a dotless name as an ssh alias with `ssh -G` against the config the manager's
 container mounts, and takes a literal or dotted name as given. A name no Host block matches comes
