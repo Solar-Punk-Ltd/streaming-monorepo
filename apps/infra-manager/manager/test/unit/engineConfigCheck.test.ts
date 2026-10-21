@@ -14,7 +14,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { type CommandResult, EngineConfigChecker, SRS_DEFAULT_IMAGE } from '../../src/domain/engineConfig/engineConfigCheck.js';
+import {
+  type CommandResult,
+  EngineConfigChecker,
+  SRS_DEFAULT_IMAGE,
+} from '../../src/domain/engineConfig/engineConfigCheck.js';
 import { omeXmlProblem } from '../../src/domain/engineConfig/omeXml.js';
 import { placeholdersFilledBy, substituteForCheck } from '../../src/domain/engineConfig/placeholders.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
