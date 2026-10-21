@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import type { Request } from 'express';
 
-import { clientIpOf } from './clientIp.js';
+import { clientIpOf, limiterAddress } from './clientIp.js';
 
 function requestFrom(forwardedFor: string | string[] | undefined, remoteAddress?: string): Request {
   return {
@@ -43,5 +43,30 @@ describe('clientIpOf', () => {
 
   it('answers unknown when there is no address at all', () => {
     assert.equal(clientIpOf(requestFrom(undefined)), 'unknown');
+  });
+});
+
+describe('the address the limiter keys on', () => {
+  it('keeps an IPv4 address as it is', () => {
+    assert.equal(limiterAddress('192.0.2.10'), '192.0.2.10');
+  });
+
+  it('reads an IPv4-mapped IPv6 address as the IPv4 address, in either form', () => {
+    assert.equal(limiterAddress('::ffff:192.0.2.10'), '192.0.2.10');
+    assert.equal(limiterAddress('::FFFF:c000:20a'), '192.0.2.10');
+  });
+
+  it('keys an IPv6 address by its /64, with a zone id dropped', () => {
+    assert.equal(limiterAddress('2001:db8:0:1::5'), '2001:db8:0:1::/64');
+    assert.equal(limiterAddress('2001:0DB8:0000:0001:1234:5678:9abc:def0'), '2001:db8:0:1::/64');
+    assert.equal(limiterAddress('fe80::1%eth0'), 'fe80:0:0:0::/64');
+    assert.equal(limiterAddress('::1'), '0:0:0:0::/64');
+    assert.notEqual(limiterAddress('2001:db8:0:1::5'), limiterAddress('2001:db8:0:2::5'));
+  });
+
+  it('leaves anything that does not parse as it was sent', () => {
+    for (const raw of ['unknown', '', '999.1.1.1', '1.2.3', 'not:an:address:at:all:x:y:z', '1::2::3', 'abc']) {
+      assert.equal(limiterAddress(raw), raw, JSON.stringify(raw));
+    }
   });
 });

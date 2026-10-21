@@ -95,10 +95,21 @@ export const LOGIN_MAX_LOCKOUT_MS = 60 * MINUTE_MS;
  */
 export const LOGIN_FORGET_MS = 2 * LOGIN_MAX_LOCKOUT_MS;
 
-/** How long a key is locked after this many failures, and 0 while it is free. */
-export function lockoutMsFor(failures: number): number {
-  if (failures <= LOGIN_FREE_ATTEMPTS) return 0;
+/**
+ * Failures on one account, from all addresses together, at which signing in to it locks for everyone: the limit NIST
+ * SP 800-63B sets. The account at each address, and each address, still lock after their own five; this caps what many
+ * addresses together can try. 99 failures are free, the 100th locks for a minute on the same doubling curve, and the
+ * count is forgotten after the same quiet spell. People already signed in keep working.
+ */
+export const LOGIN_ACCOUNT_CEILING = 100;
 
-  const doublings = failures - LOGIN_FREE_ATTEMPTS - 1;
+/**
+ * How long a key is locked after this many failures, and 0 while it is free. A key's free failures are
+ * {@link LOGIN_FREE_ATTEMPTS} unless it has its own count, as the account ceiling does.
+ */
+export function lockoutMsFor(failures: number, freeAttempts: number = LOGIN_FREE_ATTEMPTS): number {
+  if (failures <= freeAttempts) return 0;
+
+  const doublings = failures - freeAttempts - 1;
   return Math.min(LOGIN_MAX_LOCKOUT_MS, LOGIN_FIRST_LOCKOUT_MS * 2 ** doublings);
 }
