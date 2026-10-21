@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { SRS_DEFAULT_IMAGE } from '../../src/domain/engineConfig/engineConfigCheck.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...parts: string[]) => readFileSync(join(here, '..', '..', ...parts), 'utf8');
@@ -99,6 +100,14 @@ describe('the places that have to agree with it', () => {
       [...new Set(digestsIn(startupFailure))],
       [stackDigest],
       'the parse and the start were recorded on an image the stack does not run',
+    );
+  });
+
+  it("is the image the manager's config check falls back to when a version names none", () => {
+    assert.equal(
+      SRS_DEFAULT_IMAGE,
+      stackImage,
+      `the config check falls back to ${SRS_DEFAULT_IMAGE}, the stack runs ${stackImage}`,
     );
   });
 
