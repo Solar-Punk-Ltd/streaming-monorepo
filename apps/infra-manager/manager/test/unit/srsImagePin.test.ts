@@ -1,6 +1,7 @@
 /**
- * The SRS image the config check isolation harness runs and the engine startup observations were made on,
- * read off the places that name it and checked against the image the stack runs.
+ * The SRS image the config check isolation harness runs, the engine startup observations were made on
+ * and the manager's config check falls back to, read off the places that name it and checked against
+ * the image the stack runs.
  *
  * The harness rests on one sentence: the parser it questions is the parser a
  * deployment gets. That sentence is only true while the image it pins is the
