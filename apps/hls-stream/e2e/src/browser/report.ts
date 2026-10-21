@@ -199,7 +199,7 @@ export function latencySection(run: BrowserRun): string[] {
   if (latency.joinedPastSeekThreshold) {
     lines.push(
       `⚠️ **The join was a jump.** A viewer arrived ${orDash(latency.joinLatencyS)}s behind, past ` +
-        '`LIVE_MAX_LATENCY_DURATION_S`, so hls.js seeked to the edge rather than let them catch up. That ' +
+        '`LIVE_MAX_LATENCY_DURATION_S`, so hls.js seeked to the edge rather than leave them that far behind. That ' +
         'recovers, and it is what the threshold is for, but the first thing this viewer saw was stale ' +
         'and then skipped. The cause is upstream of the player: the live window is budgeted in bytes, so ' +
         'a longer segment names proportionally more media and puts the start of the playlist further back.',
@@ -252,8 +252,8 @@ function latencyTargetLines(target: LatencyTargetVerdict): string[] {
         `${target.stalls === 1 ? 'stall' : 'stalls'}, so the figures above are comparable with any other ` +
         'run that says the same.',
       '',
-      `Median ${pastTarget}. Negative is ordinary: the catch-up only pushes latency down and overshoots, ` +
-        'so a healthy session sawtooths just below its target.',
+      `Median ${pastTarget}. Negative is ordinary: the reading moves by up to a target duration between ` +
+        'playlist reloads, so a healthy session sits around its target rather than on it.',
       '',
     ];
   }
@@ -266,8 +266,9 @@ function latencyTargetLines(target: LatencyTargetVerdict): string[] {
     '',
     'hls.js adds `min(stallCount * liveSyncOnStallIncrease, targetduration)` to the configured ' +
       '`liveSyncDuration`, and `stallCount` falls back to zero only when a fresh manifest loads. So the ' +
-      'raise lasts the rest of the session, latency settles around the raised target, and the catch-up ' +
-      'that would have pulled it back measures itself against the raised value and stops firing. ' +
+      'raise lasts the rest of the session, and latency settles around the raised target. Live plays at ' +
+      'normal speed, so nothing pulls latency back down until it passes `LIVE_MAX_LATENCY_DURATION_S` and ' +
+      'hls.js jumps to the edge. ' +
       '**Nothing else in this report shows it**: a stall is not fatal, and it need not fire a `waiting` ' +
       'event, so the rebuffer, stalled-sample and fatal-error rows can all read zero.',
     '',
@@ -317,7 +318,7 @@ export function playbackSection(run: BrowserRun): string[] {
       'passes `LIVE_MAX_LATENCY_DURATION_S` hls.js jumps the playhead to the live edge, which is its ' +
       'designed recovery and the normal end of any freeze. Reading `currentTime` at the ends of a run ' +
       'could not tell that from playing throughout, so a freeze and the seek that ended it used to net ' +
-      'to 1.000. Media above what the clock allows at the catch-up rate is now counted as skipped and ' +
+      'to 1.000. Media above what the clock allows at the playback rate is now counted as skipped and ' +
       'reported on its own row. Replaying the recorded runs through both definitions moved every ' +
       'faulted run and left all 27 clean ones identical to three decimals.',
     '',

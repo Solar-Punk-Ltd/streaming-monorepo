@@ -46,8 +46,8 @@ function run(...steps: readonly Partial<ViewerSample>[]): ViewerSample[] {
  *
  * On 2026-08-07 the 1080p ABA ran two identical 0.25s control arms twenty minutes apart. They came
  * back 5.89s and 6.81s, which voided the comparison, and the write-up could only call it an
- * unexplained drift in the sitting. Inverting hls.js's own catch-up curve against the archived
- * samples puts arm 1's target at 6.0 and arm 3's at about 7.0. Both arms reported zero rebuffers,
+ * unexplained drift in the sitting. Inverting the catch-up curve hls.js then played the viewer along
+ * against the archived samples puts arm 1's target at 6.0 and arm 3's at about 7.0. Both arms reported zero rebuffers,
  * zero stalled samples and zero fatal errors, so nothing in either report could have said so.
  */
 describe('whether the run was measured against the target it was configured with', () => {
@@ -164,7 +164,8 @@ describe('whether the run was measured against the target it was configured with
    * Subtracting each sample's own target collapses the two 1080p control arms from 0.92s apart to
    * 0.08s (5.89 against a 6.0 target, 6.81 against about 7.0) while leaving the 0.81s effect intact.
    * ⚠️ That arithmetic is a **reconstruction**, since arm 3's target was inverted out of a single
-   * catch-up sample rather than recorded, so it is the reason for the measure and not a result.
+   * sample taken while the client still played fast to catch up, rather than recorded, so it is the
+   * reason for the measure and not a result.
    */
   it('measures latency against the target the player was steering to, per sample', () => {
     const verdict = judgeLatencyTarget(
@@ -293,9 +294,10 @@ describe('what the latency section says about the target it was measured against
  * position yet. One second later the same run reads 6.28s at `readyState 4`.
  *
  * ⛔ **Nothing seeked.** `currentTime` goes 31.01 to 32.17 across that pair, a normal 1.16s step at
- * the catch-up rate. The report nonetheless printed "the join was a jump, so hls.js seeked to the
- * edge", which describes an event that did not happen, and `a-quarter-second-buys-nothing` drew a
- * conclusion about segment length from joins measured this way.
+ * the catch-up rate the client played at then. The report nonetheless printed "the join was a jump,
+ * so hls.js seeked to the edge", which describes an event that did not happen, and
+ * `a-quarter-second-buys-nothing` drew a conclusion about segment length from joins measured this
+ * way.
  */
 describe('reading the join from a player that had actually started', () => {
   it('skips samples taken before the player could play, however large their latency', () => {

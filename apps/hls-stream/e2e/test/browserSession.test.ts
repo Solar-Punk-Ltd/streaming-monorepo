@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { LIVE_SYNC_DURATION_S } from '../src/bench/clientTuning.js';
+import { LIVE_SYNC_DURATION_S, LIVE_SYNC_PLAYBACK_RATE } from '../src/bench/clientTuning.js';
 import { FEED_STATE_ENDED, FEED_STATE_LIVE, FEED_STATE_STALLED } from '../src/browser/feedState.js';
 import { judgeLatency, playbackAdvances, summarize, type ViewerSample } from '../src/browser/session.js';
 
@@ -49,7 +49,7 @@ describe('how playback moved against the wall clock', () => {
     advances.forEach((advance) => assert.equal(advance.ratio, 1));
   });
 
-  it('reads the catch-up rate the client configures', () => {
+  it('reads a faster speed the viewer picked from the controls as that speed', () => {
     assert.equal(playbackAdvances(playing(2, 1.1))[0].ratio, 1.1);
   });
 
@@ -280,7 +280,7 @@ describe('media a viewer watched, against media the player skipped', () => {
 
   /**
    * The join seek, which every session has. A viewer starts as far back as the first manifest
-   * reaches, about 36 seconds of media against a 6s target, and hls.js jumps them forward at once.
+   * reaches, which can be more than twice the 12s target, and hls.js then jumps them forward at once.
    * {@link LatencyVerdict.joinedPastSeekThreshold} already reports the event, so counting those
    * seconds as watched was the same defect happening to every run rather than only to a faulted one.
    */
@@ -294,12 +294,12 @@ describe('media a viewer watched, against media the player skipped', () => {
 
     assert.equal(summary.forwardSeeks, 1);
     assert.ok(
-      summary.overallAdvanceRatio <= 1.1,
+      summary.overallAdvanceRatio <= LIVE_SYNC_PLAYBACK_RATE,
       `read ${summary.overallAdvanceRatio.toFixed(3)}, which is more media than the clock allows`,
     );
   });
 
-  it('leaves the catch-up rate alone, which is playing fast and not jumping', () => {
+  it('leaves a faster speed the viewer picked alone, which is playing fast and not jumping', () => {
     const summary = summarize(playing(10, 1.1, { playbackRate: 1.1 }));
 
     assert.equal(summary.forwardSeeks, 0);
@@ -310,8 +310,9 @@ describe('media a viewer watched, against media the player skipped', () => {
   /**
    * `currentTime` and the clock are not read in the same instant, so a sample pair can show slightly
    * more media than the rate strictly allows without anything having jumped. The tolerance absorbing
-   * that has a wide gap to sit in: an honest second gains at most 1.1s, and the smallest seek hls.js
-   * can make is 6s, because it fires past a 12s latency and lands on a 6s one.
+   * that has a wide gap to sit in: an honest second gains about 1s at the normal speed live plays at,
+   * and the smallest seek hls.js can make is 12s, because it fires past a 24s latency and lands on a
+   * 12s one.
    */
   it('reads a sampling wobble as playback rather than as a seek', () => {
     const wobbling = [
@@ -336,7 +337,7 @@ describe('the frame rate that actually arrived', () => {
    * A sample at a stated wall second, holding a stated media position.
    *
    * Both clocks are named because they have to agree: media that outruns the wall clock by more
-   * than the catch-up rate is a seek, and the denominator excludes it. These fixtures used to
+   * than the playback rate is a seek, and the denominator excludes it. These fixtures used to
    * advance three media seconds per wall second, which no player does and which reads as a seek on
    * every step.
    */

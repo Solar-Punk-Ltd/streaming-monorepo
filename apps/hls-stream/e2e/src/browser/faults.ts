@@ -150,8 +150,8 @@ const UPLOADER_CRASH: FaultScenario = {
   breaks: 'the process that writes segments and manifests into Swarm',
   expectation:
     'Nothing new reaches the feed while it is down, so the viewer spends their buffer and then waits. ' +
-    'Once it is back the feed advances again and playback resumes, either at the live edge or by ' +
-    'catching up to it.',
+    'Once it is back the feed advances again and playback resumes from where it stopped, that much ' +
+    'further behind live, unless the wait put it past the jump limit and hls.js skipped to the edge.',
   expectFreeze: true,
   expectRecovery: true,
   ready: { port: 'uploaderApi', path: '/health', is: { status: 'ok' } },
@@ -188,7 +188,7 @@ const ENGINE_RESTART: FaultScenario = {
  * `suites/scenarios/bee-outage-short.test.ts` already establishes that from the upload side: indices
  * stay gapless and the uploader announces nothing. What has never been asked is whether it reaches a
  * viewer at all, and the answer should be no, because the feed keeps advancing once the flush lands
- * and the viewer has six seconds of buffer in front of it.
+ * and the viewer has twelve seconds of buffer in front of it.
  *
  * A fault with `expectFreeze: false` is worth more than one without: a scenario that predicts nothing
  * cannot fail, and this one fails if a viewer notices.
@@ -201,7 +201,7 @@ const WRITER_BEE_PAUSE: FaultScenario = {
   breaks: 'the bee node the uploader writes segments and manifests through, briefly',
   expectation:
     'Nothing. The outage is shorter than the uploader retry window, so segments buffer and flush ' +
-    'rather than being lost, and a viewer with six seconds of buffer should never see the picture ' +
+    'rather than being lost, and a viewer with twelve seconds of buffer should never see the picture ' +
     'stop or be told anything is wrong.',
   expectFreeze: false,
   expectRecovery: true,

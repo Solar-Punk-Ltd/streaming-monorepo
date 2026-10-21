@@ -48,9 +48,9 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  * spent a run reporting the second as though it were the first.
  *
  * ⚠️ **The scenario's written expectation and the readings disagree, and this asserts neither.**
- * `browser/faults.ts` declares `expectFreeze: false` and expects a viewer with six seconds of buffer
- * to see nothing at all. The matrix measured a 3.1s freeze, twice: in-tab on 2026-08-27 and through a
- * gateway on 2026-08-06. Then the four rung ladder measured **58.9s** on 2026-08-29, which is what
+ * `browser/faults.ts` declares `expectFreeze: false` and expects a viewer with `LIVE_SYNC_DURATION_S`
+ * of buffer, twelve seconds now and six when the readings below were taken, to see nothing at all.
+ * The matrix measured a 3.1s freeze, twice: in-tab on 2026-08-27 and through a gateway on 2026-08-06. Then the four rung ladder measured **58.9s** on 2026-08-29, which is what
  * sent the client's manifest retry ceiling from thirty seconds down to eight. Three readings, three
  * different answers, one configuration each. What survives all three, and is what this case now
  * holds, is that the viewer is watching again afterwards. The duration is printed and filed.
