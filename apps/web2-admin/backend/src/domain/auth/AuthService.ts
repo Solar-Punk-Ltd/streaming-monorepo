@@ -4,6 +4,7 @@ import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-m
 import {
   absoluteExpiryFrom,
   accountAtAddressKey,
+  confirmationKey,
   createSessionToken,
   endsAt,
   hashPassword,
@@ -42,16 +43,16 @@ const logger = Logger.getInstance();
 /**
  * An attempt the limiter reserved, settled once whatever happens after: a pending attempt counts towards the lockout
  * and is never forgotten, so an error between the reservation and the outcome must settle it too, as the manager's
- * sign-in does.
+ * sign-in does: with `release`, which forgives nothing that was counted before.
  */
 function settleOnce(attempt: LoginAttempt) {
   let settled = false;
-  const settle = (outcome: 'fail' | 'succeed'): void => {
+  const settle = (outcome: 'fail' | 'succeed' | 'release'): void => {
     if (settled) return;
     settled = true;
     attempt[outcome]();
   };
-  return { fail: () => settle('fail'), succeed: () => settle('succeed') };
+  return { fail: () => settle('fail'), succeed: () => settle('succeed'), release: () => settle('release') };
 }
 
 /** A live session: who it is, which session it is, and when it runs out. */
@@ -172,8 +173,9 @@ export class AuthService {
       logger.info(`[Auth] ${user.username} signed in from ${input.ip}`);
       return { user: { ...user, last_login_at: now }, token, expiresAt };
     } catch (err) {
-      // Anything that threw before the outcome was known settles the attempt as no failure; one already settled stays.
-      settlement.succeed();
+      // Anything that threw before the outcome was known gives the attempt back and forgives nothing; one already
+      // settled stays.
+      settlement.release();
       throw err;
     }
   }
@@ -347,7 +349,7 @@ export class AuthService {
   /**
    * Asks the signed-in user's own password again, for a write that needs it besides the session: pinning a node's
    * wallet or sending from the brand wallet (docs/architecture/funding.md). Checked exactly as a password change
-   * checks the current one, behind the same limiter and under the same key, so a stolen session gets no more guesses
+   * checks the current one, behind the same limiter and on the same keys, so a stolen session gets no more guesses
    * by spreading them over both: a wrong one is `InvalidCredentialsError`, and once locked out every one is
    * `TooManyAttemptsError`. `purpose` names the write in the log line of a refusal, and `ip` is the request's address.
    * Answers the user as stored now.
@@ -357,11 +359,15 @@ export class AuthService {
   }
 
   /**
-   * The current password of the session's user, counted on the account at the request's address alone: the key a
-   * sign-in from that address counts on, so a wrong one is a failed sign-in there, five of them lock sign-in there too,
-   * and an account locked at that address is refused here as well (SPDV-1580, SPDV-1664). A lockout of the account at
-   * another address, an address's own count, and the account ceiling do not block it: the session already proved
-   * who is asking, and the owner must be able to change a password someone else is guessing.
+   * The current password of the session's user, counted on two keys. The account at the request's address, the key a
+   * sign-in from that address counts on: a wrong one is a failed sign-in there, five of them lock sign-in there too,
+   * and an account locked at that address is refused here as well (SPDV-1580, SPDV-1664). And the account's
+   * confirmations from every address together ({@link confirmationKey}), which the password change and the funding
+   * confirmations share: a stolen session gets four free failures in all however many addresses it uses, and the fifth
+   * locks them everywhere. A right password takes only its own attempt back from that one. A lockout of the account at
+   * another address, an address's own count, and the account ceiling do not block it, and a sign-in never counts on
+   * the confirmations: the session already proved who is asking, and the owner must be able to change a password
+   * someone else is guessing.
    */
   private async checkOwnPassword(
     session: SessionInfo,
@@ -369,7 +375,10 @@ export class AuthService {
     purpose: string,
     ip: string,
   ): Promise<UserRow> {
-    const attempt = this.limiter.begin({ account: accountAtAddressKey(session.user.username, ip) });
+    const attempt = this.limiter.begin({
+      account: accountAtAddressKey(session.user.username, ip),
+      shared: [confirmationKey(session.user.id)],
+    });
     if (attempt.lockedForSeconds > 0) {
       logger.warn(
         `[Auth] ${purpose} refused, locked out: ${session.user.username} retryAfter=${attempt.lockedForSeconds}s`,
@@ -389,8 +398,9 @@ export class AuthService {
       settlement.succeed();
       return user;
     } catch (err) {
-      // As in sign-in: an error before the outcome settles the attempt as no failure; one already settled stays.
-      settlement.succeed();
+      // As in sign-in: an error before the outcome gives the attempt back and forgives nothing; one already settled
+      // stays.
+      settlement.release();
       throw err;
     }
   }
