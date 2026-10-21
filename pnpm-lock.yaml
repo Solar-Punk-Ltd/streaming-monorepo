@@ -163,6 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
+  '@grpc/grpc-js': ^1.14.5
   body-parser: ^2.3.0
   brace-expansion@5: ^5.0.8
   fast-uri@3: ^3.1.6
@@ -172,6 +173,7 @@ overrides:
   nanoid@3: ^3.3.18
   postcss: ^8.5.18
   protobufjs@<8: ^7.6.5
+  proxy-addr: ^2.0.8
   qs: ^6.16.0
   smol-toml@<=1.7.0: 1.7.1
   ws: ^8.21.0
@@ -1293,8 +1295,8 @@ packages:
   '@fontsource/jetbrains-mono@5.3.0':
     resolution: {integrity: sha512-fqDfB5I9f1p1TV486aUgB9t8zP84P0O1FtQR5Ol9vjwPy+S+EIGlVYm1cvj2W5shcZMTg2nZFdVMoH5wFu8a1A==}
 
-  '@grpc/grpc-js@1.14.4':
-    resolution: {integrity: sha512-k9Dj3DV/itK9D06Y8f190Qgop7/Ui+D0njFV3LHMPwPT75DpXLQohE9Wmz0QElrJnzsjB7KPWiKJbOl7IPDArQ==}
+  '@grpc/grpc-js@1.14.6':
+    resolution: {integrity: sha512-SgC/B3/VZ8lTyOZ4Cwk6f1skWhmkNAaVfiX90qd5u1rRXGKk1//8FTUEN9GvOUq7rfWIqAYkA3CoyumYVpOS6g==}
     engines: {node: '>=12.10.0'}
 
   '@grpc/proto-loader@0.7.15':
@@ -4004,8 +4006,8 @@ packages:
     resolution: {integrity: sha512-dYDWdjSl5RNb7SgPxGQcRU+GtvP7s2fpkrY0r432PcOIaZ0/rBcxEZnQN67iJhFuQiVw754JDoPruPCNdGsbjg==}
     engines: {node: '>=12.0.0'}
 
-  proxy-addr@2.0.7:
-    resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
+  proxy-addr@2.0.8:
+    resolution: {integrity: sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==}
     engines: {node: '>= 0.10'}
 
   proxy-from-env@2.1.0:
@@ -5273,7 +5275,7 @@ snapshots:
 
   '@fontsource/jetbrains-mono@5.3.0': {}
 
-  '@grpc/grpc-js@1.14.4':
+  '@grpc/grpc-js@1.14.6':
     dependencies:
       '@grpc/proto-loader': 0.8.1
       '@js-sdsl/ordered-map': 4.4.2
@@ -6681,7 +6683,7 @@ snapshots:
   dockerode@5.0.1(supports-color@7.2.0):
     dependencies:
       '@balena/dockerignore': 1.0.2
-      '@grpc/grpc-js': 1.14.4
+      '@grpc/grpc-js': 1.14.6
       '@grpc/proto-loader': 0.7.15
       docker-modem: 5.0.7(supports-color@7.2.0)
       protobufjs: 7.6.6
@@ -6863,7 +6865,7 @@ snapshots:
       on-finished: 2.4.1
       once: 1.4.0
       parseurl: 1.3.3
-      proxy-addr: 2.0.7
+      proxy-addr: 2.0.8
       qs: 6.16.0
       range-parser: 1.3.0
       router: 2.2.0(supports-color@7.2.0)
@@ -7859,7 +7861,7 @@ snapshots:
       '@types/node': 24.13.4
       long: 5.3.2
 
-  proxy-addr@2.0.7:
+  proxy-addr@2.0.8:
     dependencies:
       forwarded: 0.2.0
       ipaddr.js: 1.9.1
