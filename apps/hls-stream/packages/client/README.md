@@ -372,6 +372,12 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   that is not paused and gives URLs, and `urlSource` names it. A playlist the player already holds is
   served again with its segment lines named by that provider, so a pause that sends segments to the
   fallback, and the end of it, reach a playlist held from before (`ManifestManagement.ts`).
+  - A recording's playlist is read only once, so hls.js keeps the segment URLs it was first given. The
+    fragment loader therefore names each segment the player named again by the provider serving now,
+    just before the request goes out (`ManifestFetcher.segmentUrlNow`). A viewer who switches node, or
+    whose node is paused, while watching a recording gets the next segment from the new one.
+  - A URL the player did not name goes out as given: a preview's segment, and an old recording whose
+    manifest names its publisher's gateway.
 - **What the node picker's Test uses.** `probe()` asks the provider every feature reads from first
   whether it is there, and `loadUrl` (`src/swarm/urlLoad.ts`) loads a URL the client gave, as the
   browser or hls.js would, and answers as a read does. The player and the pages never call it.

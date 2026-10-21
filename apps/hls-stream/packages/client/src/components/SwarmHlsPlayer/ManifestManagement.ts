@@ -31,6 +31,7 @@ import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type Served
 import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 import { rungHeadMarkers } from './rungHeadMarkers';
+import { SegmentNames } from './segmentNames';
 import { SourceMissCost } from './sourceMissCost';
 import { waitMs } from './waitMs';
 
@@ -597,6 +598,8 @@ export class ManifestFetcher {
     readonly source: string | null;
     readonly segmentUrl: SegmentUrl;
   } = { reader: NO_SWARM, source: null, segmentUrl: SEGMENTS_AS_WRITTEN };
+  /** Every segment URL a reader named for a playlist, so {@link segmentUrlNow} can name it again by the reader of now. */
+  private readonly segmentNames = new SegmentNames();
   /**
    * Every read this fetcher and its poller make, passed on to whichever reader is current, so a node
    * switched to mid-session moves the walks with it.
@@ -735,12 +738,39 @@ export class ManifestFetcher {
     return answer;
   }
 
+  /**
+   * The URL a segment hls.js asks for by `url` loads from now: the same segment named by the current
+   * reader when an earlier reader named it, and `url` itself when the player never named it.
+   *
+   * A recording's playlist is read once, so hls.js keeps the URLs of whichever reader named them, and a
+   * viewer who switched the video to another source, or whose source was paused, would otherwise go on
+   * loading every segment from the one they left. A live stream is renamed on its next playlist reload
+   * as well, but its segments in flight until then are not.
+   */
+  segmentUrlNow(url: string): string {
+    const reference = this.segmentNames.referenceOf(url);
+    if (reference === null) {
+      return url;
+    }
+    return this.swarm.urlFor(reference, 'segment') ?? url;
+  }
+
   /** How segments are named now: by the provider the current reader takes segment URLs from. */
   private segmentUrl(): SegmentUrl {
     const reader = this.swarm;
     const source = reader.urlSource('segment');
     if (this.segmentUrlCache.reader !== reader || this.segmentUrlCache.source !== source) {
-      this.segmentUrlCache = { reader, source, segmentUrl: (reference) => reader.urlFor(reference, 'segment') };
+      this.segmentUrlCache = {
+        reader,
+        source,
+        segmentUrl: (reference) => {
+          const url = reader.urlFor(reference, 'segment');
+          if (url !== null) {
+            this.segmentNames.remember(url, reference);
+          }
+          return url;
+        },
+      };
     }
     return this.segmentUrlCache.segmentUrl;
   }
