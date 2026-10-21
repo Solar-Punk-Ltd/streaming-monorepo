@@ -1,6 +1,6 @@
 -- This table belonged to a Docker transport for chequebook transfers that the
--- manager no longer has, and nothing reads it. It stays because this migration
--- was applied. It held the Bee image and Docker engine pairs the manager had
+-- manager no longer has, and nothing reads it. Migration 053 drops it, and this
+-- file stays because it was applied. It held the Bee image and Docker engine pairs the manager had
 -- checked before a transfer went through a bridge in them: a check that read,
 -- and never wrote, whether the four paths the bridge script ran were there and
 -- executable and whether bash had /dev/tcp.
