@@ -47,19 +47,48 @@ session of that user.
 
 ## The lockout
 
-`packages/web-auth/src/LoginLimiter.ts` counts failures under two keys, the lowercased username and
-the client address (the last `X-Forwarded-For` hop). Four attempts are free. The fifth locks for a
-minute, every failure after that doubles the lock up to an hour, and a key with no failure for two
-hours is forgotten. A locked-out request is `429 too_many_attempts` with `Retry-After` and
-`retryAfterSeconds`.
+`packages/web-auth/src/LoginLimiter.ts` counts every failed sign-in under the three keys
+`signInKeys` gives:
+
+- **The account at that address** (`accountAtAddressKey`), the lowercased username together with
+  the client address. Four failures are free. The fifth locks for a minute, every failure after
+  that doubles the lock up to an hour, and a right password clears the key.
+- **The address** (`clientIpKey`), whatever usernames it tries, on the same curve. One address
+  guessing many accounts gets four free failures in all.
+- **The account from every address together** (`usernameKey`). 99 failures are free and the 100th
+  (`LOGIN_ACCOUNT_CEILING`) locks the account's sign-in for everyone, on the same curve from a
+  minute up to an hour. A right password takes back only its own attempt, never the failures made
+  from elsewhere. A hundred is the figure NIST SP 800-63B gives. Sessions already signed in keep
+  working.
+
+A key with no failure for two hours is forgotten. A locked-out request is `429 too_many_attempts`
+with `Retry-After` and `retryAfterSeconds`.
+
+The address is part of the account's key so that a stranger cannot lock you out. Five wrong
+passwords from their address lock only that address, and locking your sign-in takes about a hundred
+failures, from many addresses. The address on its own still limits one place to four free guesses
+across every account it tries, and the hundred limits what many places can guess at one account
+together.
+
+The client address is the last `X-Forwarded-For` hop: the edge sets the header, and the console's
+nginx restores the visitor's address from it and passes it on. `limiterAddress`
+(`packages/web-auth/src/clientIp.ts`) gives the keys their form of it: an IPv4 address as it is, an
+IPv4 address written as IPv6 (`::ffff:a.b.c.d`) as that IPv4 address, and an IPv6 address by its
+/64 network, written like `2001:db8:0:1::/64`, with any zone dropped, since one machine can take any
+address in its /64. Anything that does not read as an address counts as it was sent. The log lines
+print the address as it arrived.
 
 An attempt is reserved before the password check starts and settled after it, and reserved attempts
 count towards the lockout. So twenty sign-ins sent together cannot all read zero failures and all
 get their guess: a test sends twenty and asserts that at most five reached a password check.
 
 A wrong current password on a password change, or on a write that asks for the password again (a
-funding pin or send), counts under the account's username key like a failed sign-in, so either
-kind of guess locks both.
+funding pin or send), counts on the account's key at the address the request came from, like a
+failed sign-in from there: on `accountAtAddressKey` alone, with the address each route takes with
+`clientIpOf(req)`. So a stolen session gets no more guesses than a sign-in from the same
+place, and either kind of guess locks both there. A lockout from another address, or the one from
+every address together, does not block them: someone guessing elsewhere cannot stop a signed-in
+operator from changing their password or confirming a send.
 
 ## The cross-site check
 
@@ -135,34 +164,37 @@ be noticed on the server.
 
 ## Where the admin differs from the manager
 
-| The manager                                    | The admin                                |
-| ---------------------------------------------- | ---------------------------------------- |
-| numeric user ids                               | UUIDs                                    |
-| cookie `sim_session`                           | `web2_admin_session`                     |
-| `x-requested-with: streaming-infra-manager`    | `x-requested-with: web2-admin`           |
-| `POST /login` answers 204                      | answers `MeResponse`, the signed-in user |
-| `POST /users/:id/revoke-sessions`              | `POST /users/:id/revoke`                 |
-| `locked_out`                                   | `too_many_attempts`                      |
-| no users is 409                                | no users is 401 `no_users`               |
-| `GET /auth/users` answers an array             | answers `{ users: [...] }`               |
-| server-sent events, closed when a session ends | no long-lived connections                |
+| The manager                                    | The admin                                                                                     |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| numeric user ids                               | UUIDs                                                                                         |
+| cookie `sim_session`                           | `web2_admin_session`                                                                          |
+| `x-requested-with: streaming-infra-manager`    | `x-requested-with: web2-admin`                                                                |
+| `POST /login` answers 204                      | answers `MeResponse`, the signed-in user                                                      |
+| `POST /users/:id/revoke-sessions`              | `POST /users/:id/revoke`                                                                      |
+| `locked_out`                                   | `too_many_attempts`                                                                           |
+| a password change counts on a key of its own   | a password change, a funding pin and a send count on the sign-in key at the request's address |
+| no users is 409                                | no users is 401 `no_users`                                                                    |
+| `GET /auth/users` answers an array             | answers `{ users: [...] }`                                                                    |
+| server-sent events, closed when a session ends | no long-lived connections                                                                     |
 
 ## Tests
 
 The shared rules are tested in `packages/web-auth/src/*.test.ts`: hashing, session tokens, the two
-session clocks, the lockout (reserved attempts counting among them), cookies, the cross-site check,
-the SQL of user removal, and reading a password without echo.
+session clocks, the lockout (its three keys and the ceiling in `loginLimiter.test.ts`, how addresses
+count in `clientIp.test.ts`, and reserved attempts counting among them), cookies, the cross-site
+check, the SQL of user removal, and reading a password without echo.
 
 The admin's own, in `apps/web2-admin/backend/test/unit/` (`pnpm test`):
 
-| File                                | What it holds                                                                                                                                                          |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cookies.test.ts`                   | the cookie's attributes, `Secure` per request and no expiry                                                                                                            |
-| `requireSameSite.test.ts`           | every combination of the three headers                                                                                                                                 |
-| `requireAuth.test.ts`               | the gate over real HTTP with in-memory repositories: both clocks, the once-a-minute touch, a removed user's sessions                                                   |
-| `authRoutes.test.ts`                | the routes over real HTTP: no users yet, the cookie, the lockout, a burst of twenty, cross-site refusals, roles, removal races, and `/api/internal` ahead of all of it |
-| `authAudit.test.ts`                 | the audit rows for user changes: the actor, the target, nothing secret, no row for a refusal, and a failed audit write not failing the change                          |
-| `authCredentialConcurrency.test.ts` | a password replaced while a sign-in or a second change was being checked                                                                                               |
+| File                                | What it holds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cookies.test.ts`                   | the cookie's attributes, `Secure` per request and no expiry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `requireSameSite.test.ts`           | every combination of the three headers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `requireAuth.test.ts`               | the gate over real HTTP with in-memory repositories: both clocks, the once-a-minute touch, a removed user's sessions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `authRoutes.test.ts`                | the routes over real HTTP: no users yet, the cookie, the lockout, a burst of twenty, cross-site refusals, roles, removal races, and `/api/internal` ahead of all of it. Its "the lockout per address" block plays addresses by sending an `x-forwarded-for` header, whose last hop the API takes with no proxy in front: five failures lock the account at one address and it still signs in from another, five across several accounts lock the address, a hundred from many addresses lock the account everywhere, and the password change still works under a lockout at another address and under the ceiling |
+| `fundingRoutes.test.ts`             | among the funding routes, a wrong password on a pin or a send: `401` as a password change answers it, a lockout after the fifth on the same count, five wrong confirmations locking sign-in at that address and nowhere else, and a confirmation going through under a lockout at another address and under the ceiling                                                                                                                                                                                                                                                                                           |
+| `authAudit.test.ts`                 | the audit rows for user changes: the actor, the target, nothing secret, no row for a refusal, and a failed audit write not failing the change                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `authCredentialConcurrency.test.ts` | a password replaced while a sign-in or a second change was being checked                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The integration suite (`pnpm test:integration`) starts its own backend with its own database and
 covers the CLI-made admin, the session route, the cross-site refusals, the user routes, a password
