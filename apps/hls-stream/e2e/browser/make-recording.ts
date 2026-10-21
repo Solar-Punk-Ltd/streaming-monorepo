@@ -76,7 +76,7 @@ import { stageSegmentSeconds } from '../src/segmentLength.js';
  * rung: a quarter of what was asked, and a quarter of the recording a player sees, because a player
  * rides one rung. `harness/recording.ts` holds the counting and `test/recording.test.ts` covers it.
  *
- * 45 either side is comfortably past the ~6s the player buffers, so every seek below has to retrieve
+ * 45 either side is comfortably past the 12 s or so the player holds behind live, so every seek below has to retrieve
  * rather than replay what it already holds.
  */
 const BEFORE_SEGMENTS = 45;

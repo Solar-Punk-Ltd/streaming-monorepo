@@ -299,7 +299,7 @@ describe('media a viewer watched, against media the player skipped', () => {
     );
   });
 
-  it('leaves a faster speed the viewer picked alone, which is playing fast and not jumping', () => {
+  it('leaves a 1.1x speed the viewer picked alone, which is playing fast and not jumping', () => {
     const summary = summarize(playing(10, 1.1, { playbackRate: 1.1 }));
 
     assert.equal(summary.forwardSeeks, 0);

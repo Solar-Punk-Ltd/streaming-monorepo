@@ -10,8 +10,8 @@
  * - **Clamped short.** hls.js pins its sync position to the start of the playlist, so a first
  *   manifest naming less media than the target asks for leaves a joining viewer nearer the edge than
  *   configured, with correspondingly less runway. The uploader's window was ten segments until
- *   2026-08-05, which is 2.5s at a 0.25s segment against a 6s target, and nothing in the bench could
- *   have seen it.
+ *   2026-08-05, which at the 0.25s segments of that time was 2.5s against the 6s target of that time,
+ *   and nothing in the bench could have seen it.
  * - **Run long.** Latency past `LIVE_MAX_LATENCY_DURATION_S` means the seek that is supposed to
  *   recover it did not.
  *

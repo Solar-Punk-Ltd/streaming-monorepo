@@ -37,10 +37,10 @@ const ROUND_PER_TYPICAL_MISS = 1.5;
 const READ_WINDOW_ROUNDS = 2;
 
 /**
- * The longest a round is taken to last, so a read is never given more than 30 s, the window the node in
- * this browser declares for itself, and a level request never waits more than about two minutes. With
- * the longer window the light node's misses stretched to 12 to 18 s, so the cost a source shows depends
- * in part on what it is allowed, and this keeps that from growing without end.
+ * The longest a round is taken to last, so a read on a slow source is never given more than two such
+ * rounds, 30 s, and a level request never waits more than about two minutes. Given a longer window the
+ * light node's misses stretched to 12 to 18 s, so the cost a source shows depends in part on what it is
+ * allowed, and this keeps that from growing without end.
  */
 const LONGEST_ROUND_MS = 15_000;
 
