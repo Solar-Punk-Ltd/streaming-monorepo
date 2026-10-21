@@ -103,7 +103,12 @@ export function createAuthRouter(authService: AuthService, requireAuth: RequestH
     validateBody(changePasswordSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as ChangePasswordBody;
-      const updated = await authService.changePassword(signedInSession(req), body.currentPassword, body.newPassword);
+      const updated = await authService.changePassword(
+        signedInSession(req),
+        body.currentPassword,
+        body.newPassword,
+        clientIpOf(req),
+      );
       const response: MeResponse = { user: toUser(updated) };
       res.json(response);
     }),

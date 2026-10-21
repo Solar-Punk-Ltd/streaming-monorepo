@@ -3,7 +3,6 @@ import { randomBytes } from 'node:crypto';
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-infra-manager/common';
 import {
   absoluteExpiryFrom,
-  clientIpKey,
   createSessionToken,
   endsAt,
   hashPassword,
@@ -13,7 +12,7 @@ import {
   LoginLimiter,
   needsTouch,
   passwordChangeKey,
-  usernameKey,
+  signInKeys,
   verifyPassword,
   type LoginAttempt,
 } from '@streaming-monorepo/web-auth';
@@ -113,10 +112,9 @@ export class AuthService {
     // Reserved before the lookup and the hash, both of which are awaited: the
     // guesses that arrive together have to be counted before any of them is
     // checked, or they all pass a lockout that none of them has moved yet.
-    const attempt = this.limiter.begin({
-      account: usernameKey(input.username),
-      shared: [clientIpKey(input.ip)],
-    });
+    // Counted on the account at this address, the address, and the account everywhere (signInKeys): guesses from
+    // one place lock that place, and the ceiling caps what many places together can try.
+    const attempt = this.limiter.begin(signInKeys(input.username, input.ip));
     if (attempt.lockedForSeconds > 0) {
       logger.warn(
         `[Auth] sign-in refused, locked out: username="${input.username}" ip=${input.ip} retryAfter=${attempt.lockedForSeconds}s`,

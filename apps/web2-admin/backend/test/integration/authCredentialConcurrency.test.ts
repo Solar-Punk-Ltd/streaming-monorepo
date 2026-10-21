@@ -173,7 +173,7 @@ describe('password verification and credential writes, on Postgres', () => {
           userAgent: 'test',
         });
         await bounded(verified.promise, 'the stale sign-in to verify');
-        await auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD);
+        await auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD, '192.0.2.1');
         resume.resolve();
 
         await assert.rejects(staleSignIn);
@@ -187,9 +187,9 @@ describe('password verification and credential writes, on Postgres', () => {
   it('does not let a second password change, verified against the old one, overwrite the first', async () => {
     const ordered = new OrderedCredentialRepository(credentials);
     await withOwner(async (auth, owner) => {
-      const winner = auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD);
+      const winner = auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD, '192.0.2.1');
       await bounded(ordered.entered[0]!.promise, 'the first change');
-      const stale = auth.changePassword(sessionOf(owner), OLD_PASSWORD, SECOND_PASSWORD);
+      const stale = auth.changePassword(sessionOf(owner), OLD_PASSWORD, SECOND_PASSWORD, '192.0.2.1');
       await bounded(ordered.entered[1]!.promise, 'the second change');
       ordered.release[0]!.resolve();
       await winner;

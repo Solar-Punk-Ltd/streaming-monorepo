@@ -8,6 +8,7 @@ import type {
   FundingTransfersAnswer,
   FundingView,
 } from '@streaming-monorepo/web2-admin-common';
+import { clientIpOf } from '@streaming-monorepo/web-auth';
 import { Request, RequestHandler, Response, Router } from 'express';
 
 import type { AuthService } from '../../domain/auth/AuthService.js';
@@ -78,7 +79,7 @@ export function createFundingRouter(deps: FundingRoutesDeps): Router {
     validateBody(fundingPinsSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as FundingPinsBody;
-      await authService.confirmPassword(signedInSession(req), body.password, 'funding pin');
+      await authService.confirmPassword(signedInSession(req), body.password, 'funding pin', clientIpOf(req));
       const response: FundingPinsAnswer = await fundingService.pin(actorOf(req), body.nodeIds);
       res.json(response);
     }),
@@ -89,7 +90,7 @@ export function createFundingRouter(deps: FundingRoutesDeps): Router {
     validateBody(fundingTransfersSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const body = req.body as FundingTransfersBody;
-      await authService.confirmPassword(signedInSession(req), body.password, 'funding send');
+      await authService.confirmPassword(signedInSession(req), body.password, 'funding send', clientIpOf(req));
       const response: FundingTransfersAnswer = await fundingService.send(actorOf(req), body.items);
       res.status(202).json(response);
     }),

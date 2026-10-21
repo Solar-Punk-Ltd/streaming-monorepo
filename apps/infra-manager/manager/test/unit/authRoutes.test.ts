@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { SESSION_IDLE_TIMEOUT_MS } from '@streaming-infra-manager/common';
-import { hashSessionToken, LoginLimiter } from '@streaming-monorepo/web-auth';
+import { hashSessionToken, LOGIN_ACCOUNT_CEILING, LoginLimiter, signInKeys } from '@streaming-monorepo/web-auth';
 
 import {
   AuthTestApp,
@@ -26,6 +26,7 @@ import {
 const USERNAME = 'operator';
 const PASSWORD = 'a-long-enough-password';
 const OTHER_PASSWORD = 'another-fine-password';
+const THIRD_PASSWORD = 'yet-another-long-password';
 
 interface UserRow {
   id: number;
@@ -253,6 +254,54 @@ describe('too many attempts', () => {
       const res = await login(LATER, USERNAME, 'not-the-password');
       assert.equal(res.status, 401, `attempt ${i} after the reset`);
     }
+  });
+});
+
+// Its own app and its own limiter, so a test can lay down the ceiling's failures without signing in a hundred times.
+describe('the lockout per address', () => {
+  let app: AuthTestApp;
+  let limiter: LoginLimiter;
+  const clock = { now: 1_700_000_000_000 };
+
+  const login = (ip: string, username: string, password: string) =>
+    call(app, 'POST', '/auth/login', { body: { username, password }, headers: { 'x-forwarded-for': ip } });
+
+  /** The nth of many addresses, four failures each at most, none sharing a /64. */
+  const spread = (n: number) => `10.9.${Math.floor(n / 4)}.${(n % 4) + 1}`;
+
+  before(async () => {
+    limiter = new LoginLimiter(() => clock.now);
+    app = await startAuthTestApp(limiter);
+    await app.authService.addUser(USERNAME, PASSWORD);
+    await app.authService.addUser('mate', OTHER_PASSWORD);
+    await app.authService.addUser('third', THIRD_PASSWORD);
+  });
+  after(() => app.close());
+
+  it('locks the account at one address after five failures, and lets it sign in from another', async () => {
+    for (let i = 1; i <= 5; i += 1) {
+      assert.equal((await login('192.0.2.11', USERNAME, 'not-the-password')).status, 401, `attempt ${i}`);
+    }
+
+    assert.equal((await login('192.0.2.11', USERNAME, PASSWORD)).status, 429);
+    assert.equal((await login('192.0.2.12', USERNAME, PASSWORD)).status, 204);
+  });
+
+  it('locks an address after five failures across several accounts', async () => {
+    for (let n = 0; n < 5; n += 1) {
+      assert.equal((await login('192.0.2.21', `nobody${n}`, 'not-the-password')).status, 401, `account ${n}`);
+    }
+
+    assert.equal((await login('192.0.2.21', 'mate', OTHER_PASSWORD)).status, 429);
+    assert.equal((await login('192.0.2.22', 'mate', OTHER_PASSWORD)).status, 204);
+  });
+
+  it(`locks an account everywhere after ${LOGIN_ACCOUNT_CEILING} failures from many addresses`, async () => {
+    for (let n = 0; n < LOGIN_ACCOUNT_CEILING - 1; n += 1) limiter.begin(signInKeys('mate', spread(n))).fail();
+
+    assert.equal((await login('192.0.2.31', 'mate', 'not-the-password')).status, 401, 'the 100th is still checked');
+    assert.equal((await login('192.0.2.32', 'mate', OTHER_PASSWORD)).status, 429, 'then every address is locked');
+    assert.equal((await login('192.0.2.32', USERNAME, PASSWORD)).status, 204, 'the address itself is not');
   });
 });
 

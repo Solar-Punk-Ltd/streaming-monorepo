@@ -31,7 +31,7 @@ import {
   fundingChequebookBulkPath,
   fundingStampBulkPath,
 } from '@streaming-monorepo/web2-admin-common';
-import { LoginLimiter } from '@streaming-monorepo/web-auth';
+import { LOGIN_ACCOUNT_CEILING, LoginLimiter, signInKeys } from '@streaming-monorepo/web-auth';
 import express from 'express';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
@@ -90,6 +90,8 @@ interface FundingTestApp extends AuthTestApp {
   chequebookJournal: InMemoryFundingChequebookStore;
   chequebooks: FundingChequebookService;
   clock: { now: number };
+  /** The limiter sign-in and the confirmations count on, so a test can lay down failures without signing in. */
+  limiter: LoginLimiter;
 }
 
 async function startFundingTestApp(options: { configured?: boolean } = {}): Promise<FundingTestApp> {
@@ -97,12 +99,13 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
   const users = new InMemoryUserRepository();
   const sessions = new InMemorySessionRepository(users);
   const audit = new InMemoryAuditLog();
+  const limiter = new LoginLimiter(() => clock.now);
   const authService = new AuthService(
     users,
     sessions,
     new InMemoryCredentialRepository(users, sessions),
     audit,
-    new LoginLimiter(() => clock.now),
+    limiter,
   );
   const manager = new FakeFundingManager();
   const wallet = new FakeFundingWallet();
@@ -159,6 +162,7 @@ async function startFundingTestApp(options: { configured?: boolean } = {}): Prom
     chequebookJournal,
     chequebooks,
     clock,
+    limiter,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }
@@ -235,6 +239,33 @@ describe('a wrong password on a pin or a send', () => {
 
     app.clock.now += 60_000;
     assert.equal((await send([{ nodeId: NODE_A, kind: 'xdai', amount: '1' }])).status, 202);
+  });
+
+  it('locks sign-in at that address after five wrong confirmations, and nowhere else', async () => {
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const res = await fundingCall('POST', FUNDING_PINS_PATH, { password: WRONG, nodeIds: [NODE_A] });
+      assert.equal(res.status, 401, `attempt ${attempt}`);
+    }
+
+    // The confirmations came from the session's own address: sign-in from there shares their count.
+    const here = await call(app, 'POST', '/api/auth/login', { body: { username: USERNAME, password: PASSWORD } });
+    assert.equal(here.status, 429);
+    const elsewhere = await call(app, 'POST', '/api/auth/login', {
+      body: { username: USERNAME, password: PASSWORD },
+      headers: { 'x-forwarded-for': '203.0.113.80' },
+    });
+    assert.equal(elsewhere.status, 200);
+  });
+
+  it('goes through under a lockout at another address and under the ceiling', async () => {
+    for (let n = 0; n < 5; n += 1) app.limiter.begin(signInKeys(USERNAME, '203.0.113.81')).fail();
+    for (let n = 0; n < LOGIN_ACCOUNT_CEILING; n += 1) {
+      app.limiter.begin(signInKeys(USERNAME, `10.9.${Math.floor(n / 4)}.${(n % 4) + 1}`)).fail();
+    }
+
+    const pinned = await fundingCall('POST', FUNDING_PINS_PATH, { password: PASSWORD, nodeIds: [NODE_A] });
+
+    assert.equal(pinned.status, 200);
   });
 
   it('is refused before a node named twice', async () => {

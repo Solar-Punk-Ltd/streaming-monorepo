@@ -206,7 +206,9 @@ export function authRoutes(readBody) {
 
         const body = await readBody(req);
         const username = String(body.username ?? '');
-        const keys = [`username:${username.toLowerCase()}`, 'ip:mock'];
+        // The account at this address, and the address, as the manager keys them; the mock has one address and
+        // leaves out the account ceiling.
+        const keys = [`account:${username.toLowerCase()}@mock`, 'ip:mock'];
         const wait = Math.max(...keys.map(retryAfterSeconds));
         if (wait > 0) {
           return send(res, 429, { error: 'locked_out', retryAfterSeconds: wait }, { 'retry-after': String(wait) });
