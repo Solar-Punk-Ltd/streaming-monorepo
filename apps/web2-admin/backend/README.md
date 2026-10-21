@@ -215,16 +215,22 @@ A weak password or a bad username is `400 validation_error` with the reason in
   address whatever the username, then a minute that doubles up to an hour. A
   username's hundredth failure from all addresses together
   (`LOGIN_ACCOUNT_CEILING`) locks its sign-in for everyone, on the same curve,
-  while sessions already signed in keep working. So five wrong passwords from somewhere else lock out only that
-  address. An IPv6 address counts by its /64, and an IPv4 address written as
-  IPv6 as the IPv4 address. Attempts still waiting on scrypt count, so a
-  burst sent together buys no extra guesses.
+  while sessions already signed in keep working. So five wrong passwords from
+  somewhere else lock out only that address. An IPv6 address counts by its /64,
+  and an IPv4 address written as IPv6 as the IPv4 address. Attempts still
+  waiting on scrypt count, so a burst sent together buys no extra guesses.
 - A wrong current password on a password change, a pin or a send counts
   under the account's sign-in key at the address the request came from
-  (`accountAtAddressKey`, with the route's `clientIpOf(req)`), so a stolen
-  session gets no more guesses than a sign-in from that address, and
-  either kind of guess locks both there. A lockout from another address, or
-  the lockout from every address together, does not refuse them.
+  (`accountAtAddressKey`, with the route's `clientIpOf(req)`), so either kind
+  of guess locks both there. It also counts on the user's own confirmation
+  key (`confirmationKey`), which sign-in never touches: four free failures
+  from all addresses together, shared by the password change, the pin and
+  the send, and the fifth locks them from every address. So a stolen session
+  gets four free failures in all, however many addresses it uses, and after
+  that one guess each time the lock runs out, the wait doubling up to an
+  hour. A right password takes back only its own attempt from that key. A
+  sign-in lockout from another address, or the one from every address
+  together, does not refuse them.
 - `GET /api/auth/users`, `POST /api/auth/users` (admin),
   `DELETE /api/auth/users/:id` (admin, never yourself, never the last user or
   the last admin. The user's streams stay, with `user_id` set to null) and
@@ -1189,12 +1195,13 @@ could not be read keeps the state its pin gives it, `pinned` or `new`, never
 
 Both writes ask for the operator's password again, checked exactly as a
 password change checks the current one (`AuthService.confirmPassword`), behind
-the same limiter and on the same count, the account's sign-in count at the
-request's address: `401 invalid_credentials` when it is wrong,
+the same limiter and on the same counts, the account's sign-in count at the
+request's address and the user's confirmation count from every address
+(`confirmationKey`): `401 invalid_credentials` when it is wrong,
 `429 too_many_attempts` with `Retry-After` and `retryAfterSeconds` once locked
-out. A guess spent on a send is a guess less for the password change, and for
-signing in from that address. A sign-in lockout from another address, or the
-one from every address together, does not refuse them.
+out. A guess spent on a send is a guess less for the password change, wherever
+it is made, and for signing in from that address. A sign-in lockout from
+another address, or the one from every address together, does not refuse them.
 
 A send's body is checked first, `400 validation_error`: at least one item and
 at most 200, a node id as the contract takes it, `kind` `xdai` or `xbzz`, and
