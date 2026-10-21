@@ -82,13 +82,23 @@ An attempt is reserved before the password check starts and settled after it, an
 count towards the lockout. So twenty sign-ins sent together cannot all read zero failures and all
 get their guess: a test sends twenty and asserts that at most five reached a password check.
 
+A wrong password settles the attempt as a failure, and a right one gives it back and wipes the
+account's key (`succeed()`). An error before the outcome, in the user lookup or the hash, gives the
+attempt back on every key and wipes nothing (`release()`). So an error leaves no attempt counted,
+and forgives no failure made before it, the account's at that address included.
+
 A wrong current password on a password change, or on a write that asks for the password again (a
 funding pin or send), counts on the account's key at the address the request came from, like a
-failed sign-in from there: on `accountAtAddressKey` alone, with the address each route takes with
-`clientIpOf(req)`. So a stolen session gets no more guesses than a sign-in from the same
-place, and either kind of guess locks both there. A lockout from another address, or the one from
-every address together, does not block them: someone guessing elsewhere cannot stop a signed-in
-operator from changing their password or confirming a send.
+failed sign-in from there (`accountAtAddressKey`, with the address each route takes with
+`clientIpOf(req)`), so either kind of guess locks both there. It also counts on a key of the user's
+own, `confirmationKey`, which sign-in never touches. Four failures are free on it from all
+addresses together, shared by the password change, the pin and the send, and the fifth locks them
+from every address. A right password takes back only its own attempt from it. So a stolen session
+gets four free failures in all, however many addresses it spreads them over, and after that one
+guess each time the lock runs out, the wait doubling up to an hour. And a sign-in lockout from
+another address, or the one from every address together, does not block them: someone guessing at
+the sign-in page cannot stop a signed-in operator from changing their password or confirming a
+send.
 
 ## The cross-site check
 
@@ -164,25 +174,26 @@ be noticed on the server.
 
 ## Where the admin differs from the manager
 
-| The manager                                    | The admin                                                                                     |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| numeric user ids                               | UUIDs                                                                                         |
-| cookie `sim_session`                           | `web2_admin_session`                                                                          |
-| `x-requested-with: streaming-infra-manager`    | `x-requested-with: web2-admin`                                                                |
-| `POST /login` answers 204                      | answers `MeResponse`, the signed-in user                                                      |
-| `POST /users/:id/revoke-sessions`              | `POST /users/:id/revoke`                                                                      |
-| `locked_out`                                   | `too_many_attempts`                                                                           |
-| a password change counts on a key of its own   | a password change, a funding pin and a send count on the sign-in key at the request's address |
-| no users is 409                                | no users is 401 `no_users`                                                                    |
-| `GET /auth/users` answers an array             | answers `{ users: [...] }`                                                                    |
-| server-sent events, closed when a session ends | no long-lived connections                                                                     |
+| The manager                                    | The admin                                                                                                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| numeric user ids                               | UUIDs                                                                                                                                |
+| cookie `sim_session`                           | `web2_admin_session`                                                                                                                 |
+| `x-requested-with: streaming-infra-manager`    | `x-requested-with: web2-admin`                                                                                                       |
+| `POST /login` answers 204                      | answers `MeResponse`, the signed-in user                                                                                             |
+| `POST /users/:id/revoke-sessions`              | `POST /users/:id/revoke`                                                                                                             |
+| `locked_out`                                   | `too_many_attempts`                                                                                                                  |
+| a password change counts on a key of its own   | a password change, a funding pin and a send count on the sign-in key at the request's address and on the user's own confirmation key |
+| no users is 409                                | no users is 401 `no_users`                                                                                                           |
+| `GET /auth/users` answers an array             | answers `{ users: [...] }`                                                                                                           |
+| server-sent events, closed when a session ends | no long-lived connections                                                                                                            |
 
 ## Tests
 
 The shared rules are tested in `packages/web-auth/src/*.test.ts`: hashing, session tokens, the two
-session clocks, the lockout (its three keys and the ceiling in `loginLimiter.test.ts`, how addresses
-count in `clientIp.test.ts`, and reserved attempts counting among them), cookies, the cross-site
-check, the SQL of user removal, and reading a password without echo.
+session clocks, the lockout (its three keys, the ceiling, a key's own free count and `release()` in
+`loginLimiter.test.ts`, how addresses count in `clientIp.test.ts`, and reserved attempts counting
+among them), cookies, the cross-site check, the SQL of user removal, and reading a password without
+echo.
 
 The admin's own, in `apps/web2-admin/backend/test/unit/` (`pnpm test`):
 
@@ -194,7 +205,8 @@ The admin's own, in `apps/web2-admin/backend/test/unit/` (`pnpm test`):
 | `authRoutes.test.ts`                | the routes over real HTTP: no users yet, the cookie, the lockout, a burst of twenty, cross-site refusals, roles, removal races, and `/api/internal` ahead of all of it. Its "the lockout per address" block plays addresses by sending an `x-forwarded-for` header, whose last hop the API takes with no proxy in front: five failures lock the account at one address and it still signs in from another, five across several accounts lock the address, a hundred from many addresses lock the account everywhere, and the password change still works under a lockout at another address and under the ceiling |
 | `fundingRoutes.test.ts`             | among the funding routes, a wrong password on a pin or a send: `401` as a password change answers it, a lockout after the fifth on the same count, five wrong confirmations locking sign-in at that address and nowhere else, and a confirmation going through under a lockout at another address and under the ceiling                                                                                                                                                                                                                                                                                           |
 | `authAudit.test.ts`                 | the audit rows for user changes: the actor, the target, nothing secret, no row for a refusal, and a failed audit write not failing the change                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `authLimiterLeak.test.ts`           | an error after the limiter reserved an attempt, in the user lookup, leaves no attempt counted: five failed lookups, then the right password signs in, and five failed reads, then the right password confirms                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `authLimiterLeak.test.ts`           | an error after the limiter reserved an attempt, in the user lookup, leaves no attempt counted and forgives none: five failed lookups, then the right password signs in, and five failed reads, then the right password confirms. Four wrong, then an error, and the next wrong one locks, for sign-in and for a confirmation                                                                                                                                                                                                                                                                                      |
+| `authConfirmationLimit.test.ts`     | the account's confirmations from every address together: a stolen session gets four free failures across many addresses, between the password change and a pin or send, and the fifth locks them everywhere while sign-in from elsewhere still works. A right confirmation takes back only its own attempt, and forty wrong sign-ins from ten addresses leave them free                                                                                                                                                                                                                                           |
 | `authCredentialConcurrency.test.ts` | a password replaced while a sign-in or a second change was being checked                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The integration suite (`pnpm test:integration`) starts its own backend with its own database and
