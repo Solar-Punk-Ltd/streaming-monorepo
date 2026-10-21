@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Source } from '@/swarm/sources';
 
-import { checkSourceStatus, SOURCE_CHECK_INTERVAL_MS, type SourceStatus } from './sourceStatus';
+import { checkSourceStatus, SOURCE_CHECK_INTERVAL_MS, sourceCheckClients, type SourceStatus } from './sourceStatus';
 
 type Catalog = { readonly owner: string; readonly topic: string };
 
@@ -25,8 +25,10 @@ export function useSourceStatuses(
   catalogRef.current = catalog;
   const watched = JSON.stringify(sources.map(({ id, type, url }) => [id, type, url]));
 
+  const clients = useRef(sourceCheckClients());
+
   const check = useCallback((source: Source, signal: AbortSignal) => {
-    void checkSourceStatus(source, { catalog: catalogRef.current, signal }).then((status) => {
+    void checkSourceStatus(source, { catalog: catalogRef.current, signal, client: clients.current }).then((status) => {
       if (!signal.aborted) {
         setStatuses((current) => ({ ...current, [source.id]: status }));
       }
@@ -39,6 +41,7 @@ export function useSourceStatuses(
     }
     const running = new AbortController();
     controller.current = running;
+    clients.current = sourceCheckClients();
     const checkAll = () => sourcesRef.current.forEach((source) => check(source, running.signal));
     checkAll();
     const timer = setInterval(checkAll, SOURCE_CHECK_INTERVAL_MS);

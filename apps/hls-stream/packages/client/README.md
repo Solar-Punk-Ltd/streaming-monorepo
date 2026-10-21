@@ -145,8 +145,9 @@ it applies at once and is kept in this browser.
   the gateways the build falls back to and never add one, and a part's own source is left out of its
   list.
 - **A status dot per source** (`sourceStatus.ts`). While the picker is open every source is checked as
-  it opens and again every 10 s: a gateway is asked for the stream list's head, a Bee node the probe
-  below. The dot is green with the time the source took, amber with a word for one that answers and
+  it opens and again every 10 s: a gateway is asked for the stream list's first entry, a Bee node the
+  probe below. Each source keeps one client while the picker stays open, so a gateway that refuses
+  `/soc` is asked it once, and its later checks read the entry by its chunk address. The dot is green with the time the source took, amber with a word for one that answers and
   cannot serve (Starting, Busy, Limited, Errors), and red for one that does not answer or that the
   browser would block. Running a source's Test checks its dot again too.
 - **What the browser keeps.** `swarm-sources` holds the added sources, `swarm-routing` the mode and each
@@ -355,6 +356,12 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   rate limited with its `Retry-After` capped at a minute, and any other failing status, a 500 included,
   is unavailable. A chunk read is the exception: Bee answers 500 for a chunk nobody has written, so
   there a 500 is not found and never pauses the node.
+- **A gateway that refuses `/soc`.** Public gateways answer `/soc` with a plain-text 404 from their
+  front door, before Bee sees the request, and serve the same entry at `/chunks/<keccak256(id, owner)>`.
+  A 404 on `/soc` whose body is not Bee's JSON error reads the chunk by its address instead. It is
+  checked to be the owner's by its signature, and joined from `/bytes` when its body is longer than one
+  chunk. The provider then goes to the chunk address first, until that route is refused too. Bee's own
+  JSON 404 stays not found with no extra request (`src/swarm/singleOwnerChunk.ts`).
 - **The client** (`src/swarm/client.ts`) is made from the settings and the viewer's choice by
   `createSwarmClient`, which makes each gateway's provider through the registry of kinds
   (`src/swarm/registry.ts`). Each feature reads through its own provider with an ordered list of

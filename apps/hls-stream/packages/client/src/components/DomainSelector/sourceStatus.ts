@@ -39,15 +39,34 @@ interface SourceCheckContext {
   /** Injected by tests. The viewer's clock otherwise. */
   readonly now?: () => number;
   /** Injected by tests. A client of that source alone otherwise, with no fallback behind it. */
-  readonly client?: (source: Pick<Source, 'type' | 'url'>) => Pick<SwarmClient, 'reader' | 'probe'>;
+  readonly client?: SourceCheckClient;
 }
 
 const failing: SourceStatus = { health: 'failing', elapsedMs: null };
 
 const warning = (words: string): SourceStatus => ({ health: 'warning', elapsedMs: null, words });
 
-const clientOf = (source: Pick<Source, 'type' | 'url'>) =>
+type SourceCheckClient = (source: Pick<Source, 'type' | 'url'>) => Pick<SwarmClient, 'reader' | 'probe'>;
+
+const clientOf: SourceCheckClient = (source) =>
   createSwarmClient(onlyGateway(gatewaySettingOf({ id: 'checked', ...source })));
+
+/**
+ * One client per source for a run of checks, so what a source's provider learned on one check, such as a public
+ * gateway refusing `/soc`, still holds on the next rather than being asked again every interval.
+ */
+export function sourceCheckClients(): SourceCheckClient {
+  const bySource = new Map<string, ReturnType<SourceCheckClient>>();
+  return (source) => {
+    const key = `${source.type} ${source.url}`;
+    let client = bySource.get(key);
+    if (!client) {
+      client = clientOf(source);
+      bySource.set(key, client);
+    }
+    return client;
+  };
+}
 
 function currentPageProtocol(): string {
   return typeof window === 'undefined' ? '' : window.location.protocol;
