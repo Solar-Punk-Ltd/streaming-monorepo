@@ -91,7 +91,7 @@ describe('AuthService audit', () => {
     const session = (await auth.sessionFor(signedIn.token))!;
     audit.entries.length = 0;
 
-    await auth.changePassword(session, OTHER_PASSWORD, NEW_PASSWORD);
+    await auth.changePassword(session, OTHER_PASSWORD, NEW_PASSWORD, '192.0.2.1');
 
     assert.deepEqual(audit.entries, [
       {

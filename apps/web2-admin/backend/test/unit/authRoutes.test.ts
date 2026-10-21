@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import type { MeResponse, UserListResponse, UserSummary } from '@streaming-monorepo/web2-admin-common';
-import { LoginLimiter } from '@streaming-monorepo/web-auth';
+import { LOGIN_ACCOUNT_CEILING, LoginLimiter, signInKeys } from '@streaming-monorepo/web-auth';
 
 import {
   AuthTestApp,
@@ -28,6 +28,7 @@ import { actorFor, TEST_SETUP } from './support/authFixtures.js';
 const USERNAME = 'alice';
 const PASSWORD = 'a-long-enough-password';
 const OTHER_PASSWORD = 'another-fine-password';
+const THIRD_PASSWORD = 'yet-another-long-password';
 
 const LOGIN = '/api/auth/login';
 const SESSION = '/api/auth/session';
@@ -217,11 +218,11 @@ describe('too many attempts', () => {
     assert.equal(sessionCookieFrom(res.setCookie), null);
   });
 
-  it('refuses the right password from another address too, because the lock is on the account', async () => {
+  it('lets the right password in from another address: the lock is on the account at that address', async () => {
     const res = await login(ELSEWHERE, USERNAME, PASSWORD);
 
-    assert.equal(res.status, 429);
-    assert.equal(sessionCookieFrom(res.setCookie), null);
+    assert.equal(res.status, 200);
+    assert.ok(sessionCookieFrom(res.setCookie));
   });
 
   it('locks the address as well, so a second account cannot be tried from it', async () => {
@@ -240,12 +241,75 @@ describe('too many attempts', () => {
 
     assert.equal((await login(LATER, USERNAME, PASSWORD)).status, 200);
 
-    // The successful sign-in cleared the username key, so four more misses
-    // from a fresh address must not lock it again.
+    // The successful sign-in cleared the account at that address, so four more
+    // misses from a fresh address must not lock it again.
     for (let i = 1; i <= 4; i += 1) {
       const res = await login(LATER, USERNAME, 'not-the-password');
       assert.equal(res.status, 401, `attempt ${i} after the reset`);
     }
+  });
+});
+
+// Its own app and its own limiter, so a test can lay down the ceiling's failures without signing in a hundred times.
+describe('the lockout per address', () => {
+  let app: AuthTestApp;
+  let limiter: LoginLimiter;
+  const clock = { now: 1_700_000_000_000 };
+
+  const login = (ip: string, username: string, password: string) =>
+    call(app, 'POST', LOGIN, { body: { username, password }, headers: { 'x-forwarded-for': ip } });
+
+  /** The nth of many addresses, four failures each at most, none sharing a /64. */
+  const spread = (n: number) => `10.9.${Math.floor(n / 4)}.${(n % 4) + 1}`;
+
+  before(async () => {
+    limiter = new LoginLimiter(() => clock.now);
+    app = await startAuthTestApp(limiter);
+    await app.authService.addUser(TEST_SETUP, USERNAME, PASSWORD);
+    await app.authService.addUser(TEST_SETUP, 'mate', OTHER_PASSWORD);
+    await app.authService.addUser(TEST_SETUP, 'third', THIRD_PASSWORD);
+  });
+  after(() => app.close());
+
+  it('locks the account at one address after five failures, and lets it sign in from another', async () => {
+    for (let i = 1; i <= 5; i += 1) {
+      assert.equal((await login('192.0.2.11', USERNAME, 'not-the-password')).status, 401, `attempt ${i}`);
+    }
+
+    assert.equal((await login('192.0.2.11', USERNAME, PASSWORD)).status, 429);
+    assert.equal((await login('192.0.2.12', USERNAME, PASSWORD)).status, 200);
+  });
+
+  it('locks an address after five failures across several accounts', async () => {
+    for (let n = 0; n < 5; n += 1) {
+      assert.equal((await login('192.0.2.21', `nobody${n}`, 'not-the-password')).status, 401, `account ${n}`);
+    }
+
+    assert.equal((await login('192.0.2.21', 'mate', OTHER_PASSWORD)).status, 429);
+    assert.equal((await login('192.0.2.22', 'mate', OTHER_PASSWORD)).status, 200);
+  });
+
+  it(`locks an account everywhere after ${LOGIN_ACCOUNT_CEILING} failures from many addresses`, async () => {
+    for (let n = 0; n < LOGIN_ACCOUNT_CEILING - 1; n += 1) limiter.begin(signInKeys('mate', spread(n))).fail();
+
+    assert.equal((await login('192.0.2.31', 'mate', 'not-the-password')).status, 401, 'the 100th is still checked');
+    assert.equal((await login('192.0.2.32', 'mate', OTHER_PASSWORD)).status, 429, 'then every address is locked');
+    assert.equal((await login('192.0.2.32', USERNAME, PASSWORD)).status, 200, 'the address itself is not');
+  });
+
+  it('leaves the password change working under a lockout at another address and under the ceiling', async () => {
+    const { cookie } = await signIn(app, 'third', THIRD_PASSWORD);
+    for (let n = 0; n < 5; n += 1) limiter.begin(signInKeys('third', '203.0.113.70')).fail();
+    for (let n = 0; n < LOGIN_ACCOUNT_CEILING; n += 1) limiter.begin(signInKeys('third', spread(n))).fail();
+    assert.equal((await login('192.0.2.41', 'third', THIRD_PASSWORD)).status, 429, 'sign-in is locked everywhere');
+
+    // The change comes from the session's own address, where nothing failed.
+    const changed = await call(app, 'POST', '/api/auth/password', {
+      cookie,
+      body: { currentPassword: THIRD_PASSWORD, newPassword: 'a-brand-new-long-password' },
+    });
+
+    assert.equal(changed.status, 200);
   });
 });
 
@@ -316,14 +380,24 @@ describe('too many wrong current passwords', () => {
     });
   });
 
-  it('refuses the right password at sign-in while that lock holds, from any address', async () => {
+  it('refuses the right password at sign-in from the same address while that lock holds', async () => {
+    // No x-forwarded-for: the same socket address the password changes came from.
+    const res = await call(app, 'POST', '/api/auth/login', {
+      body: { username: USERNAME, password: PASSWORD },
+    });
+
+    assert.equal(res.status, 429);
+    assert.equal(sessionCookieFrom(res.setCookie), null);
+  });
+
+  it('lets the right password in at sign-in from another address: the lock is on the account at that address', async () => {
     const res = await call(app, 'POST', '/api/auth/login', {
       body: { username: USERNAME, password: PASSWORD },
       headers: { 'x-forwarded-for': '203.0.113.20' },
     });
 
-    assert.equal(res.status, 429);
-    assert.equal(sessionCookieFrom(res.setCookie), null);
+    assert.equal(res.status, 200);
+    assert.ok(sessionCookieFrom(res.setCookie));
   });
 
   it('lets the right current password through once the wait is over', async () => {

@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { passwordProblem, usernameProblem, type UserSummary } from '@streaming-monorepo/web2-admin-common';
 import {
   absoluteExpiryFrom,
-  clientIpKey,
+  accountAtAddressKey,
   createSessionToken,
   endsAt,
   hashPassword,
@@ -12,8 +12,8 @@ import {
   idleSince,
   LoginLimiter,
   needsTouch,
+  signInKeys,
   type LoginAttempt,
-  usernameKey,
   verifyPassword,
 } from '@streaming-monorepo/web-auth';
 
@@ -129,10 +129,9 @@ export class AuthService {
     // Reserved before the lookup and the hash, both of which are awaited: the
     // guesses that arrive together have to be counted before any of them is
     // checked, or they all pass a lockout that none of them has moved yet.
-    const attempt = this.limiter.begin({
-      account: usernameKey(input.username),
-      shared: [clientIpKey(input.ip)],
-    });
+    // Counted on the account at this address, the address, and the account everywhere (signInKeys): guesses from
+    // one place lock that place, and the ceiling caps what many places together can try.
+    const attempt = this.limiter.begin(signInKeys(input.username, input.ip));
     if (attempt.lockedForSeconds > 0) {
       logger.warn(
         `[Auth] sign-in refused, locked out: username="${input.username}" ip=${input.ip} retryAfter=${attempt.lockedForSeconds}s`,
@@ -316,9 +315,10 @@ export class AuthService {
    *
    * The current password is throttled like a sign-in: a stolen session would
    * otherwise be an unlimited guessing machine for the password behind it.
+   * `ip` is the request's address, which the count is kept at.
    */
-  async changePassword(session: SessionInfo, current: string, next: string): Promise<UserRow> {
-    const user = await this.checkOwnPassword(session, current, 'password change');
+  async changePassword(session: SessionInfo, current: string, next: string, ip: string): Promise<UserRow> {
+    const user = await this.checkOwnPassword(session, current, 'password change', ip);
 
     const problem = passwordProblem(next, user.username);
     if (problem) throw new WeakPasswordError(problem);
@@ -349,20 +349,27 @@ export class AuthService {
    * wallet or sending from the brand wallet (docs/architecture/funding.md). Checked exactly as a password change
    * checks the current one, behind the same limiter and under the same key, so a stolen session gets no more guesses
    * by spreading them over both: a wrong one is `InvalidCredentialsError`, and once locked out every one is
-   * `TooManyAttemptsError`. `purpose` names the write in the log line of a refusal. Answers the user as stored now.
+   * `TooManyAttemptsError`. `purpose` names the write in the log line of a refusal, and `ip` is the request's address.
+   * Answers the user as stored now.
    */
-  confirmPassword(session: SessionInfo, password: string, purpose: string): Promise<UserRow> {
-    return this.checkOwnPassword(session, password, purpose);
+  confirmPassword(session: SessionInfo, password: string, purpose: string, ip: string): Promise<UserRow> {
+    return this.checkOwnPassword(session, password, purpose, ip);
   }
 
   /**
-   * The current password of the session's user, counted under the account's sign-in key: a wrong one is a failed
-   * sign-in, so five of them lock sign-in too, and a locked account is refused here as well (SPDV-1580, SPDV-1664).
+   * The current password of the session's user, counted on the account at the request's address alone: the key a
+   * sign-in from that address counts on, so a wrong one is a failed sign-in there, five of them lock sign-in there too,
+   * and an account locked at that address is refused here as well (SPDV-1580, SPDV-1664). A lockout of the account at
+   * another address, an address's own count, and the account ceiling do not block it: the session already proved
+   * who is asking, and the owner must be able to change a password someone else is guessing.
    */
-  private async checkOwnPassword(session: SessionInfo, password: string, purpose: string): Promise<UserRow> {
-    const attempt = this.limiter.begin({
-      account: usernameKey(session.user.username),
-    });
+  private async checkOwnPassword(
+    session: SessionInfo,
+    password: string,
+    purpose: string,
+    ip: string,
+  ): Promise<UserRow> {
+    const attempt = this.limiter.begin({ account: accountAtAddressKey(session.user.username, ip) });
     if (attempt.lockedForSeconds > 0) {
       logger.warn(
         `[Auth] ${purpose} refused, locked out: ${session.user.username} retryAfter=${attempt.lockedForSeconds}s`,

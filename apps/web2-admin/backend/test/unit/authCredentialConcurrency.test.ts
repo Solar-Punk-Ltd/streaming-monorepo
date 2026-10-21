@@ -86,7 +86,7 @@ describe('password verification and credential writes', () => {
 
     const staleSignIn = auth.signIn({ username: 'owner', password: OLD_PASSWORD, ip: '127.0.0.1', userAgent: 'test' });
     await verified.promise;
-    await auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD);
+    await auth.changePassword(sessionOf(owner), OLD_PASSWORD, FIRST_PASSWORD, '192.0.2.1');
     resume.resolve();
 
     await assert.rejects(staleSignIn);
@@ -100,9 +100,9 @@ describe('password verification and credential writes', () => {
     await auth.addUser(TEST_SETUP, 'owner', OLD_PASSWORD);
     const owner = sessionOf((await users.findByUsername('owner'))!);
 
-    const winner = auth.changePassword(owner, OLD_PASSWORD, FIRST_PASSWORD);
+    const winner = auth.changePassword(owner, OLD_PASSWORD, FIRST_PASSWORD, '192.0.2.1');
     await credentials.entered[0]!.promise;
-    const stale = auth.changePassword(owner, OLD_PASSWORD, SECOND_PASSWORD);
+    const stale = auth.changePassword(owner, OLD_PASSWORD, SECOND_PASSWORD, '192.0.2.1');
     await credentials.entered[1]!.promise;
     credentials.release[0]!.resolve();
     await winner;

@@ -74,13 +74,13 @@ describe('an error after the limiter reserved an attempt', () => {
 
     for (let n = 0; n < 5; n++) {
       await assert.rejects(
-        auth.confirmPassword(sessionOf(user), PASSWORD, 'a test confirmation'),
+        auth.confirmPassword(sessionOf(user), PASSWORD, 'a test confirmation', IP),
         (error: unknown) => error === failure,
         `attempt ${n + 1} is the store's own error`,
       );
     }
 
-    const confirmed = await auth.confirmPassword(sessionOf(user), PASSWORD, 'a test confirmation');
+    const confirmed = await auth.confirmPassword(sessionOf(user), PASSWORD, 'a test confirmation', IP);
     assert.equal(confirmed.id, user.id);
     // And sign-in, which shares the key, was never locked by them either.
     assert.equal(

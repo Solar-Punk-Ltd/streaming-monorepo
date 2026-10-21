@@ -791,7 +791,10 @@ function byUsername(username) {
   return [...users.values()].find((u) => u.username === username) ?? null;
 }
 
-/** username -> consecutive failures, for the lockout the real API keeps. */
+/**
+ * username@address -> consecutive failures, for the lockout the real API keeps on the account at that address. The
+ * mock leaves out the address's own count and the account ceiling.
+ */
 const failures = new Map();
 const LOCKOUT_FREE_ATTEMPTS = 4;
 const LOCKOUT_SECONDS = 60;
@@ -1152,7 +1155,8 @@ async function handle(req, res) {
     if (users.size === 0) return send(res, 401, { error: 'no_users' });
 
     const name = String(body.username ?? '');
-    if ((failures.get(name) ?? 0) > LOCKOUT_FREE_ATTEMPTS) {
+    const key = `${name}@${req.socket.remoteAddress ?? 'unknown'}`;
+    if ((failures.get(key) ?? 0) > LOCKOUT_FREE_ATTEMPTS) {
       return send(
         res,
         429,
@@ -1163,11 +1167,11 @@ async function handle(req, res) {
 
     const row = byUsername(name);
     if (row === null || passwords.get(row.id) !== body.password) {
-      failures.set(name, (failures.get(name) ?? 0) + 1);
+      failures.set(key, (failures.get(key) ?? 0) + 1);
       return send(res, 401, { error: 'invalid_credentials' });
     }
 
-    failures.delete(name);
+    failures.delete(key);
     row.lastLoginAt = new Date().toISOString();
     const token = hex(24);
     sessions.set(token, row.id);
