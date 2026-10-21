@@ -4,7 +4,6 @@
  * than a config, and `deploy/test/clean.test.js` is the deploy surface rather than the test one.
  */
 const SURFACE_MATCHERS: ReadonlyArray<{ surface: string; matches: (path: string) => boolean }> = [
-  { surface: 'protocol', matches: (p) => p.startsWith('docs/reviews/') },
   { surface: 'ci', matches: (p) => p.startsWith('.github/') },
   { surface: 'deploy', matches: (p) => /^(deploy|engines|nodes)\//.test(p) },
   { surface: 'tests', matches: (p) => /(^|\/)test\//.test(p) },
