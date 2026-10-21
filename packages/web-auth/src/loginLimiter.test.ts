@@ -15,6 +15,8 @@ import { describe, it } from 'node:test';
 import {
   accountAtAddressKey,
   clientIpKey,
+  confirmationKey,
+  freeAttemptsFor,
   LoginLimiter,
   MAX_TRACKED_KEYS,
   passwordChangeKey,
@@ -22,10 +24,10 @@ import {
   usernameKey,
   type AttemptKeys,
 } from './LoginLimiter.js';
-import { LOGIN_ACCOUNT_CEILING, LOGIN_FORGET_MS } from './rules.js';
+import { LOGIN_ACCOUNT_CEILING, LOGIN_FORGET_MS, LOGIN_FREE_ATTEMPTS } from './rules.js';
 
 const MINUTE = 60 * 1000;
-const KEY = usernameKey('operator');
+const KEY = accountAtAddressKey('operator', '192.0.2.1');
 
 /** A limiter whose clock the test moves by hand. */
 function limiterAt(start = 1_700_000_000_000) {
@@ -129,7 +131,7 @@ describe('LoginLimiter', () => {
     assert.equal(limiter.retryAfterSeconds(KEY), 0);
     assert.equal(limiter.retryAfterSeconds(address), 0);
 
-    wrongPassword(limiter, { account: usernameKey('mate'), shared: [address] });
+    wrongPassword(limiter, { account: accountAtAddressKey('mate', '10.0.0.1'), shared: [address] });
     assert.equal(limiter.retryAfterSeconds(address), 60);
   });
 
@@ -148,12 +150,12 @@ describe('LoginLimiter', () => {
 
   it('stops growing at the cap, and keeps the newest key', () => {
     const { limiter, advance } = limiterAt();
-    const newest = usernameKey('arrived-last');
+    const newest = accountAtAddressKey('arrived-last', '192.0.2.1');
 
     // Usernames are whatever the caller sent, so this is a cheap thing for an
     // attacker to do and none of it may be forgotten for two hours.
     for (let n = 0; n < MAX_TRACKED_KEYS; n += 1) {
-      wrongPassword(limiter, { account: usernameKey(`guess-${n}`) });
+      wrongPassword(limiter, { account: accountAtAddressKey(`guess-${n}`, '192.0.2.1') });
       advance(1);
     }
     for (let attempt = 1; attempt <= 5; attempt += 1) {
@@ -169,7 +171,7 @@ describe('LoginLimiter', () => {
 
   it('keeps every key on its own count', () => {
     const { limiter } = limiterAt();
-    const other = usernameKey('someone-else');
+    const other = accountAtAddressKey('someone-else', '192.0.2.1');
     const ip = clientIpKey('10.0.0.1');
 
     for (let attempt = 1; attempt <= 5; attempt += 1) wrongPassword(limiter);
@@ -235,17 +237,51 @@ function spreadFailures(limiter: LoginLimiter, username: string, times: number):
   return from;
 }
 
-describe('a key with its own free count', () => {
-  it('locks after its own count, while the account key beside it keeps the usual five', () => {
-    const { limiter } = limiterAt();
-    const keys: AttemptKeys = { account: 'account:a', shared: [{ key: 'wide', freeAttempts: 9 }] };
-    // Nine failures on the wide key from nine accounts: still free, and each account has only one failure.
-    for (let n = 0; n < 9; n += 1) {
-      limiter.begin({ account: `account:${n}`, shared: [{ key: 'wide', freeAttempts: 9 }] }).fail();
+describe("a key's free count belongs to the key", () => {
+  it("gives the ceiling's key its own count, and every other key the usual one", () => {
+    assert.equal(freeAttemptsFor(usernameKey('operator')), LOGIN_ACCOUNT_CEILING - 1);
+    for (const key of [KEY, clientIpKey('192.0.2.1'), passwordChangeKey(7), confirmationKey(7)]) {
+      assert.equal(freeAttemptsFor(key), LOGIN_FREE_ATTEMPTS, key);
     }
-    assert.equal(limiter.retryAfterSeconds('wide'), 0);
-    limiter.begin(keys).fail();
-    assert.equal(limiter.retryAfterSeconds('wide'), 60, 'the tenth locks for a minute');
+  });
+
+  it("keeps the ceiling's count when its key is reserved as a plain string, as the account key or a shared one", () => {
+    const { limiter } = limiterAt();
+    const ceiling = usernameKey('operator');
+    // As the account key: five failures, which would lock any other key, leave it free.
+    for (let n = 0; n < 5; n += 1) wrongPassword(limiter, { account: ceiling });
+    assert.equal(limiter.retryAfterSeconds(ceiling), 0);
+    // As a shared key beside other accounts, up to the ceiling's 99: still free; the 100th locks.
+    for (let n = 5; n < LOGIN_ACCOUNT_CEILING - 1; n += 1) {
+      wrongPassword(limiter, { account: accountAtAddressKey(`user${n}`, '192.0.2.1'), shared: [ceiling] });
+      assert.equal(limiter.retryAfterSeconds(ceiling), 0, `failure ${n + 1}`);
+    }
+    wrongPassword(limiter, { account: accountAtAddressKey('last', '192.0.2.1'), shared: [ceiling] });
+    assert.equal(limiter.retryAfterSeconds(ceiling), 60);
+  });
+});
+
+describe('release', () => {
+  it('gives the attempt back on every key and wipes no earlier failure, the account key included', () => {
+    const { limiter } = limiterAt();
+    const address = clientIpKey('10.0.0.1');
+    const keys = { account: KEY, shared: [address] };
+    for (let n = 0; n < 4; n += 1) wrongPassword(limiter, keys);
+
+    limiter.begin(keys).release();
+
+    // Both keys still hold four: one more failure is the fifth on each, and locks both.
+    assert.equal(limiter.retryAfterSeconds(KEY), 0);
+    assert.equal(limiter.retryAfterSeconds(address), 0);
+    wrongPassword(limiter, keys);
+    assert.equal(limiter.retryAfterSeconds(KEY), 60);
+    assert.equal(limiter.retryAfterSeconds(address), 60);
+  });
+
+  it('leaves nothing behind for an attempt that had no failures before it', () => {
+    const { limiter } = limiterAt();
+    limiter.begin({ account: KEY, shared: [clientIpKey('10.0.0.1')] }).release();
+    assert.equal(limiter.trackedKeys(), 0);
   });
 });
 
@@ -304,14 +340,21 @@ describe('the keys a sign-in counts on', () => {
     assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 60);
   });
 
-  it("keeps the address's and the ceiling's earlier failures when an attempt is settled after an error", () => {
-    // An error after `begin` settles the attempt with succeed(), as both apps' sign-ins do: that wipes only the
-    // account at that address; the address and the ceiling give back only that attempt.
+  it('keeps every earlier failure when an attempt is released after an error', () => {
+    // An error after `begin` settles the attempt with release(), as both apps' sign-ins do: every key gives back
+    // that attempt alone, and none of them is wiped, the account at that address included.
     const { limiter } = limiterAt();
     for (let n = 0; n < 3; n += 1) limiter.begin(signInKeys('operator', '192.0.2.10')).fail();
     spreadFailures(limiter, 'operator', LOGIN_ACCOUNT_CEILING - 5);
 
-    limiter.begin(signInKeys('operator', '192.0.2.10')).succeed();
+    limiter.begin(signInKeys('operator', '192.0.2.10')).release();
+
+    // The account at that address still holds its three: a fourth is free, and the fifth locks it.
+    const accountThere = { account: accountAtAddressKey('operator', '192.0.2.10') };
+    wrongPassword(limiter, accountThere);
+    assert.equal(limiter.retryAfterSeconds(accountThere.account), 0);
+    wrongPassword(limiter, accountThere);
+    assert.equal(limiter.retryAfterSeconds(accountThere.account), 60);
 
     // The address still holds its three: a fourth and a fifth from other accounts, and the fifth locks it.
     limiter.begin(signInKeys('user-a', '192.0.2.10')).fail();
