@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Topic } from '@ethersphere/bee-js';
 import { ABR_BANDWIDTH_FACTOR, ABR_BANDWIDTH_UP_FACTOR } from '@swarm-hls-stream/shared';
 import Hls, { ErrorDetails, type ErrorData, ErrorTypes, Events } from 'hls.js';
@@ -342,6 +342,21 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     return manifestFetcher.feedHealth.subscribe(hexTopic, setFeedState);
   }, [topicString]);
 
+  const sourceStartsSlowly = useSyncExternalStore(manifestFetcher.subscribeStartsSlowly, manifestFetcher.startsSlowly);
+  const [showsPicture, setShowsPicture] = useState(false);
+  // Outside the player's effect for the same reason as the subscription above: a restart before the
+  // first picture is still the same wait, and one after it is the feed overlay's to explain.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    setShowsPicture(false);
+    const onPicture = () => setShowsPicture(true);
+    video.addEventListener('loadeddata', onPicture);
+    return () => video.removeEventListener('loadeddata', onPicture);
+  }, [owner, topicString, mediaType]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
@@ -635,7 +650,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   return (
     <div className="swarm-hls-player-wrapper">
       {videoEl}
-      <FeedStateOverlay state={feedState} />
+      <FeedStateOverlay state={feedState} waitingOnSlowSource={sourceStartsSlowly && !showsPicture} />
       {enableQoeOverlay && <QoeOverlay metrics={metrics} topic={topicString} />}
     </div>
   );

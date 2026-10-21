@@ -78,6 +78,8 @@ vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
     registerLadder: () => undefined,
     unregisterLadder: () => undefined,
     watchLadderCompletion: () => () => undefined,
+    startsSlowly: () => false,
+    subscribeStartsSlowly: () => () => undefined,
     followOnlyRung: () => undefined,
     attachPlayhead: () => () => undefined,
     markLiveSegmentGap: () => false,

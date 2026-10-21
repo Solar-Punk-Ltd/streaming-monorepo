@@ -426,6 +426,21 @@ Every rung of the ladder is registered with `LadderFeedPoller`, and it reads onl
   - At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again.
   - The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero.
   - With no marker, it searches. At the start it reads eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds. At a switch it starts from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
+- **A quality's first playlist** is waited for 20 s, the poller's 15 s search and 5 s more, and then
+  that quality is failed so hls.js tries another, because a gateway that does not hold a quality never
+  answers for it.
+- **A slow source.** The `ManifestFetcher` times how long the source it reads from takes to answer that
+  a slot is not there, over the latest 16 such answers (`SwarmHlsPlayer/sourceMissCost.ts`).
+  - From five answers on, the source is slow when the middle one of them is over 3 s. Before that it is
+    slow when at least two answers were all over 3 s, so one slow first answer on a cold connection
+    does not mark a fast gateway slow. A freshly started light Bee node with no blockchain took 6 to
+    10 s, where a full node takes 1.3 to 1.6 s.
+  - On a slow source a search round is taken to last one and a half of those answers. A read is given
+    two rounds instead of the usual 10 s, and a quality's first playlist is waited for eight rounds and
+    5 s more instead of 20 s, both capped, at 30 s and at about two minutes.
+  - The player keeps reading from the source picked for it and never switches to another, and it makes
+    no read more often than before. Until the first picture it says "This Swarm source answers slowly,
+    so the video takes longer to start". On a source that is not slow nothing changes.
 
 ## weeb-3 runs in a SharedWorker
 

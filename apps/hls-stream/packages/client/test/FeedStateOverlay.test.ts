@@ -11,7 +11,7 @@ import {
   FEED_STATE_STALLED,
   type FeedState,
 } from '../src/components/SwarmHlsPlayer/feedState';
-import { FeedStateOverlay } from '../src/components/SwarmHlsPlayer/overlays/feed/FeedStateOverlay';
+import { FeedStateOverlay, SLOW_START_MESSAGE } from '../src/components/SwarmHlsPlayer/overlays/feed/FeedStateOverlay';
 
 /** The overlay's own output, which a function component returns without needing anything to mount. */
 function render(state: FeedState): ReactElement {
@@ -33,6 +33,21 @@ function textOf(element: ReactElement): string {
 describe('FeedStateOverlay', () => {
   it('shows nothing while the feed is live, which is nearly all of the time', () => {
     assert.equal(FeedStateOverlay({ state: FEED_STATE_LIVE }), null);
+  });
+
+  it('says the source is slow while the player waits longer than usual for its first picture', () => {
+    const rendered = FeedStateOverlay({ state: FEED_STATE_LIVE, waitingOnSlowSource: true });
+
+    assert.ok(isValidElement(rendered));
+    assert.equal(propsOf(rendered).role, 'status');
+    assert.equal(textOf(rendered), SLOW_START_MESSAGE);
+  });
+
+  it('says why the picture stopped rather than that the source is slow, once the feed is not live', () => {
+    const rendered = FeedStateOverlay({ state: FEED_STATE_RECONNECTING, waitingOnSlowSource: true });
+
+    assert.ok(isValidElement(rendered));
+    assert.match(textOf(rendered), /Reconnecting/);
   });
 
   it('says the player is reconnecting when the gateway is not answering', () => {
