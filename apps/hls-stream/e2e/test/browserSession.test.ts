@@ -95,14 +95,15 @@ describe('judging the latency against the buffer the client is configured with',
    * have different owners and the same shape in a summary. The 2026-08-05 session joined at 5.96s
    * against a 6s target, which is the uploader's window working exactly as the byte budget intended,
    * and then drained to a 2.28s median. Judged on the median it printed as a short manifest, which
-   * would have sent the next day's work to the wrong side of the system.
+   * would have sent the next day's work to the wrong side of the system. The figures below are that
+   * session's moved up by the six seconds the target has risen since.
    */
   it('separates a window that was too short from a session that drained away from a good one', () => {
     const drained = [
-      { ...BASE, atMs: 0, liveLatencyS: 5.96 },
-      { ...BASE, atMs: 1000, currentTime: 1, liveLatencyS: 3.11 },
-      { ...BASE, atMs: 2000, currentTime: 2, liveLatencyS: 2.28 },
-      { ...BASE, atMs: 3000, currentTime: 3, liveLatencyS: 0.84 },
+      { ...BASE, atMs: 0, liveLatencyS: 11.96 },
+      { ...BASE, atMs: 1000, currentTime: 1, liveLatencyS: 9.11 },
+      { ...BASE, atMs: 2000, currentTime: 2, liveLatencyS: 8.28 },
+      { ...BASE, atMs: 3000, currentTime: 3, liveLatencyS: 6.84 },
     ];
     const verdict = judgeLatency(drained);
 

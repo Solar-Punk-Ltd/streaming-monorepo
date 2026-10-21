@@ -27,8 +27,8 @@ describe('the client numbers the late-join bound is built from', () => {
   });
 
   it('follow the longer of the floor and three segments', () => {
-    assert.equal(clientJumpLimitS(1), 12);
-    assert.equal(clientJumpLimitS(4), 24);
+    assert.equal(clientJumpLimitS(1), 24);
+    assert.equal(clientJumpLimitS(6), 36);
   });
 });
 
@@ -36,15 +36,15 @@ describe('lateJoinRefusal', () => {
   const window = { windowSeconds: 40, fragmentSeconds: 1 };
 
   it('refuses a player that started at the window first entry', () => {
-    assert.match(lateJoinRefusal({ ...window, joinS: 40 }) ?? '', /past the client's 12s jump limit/);
+    assert.match(lateJoinRefusal({ ...window, joinS: 40 }) ?? '', /past the client's 24s jump limit/);
   });
 
   it('passes a player that started where the client aims', () => {
-    assert.equal(lateJoinRefusal({ ...window, joinS: 6.4 }), null);
+    assert.equal(lateJoinRefusal({ ...window, joinS: 12.4 }), null);
   });
 
   it('refuses a missing reading and a window too short to tell the two starts apart', () => {
     assert.match(lateJoinRefusal({ ...window, joinS: null }) ?? '', /no position/);
-    assert.match(lateJoinRefusal({ windowSeconds: 12, fragmentSeconds: 1, joinS: 6 }) ?? '', /cannot be told/);
+    assert.match(lateJoinRefusal({ windowSeconds: 24, fragmentSeconds: 1, joinS: 12 }) ?? '', /cannot be told/);
   });
 });

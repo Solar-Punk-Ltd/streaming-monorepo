@@ -709,7 +709,7 @@ It publishes a real stream, follows it through the feed a viewer reads, and repo
 live that viewer is, split into segment duration, upload, feed write, propagation and fetch, plus the
 player's configured buffer. It writes a markdown report and its JSON to `BENCH_RESULTS_DIR`,
 `bench-results/` in the stack's folder by default, ignored by git. The client's live target is three
-segments with a floor of 6 s (`LIVE_SYNC_DURATION_S` in
+segments with a floor of 12 s (`LIVE_SYNC_DURATION_S` in
 `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`).
 
 - **How the picture is timed.** ffmpeg publishes with `-use_wallclock_as_timestamps 1 -copyts`, so each

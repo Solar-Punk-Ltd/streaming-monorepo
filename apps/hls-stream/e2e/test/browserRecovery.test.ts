@@ -188,7 +188,7 @@ describe('what a viewer experienced across a fault', () => {
    * because both play at 1.0.
    */
   it('reports where the player sat before the fault and where it ended up', () => {
-    const samples = run([1, 1, 0, 1, 1], { 0: { liveLatencyS: 6 }, 4: { liveLatencyS: 41 } });
+    const samples = run([1, 1, 0, 1, 1], { 0: { liveLatencyS: 12 }, 4: { liveLatencyS: 41 } });
 
     const verdict = judgeRecovery(samples, {
       injectedAtMs: 2 * SAMPLE_MS,
@@ -196,7 +196,7 @@ describe('what a viewer experienced across a fault', () => {
       servingAtMs: null,
     });
 
-    assert.equal(verdict.latencyBeforeS, 6);
+    assert.equal(verdict.latencyBeforeS, 12);
     assert.equal(verdict.latencyAfterS, 41, 'a viewer who resumed in the past reads as a clean recovery');
   });
 
@@ -212,8 +212,8 @@ describe('what a viewer experienced across a fault', () => {
    */
   it('separates a target the fault raised from latency the recovery lost', () => {
     const samples = run([1, 1, 0, 1, 1], {
-      0: { liveLatencyS: 6, liveTargetLatencyS: 6 },
-      4: { liveLatencyS: 8.5, liveTargetLatencyS: 7, bufferStalls: 1 },
+      0: { liveLatencyS: 12, liveTargetLatencyS: 12 },
+      4: { liveLatencyS: 14.5, liveTargetLatencyS: 13, bufferStalls: 1 },
     });
 
     const verdict = judgeRecovery(samples, {
@@ -223,7 +223,7 @@ describe('what a viewer experienced across a fault', () => {
     });
 
     assert.equal(verdict.targetRaisedByS, 1, 'the fault moved the target, and that is not lost latency');
-    assert.equal(verdict.latencyAfterS, 8.5);
+    assert.equal(verdict.latencyAfterS, 14.5);
   });
 
   it('reports no raise when the fault left the target where it was', () => {

@@ -61,7 +61,7 @@ interface HlsTuning {
  * The one worth knowing about is `liveSyncDuration`. It is a latency *target*: hls.js parks the
  * playhead that many seconds behind the live edge (`latency-controller.ts`, `targetLatency` then
  * `liveSyncPosition = liveEdge - targetLatency`). The shipped target is three segments of the
- * playlist's segment length, never under 6 s, and moves when a playlist names a new length (see
+ * playlist's segment length, never under 12 s, and moves when a playlist names a new length (see
  * `liveSyncLength.ts`). Only a caller's own override stays fixed. hls.js's own default is
  * `liveSyncDurationCount: 3`, a count multiplied by the playlist's target duration, which tracks
  * segment length but has no floor. Setting one of these forbids the other: `mergeConfig` throws on
@@ -73,10 +73,12 @@ interface HlsTuning {
  * express that window differently, so the margin differs. SRS's `hls_window` is a fixed duration,
  * `HLS_WINDOW`, 15 s unless the deployment sets it, while the target grows with the segment. From
  * segments of about 5 s three of them fill the whole 15 s and the target sits on the window's oldest
- * fragment, so a deployment with segments that long has to raise `HLS_WINDOW` with them. OME's
- * window is `SegmentCount x SegmentDuration`, which at its defaults is 5 x 2s = 10s, 4 s clear of the
- * 6 s floor. At longer segments and OME's default count of five, it stays two segments ahead of the
- * three-segment target.
+ * fragment, so a deployment with segments that long has to raise `HLS_WINDOW` with them. Below that
+ * the 12 s floor sits 3 s inside the 15 s window. OME's window is `SegmentCount x SegmentDuration`,
+ * which at its defaults is 5 x 2s = 10s, **shorter than the 12 s floor**, so an OME stage at its
+ * defaults joins a viewer at the window's oldest fragment with 10 s of runway rather than 12. At
+ * longer segments and OME's default count of five, it stays two segments ahead of the three-segment
+ * target.
  */
 const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // Spread rather than restated. These are the buffering and latency numbers of

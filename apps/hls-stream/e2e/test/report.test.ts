@@ -192,13 +192,10 @@ describe('the report an operator reads', () => {
     const report = renderReport(runWith(samples));
 
     assert.match(report, /capture to fetchable \| \*\*5\.80s\*\*/);
-    // 5.80s total, less the 2s segment already inside the buffer's reach, plus the 6s buffer. Not
-    // 11.80s: the total is anchored on a segment's first frame and the buffer is measured back from
+    // 5.80s total, less the 2s segment already inside the buffer's reach, plus the 12s buffer. Not
+    // 17.80s: the total is anchored on a segment's first frame and the buffer is measured back from
     // the live edge, which is its last, so adding the two counts one segment twice.
-    //
-    // The buffer was 10 until the sweep of 2026-08-03 cut it to 6, which is why this figure moved by
-    // exactly four seconds and nothing else here did.
-    assert.match(report, /behind live\*\* \| \*\*9\.80s\*\*/);
+    assert.match(report, /behind live\*\* \| \*\*15\.80s\*\*/);
   });
 
   /**

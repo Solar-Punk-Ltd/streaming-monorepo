@@ -84,6 +84,7 @@ const SHORTEST_SEGMENT_DURATION_S = SHIPPED_SEGMENT_DURATIONS_S[0];
 
 const PLAYER_CONFIG_PATH = '../../client/src/components/SwarmHlsPlayer/playerConfig.ts';
 const LIVE_SYNC_DURATION_EXPORT = 'LIVE_SYNC_DURATION_S';
+const STACK_ENV_SAMPLE_PATH = '../../../.env.sample';
 
 /** The engine's own sequence number for a segment, which is what `addSegment` is handed. */
 function feed(manager: ManifestManager, from: number, count: number, duration = 1.5): void {
@@ -991,24 +992,33 @@ describe('segments the window slid past before anything named them', () => {
  *
  * Read out of the client's own source rather than mirrored, for the reason
  * `e2e/test/clientTuning.test.ts` records: a constant asserted against a second copy of itself
- * cannot fail.
+ * cannot fail. The segment length is the one the stack deploys, `HLS_FRAGMENT` in its `.env.sample`,
+ * read the same way. The shorter measurement profiles hold less than the client's 12 s target and
+ * are not what a deployment runs.
  */
 describe('the window covers the buffer the client asks for', () => {
   const source = readFileSync(join(import.meta.dirname, PLAYER_CONFIG_PATH), 'utf8');
   const declared = new RegExp(`export const ${LIVE_SYNC_DURATION_EXPORT}\\s*=\\s*([0-9.]+)\\s*;`).exec(source);
+  const envSample = readFileSync(join(import.meta.dirname, STACK_ENV_SAMPLE_PATH), 'utf8');
+  const deployedFragment = /^HLS_FRAGMENT=([0-9.]+)\s*$/m.exec(envSample);
 
   it('finds the target the client configures', () => {
     assert.ok(declared, `could not read a numeric ${LIVE_SYNC_DURATION_EXPORT} out of ${PLAYER_CONFIG_PATH}`);
   });
 
-  it('holds that many seconds at the shortest segment length shipped', () => {
+  it('finds the segment length the stack deploys', () => {
+    assert.ok(deployedFragment, `could not read a numeric HLS_FRAGMENT out of ${STACK_ENV_SAMPLE_PATH}`);
+  });
+
+  it('holds that many seconds at the segment length the stack deploys', () => {
     const target = Number(declared?.[1]);
-    const held = segmentUris(withSegments(500, SHORTEST_SEGMENT_DURATION_S).buildLiveManifest()).length;
-    const seconds = held * SHORTEST_SEGMENT_DURATION_S;
+    const segment = Number(deployedFragment?.[1]);
+    const held = segmentUris(withSegments(500, segment).buildLiveManifest()).length;
+    const seconds = held * segment;
 
     assert.ok(
       seconds >= target,
-      `at a ${SHORTEST_SEGMENT_DURATION_S}s segment the window holds ${seconds}s of media and the ` +
+      `at a ${segment}s segment the window holds ${seconds}s of media and the ` +
         `client asks to sit ${target}s behind the live edge, so it cannot reach its own target. ` +
         'Shorten the segment length the deployment runs, or lower the client target.',
     );

@@ -249,7 +249,7 @@ describe('what the latency section says about the target it was measured against
     const section = sectionFor({}, { liveTargetLatencyS: LIVE_SYNC_DURATION_S + 1, bufferStalls: 1 });
 
     assert.match(section, /not comparable with another run/);
-    assert.match(section, /1\.00s past the configured 6s/);
+    assert.match(section, /1\.00s past the configured 12s/);
     assert.match(section, /1 buffer stall\b/, 'one stall, not "1 buffer stalls"');
   });
 

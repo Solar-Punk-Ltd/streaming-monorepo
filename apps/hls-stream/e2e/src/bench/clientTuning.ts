@@ -13,7 +13,7 @@
  */
 
 /** Mirrors `LIVE_SYNC_DURATION_S` in `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`. */
-export const LIVE_SYNC_DURATION_S = 6;
+export const LIVE_SYNC_DURATION_S = 12;
 
 /**
  * The rate the client holds live playback at, and so the fastest media time can honestly outrun

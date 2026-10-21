@@ -14,7 +14,7 @@
  */
 
 /** The floor of how far behind live the client aims, in seconds. Mirrors `LIVE_SYNC_DURATION_S`. */
-export const CLIENT_LIVE_SYNC_FLOOR_S = 6;
+export const CLIENT_LIVE_SYNC_FLOOR_S = 12;
 /** Segments behind live the client aims at. Mirrors `LIVE_SYNC_SEGMENTS`. */
 export const CLIENT_LIVE_SYNC_SEGMENTS = 3;
 /** How many times its aim the client lets the player fall behind before jumping it forward. Mirrors `JUMP_LIMIT_FACTOR`. */
