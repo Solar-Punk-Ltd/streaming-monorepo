@@ -33,7 +33,14 @@ const CHECK_TIMEOUT_MS = 120_000;
 const CONTAINER_LIMITS = ['--network', 'none', '--memory', '256m', '--pids-limit', '64'];
 
 const SRS_CHECK_PATH = '/check/srs.conf';
-const SRS_DEFAULT_IMAGE = 'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3';
+/**
+ * The image the check runs when a version's compose file names none for SRS.
+ * It is the image the stack's own compose files pin, which `srsImagePin.test.ts`
+ * holds it to, because the stack's template uses directives only that build of
+ * SRS knows and stock SRS refuses a valid file over them.
+ */
+export const SRS_DEFAULT_IMAGE =
+  'ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a';
 /** Each check writes its copy into a directory of its own, `check-<random>/srs.conf`. */
 const CHECK_DIR_PREFIX = 'check-';
 const CHECK_FILE_NAME = 'srs.conf';

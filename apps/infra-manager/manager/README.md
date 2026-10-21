@@ -773,7 +773,8 @@ turns into a read-only mount. The file goes with the deployment when it is remov
 Nothing is applied unchecked. A `PUT` first refuses a placeholder the version's entrypoint does not
 fill, then asks the engine. For SRS that is `srs -t` in a throwaway container of the version's own
 image, on a copy with every placeholder filled by a dummy value, and the line SRS names comes back
-as the 400. OvenMediaEngine has no test mode, so it gets a well-formedness check and the watch.
+as the 400. A version whose compose file names no SRS image is checked on the image the stack's own
+compose files pin, because stock SRS refuses directives the stack's template uses. OvenMediaEngine has no test mode, so it gets a well-formedness check and the watch.
 Then the file is stored, the engine recreated, and the container inspected every two seconds for
 twenty. An engine that is not running without restarts by then gets the previous file back, and
 `engine_config_error` on the profile says why, with the engine's last log lines. A manager

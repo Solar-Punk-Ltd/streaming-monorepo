@@ -14,7 +14,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { type CommandResult, EngineConfigChecker } from '../../src/domain/engineConfig/engineConfigCheck.js';
+import {
+  type CommandResult,
+  EngineConfigChecker,
+  SRS_DEFAULT_IMAGE,
+} from '../../src/domain/engineConfig/engineConfigCheck.js';
 import { omeXmlProblem } from '../../src/domain/engineConfig/omeXml.js';
 import { placeholdersFilledBy, substituteForCheck } from '../../src/domain/engineConfig/placeholders.js';
 import { OME_TEMPLATE } from '../support/omeTemplate.js';
@@ -202,11 +206,8 @@ describe('the SRS check', () => {
       scratchDir: scratch(),
     });
 
-    assert.ok(
-      calls[0]?.args.includes(
-        'ossrs/srs:v6.0-r1@sha256:2be08a0fe28737bf28bae8a575bb5776e09b620366dd1e62dd4f8a41cf4310f3',
-      ),
-    );
+    // srsImagePin.test.ts holds this image to the stack's own pin.
+    assert.ok(calls[0]?.args.includes(SRS_DEFAULT_IMAGE), calls[0]?.args.join(' '));
   });
 
   it('gives two checks in flight a copy each, and refuses only the refused one', async () => {
