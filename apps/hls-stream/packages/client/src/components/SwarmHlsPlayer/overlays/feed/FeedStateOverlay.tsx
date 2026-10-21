@@ -30,8 +30,17 @@ const MESSAGE: Record<Exclude<FeedState, typeof FEED_STATE_LIVE>, string> = {
   [FEED_STATE_ENDED]: 'This broadcast has ended',
 };
 
+/**
+ * What a viewer reads while the player has no picture yet on a source that answers slowly, so the
+ * longer wait for the first playlist reads as the source and not as a broken player. See
+ * `rungReadyDeadlineMs`.
+ */
+export const SLOW_START_MESSAGE = 'This Swarm source answers slowly, so the video takes longer to start';
+
 interface FeedStateOverlayProps {
   state: FeedState;
+  /** The player has shown no picture yet and is waiting longer than usual for a slow source. */
+  waitingOnSlowSource?: boolean;
 }
 
 /**
@@ -42,9 +51,14 @@ interface FeedStateOverlayProps {
  * succeeds. Before this, the only thing a viewer saw was the picture freezing and then a decoder
  * error once the buffer ran dry, which points at the wrong thing entirely.
  */
-export const FeedStateOverlay: React.FC<FeedStateOverlayProps> = ({ state }) => {
+export const FeedStateOverlay: React.FC<FeedStateOverlayProps> = ({ state, waitingOnSlowSource = false }) => {
   if (state === FEED_STATE_LIVE) {
-    return null;
+    return waitingOnSlowSource ? (
+      <div className="swarm-hls-feed-state" role="status" aria-live="polite">
+        <span className="swarm-hls-feed-state__dot" aria-hidden="true" />
+        {SLOW_START_MESSAGE}
+      </div>
+    ) : null;
   }
 
   return (

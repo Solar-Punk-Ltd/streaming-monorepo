@@ -18,10 +18,10 @@ interface PlayerHandleHolder {
  * ## Why this exists
  *
  * `LIVE_SYNC_DURATION_S` is how far behind live a viewer sits, and it is roughly four fifths of the
- * delay a viewer actually feels. Nothing has ever measured whether the shipped 6 is the right value
- * at the segment length we now publish, and the experiment that would
- * (the `stall-penalty-and-the-runtime-sweep-2026-08-12` measurement (kept outside the repository)) needs to vary it **between arms of
- * one broadcast**. hls.js supports exactly that through `hls.targetLatency`, which also resets the
+ * delay a viewer actually feels. Choosing it means comparing values on one broadcast, as the stall
+ * counts behind the shipped 12 did (see `playerConfig.ts`), and the experiment that does it (the
+ * `stall-penalty-and-the-runtime-sweep-2026-08-12` measurement, kept outside the repository) varies it
+ * **between arms of one broadcast**. hls.js supports exactly that through `hls.targetLatency`, which also resets the
  * stall penalty so one arm cannot contaminate the next.
  *
  * What was missing is a way to reach the instance: it lives as a local inside the player's effect,

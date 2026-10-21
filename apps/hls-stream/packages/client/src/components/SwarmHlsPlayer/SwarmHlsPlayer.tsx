@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Topic } from '@ethersphere/bee-js';
 import { ABR_BANDWIDTH_FACTOR, ABR_BANDWIDTH_UP_FACTOR } from '@swarm-hls-stream/shared';
 import Hls, { ErrorDetails, type ErrorData, ErrorTypes, Events } from 'hls.js';
@@ -10,7 +10,6 @@ import { QoeOverlay } from './overlays/qoe/QoeOverlay';
 import { attachQoeTracking, initialMetrics, QoeMetrics } from './overlays/qoe/useHlsQoeMetrics';
 import { CustomFragmentLoader, CustomManifestLoader, manifestFetcher } from './CustomManifestLoader';
 import { FEED_STATE_LIVE, FeedState } from './feedState';
-import { attachLivePlaybackRateGuard } from './livePlaybackRate';
 import { LiveGapBudgetPerStream, skipFailedLiveSegment } from './liveSegmentGaps';
 import { attachLiveSyncToSegmentLength } from './liveSyncLength';
 import { ManifestStateManager } from './ManifestManagement';
@@ -20,6 +19,7 @@ import { buildPlayerConfig, HLS_TUNING } from './playerConfig';
 import { exposePlayerForInstrumentation } from './playerTestHandle';
 import { buildSwarmUri } from './playlist';
 import { nextRestartResume, restartResumeOf, type RestartResume } from './restartResume';
+import { attachResumeOnReturn } from './resumeOnReturn';
 import { attachReturningBroadcastRejoin } from './returningBroadcast';
 import { attachActiveRungFollower, attachRungFailover, attachWatchedRungReporter } from './rungHealth';
 
@@ -61,7 +61,7 @@ interface HlsTuning {
  * The one worth knowing about is `liveSyncDuration`. It is a latency *target*: hls.js parks the
  * playhead that many seconds behind the live edge (`latency-controller.ts`, `targetLatency` then
  * `liveSyncPosition = liveEdge - targetLatency`). The shipped target is three segments of the
- * playlist's segment length, never under 6 s, and moves when a playlist names a new length (see
+ * playlist's segment length, never under 12 s, and moves when a playlist names a new length (see
  * `liveSyncLength.ts`). Only a caller's own override stays fixed. hls.js's own default is
  * `liveSyncDurationCount: 3`, a count multiplied by the playlist's target duration, which tracks
  * segment length but has no floor. Setting one of these forbids the other: `mergeConfig` throws on
@@ -73,18 +73,20 @@ interface HlsTuning {
  * express that window differently, so the margin differs. SRS's `hls_window` is a fixed duration,
  * `HLS_WINDOW`, 15 s unless the deployment sets it, while the target grows with the segment. From
  * segments of about 5 s three of them fill the whole 15 s and the target sits on the window's oldest
- * fragment, so a deployment with segments that long has to raise `HLS_WINDOW` with them. OME's
- * window is `SegmentCount x SegmentDuration`, which at its defaults is 5 x 2s = 10s, 4 s clear of the
- * 6 s floor. At longer segments and OME's default count of five, it stays two segments ahead of the
- * three-segment target.
+ * fragment, so a deployment with segments that long has to raise `HLS_WINDOW` with them. Below that
+ * the 12 s floor sits 3 s inside the 15 s window. OME's window is `SegmentCount x SegmentDuration`,
+ * which at its defaults is 5 x 2s = 10s, **shorter than the 12 s floor**, so an OME stage at its
+ * defaults joins a viewer at the window's oldest fragment with 10 s of runway rather than 12. At
+ * longer segments and OME's default count of five, it stays two segments ahead of the three-segment
+ * target.
  */
 const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // Spread rather than restated. These are the buffering and latency numbers of
   // {@link HLS_TUNING}, each derived from a measurement recorded beside it, and a second copy here
   // is a second place for them to be wrong: the copy this replaces had drifted back to
-  // `liveSyncDuration: 10` and `liveMaxLatencyDuration: 30`, which is the pair `playerConfig.ts`
-  // names as leaving a viewer between the end of catch-up and the start of the seek with neither
-  // running, and it omitted `maxLiveSyncPlaybackRate` altogether.
+  // `liveSyncDuration: 10` and `liveMaxLatencyDuration: 30`, a jump limit three times the target
+  // rather than the twice `playerConfig.ts` derives, and it omitted `maxLiveSyncPlaybackRate`
+  // altogether.
   ...HLS_TUNING,
 
   // --- ABR ---
@@ -341,6 +343,21 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     return manifestFetcher.feedHealth.subscribe(hexTopic, setFeedState);
   }, [topicString]);
 
+  const sourceStartsSlowly = useSyncExternalStore(manifestFetcher.subscribeStartsSlowly, manifestFetcher.startsSlowly);
+  const [showsPicture, setShowsPicture] = useState(false);
+  // Outside the player's effect for the same reason as the subscription above: a restart before the
+  // first picture is still the same wait, and one after it is the feed overlay's to explain.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    setShowsPicture(false);
+    const onPicture = () => setShowsPicture(true);
+    video.addEventListener('loadeddata', onPicture);
+    return () => video.removeEventListener('loadeddata', onPicture);
+  }, [owner, topicString, mediaType]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) {
@@ -381,6 +398,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const onHlsPlay = () => {
       hls?.startLoad();
     };
+    let detachResumeOnReturn: (() => void) | null = null;
     const onPlayedPastResume = () => {
       const resume = resumeAfterRestartRef.current;
       if (resume && video.currentTime > resume.positionS) {
@@ -399,6 +417,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         const kept = resumeAfterRestartRef.current;
         const read = hls ? restartResumeOf(hls.levels[hls.currentLevel]?.details, video.currentTime, sourceUrl) : null;
         resumeAfterRestartRef.current = nextRestartResume(read, kept?.sourceUrl === sourceUrl ? kept : null, cause);
+        detachResumeOnReturn?.();
         hls?.destroy();
         setRestartTrigger((prev) => prev + 1);
       };
@@ -410,6 +429,16 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.addEventListener('pause', onHlsPause);
       video.addEventListener('play', onHlsPlay);
       video.addEventListener('timeupdate', onPlayedPastResume);
+      // An iPhone pauses the video when the phone locks and does not resume it on unlock.
+      const returningHls = hls;
+      detachResumeOnReturn = attachResumeOnReturn(
+        video,
+        { document, window },
+        () => returningHls.latestLevelDetails?.live ?? false,
+        (err) => {
+          console.warn('[SwarmHls] resuming the live stream after the page came back failed:', err);
+        },
+      );
 
       hls.on(Events.ERROR, (_event, data) => {
         if (
@@ -500,7 +529,6 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     }
 
     const detachQoe = enableQoeOverlay ? attachQoeTracking(video, hls, setMetrics) : null;
-    const detachRateGuard = hls ? attachLivePlaybackRateGuard(video, hls) : null;
     const detachLiveSync = hls ? attachLiveSyncToSegmentLength(hls, callerTuning) : null;
     const detachTestHandle = hls ? exposePlayerForInstrumentation(hls) : null;
 
@@ -563,8 +591,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
       video.removeEventListener('timeupdate', onPlayedPastResume);
+      detachResumeOnReturn?.();
       detachQoe?.();
-      detachRateGuard?.();
       detachLiveSync?.();
       detachStallReporter?.();
       detachReturnRejoin?.();
@@ -621,7 +649,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   return (
     <div className="swarm-hls-player-wrapper">
       {videoEl}
-      <FeedStateOverlay state={feedState} />
+      <FeedStateOverlay state={feedState} waitingOnSlowSource={sourceStartsSlowly && !showsPicture} />
       {enableQoeOverlay && <QoeOverlay metrics={metrics} topic={topicString} />}
     </div>
   );

@@ -81,7 +81,11 @@ function answered(status: number, streams: Stream[] | null, headers = new Header
   return { ok: status >= 200 && status < 300, status, headers, text: streams === null ? '' : JSON.stringify(streams) };
 }
 
-const NOT_WRITTEN_YET = answered(404, null);
+/** Bee's own answer for a slot nobody has written, its JSON error rather than a front door's refusal. */
+const NOT_WRITTEN_YET: PathResponse = {
+  ...answered(404, null),
+  text: JSON.stringify({ code: 404, message: 'Not Found' }),
+};
 
 /** How a failed read reaches the reader: a status, or the provider giving up after its window. */
 type Failure = 'refused' | 'timed out';

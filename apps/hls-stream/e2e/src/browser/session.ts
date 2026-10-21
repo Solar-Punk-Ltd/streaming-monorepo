@@ -4,25 +4,21 @@
  *
  * The question this exists to answer is whether a player honours `LIVE_SYNC_DURATION_S`. It was
  * derived from arrival times the bench measured, and derived is all it has ever been. A player
- * configured to sit six seconds behind live can fail to in two directions, and only one of them is
+ * configured to sit that many seconds behind live can fail to in two directions, and only one of them is
  * visible from outside a browser:
  *
  * - **Clamped short.** hls.js pins its sync position to the start of the playlist, so a first
  *   manifest naming less media than the target asks for leaves a joining viewer nearer the edge than
  *   configured, with correspondingly less runway. The uploader's window was ten segments until
- *   2026-08-05, which is 2.5s at a 0.25s segment against a 6s target, and nothing in the bench could
- *   have seen it.
+ *   2026-08-05, which at the 0.25s segments of that time was 2.5s against the 6s target of that time,
+ *   and nothing in the bench could have seen it.
  * - **Run long.** Latency past `LIVE_MAX_LATENCY_DURATION_S` means the seek that is supposed to
  *   recover it did not.
  *
  * Both are read off the player's own live latency, which is why {@link ViewerSample} carries it.
  */
 
-import {
-  LIVE_MAX_LATENCY_DURATION_S,
-  LIVE_SYNC_DURATION_S,
-  MAX_LIVE_SYNC_PLAYBACK_RATE,
-} from '../bench/clientTuning.js';
+import { LIVE_MAX_LATENCY_DURATION_S, LIVE_SYNC_DURATION_S, LIVE_SYNC_PLAYBACK_RATE } from '../bench/clientTuning.js';
 
 import { feedStatesSeen, type ViewerFeedState } from './feedState.js';
 
@@ -47,7 +43,7 @@ export interface ViewerSample {
   paused: boolean;
   /** `video.readyState`. 4 is HAVE_ENOUGH_DATA. */
   readyState: number;
-  /** 1.1 while hls.js is catching up, 1 once it is at target. */
+  /** The media element's playback rate, which the client holds at 1. */
   playbackRate: number;
   /** Buffered media ahead of the playhead, in seconds. */
   bufferAheadS: number;
@@ -156,8 +152,10 @@ export interface LatencyTargetVerdict {
    * runs of one configuration whose stalls differed are not comparable on it. This is what the
    * segment length did, with the penalty subtracted out.
    *
-   * Negative means nearer live than the player was steering for, which is ordinary: the catch-up
-   * only pushes latency down and overshoots, so a healthy session sawtooths just below its target.
+   * Negative means nearer live than the player was steering for, which is ordinary: the reading
+   * moves by up to a target duration between playlist reloads, so a healthy session sits around its
+   * target rather than on it. Live plays at normal speed, so nothing pulls latency down, and a
+   * reading well above the target is a stall or a pause the jump has not yet cleared.
    *
    * Per sample rather than median-minus-median, because the target can move part way through a run
    * and a difference of medians would then describe neither half.
@@ -172,15 +170,16 @@ export interface LatencyTargetVerdict {
  * own. hls.js's `LatencyController` adds `min(stallCount * liveSyncOnStallIncrease, targetduration)`
  * to the configured `liveSyncDuration`, `liveSyncOnStallIncrease` defaults to 1, and `stallCount`
  * falls back to zero only when a fresh manifest loads. So one non-fatal stall moves the target by up
- * to a target duration for the rest of the session, latency settles around the moved target, and the
- * catch-up that would have pulled it back measures itself against the moved value and stops firing.
+ * to a target duration for the rest of the session, and latency settles around the moved target.
+ * Live plays at normal speed, so nothing pulls latency back down at all until the viewer falls
+ * past `LIVE_MAX_LATENCY_DURATION_S` and hls.js jumps to the edge.
  *
  * That is not a hypothesis. On 2026-08-07 the 1080p ABA ran two identical 0.25s control arms twenty
  * minutes apart and they came back 5.89s and 6.81s, against an effect of 0.85s, which voided the
- * comparison. Inverting hls.js's catch-up curve against the archived samples puts the first arm's
- * target at 6.0 and the third's at about 7.0, and the third joined with 0.12s buffered at
- * `readyState 1`. All three arms reported zero rebuffers, zero stalled samples and zero fatal errors,
- * because a stall is none of those things.
+ * comparison. Inverting the catch-up curve the client then played fast along against the archived
+ * samples puts the first arm's target at 6.0 and the third's at about 7.0, and the third joined with
+ * 0.12s buffered at `readyState 1`. All three arms reported zero rebuffers, zero stalled samples and
+ * zero fatal errors, because a stall is none of those things.
  *
  * Judged on the worst target the run ever saw rather than on a step between samples: the stall that
  * cost that arm happened at its join, so every sample it took was already against the raised target
@@ -227,7 +226,7 @@ export function judgeLatencyTarget(
 }
 
 interface PlaybackAdvance {
-  /** Media seconds gained per wall-clock second. ~1 playing, ~1.1 catching up, ~0 stalled. */
+  /** Media seconds gained per wall-clock second. ~1 playing, ~0 stalled. */
   ratio: number;
   wallMs: number;
 }
@@ -273,7 +272,7 @@ export interface LatencyVerdict {
    * Reported apart from {@link ranLong} because it is a different event with a different cause and a
    * different fix. hls.js pins its sync position to the start of the playlist, so a viewer joins as
    * far back as the first manifest reaches, and the uploader's window is budgeted in bytes rather
-   * than in seconds: about 36 seconds of media at a 1.0s segment against a 6s target. Passing the
+   * than in seconds: about 31 seconds of media at a 1.0s segment against a 12s target. Passing the
    * threshold is what makes hls.js seek, and the seek is the designed response, so this is a
    * question about how much media the uploader names and not about whether the player recovered.
    */
@@ -336,8 +335,8 @@ const PLAYABLE_READY_STATE = 3;
  * ⛔ **Not the first sample with a latency**, which is what this used to be. On 2026-08-07 a 1.0s arm
  * took its first sample at `readyState 1` with 0.99s buffered and reported **37.00s** behind live,
  * the entire live window. One second later the same run read 6.28s at `readyState 4`, and
- * `currentTime` moved 31.01 to 32.17 across that pair, which is an ordinary step at the catch-up
- * rate. **Nothing seeked.** The report nonetheless announced that the join was a jump and that hls.js
+ * `currentTime` moved 31.01 to 32.17 across that pair, which was an ordinary step at the catch-up
+ * rate the client played at then. **Nothing seeked.** The report nonetheless announced that the join was a jump and that hls.js
  * had seeked to the edge, and `joinedPastSeekThreshold` is derived from the same number.
  *
  * Null when the player never reached a playable state, which leaves the caller to fall back rather
@@ -367,7 +366,7 @@ export interface SessionSummary {
    *
    * This is what a viewer experienced: 1.0 means the picture kept up with the world, and the
    * shortfall below it is time they spent watching a frozen frame. Media the player jumped past is
-   * excluded, so this cannot exceed {@link MAX_LIVE_SYNC_PLAYBACK_RATE} however far it seeks.
+   * excluded, so this cannot exceed {@link LIVE_SYNC_PLAYBACK_RATE} however far it seeks.
    */
   overallAdvanceRatio: number;
   /**
@@ -505,10 +504,10 @@ function gainedAcrossRestarts<T extends ViewerSample>(samples: readonly T[], of:
  * Slack for reading `currentTime` and the clock at slightly different instants.
  *
  * Sized against the gap it has to sit in rather than picked. Sampling is a second apart, so an
- * honest interval gains at most {@link MAX_LIVE_SYNC_PLAYBACK_RATE} seconds, while the smallest seek
- * hls.js can make is {@link LIVE_MAX_LATENCY_DURATION_S} minus {@link LIVE_SYNC_DURATION_S}, six
+ * honest interval gains at most {@link LIVE_SYNC_PLAYBACK_RATE} seconds, while the smallest seek
+ * hls.js can make is {@link LIVE_MAX_LATENCY_DURATION_S} minus {@link LIVE_SYNC_DURATION_S}, twelve
  * seconds, because it only fires past the first and lands on the second. Anything between about a
- * tenth of a second and five separates them, and this sits in the middle of that.
+ * tenth of a second and eleven separates them, and this sits well inside that.
  */
 const SEEK_TOLERANCE_S = 0.5;
 
@@ -529,9 +528,8 @@ interface PlayedMedia {
  * - **Backwards past {@link RESTART_REWIND_S}** is the client remounting its player, which starts
  *   again from whatever loads next. Nothing was watched or skipped, so the step counts as neither.
  * - **Forwards past what the clock allows** is a seek. The ceiling is
- *   {@link MAX_LIVE_SYNC_PLAYBACK_RATE} rather than the rate either sample reported, because hls.js
- *   may raise the rate between two samples and a ceiling that trusted the samples would call that a
- *   seek. What the step is credited is that ceiling, which is an upper bound on what could have
+ *   {@link LIVE_SYNC_PLAYBACK_RATE}, the rate the client holds live playback at, rather than the rate
+ *   either sample reported. What the step is credited is that ceiling, which is an upper bound on what could have
  *   played rather than a guess at how much did: the player probably spent most of the interval
  *   stalled, so this errs toward the flattering reading and still lands far below the old one.
  */
@@ -549,7 +547,7 @@ function mediaPlayed(samples: readonly ViewerSample[]): PlayedMedia {
       continue;
     }
 
-    const playable = ((sample.atMs - previous.atMs) / 1000) * MAX_LIVE_SYNC_PLAYBACK_RATE;
+    const playable = ((sample.atMs - previous.atMs) / 1000) * LIVE_SYNC_PLAYBACK_RATE;
     if (gained > playable + SEEK_TOLERANCE_S) {
       forwardSeeks += 1;
       seekedPastS += gained - playable;

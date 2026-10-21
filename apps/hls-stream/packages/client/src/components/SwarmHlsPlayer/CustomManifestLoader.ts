@@ -204,7 +204,11 @@ export class CustomFragmentLoader extends FragmentLoader {
       // sources account for their attempts the same way. hls.js's own fragment loader supplies all four,
       // `onAbort` included, and each wrapper forwards what it was handed untouched. Three of them are
       // the attempt's real ending. The fourth is now a duplicate, and says so where it is defined.
-      super.load(context, config, {
+      //
+      // Asked of the source the player reads from when the request goes out rather than of the one that
+      // named the segment, since a viewer can switch sources while hls.js still holds the old URLs. A URL
+      // the player did not name, such as a preview's, goes out as given.
+      super.load({ ...context, url: manifestFetcher.segmentUrlNow(context.url) }, config, {
         ...callbacks,
         // A segment that arrived is proof the gateway is answering, and the manifest side is the only
         // half that ever holds off on the belief that it is not. Its backoff doubles from the failure

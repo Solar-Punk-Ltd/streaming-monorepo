@@ -17,6 +17,8 @@
 # fragment and a 1.0 s fragment do not share a deadline and comparing them on one budget answers
 # nothing. Interleaved rather than blocked, because the first sitting's arms fell 18.9 -> 10.4 -> 3.4 ->
 # 1.8% straight down the running order, which is the cold-gateway penalty and not the profile.
+# The 0.25 s arm is a retrieval probe with no player, not a viewer profile: no viewer's live window
+# applies to it, and the shipped viewer profiles cut 0.5, 1 and 2 s segments.
 #
 # ## Phase B, the soak
 #

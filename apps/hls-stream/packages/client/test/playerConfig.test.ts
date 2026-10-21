@@ -35,8 +35,8 @@ function stripComments(source: string): string {
  *
  * Not `HLS_TUNING`. That is the constant this module builds from, and reading it here left the one
  * step between the constant and the player untested: a `buildPlayerConfig` that stopped spreading
- * the tuning shipped every value on the hls.js default, `maxLiveSyncPlaybackRate` back at exactly 1
- * and the catch-up silently gone, with all 102 tests green. hls.js does not throw on a config that
+ * the tuning shipped every value on the hls.js default, the live target back at hls.js's own three
+ * target durations, with all 102 tests green. hls.js does not throw on a config that
  * merely omits these keys, so `new Hls(...)` did not catch it either.
  */
 const {
@@ -60,15 +60,13 @@ describe('SwarmHlsPlayer hls.js tuning', () => {
     assert.deepEqual(
       { ...SHIPPED_TUNING },
       {
-        // 6, and `playerConfig.ts` carries the derivation and its history. Do not restate it here:
-        // this comment used to cite the sweep of 2026-08-03, which is retracted, and a number
-        // quoted in two places drifts in one of them. `HLS_FRAGMENT` defaults to 1.0 for this exact
-        // value, and a deployment running longer segments has to raise both.
-        liveSyncDuration: 6,
+        // 12, and `playerConfig.ts` carries the derivation and its history. Do not restate it here:
+        // a number quoted in two places drifts in one of them.
+        liveSyncDuration: 12,
         // Derived as twice the above rather than written, so it moves with it. hls.js throws from
         // the constructor when this is at or below `liveSyncDuration`.
-        liveMaxLatencyDuration: 12,
-        maxLiveSyncPlaybackRate: 1.1,
+        liveMaxLatencyDuration: 24,
+        maxLiveSyncPlaybackRate: 1,
         maxBufferLength: 60,
         maxMaxBufferLength: 120,
         maxBufferSize: 62914560,
@@ -77,65 +75,14 @@ describe('SwarmHlsPlayer hls.js tuning', () => {
     );
   });
 
-  it('enables catch-up, which the hls.js default of exactly 1 disables', () => {
-    assert.equal(
-      Hls.DefaultConfig.maxLiveSyncPlaybackRate,
-      1,
-      'the default this overrides has moved, so the reading behind the live catch-up setting needs taking again',
-    );
-    assert.ok(SHIPPED_TUNING.maxLiveSyncPlaybackRate! > 1);
+  // Exactly 1 is the value hls.js reads as "never adapt", and its latency controller then returns
+  // before it touches the playback rate at all, which is also what leaves a speed the viewer picks
+  // from the native controls alone.
+  it('holds live playback at normal speed, which hls.js reads as never adapting the rate', () => {
+    assert.equal(SHIPPED_TUNING.maxLiveSyncPlaybackRate, 1);
   });
 
-  // Past roughly 1.1 browsers stop pitch-correcting transparently, and a viewer hearing the recovery
-  // is worse than the couple of seconds it recovers.
-  it('keeps the catch-up rate inaudible', () => {
-    assert.ok(SHIPPED_TUNING.maxLiveSyncPlaybackRate! <= 1.1);
-  });
-
-  /**
-   * hls.js runs two separate mechanisms off these numbers and neither one knows about the other, so
-   * a pair that looks ordinary can leave a band of latency where a viewer gets neither.
-   *
-   * Both formulas are transcribed from hls.js as read at 1.6.15 (the client now pins 1.7.3) rather
-   * than described, because describing them is how the gap got there: the ceiling was set to three
-   * times the target on the belief that catch-up ran the whole way up to it, and it stops at
-   * `targetLatency + targetduration` past the target instead, which left 22s to 30s with the rate
-   * pinned back at 1 and no seek coming.
-   */
-  describe('catch-up and the live-edge seek meet, whatever the playlist target duration is', () => {
-    /** `LatencyController.onTimeupdate`, dist/hls.js:33541: the latency at which nudging stops. */
-    function catchUpCeilingS(config: typeof SHIPPED_TUNING, targetDurationS: number): number {
-      const targetLatencyS = config.liveSyncDuration!;
-      return targetLatencyS + Math.min(config.liveMaxLatencyDuration!, targetLatencyS + targetDurationS);
-    }
-
-    /** `StreamController.synchronizeToLiveEdge`, dist/hls.js:34895: the latency at which it seeks. */
-    function seekThresholdS(config: typeof SHIPPED_TUNING): number {
-      return config.liveMaxLatencyDuration!;
-    }
-
-    // This side of the system does not choose the target duration: it is whatever the uploader's
-    // segment length makes it, and it can change without the client being rebuilt.
-    const TARGET_DURATIONS_S = [0.5, 1, 2, 4, 6, 10];
-
-    for (const targetDurationS of TARGET_DURATIONS_S) {
-      it(`leaves no dead band at a ${targetDurationS}s target duration`, () => {
-        assert.ok(
-          seekThresholdS(SHIPPED_TUNING) <= catchUpCeilingS(SHIPPED_TUNING, targetDurationS),
-          `catch-up stops at ${catchUpCeilingS(SHIPPED_TUNING, targetDurationS)}s of latency and the seek only ` +
-            `fires past ${seekThresholdS(SHIPPED_TUNING)}s, so a viewer in between gets neither`,
-        );
-      });
-    }
-
-    it('is a check the previous ceiling of 30s fails, so the ones above are not vacuous', () => {
-      const previous = { ...SHIPPED_TUNING, liveMaxLatencyDuration: 30 };
-
-      assert.ok(seekThresholdS(previous) > catchUpCeilingS(previous, 2));
-    });
-  });
-
-  // Not a restatement of the test above. hls.js validates this pair in its constructor and throws,
+  // Not a restatement of the first test. hls.js validates this pair in its constructor and throws,
   // so a ceiling that slipped to or below the sync target would take every mount of the player with
   // it, in the browser only, where no test in this suite runs.
   it('is a config hls.js will accept, which its constructor is the only judge of', () => {

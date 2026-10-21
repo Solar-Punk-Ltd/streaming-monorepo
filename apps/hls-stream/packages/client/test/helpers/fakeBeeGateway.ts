@@ -62,8 +62,11 @@ export function fakeEntryIdentifier(index: number): string {
   return makeFeedIdentifier(FAKE_TOPIC, FeedIndex.fromBigInt(BigInt(index))).toString();
 }
 
-/** Bee's own answer for something it does not hold. */
-function notFound(): Response {
+/**
+ * Bee's own answer for something it does not hold. The JSON body matters: a 404 without it is what a
+ * public gateway's front door answers for a route it refuses, which the Bee provider reads differently.
+ */
+export function beeNotFound(): Response {
   return new Response(JSON.stringify({ code: 404, message: 'Not Found' }), {
     status: 404,
     headers: { 'content-type': 'application/json; charset=utf-8' },
@@ -88,7 +91,7 @@ export function fakeBeeFetch(log: AskedLog = { urls: [] }): typeof fetch {
     log.urls.push(url);
     const answer = url.startsWith(`${FAKE_GATEWAY}/`) ? STORED.get(url.slice(FAKE_GATEWAY.length + 1)) : undefined;
     if (!answer) {
-      return notFound();
+      return beeNotFound();
     }
     return new Response(answer.body.slice(), { status: 200, headers: answer.headers });
   }) as typeof fetch;

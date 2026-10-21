@@ -1,4 +1,4 @@
-import { FeedIndex, type Topic } from '@ethersphere/bee-js';
+import { FeedIndex, Identifier, type Topic } from '@ethersphere/bee-js';
 import { makeFeedIdentifier, nextFeedRequest, resolvedFeedIndex } from '@swarm-hls-stream/shared';
 
 import { ABORTED, type SwarmAnswer, UNSUPPORTED } from '../../answers';
@@ -12,7 +12,13 @@ import {
   type SwarmProvider,
   type UrlUse,
 } from '../../provider';
-import { boundedRequest } from '../../boundedRequest';
+import { type BoundedOutcome, boundedRequest } from '../../boundedRequest';
+import {
+  parseSingleOwnerChunk,
+  type SingleOwnerChunk,
+  singleOwnerChunkAddress,
+  socBodyOf,
+} from '../../singleOwnerChunk';
 import { notReadyReasonOf } from './beeNodeState';
 
 /** Bee answers this with `{"status":"ok",...}` in every version this viewer has targeted. */
@@ -46,6 +52,17 @@ const CAPABILITIES: ProviderCapabilities = {
 
 const READY: ProviderStatus = { state: 'ready' };
 
+/** What a route answers when something in front of Bee refused it, rather than Bee itself. */
+const ROUTE_REFUSED = { kind: 'route-refused' } as const;
+
+/** What a source refusing both routes to a single-owner chunk answers, the 404 its front door gave. */
+const NEITHER_ROUTE: SwarmAnswer = { kind: 'unavailable', cause: { kind: 'status', status: 404 } };
+
+const servedWrong = (why: string): SwarmAnswer => ({
+  kind: 'unavailable',
+  cause: { kind: 'network', error: new Error(`the gateway served a single-owner chunk ${why}`) },
+});
+
 interface BeeHttpProviderOptions {
   /** A Bee API base: an http or https address, or a path on this site such as `/bee` that the site proxies to Bee. */
   readonly baseUrl: string;
@@ -56,6 +73,23 @@ interface BeeHttpProviderOptions {
 }
 
 const isSuccess = (status: number) => status >= 200 && status < 300;
+
+/** Bee answers every error as JSON with a numeric `code` and a `message`, its own 404 included. */
+function isBeeError(body: Uint8Array | null): boolean {
+  if (body === null) {
+    return false;
+  }
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(body));
+    if (typeof parsed !== 'object' || parsed === null) {
+      return false;
+    }
+    const { code, message } = parsed as { code?: unknown; message?: unknown };
+    return typeof code === 'number' && typeof message === 'string';
+  } catch {
+    return false;
+  }
+}
 
 function dateOf(headers: Headers): number | null {
   const date = headers.get('date');
@@ -112,6 +146,7 @@ export class BeeHttpProvider implements SwarmProvider {
   private readonly baseUrl: string;
   private readonly fetcher: typeof fetch;
   private readonly pageOrigin: string;
+  private socRouteRefused = false;
 
   constructor(options: BeeHttpProviderOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -136,8 +171,50 @@ export class BeeHttpProvider implements SwarmProvider {
     return this.readSoc(owner, makeFeedIdentifier(topic, FeedIndex.fromBigInt(BigInt(index))).toString(), options);
   }
 
-  readSoc(owner: string, identifier: string, options?: ReadOptions): Promise<SwarmAnswer> {
-    return this.read(`soc/${owner}/${identifier}`, options);
+  /**
+   * A single-owner chunk's body, from `/soc`, or by its chunk address where this source refuses that route. Public
+   * gateways answer `/soc` with a plain `Not Found` from their front door, and serve the same chunk at `/chunks`. A
+   * refusal is remembered, so later reads go to the chunk address first, and forgotten when that route is refused
+   * too, so a source that stopped refusing `/soc` is read there again.
+   */
+  async readSoc(owner: string, identifier: string, options?: ReadOptions): Promise<SwarmAnswer> {
+    if (!this.socRouteRefused) {
+      const answer = await this.readRoute(`soc/${owner}/${identifier}`, options, ABSENT);
+      if (answer.kind !== ROUTE_REFUSED.kind) {
+        return answer;
+      }
+      this.socRouteRefused = true;
+    }
+    return this.readSocByAddress(owner, identifier, options);
+  }
+
+  /**
+   * The chunk is checked to be the owner's before its body is given, because the route serves whatever is stored at
+   * an address: the signature must recover an owner who, with the identifier, makes the address asked.
+   */
+  private async readSocByAddress(owner: string, identifier: string, options?: ReadOptions): Promise<SwarmAnswer> {
+    let address: string;
+    try {
+      address = singleOwnerChunkAddress(new Identifier(identifier), owner);
+    } catch {
+      return UNSUPPORTED;
+    }
+    const answer = await this.readRoute(`chunks/${address}`, options, ABSENT_CHUNK);
+    if (answer.kind === ROUTE_REFUSED.kind) {
+      this.socRouteRefused = false;
+      return NEITHER_ROUTE;
+    }
+    if (answer.kind !== 'content') {
+      return answer;
+    }
+    let chunk: SingleOwnerChunk;
+    try {
+      chunk = parseSingleOwnerChunk(answer.bytes, address);
+    } catch (error) {
+      const why = error instanceof Error ? error.message : String(error);
+      return servedWrong(`that could not be checked as ${owner}'s, since ${why}`);
+    }
+    return socBodyOf(chunk, answer, (root) => this.readBytes(root, options), servedWrong);
   }
 
   /**
@@ -216,23 +293,50 @@ export class BeeHttpProvider implements SwarmProvider {
   async stop(): Promise<void> {}
 
   private async read(path: string, options: ReadOptions = {}, absent = ABSENT): Promise<SwarmAnswer> {
-    const timeoutMs = options.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS;
-    const outcome = await boundedRequest(`${this.baseUrl}/${path}`, {
-      fetcher: this.fetcher,
-      timeoutMs,
-      signal: options.signal,
-      readsBody: isSuccess,
-    });
-    switch (outcome.kind) {
-      case 'aborted':
-        return ABORTED;
-      case 'timed-out':
-        return { kind: 'unavailable', cause: { kind: 'timeout', timeoutMs } };
-      case 'failed':
-        return { kind: 'unavailable', cause: { kind: 'network', error: outcome.error } };
-      case 'response':
-        return answerOf(outcome.response, outcome.body, absent);
+    return answerOfOutcome(await this.boundedGet(path, options, isSuccess), options, absent);
+  }
+
+  /**
+   * {@link read}, except a 404 that is not Bee's own JSON error answers {@link ROUTE_REFUSED}. A public gateway's
+   * front door answers a route it does not pass to Bee with a plain `Not Found`, which would otherwise read as content
+   * that is not there. The 404's body is read to tell the two apart, which costs a gateway that serves the route only
+   * the few bytes of Bee's error, never another request.
+   */
+  private async readRoute(
+    path: string,
+    options: ReadOptions = {},
+    absent: AbsentStatuses,
+  ): Promise<SwarmAnswer | typeof ROUTE_REFUSED> {
+    const outcome = await this.boundedGet(path, options, (status) => isSuccess(status) || status === NOT_FOUND);
+    if (outcome.kind === 'response' && outcome.response.status === NOT_FOUND && !isBeeError(outcome.body)) {
+      return ROUTE_REFUSED;
     }
+    return answerOfOutcome(outcome, options, absent);
+  }
+
+  private boundedGet(path: string, options: ReadOptions, readsBody: (status: number) => boolean) {
+    return boundedRequest(`${this.baseUrl}/${path}`, {
+      fetcher: this.fetcher,
+      timeoutMs: options.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS,
+      signal: options.signal,
+      readsBody,
+    });
+  }
+}
+
+function answerOfOutcome(outcome: BoundedOutcome, options: ReadOptions, absent: AbsentStatuses): SwarmAnswer {
+  switch (outcome.kind) {
+    case 'aborted':
+      return ABORTED;
+    case 'timed-out':
+      return {
+        kind: 'unavailable',
+        cause: { kind: 'timeout', timeoutMs: options.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS },
+      };
+    case 'failed':
+      return { kind: 'unavailable', cause: { kind: 'network', error: outcome.error } };
+    case 'response':
+      return answerOf(outcome.response, outcome.body, absent);
   }
 }
 

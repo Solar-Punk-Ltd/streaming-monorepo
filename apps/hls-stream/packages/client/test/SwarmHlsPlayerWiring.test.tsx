@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import { FEED_STATE_STALLED, type FeedState } from '../src/components/SwarmHlsPlayer/feedState';
 import { SwarmHlsPlayer, type HlsPlayerProps } from '../src/components/SwarmHlsPlayer/SwarmHlsPlayer';
 import { MEDIA_TYPE_VIDEO, type Rendition } from '../src/types/stream';
+import { SLOW_START_MESSAGE } from '../src/components/SwarmHlsPlayer/overlays/feed/FeedStateOverlay';
 
 /**
  * The player's two wirings that outlive, or end with, one hls.js instance, checked by mounting the
@@ -19,6 +20,7 @@ const fakes = vi.hoisted(() => {
   const unsubscribed: string[] = [];
   const detachStallReporter = vi.fn();
   return {
+    startsSlowly: { value: false },
     stopLadderWatch: vi.fn(),
     watchLadderCompletion: vi.fn(
       (_sourceUrl: string, _owner: string, _listedTopics: () => readonly string[], _onShort: () => void) =>
@@ -49,6 +51,8 @@ vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
     registerLadder: fakes.registerLadder,
     unregisterLadder: vi.fn(),
     watchLadderCompletion: fakes.watchLadderCompletion,
+    startsSlowly: () => fakes.startsSlowly.value,
+    subscribeStartsSlowly: () => () => undefined,
   },
 }));
 
@@ -136,6 +140,27 @@ describe('the player component is wired to the feed state tracker', () => {
     act(() => fakes.subscriptions[0].listener(FEED_STATE_STALLED));
 
     assert.match(container.textContent ?? '', /Waiting for the broadcast to continue/);
+  });
+
+  it('says the source is slow until the first picture, on a source that answers slowly', () => {
+    fakes.startsSlowly.value = true;
+    try {
+      mount({ topicString: 'stream-a' });
+      assert.ok(container.textContent?.includes(SLOW_START_MESSAGE), 'no word on the slow source');
+
+      act(() => {
+        container.querySelector('video')?.dispatchEvent(new Event('loadeddata'));
+      });
+      assert.ok(!container.textContent?.includes(SLOW_START_MESSAGE), 'the word stayed over the picture');
+    } finally {
+      fakes.startsSlowly.value = false;
+    }
+  });
+
+  it('says nothing of the source on one that answers as a gateway does', () => {
+    mount({ topicString: 'stream-a' });
+
+    assert.ok(!container.textContent?.includes(SLOW_START_MESSAGE));
   });
 
   /** Attached with the player rather than with the subscription, since it is the player that stalls. */

@@ -109,6 +109,16 @@ with a redeploy.
     playing, the player rejoins the live broadcast. A viewer still watching the recording further back
     is not moved.
   - A broadcast that never comes back stays on "This broadcast has ended".
+- **Coming back to the page.** A phone that locks pauses the video, and Safari on an iPhone does not
+  start it again on unlock.
+  - When the page is visible again on a live stream that is paused, playback starts again from where
+    it stopped. Live plays at normal speed, so a short lock adds its length to how far behind live
+    the viewer sits, and only past twice the target does hls.js jump them forward to it.
+  - A pause the viewer made while watching, more than a second before the page was hidden, stays
+    paused. A stream that is already playing is left to the player, and a recording is never touched.
+  - A pause the viewer makes while the page is hidden, from the lock screen's controls, by taking out
+    earphones or with a media key, is undone when the page comes back. The rule is in
+    `resumeOnReturn.ts`.
 - **HLS playback.** Video and audio through hls.js with custom loaders, see
   [Custom hls.js Loaders](#custom-hlsjs-loaders).
 - **Sources.** The build's gateways plus any number of gateways and Bee nodes a viewer adds, read as
@@ -136,8 +146,9 @@ it applies at once and is kept in this browser.
   the gateways the build falls back to and never add one, and a part's own source is left out of its
   list.
 - **A status dot per source** (`sourceStatus.ts`). While the picker is open every source is checked as
-  it opens and again every 10 s: a gateway is asked for the stream list's head, a Bee node the probe
-  below. The dot is green with the time the source took, amber with a word for one that answers and
+  it opens and again every 10 s: a gateway is asked for the stream list's first entry, a Bee node the
+  probe below. Each source keeps one client while the picker stays open, so a gateway that refuses
+  `/soc` is asked it once, and its later checks read the entry by its chunk address. The dot is green with the time the source took, amber with a word for one that answers and
   cannot serve (Starting, Busy, Limited, Errors), and red for one that does not answer or that the
   browser would block. Running a source's Test checks its dot again too.
 - **What the browser keeps.** `swarm-sources` holds the added sources, `swarm-routing` the mode and each
@@ -286,7 +297,8 @@ A recording published before the uploader stamped its segments carries no date-t
 
 The player's built-in tuning, private to `SwarmHlsPlayer.tsx` and overridden key by key through the component's `hlsConfig` prop, carries the ABR settings, and the ones that differ from hls.js's own defaults do so for one reason: hls.js measures throughput as `bytes / (loading.end - loading.first)`, which over a CDN is a pipe and over Swarm is mostly retrieval latency. So the EWMA half-lives are lengthened well past the defaults to stop that noise becoming level flapping, and the startup bandwidth probe is off because what it measures here is not bandwidth. `abrBandWidthFactor`, `abrBandWidthUpFactor` and `maxStarvationDelay` are exposed at hls.js's defaults so they can be swept without editing the component.
 
-- **The live target.** Three segments of the playlist's segment length, never under 6 seconds, and it moves when the playlist names a new length. A caller that sets `liveSyncDuration` through `hlsConfig` keeps that value, 6 included.
+- **The live target.** Three segments of the playlist's segment length, never under 12 seconds, and it moves when the playlist names a new length. At the event's 2 s segments the viewer sits 12 seconds behind live, and hls.js jumps them forward once they fall 24 seconds behind. A caller that sets `liveSyncDuration` through `hlsConfig` keeps that value, 12 included. A rung's progress bound keeps its own floor of 6 seconds (`rungPosition.ts`).
+- **Normal speed.** Live plays at normal speed, always (`maxLiveSyncPlaybackRate: 1`), so a viewer who falls behind the target is never played fast to catch up. Each stall leaves them that much further behind, until twice the target, where hls.js jumps them forward to it. A speed the viewer picks from the native controls stays theirs.
 
 Two settings are load-bearing rather than preferences, because without them the ladder cannot leave its bottom rung at all:
 
@@ -346,6 +358,12 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   rate limited with its `Retry-After` capped at a minute, and any other failing status, a 500 included,
   is unavailable. A chunk read is the exception: Bee answers 500 for a chunk nobody has written, so
   there a 500 is not found and never pauses the node.
+- **A gateway that refuses `/soc`.** Public gateways answer `/soc` with a plain-text 404 from their
+  front door, before Bee sees the request, and serve the same entry at `/chunks/<keccak256(id, owner)>`.
+  A 404 on `/soc` whose body is not Bee's JSON error reads the chunk by its address instead. It is
+  checked to be the owner's by its signature, and joined from `/bytes` when its body is longer than one
+  chunk. The provider then goes to the chunk address first, until that route is refused too. Bee's own
+  JSON 404 stays not found with no extra request (`src/swarm/singleOwnerChunk.ts`).
 - **The client** (`src/swarm/client.ts`) is made from the settings and the viewer's choice by
   `createSwarmClient`, which makes each gateway's provider through the registry of kinds
   (`src/swarm/registry.ts`). Each feature reads through its own provider with an ordered list of
@@ -363,6 +381,12 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
   that is not paused and gives URLs, and `urlSource` names it. A playlist the player already holds is
   served again with its segment lines named by that provider, so a pause that sends segments to the
   fallback, and the end of it, reach a playlist held from before (`ManifestManagement.ts`).
+  - A recording's playlist is read only once, so hls.js keeps the segment URLs it was first given. The
+    fragment loader therefore names each segment the player named again by the provider serving now,
+    just before the request goes out (`ManifestFetcher.segmentUrlNow`). A viewer who switches node, or
+    whose node is paused, while watching a recording gets the next segment from the new one.
+  - A URL the player did not name goes out as given: a preview's segment, and an old recording whose
+    manifest names its publisher's gateway.
 - **What the node picker's Test uses.** `probe()` asks the provider every feature reads from first
   whether it is there, and `loadUrl` (`src/swarm/urlLoad.ts`) loads a URL the client gave, as the
   browser or hls.js would, and answers as a read does. The player and the pages never call it.
@@ -417,6 +441,21 @@ Every rung of the ladder is registered with `LadderFeedPoller`, and it reads onl
   - At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again.
   - The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero.
   - With no marker, it searches. At the start it reads eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds. At a switch it starts from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
+- **A quality's first playlist** is waited for 20 s, the poller's 15 s search and 5 s more, and then
+  that quality is failed so hls.js tries another, because a gateway that does not hold a quality never
+  answers for it.
+- **A slow source.** The `ManifestFetcher` times how long the source it reads from takes to answer that
+  a slot is not there, over the latest 16 such answers (`SwarmHlsPlayer/sourceMissCost.ts`).
+  - From five answers on, the source is slow when the middle one of them is over 3 s. Before that it is
+    slow when at least two answers were all over 3 s, so one slow first answer on a cold connection
+    does not mark a fast gateway slow. A freshly started light Bee node with no blockchain took 6 to
+    10 s, where a full node takes 1.3 to 1.6 s.
+  - On a slow source a search round is taken to last one and a half of those answers. A read is given
+    two rounds instead of the usual 10 s, and a quality's first playlist is waited for eight rounds and
+    5 s more instead of 20 s, both capped, at 30 s and at about two minutes.
+  - The player keeps reading from the source picked for it and never switches to another, and it makes
+    no read more often than before. Until the first picture it says "This Swarm source answers slowly,
+    so the video takes longer to start". On a source that is not slow nothing changes.
 
 ## weeb-3 runs in a SharedWorker
 

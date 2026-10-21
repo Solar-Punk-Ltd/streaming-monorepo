@@ -67,8 +67,7 @@ export interface QoeMetrics {
    * `LatencyController` adds `min(stallCount * liveSyncOnStallIncrease, targetduration)` to the
    * configured `liveSyncDuration`, `liveSyncOnStallIncrease` defaults to 1, and `stallCount` falls
    * back to zero only when a fresh manifest loads. So one stall raises this by as much as a target
-   * duration for the rest of the session, and the catch-up measures itself against the raised value
-   * and stops pulling latency down. Two viewers on the same broadcast can sit a second apart for an
+   * duration for the rest of the session, and the viewer is held that much further behind live. Two viewers on the same broadcast can sit a second apart for an
    * hour with nothing else about them differing.
    */
   liveTargetLatencySec: number | null;

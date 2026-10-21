@@ -77,9 +77,9 @@ function programDateTimesOf(manifest: string): number[] {
  * The window is a byte budget, so what it holds in seconds is different at every one of these, and
  * a test fixing on a single length would miss exactly the case the budget exists for.
  */
-const SHIPPED_SEGMENT_DURATIONS_S = [0.25, 0.5, 1, 2];
+const SHIPPED_SEGMENT_DURATIONS_S = [0.5, 1, 2];
 
-/** The shortest of them, which is the winning profile of the `quarter-second-2026-08-05` measurement (kept outside the repository). */
+/** The shortest of them. */
 const SHORTEST_SEGMENT_DURATION_S = SHIPPED_SEGMENT_DURATIONS_S[0];
 
 const PLAYER_CONFIG_PATH = '../../client/src/components/SwarmHlsPlayer/playerConfig.ts';
@@ -1010,7 +1010,7 @@ describe('the window covers the buffer the client asks for', () => {
       seconds >= target,
       `at a ${SHORTEST_SEGMENT_DURATION_S}s segment the window holds ${seconds}s of media and the ` +
         `client asks to sit ${target}s behind the live edge, so it cannot reach its own target. ` +
-        'Shorten the segment length the deployment runs, or lower the client target.',
+        'Lengthen the shortest segment shipped, or lower the client target.',
     );
   });
 });

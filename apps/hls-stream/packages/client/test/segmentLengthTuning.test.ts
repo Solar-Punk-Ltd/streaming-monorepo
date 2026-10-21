@@ -8,11 +8,10 @@ import { buildPlayerConfig, liveLatencyFor } from '../src/components/SwarmHlsPla
 import { rungProgressBoundMs } from '../src/components/SwarmHlsPlayer/rungPosition';
 
 /**
- * The two player numbers that were tuned to the event's 2 s segments: how long a rung has to show a
- * new index, and how far behind live the viewer sits. Both are three segments of the length the
- * playlist names, so a stage cutting longer segments is not called dead or rebuffered, and neither
- * drops under what it is at 2 s, so a stage cutting very short ones keeps the margin the player has
- * always run with.
+ * The two player numbers that follow the segment length: how long a rung has to show a new index, and
+ * how far behind live the viewer sits. Both are three segments of the length the playlist names, so a
+ * stage cutting longer segments is not called dead or rebuffered. Each has a floor of its own, six
+ * seconds for the rung and twelve for the live target, so a stage cutting short segments keeps them.
  */
 describe('the bound a rung has to show a new index in', () => {
   it('is three segments of the length the playlist names', () => {
@@ -33,14 +32,16 @@ describe('the bound a rung has to show a new index in', () => {
 });
 
 describe('how far behind live the player aims', () => {
-  it('is three segments of the length the playlist names, with the catch-up limit twice that', () => {
-    assert.deepEqual(liveLatencyFor(2_000), { liveSyncDuration: 6, liveMaxLatencyDuration: 12 });
-    assert.deepEqual(liveLatencyFor(4_000), { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
+  it('is three segments of the length the playlist names, with the jump limit twice that', () => {
+    assert.deepEqual(liveLatencyFor(6_000), { liveSyncDuration: 18, liveMaxLatencyDuration: 36 });
+    assert.deepEqual(liveLatencyFor(8_000), { liveSyncDuration: 24, liveMaxLatencyDuration: 48 });
   });
 
-  it('never drops under six seconds, however short the segments', () => {
-    assert.deepEqual(liveLatencyFor(500), { liveSyncDuration: 6, liveMaxLatencyDuration: 12 });
-    assert.deepEqual(liveLatencyFor(null), { liveSyncDuration: 6, liveMaxLatencyDuration: 12 });
+  it('never drops under twelve seconds, which is where the event 2 s segments land', () => {
+    assert.deepEqual(liveLatencyFor(2_000), { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
+    assert.deepEqual(liveLatencyFor(4_000), { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
+    assert.deepEqual(liveLatencyFor(500), { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
+    assert.deepEqual(liveLatencyFor(null), { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
   });
 
   /** hls.js throws from its constructor when the limit is not above the target, so the pair has to stay ordered. */
@@ -59,7 +60,7 @@ describe('how far behind live the player aims', () => {
 function makePlayer(callerTuning: { liveSyncDuration?: number } = {}) {
   const listeners = new Map<string, (event: string, data: unknown) => void>();
   const targets: number[] = [];
-  const config = { liveSyncDuration: callerTuning.liveSyncDuration ?? 6, liveMaxLatencyDuration: 12 };
+  const config = { liveSyncDuration: callerTuning.liveSyncDuration ?? 12, liveMaxLatencyDuration: 24 };
   const hls = {
     config,
     set targetLatency(latency: number) {
@@ -85,10 +86,10 @@ describe('the live target following the segment length', () => {
   it('moves to three segments behind live once a playlist of longer segments arrives', () => {
     const player = makePlayer();
 
-    player.playlist(4, 4, 4.1, 3.9);
+    player.playlist(6, 6, 6.1, 5.9);
 
-    assert.deepEqual(player.targets, [12]);
-    assert.equal(player.config.liveMaxLatencyDuration, 24);
+    assert.deepEqual(player.targets, [18]);
+    assert.equal(player.config.liveMaxLatencyDuration, 36);
   });
 
   it('leaves the target alone on the 2 s stage, and on a stage cutting shorter segments', () => {
@@ -98,18 +99,18 @@ describe('the live target following the segment length', () => {
     player.playlist(0.5, 0.5, 0.5);
 
     assert.deepEqual(player.targets, []);
-    assert.deepEqual(player.config, { liveSyncDuration: 6, liveMaxLatencyDuration: 12 });
+    assert.deepEqual(player.config, { liveSyncDuration: 12, liveMaxLatencyDuration: 24 });
   });
 
   it('sets the target once per length, not on every playlist', () => {
     const player = makePlayer();
 
-    player.playlist(4, 4);
-    player.playlist(4, 4, 4);
+    player.playlist(6, 6);
+    player.playlist(6, 6, 6);
     player.playlist(2, 2, 2);
 
-    assert.deepEqual(player.targets, [12, 6]);
-    assert.equal(player.config.liveMaxLatencyDuration, 12);
+    assert.deepEqual(player.targets, [18, 12]);
+    assert.equal(player.config.liveMaxLatencyDuration, 24);
   });
 
   /** A measurement harness moves the target through `hls.targetLatency` between arms of one broadcast. */
@@ -124,20 +125,20 @@ describe('the live target following the segment length', () => {
   });
 
   /** A caller who names a target keeps it, even one equal to the shipped floor. */
-  it('keeps a target of 6 s the caller set at 6 s, whatever length the playlist names', () => {
-    const player = makePlayer({ liveSyncDuration: 6 });
+  it('keeps a target of 12 s the caller set at 12 s, whatever length the playlist names', () => {
+    const player = makePlayer({ liveSyncDuration: 12 });
 
     player.playlist(2, 2, 2);
-    player.playlist(4, 4, 4);
+    player.playlist(6, 6, 6);
 
     assert.deepEqual(player.targets, []);
-    assert.equal(player.config.liveSyncDuration, 6);
+    assert.equal(player.config.liveSyncDuration, 12);
   });
 
   it('keeps a target of 9 s the caller set at 9 s', () => {
     const player = makePlayer({ liveSyncDuration: 9 });
 
-    player.playlist(4, 4, 4);
+    player.playlist(6, 6, 6);
 
     assert.deepEqual(player.targets, []);
     assert.equal(player.config.liveSyncDuration, 9);

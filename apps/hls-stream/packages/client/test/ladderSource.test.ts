@@ -21,6 +21,7 @@ import { RequestJitter } from '../src/utils/requestJitter';
 
 import { slotPathsOf } from './helpers/slotPaths';
 import { waitFor } from './helpers/waiting';
+import { beeNotFound } from './helpers/fakeBeeGateway';
 import { segmentsUnder, swarmOverGlobalFetch } from './helpers/playerReader';
 
 /**
@@ -139,7 +140,7 @@ describe('the ladder entry points', () => {
       if (slot && slot.index <= RUNG_HEAD) {
         return new Response(rungBody, { status: 200 });
       }
-      return new Response('not found', { status: 404 });
+      return beeNotFound();
     }) as typeof fetch;
   }
 

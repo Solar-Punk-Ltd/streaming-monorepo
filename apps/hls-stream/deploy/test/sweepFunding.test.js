@@ -217,7 +217,7 @@ describe('a sweep proves it can pay before it publishes anything', () => {
 
   /**
    * A focused pair costs what a pair costs, so a question needing two configurations does not have to
-   * buy four. The estimate has to follow the override or the funding check would guard the default
+   * buy the whole grid. The estimate has to follow the override or the funding check would guard the default
    * grid while the sweep ran a different one.
    */
   it('prices the grid it was given rather than the one in the script', async () => {
@@ -225,13 +225,13 @@ describe('a sweep proves it can pay before it publishes anything', () => {
     const pair = await runPreflight({
       uploaderPort: funded,
       gatewayPort: funded,
-      configs: 'ref-720-0.5:1280x720:2500:0.5 720-0.25:1280x720:2500:0.25',
+      configs: 'ref-720-2.0:1280x720:2500:2.0 720-1.0:1280x720:2500:1.0',
     });
     const fullGrid = await runPreflight({ uploaderPort: funded, gatewayPort: funded });
 
     assert.match(pair.log, /sweep starting: 2 configs/);
-    assert.match(fullGrid.log, /sweep starting: 4 configs/);
-    assert.equal(needed(pair) * 2, needed(fullGrid));
+    assert.match(fullGrid.log, /sweep starting: 3 configs/);
+    assert.equal(needed(pair) * 3, needed(fullGrid) * 2);
   });
 });
 

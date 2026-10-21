@@ -18,9 +18,9 @@ const PLAYER_HANDLE = '__swarmHlsPlayer';
  *
  * ⛔ Applied on every arm rather than left alone. hls.js validates `liveMaxLatencyDuration >
  * liveSyncDuration` **at construction only**, so cutting the target at runtime does not throw, it
- * silently widens the ratio. `playerConfig.ts` records what that costs: above 2x the catch-up range
- * and the seek range stop meeting, and a viewer sat between 22 and 30 seconds behind with neither
- * running.
+ * silently widens the ratio. Live plays at normal speed, so nothing but the jump pulls a viewer
+ * back, and a wider ratio leaves a viewer who stalled further behind before hls.js jumps them to the
+ * edge.
  */
 const MAX_LATENCY_RATIO = 2;
 

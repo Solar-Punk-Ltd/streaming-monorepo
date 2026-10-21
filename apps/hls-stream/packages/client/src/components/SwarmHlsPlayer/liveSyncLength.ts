@@ -15,7 +15,7 @@ import { medianSegmentMs } from './rungFeedReader';
  *
  * A caller that names a live target of its own keeps it whatever the playlist says, and nothing is
  * attached. That is decided by whether `callerTuning` names one at all, never by its value, so a
- * caller asking for exactly the 6 s floor keeps 6 s on a stage cutting 4 s segments.
+ * caller asking for exactly the 12 s floor keeps 12 s on a stage cutting 6 s segments.
  */
 export function attachLiveSyncToSegmentLength(
   hls: Hls,

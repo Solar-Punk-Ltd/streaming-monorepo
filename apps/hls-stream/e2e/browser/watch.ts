@@ -61,12 +61,12 @@ const DEFAULT_WATCH_SECONDS = 180;
  * ⛔⛔⛔ THIS EXISTS BECAUSE A COLUMN AT A CONFIGURED CAP IS NOT A MEASUREMENT.
  *
  * The live byte-source sitting on 2026-08-13 could not rank a gateway against an in-tab node on
- * latency: `LIVE_SYNC_DURATION_S` is 6, every weeb-3 arm read exactly 6.03s and two of three gateway
+ * latency: `LIVE_SYNC_DURATION_S` was 6, every weeb-3 arm read exactly 6.03s and two of three gateway
  * arms read 6.03 or 6.04. Both conditions sat on one target, which says they both reached it and
  * nothing about what either could do. Lowering the target is what lets the two separate, if they can.
  *
- * Applied TWICE on purpose. Once before the settle, so the player spends the settle catching up to
- * the new target rather than doing it inside the measured window, and once after, because the setter
+ * Applied TWICE on purpose. Once before the settle, so the player reaches the new target during the
+ * settle rather than inside the measured window, and once after, because the setter
  * is what clears `stallCount` and a stall while the in-tab node was booting would otherwise raise the
  * target for the whole arm and never lower it.
  */
@@ -164,8 +164,9 @@ async function main(): Promise<void> {
     // readback sits above: an arm on the wrong byte source is an arm of the other condition. It also
     // boots the in-tab node and waits out the settle, so the window below opens on a player of the
     // same age in both conditions.
-    // Before the settle, so the catch-up from the build's target to this one happens while nothing is
-    // being counted.
+    // Before the settle, so the move from the build's target to this one happens while nothing is
+    // being counted. Live plays at normal speed, so a lower target is reached by hls.js jumping to the
+    // edge once the old latency is past the new jump limit.
     if (targetLatencyS !== null) {
       await holdAtTarget(page, targetLatencyS, 'before the settle');
     }

@@ -323,7 +323,7 @@ than what one could have fetched. They need the browser image on the host and th
 | `viewer/crash-writer-bee-outage` | (V9) A 20 s writer outage costs a segment, published as a gap entry, and the viewer plays through the hole                                                                                     |
 | `viewer/crash-engine-restart`    | (V10) The engine restart ends the broadcast, and the end reaches the screen                                                                                                                    |
 | `viewer/batch-drain-viewer`      | (V11) A viewer watches through one rung's postage running out: the picture keeps moving, they are never told the broadcast ended, and the master loses exactly that rung. Needs an armed stage |
-| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's catch-up limit, rather than at the head of the live window                                        |
+| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's jump limit, rather than at the head of the live window                                            |
 
 - None of them asserts how far behind live the player sat. That figure is printed and filed.
 - V7 and V9 tolerate an overlay that says nothing during the freeze (`mustSpeak: false`). They refuse
@@ -709,7 +709,7 @@ It publishes a real stream, follows it through the feed a viewer reads, and repo
 live that viewer is, split into segment duration, upload, feed write, propagation and fetch, plus the
 player's configured buffer. It writes a markdown report and its JSON to `BENCH_RESULTS_DIR`,
 `bench-results/` in the stack's folder by default, ignored by git. The client's live target is three
-segments with a floor of 6 s (`LIVE_SYNC_DURATION_S` in
+segments with a floor of 12 s (`LIVE_SYNC_DURATION_S` in
 `packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`).
 
 - **How the picture is timed.** ffmpeg publishes with `-use_wallclock_as_timestamps 1 -copyts`, so each

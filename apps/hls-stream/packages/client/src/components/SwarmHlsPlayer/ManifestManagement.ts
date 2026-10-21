@@ -13,11 +13,13 @@ import {
 import Pqueue from 'p-queue';
 
 import { Rendition } from '@/types/stream';
-import { UNSUPPORTED } from '@/swarm/answers';
+import { type SwarmAnswer, UNSUPPORTED } from '@/swarm/answers';
 import type { SwarmReader } from '@/swarm/client';
+import type { ReadOptions } from '@/swarm/provider';
 import { gatewayClock } from '@/utils/gatewayClock';
 import { RequestJitter } from '@/utils/requestJitter';
 
+import type { FollowClock } from './following/feedReader';
 import { FEED_RETURN_WATCH_INTERVAL_MS, FeedReturnWatch, feedReturnWatchWaitMs } from './feedReturn';
 import { FeedHealthTracker, UNSERVED_POLLS_PROBE_CEILING } from './feedState';
 import { LadderFeedPoller, type LadderRung, WALL_CLOCK } from './LadderFeedPoller';
@@ -29,6 +31,8 @@ import { headIndexOf, type PlayerReader, retryAfterMsOf, servedText, type Served
 import { buildMasterPlaylist, isMasterPlaylist, masterRungs, parseSwarmUri } from './playlist';
 import { isSlotNotWrittenYet, ManifestFetchError, probePastRefusal, shouldProbePastRefusal } from './refusedSlot';
 import { rungHeadMarkers } from './rungHeadMarkers';
+import { SegmentNames } from './segmentNames';
+import { SourceMissCost } from './sourceMissCost';
 import { waitMs } from './waitMs';
 
 // The parser and the segment shape now live beside the tags the uploader builds with, so the two
@@ -494,8 +498,37 @@ interface SlotRead {
  * Expiry costs a level rather than the session: hls.js retries a playlist error twice before it
  * switches level, each retry re-enters this wait with a fresh deadline, and the poller's walk keeps
  * running throughout, so a rung that becomes readable later is picked up by the next retry.
+ *
+ * A source that answers a miss slowly gets a longer search than this, see {@link rungReadyDeadlineMs}.
  */
 export const RUNG_READY_MARGIN_MS = 5_000;
+
+/**
+ * The rounds a search for a rung's newest index makes one after another, at most, in the ordinary case:
+ * the time marker of the period before and the one before that, then a first round, a round at the
+ * guess and up to four narrowing it.
+ */
+const SEARCH_ROUNDS_IN_A_ROW = 8;
+
+/**
+ * How long a level request waits for a rung's first playlist: the poller's search deadline and
+ * {@link RUNG_READY_MARGIN_MS}, or on a slow source {@link SEARCH_ROUNDS_IN_A_ROW} of its rounds and
+ * the margin when that is longer.
+ *
+ * ⛔ **A slow source is waited for, never switched away from**, because a part reads from the source
+ * picked for it alone. Measured on a freshly started light Bee 2.8.3 with no blockchain: a miss took 6
+ * to 10 s, a search took about a minute, every quality failed at 20 s, and the player restarted in a
+ * loop and never showed a frame, while a full node at 1.3 to 1.6 s a miss played the same recording. A
+ * source that is not slow keeps exactly the 20 s, so a viewer on a gateway that does not hold a rung
+ * still has that level failed as soon as before. No read is added: the search runs as it always did and
+ * is only waited for longer. What makes a source slow is `SourceMissCost`'s.
+ */
+function rungReadyDeadlineMs(searchDeadlineMs: number, slowRoundMs: number | null): number {
+  return Math.max(searchDeadlineMs, SEARCH_ROUNDS_IN_A_ROW * (slowRoundMs ?? 0)) + RUNG_READY_MARGIN_MS;
+}
+
+/** What a level request's wait ends on when its deadline passes rather than its rung becoming ready. */
+const DEADLINE_PASSED = Symbol('deadline passed');
 
 /**
  * A rung that had produced no playlist inside its search's deadline and {@link RUNG_READY_MARGIN_MS}.
@@ -565,25 +598,27 @@ export class ManifestFetcher {
     readonly source: string | null;
     readonly segmentUrl: SegmentUrl;
   } = { reader: NO_SWARM, source: null, segmentUrl: SEGMENTS_AS_WRITTEN };
+  /** Every segment URL a reader named for a playlist, so {@link segmentUrlNow} can name it again by the reader of now. */
+  private readonly segmentNames = new SegmentNames();
   /**
    * Every read this fetcher and its poller make, passed on to whichever reader is current, so a node
    * switched to mid-session moves the walks with it.
    */
   private readonly reads: PlayerReader = {
-    readFeedHead: (owner, topic, options) => this.swarm.readFeedHead(owner, topic, options),
-    readFeedEntry: (owner, topic, index, options) => this.swarm.readFeedEntry(owner, topic, index, options),
-    readSoc: (owner, identifier, options) => this.swarm.readSoc(owner, identifier, options),
+    readFeedHead: (owner, topic, options) =>
+      this.timed(options, (swarm, windowed) => swarm.readFeedHead(owner, topic, windowed)),
+    readFeedEntry: (owner, topic, index, options) =>
+      this.timed(options, (swarm, windowed) => swarm.readFeedEntry(owner, topic, index, windowed)),
+    readSoc: (owner, identifier, options) =>
+      this.timed(options, (swarm, windowed) => swarm.readSoc(owner, identifier, windowed)),
   };
+  /** What the current source's misses cost, which a level request's wait is sized from. */
+  private readonly missCost = new SourceMissCost();
+  private readonly clock: FollowClock;
   private ladders = new Map<string, RegisteredLadder>();
   /** Every marker read this fetcher's player makes, so an address is asked once between them. */
   private readonly markerReads = new LadderMarkerReads(this.reads);
-  private readonly markers = new MarkerFinder(
-    this.reads,
-    WALL_CLOCK,
-    () => gatewayClock.offsetMs(),
-    undefined,
-    this.markerReads,
-  );
+  private readonly markers: MarkerFinder;
   private poller: LadderFeedPoller;
   private lastLoggedMaster = '';
 
@@ -629,7 +664,11 @@ export class ManifestFetcher {
      * than waited out. See {@link FEED_RETURN_WATCH_INTERVAL_MS}.
      */
     private readonly returnWatchIntervalMs: number = FEED_RETURN_WATCH_INTERVAL_MS,
+    /** The clock rungs are searched and followed on. Injected only by tests, which run it simulated. */
+    clock: FollowClock = WALL_CLOCK,
   ) {
+    this.clock = clock;
+    this.markers = new MarkerFinder(this.reads, clock, () => gatewayClock.offsetMs(), undefined, this.markerReads);
     // The poller reads through this instance rather than holding a reader of its own, so switching
     // gateway mid-session moves the walk with it. It also shares this instance's feed health and
     // computes its backoff through the same jitter, so a ladder outage records and paces exactly as
@@ -646,9 +685,10 @@ export class ManifestFetcher {
       () => this.drawReturnWatchWaitMs(),
       {
         playheadMs: (group) => (group === null ? null : (this.playheads.get(group)?.() ?? null)),
+        followClock: clock,
         finder: this.markers,
-        headMarkers: (rung, clock) =>
-          rungHeadMarkers(this.reads, rung, clock, () => gatewayClock.offsetMs(), this.markerReads),
+        headMarkers: (rung, rungClock) =>
+          rungHeadMarkers(this.reads, rung, rungClock, () => gatewayClock.offsetMs(), this.markerReads),
       },
     );
   }
@@ -658,7 +698,61 @@ export class ManifestFetcher {
    * in the Swarm client's player reader at start and again whenever the viewer picks another node.
    */
   useSwarm(reader: SwarmReader): void {
+    if (reader !== this.swarm) {
+      this.missCost.reset();
+    }
     this.swarm = reader;
+  }
+
+  /**
+   * Whether the current source answers misses so slowly that a rung is waited for longer than on a
+   * gateway, which the player says while it has no picture yet. See {@link rungReadyDeadlineMs}.
+   */
+  startsSlowly = (): boolean => this.missCost.isSlow();
+
+  /** Told whenever what {@link startsSlowly} reads may have changed. Returns the unsubscribe. */
+  subscribeStartsSlowly = (listener: () => void): (() => void) => this.missCost.subscribe(listener);
+
+  private rungReadyDeadline(): number {
+    return rungReadyDeadlineMs(this.poller.candidateFindDeadlineMs, this.missCost.roundMs());
+  }
+
+  /**
+   * Makes a read on the current source, with the longer window a slow source is given, and times it when
+   * it answers that nothing is there.
+   */
+  private async timed(
+    options: ReadOptions | undefined,
+    read: (swarm: SwarmReader, options: ReadOptions | undefined) => Promise<SwarmAnswer>,
+  ): Promise<SwarmAnswer> {
+    const swarm = this.swarm;
+    const windowMs = this.missCost.readWindowMs();
+    const windowed =
+      windowMs === null ? options : { ...options, timeoutMs: Math.max(options?.timeoutMs ?? 0, windowMs) };
+    const startedAtMs = this.clock.now();
+    const answer = await read(swarm, windowed);
+    // A miss of a source the viewer has since left says nothing about the one they read from now.
+    if (answer.kind === 'not-found' && swarm === this.swarm) {
+      this.missCost.record(this.clock.now() - startedAtMs);
+    }
+    return answer;
+  }
+
+  /**
+   * The URL a segment hls.js asks for by `url` loads from now: the same segment named by the current
+   * reader when an earlier reader named it, and `url` itself when the player never named it.
+   *
+   * A recording's playlist is read once, so hls.js keeps the URLs of whichever reader named them, and a
+   * viewer who switched the video to another source, or whose source was paused, would otherwise go on
+   * loading every segment from the one they left. A live stream is renamed on its next playlist reload
+   * as well, but its segments in flight until then are not.
+   */
+  segmentUrlNow(url: string): string {
+    const reference = this.segmentNames.referenceOf(url);
+    if (reference === null) {
+      return url;
+    }
+    return this.swarm.urlFor(reference, 'segment') ?? url;
   }
 
   /** How segments are named now: by the provider the current reader takes segment URLs from. */
@@ -666,7 +760,17 @@ export class ManifestFetcher {
     const reader = this.swarm;
     const source = reader.urlSource('segment');
     if (this.segmentUrlCache.reader !== reader || this.segmentUrlCache.source !== source) {
-      this.segmentUrlCache = { reader, source, segmentUrl: (reference) => reader.urlFor(reference, 'segment') };
+      this.segmentUrlCache = {
+        reader,
+        source,
+        segmentUrl: (reference) => {
+          const url = reader.urlFor(reference, 'segment');
+          if (url !== null) {
+            this.segmentNames.remember(url, reference);
+          }
+          return url;
+        },
+      };
     }
     return this.segmentUrlCache.segmentUrl;
   }
@@ -888,30 +992,35 @@ export class ManifestFetcher {
    * the case where both are due in the same tick: a rung that is already ready has an already
    * resolved promise, and an expiry one hop behind it cannot overtake it.
    *
+   * The deadline is read again each time it passes, because the misses that say a source is slow are
+   * the ones this rung's search is making meanwhile. The waits run one after another, so their sum is
+   * the time waited, and a source found slow extends the wait by what is left of its longer deadline.
+   *
    * A teardown during the wait ends it rather than being caught by it. `LadderFeedPoller.stop`
    * resolves `ready` for every rung it stops, so the wait returns and this topic's cleared state
    * serializes exactly as it did before there was a deadline. Nothing is left holding the rung: the
-   * expiry's own timer fires into a race that has already settled, and its rejection is one the race
-   * subscribed to.
+   * expiry's own timer fires into a race that has already settled and resolves a value nobody reads.
    */
   private async awaitRungReady(hexTopic: string): Promise<void> {
-    const deadlineMs = this.poller.candidateFindDeadlineMs + RUNG_READY_MARGIN_MS;
-    const expired = this.delay(deadlineMs).then(() => {
-      throw new RungNotReadyError(hexTopic, deadlineMs);
-    });
-
-    try {
-      await Promise.race([this.poller.ready(hexTopic), expired]);
-    } catch (error) {
-      // The only rejection reachable here. The poller resolves `ready` and never rejects it, so a
-      // line at this point is the deadline and nothing else. Logged where it fires rather than left
-      // to hls.js, because the level error it becomes names a URL and not the rung that went quiet.
-      console.warn(
-        `Rung ${hexTopic} produced no playlist in ${deadlineMs}ms, so this level is failed rather ` +
-          'than waited on. This gateway may not hold that rung.',
-      );
-      throw error;
+    const ready = this.poller.ready(hexTopic);
+    let waitedMs = 0;
+    let deadlineMs = this.rungReadyDeadline();
+    while (waitedMs < deadlineMs) {
+      const expired = this.delay(deadlineMs - waitedMs).then(() => DEADLINE_PASSED);
+      if ((await Promise.race([ready, expired])) !== DEADLINE_PASSED) {
+        return;
+      }
+      waitedMs = deadlineMs;
+      deadlineMs = Math.max(waitedMs, this.rungReadyDeadline());
     }
+
+    // Logged where it fires rather than left to hls.js, because the level error it becomes names a URL
+    // and not the rung that went quiet.
+    console.warn(
+      `Rung ${hexTopic} produced no playlist in ${waitedMs}ms, so this level is failed rather ` +
+        'than waited on. This gateway may not hold that rung.',
+    );
+    throw new RungNotReadyError(hexTopic, waitedMs);
   }
 
   /**

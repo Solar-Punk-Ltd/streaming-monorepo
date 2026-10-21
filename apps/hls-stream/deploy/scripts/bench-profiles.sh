@@ -65,22 +65,20 @@ ENGINE_ENV="${REPO_ROOT}/engines/srs/.env.${PROFILE}"
 #
 # 720p at 2500kbps is absent on purpose: `bench-sweep.sh` already measured it at four segment lengths
 # over 105 samples, and re-running it here would spend an hour re-deriving the control.
+#
+# Nothing runs below half a second. The uploader's live window is a byte budget, and at a 0.25s
+# segment it holds 7.5s of media, less than the 12s the viewer sits behind the live edge, so a row
+# there would measure the window rather than the player.
 PROFILES=(
   "sd-fast:854x480:1200:30:0.5:0.5:7.5"
   "hd-half:1920x1080:6000:30:0.5:0.5:7.5"
   "hd-one:1920x1080:6000:30:1.0:1.0:15"
   "hd-two:1920x1080:6000:30:2.0:2.0:30"
   "hd-max:1920x1080:9000:30:1.0:1.0:15"
-  # The segment axis at 1080p, which the first pass only sampled at 0.5, 1.0 and 2.0. `hd-quarter`
-  # and `live-quarter` go below the shortest segment ever measured: at 30fps a quarter-second GOP is
-  # a keyframe every 7.5 frames, so this is as much a question about what that costs in picture
-  # quality per bit as about latency, and 240 segments a minute is the hardest the uploader has been
-  # asked to work.
-  "hd-quarter:1920x1080:6000:30:0.25:0.25:3.75"
+  # The segment axis at 1080p, which the first pass only sampled at 0.5, 1.0 and 2.0.
   "hd-onehalf:1920x1080:6000:30:1.5:1.5:22.5"
   "hd-three:1920x1080:6000:30:3.0:3.0:45"
   "hd-four:1920x1080:6000:30:4.0:4.0:60"
-  "live-quarter:1280x720:2500:30:0.25:0.25:3.75"
   # 480p only ever ran at half a second, so nothing says whether the cheap picture follows the same
   # curve as the expensive one or a flatter one.
   "sd-one:854x480:1200:30:1.0:1.0:15"

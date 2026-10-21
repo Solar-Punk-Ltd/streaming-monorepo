@@ -11,6 +11,8 @@ import {
 } from '../src/components/DomainSelector/checkSentences';
 import type { SwarmClient } from '../src/swarm/client';
 
+import { beeNotFound } from './helpers/fakeBeeGateway';
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const EVENT = 'https://event.example.com';
@@ -167,7 +169,7 @@ beforeEach(() => {
     if (url.endsWith('/health')) {
       return Response.json({ status: 'ok' });
     }
-    return new Response('', { status: 404 });
+    return beeNotFound();
   }) as typeof fetch;
 });
 
@@ -300,7 +302,7 @@ describe("the node picker's tools", () => {
       if (String(input).startsWith(ADDED)) {
         throw new TypeError('Failed to fetch');
       }
-      return new Response('', { status: 404 });
+      return beeNotFound();
     }) as typeof fetch;
     await open();
     pick('Type', 'gateway');
@@ -400,7 +402,7 @@ describe("the node picker's tools", () => {
       if (url.endsWith('/health')) {
         return Response.json({ status: 'ok' });
       }
-      return new Response('', { status: url.startsWith(BACKUP) && url.includes(VIDEO_OWNER) ? 502 : 404 });
+      return url.startsWith(BACKUP) && url.includes(VIDEO_OWNER) ? new Response('', { status: 502 }) : beeNotFound();
     }) as typeof fetch;
     await open();
     click(labelled<HTMLInputElement>('Use Backup gateway'));

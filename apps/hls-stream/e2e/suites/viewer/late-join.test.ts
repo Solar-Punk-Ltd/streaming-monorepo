@@ -27,9 +27,12 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
  *
  * ⛔ The reading is where in the broadcast the player started, which is correctness, not latency. A live playlist is a
  * window of about 4096 bytes, 30 to 50 entries, read off the gateway at the join, and a start at its first entry sits
- * that window behind live. The bound is the client's own catch-up limit, out of its player configuration, far inside
+ * that window behind live. The bound is the client's own jump limit, out of its player configuration, far inside
  * that window and well outside where the client aims. See `src/harness/lateJoin.ts`. How far behind live the viewer
  * sat is printed and never asserted beyond that bound.
+ *
+ * Only a stage cutting segments of 1 s or longer can be judged: at 0.5 s the window of about 31 entries holds 15.5 s,
+ * inside the 24 s jump limit, so `lateJoinRefusal` refuses it as an instrument that cannot tell.
  */
 
 const JOIN_AFTER_MS = 180_000;

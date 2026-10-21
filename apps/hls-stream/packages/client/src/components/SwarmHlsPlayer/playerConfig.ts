@@ -7,7 +7,7 @@ const MB = 1024 * 1024;
  *
  * Every segment here is fetched from Swarm rather than from an origin next to the viewer, so the
  * budget covers a feed lookup plus a chunk download, not one HTTP round trip. It is the largest
- * client-side latency lever there is, and it was 10 until 2026-08-03.
+ * client-side latency lever there is.
  *
  * Behind-live is not the total plus this buffer. The total is anchored on a segment's first frame
  * and the buffer is measured back from the live edge, which is that same segment's last, so adding
@@ -17,79 +17,43 @@ const MB = 1024 * 1024;
  *
  * A player stalls unless its buffer covers the largest edge-to-fetchable delay, which is
  * `totalMs - segmentMs` per segment, plus the cadence it asks at, since a segment becomes fetchable
- * before the player has asked for it. hls.js reloads a live playlist once per target duration and
- * the uploader declares `ceil(segment duration)`, so that cadence is one second at every segment
- * length below a second. One segment of margin covers an arrival later than any measured.
+ * before the player has asked for it. hls.js reloads a live playlist once per target duration.
  *
- * ## Re-derived 2026-08-05, and it stays at six
+ * ## Why twelve
  *
- * The four clean runs of the `quarter-second-2026-08-05` measurement (kept outside the repository), which are the first arrivals
- * measured with the bench's follower reaching the live edge:
+ * Six was derived from arrivals at 0.25 s and 0.5 s segments on a gateway beside the stage. The event
+ * runs 2 s segments, and on a development gateway a 2 s segment became fetchable 7 to 9 s after it
+ * was filmed, past six. Over SRT the player stalled about 30 times per 15 minutes at six and about 9
+ * times at fourteen, on the same broadcast and gateway. Twelve sits in the 10 to 14 s range asked
+ * for, and with live held at normal speed (see {@link LIVE_SYNC_PLAYBACK_RATE}) the margin over the
+ * arrival delay is what absorbs a slow fetch.
  *
- * | segment | samples | observed floor | so this constant needs |
- * | ------- | ------: | -------------: | ---------------------: |
- * | 0.25s   |      33 |          1.42s |                  2.67s |
- * | 0.25s   |      37 |          1.80s |                  3.05s |
- * | 0.5s    |      67 |          2.92s |                  4.42s |
- * | 0.5s    |     107 |          3.41s |                  4.91s |
- *
- * **Six covers the worst of them by 1.09s.** The value did not move, and only the derivation under
- * it did: the table this replaces came from the sweep of 2026-08-03, and every figure from before
- * 2026-08-05 was taken through an instrument with six known defects, two of which made a faster
- * deployment report worse.
- *
- * **Six seconds is the floor, not the whole target.** Longer segments are covered by the
- * three-segment rule in {@link liveLatencyFor}, which raises the target to three segments of the
- * length the playlist names whenever that is more than six seconds. The target duration is whatever
- * the uploader's segment length makes it, and this side does not choose it. The engine's playlist
- * window does not grow with it: SRS keeps a fixed `HLS_WINDOW`, 15 s by default, so from segments of
- * about 5 s the target sits on the window's oldest fragment (see `DEFAULT_HLS_TUNING` in
- * `SwarmHlsPlayer.tsx`).
+ * **Twelve is the floor, not the whole target.** Longer segments are covered by the three-segment
+ * rule in {@link liveLatencyFor}, which raises the target to three segments of the length the
+ * playlist names whenever that is more than twelve seconds. The engine's playlist window does not
+ * grow with it: SRS keeps a fixed `HLS_WINDOW`, 15 s by default, so from segments of 5 s the target
+ * sits on the window's oldest fragment (see `DEFAULT_HLS_TUNING` in `SwarmHlsPlayer.tsx`).
  *
  * ## The uploader has to name enough media for this to be reachable
  *
  * hls.js clamps its sync position to the start of the playlist, so a first manifest holding less
- * media than this asks for puts a joining viewer at the live edge with no runway, whatever this says.
- * Against the requirements above, the uploader's old ten-segment window held 2.5s at a 0.25s segment
- * and was short in **both** clean runs, by 172ms and 550ms, while clearing the worst 0.5s run by 91ms.
- * The window is now budgeted against one chunk rather than counted in segments. A segment line is a
- * duration and a bare Swarm reference, so measured against the shipped builder it holds **12.5s at a
- * 0.25s segment and 25.5s at a 0.5s segment**. The deployment these arrival times were
- * measured on had a gateway URL prepended to every line and reached only 9.0s at 0.25s, so the
- * runway a joining viewer gets has since roughly doubled. `ManifestManager.test.ts` reads this
+ * media than this asks for puts a joining viewer at the live edge with less runway than this says.
+ * The uploader's window is budgeted against one chunk rather than counted in segments. A segment
+ * line is a duration and a bare Swarm reference, so measured against the shipped builder it holds
+ * 15.5 s at a 0.5 s segment, the shortest any profile publishes. `ManifestManager.test.ts` reads this
  * constant out of this file and fails if the window stops covering it.
- *
- * ## What this is not
- *
- * A floor over observed samples is not a proof, and these are 244 arrivals over four three-minute
- * runs rather than a steady state. The claim is that the arrivals measured would not have stalled a
- * player configured this way, not that no arrival ever will.
- *
- * It **has** now been played in a real browser, which is what the sentence here used to deny.
- * Across 27 recorded sessions, 16 sat with a median live latency between 5.32s and 7.40s, which is
- * this value, and 19 held at or above it. The joins split into two groups and neither is a fault:
- * about 5.7 to 6.3s where the first manifest reached exactly this far back, and about 11.5 to 11.6s
- * where it reached further and hls.js left the viewer there because that is still inside
- * {@link LIVE_MAX_LATENCY_DURATION_S}.
- *
- * A paragraph here used to say that a player on this deployment rebuffers every 63 seconds whatever
- * this number is. That claim is **retracted**: the freeze was bee's sequential feed head
- * lookup, which the bench polled every cycle and a player calls only on mount. Bee's own feed
- * lookup is slow, roughly a second per narrowing step, which is why the client reads slots by number
- * and uses ladder time markers.
  */
-export const LIVE_SYNC_DURATION_S = 6;
+export const LIVE_SYNC_DURATION_S = 12;
 
 /**
- * Segments behind the live edge the player aims at. Three, which is {@link LIVE_SYNC_DURATION_S} at
- * the event's 2 s segment, and that value is the floor: below it the measured arrivals above are no
- * longer covered, whatever the segment length. A quality's progress bound in `rungPosition.ts` is the
- * same three segments over the same floor.
+ * Segments behind the live edge the player aims at when that is more than {@link LIVE_SYNC_DURATION_S}.
+ * Three segments only pass the twelve second floor at segments longer than 4 s. A quality's progress
+ * bound in `rungPosition.ts` is the same three segments over a floor of its own.
  */
 export const LIVE_SYNC_SEGMENTS = 3;
 
-/** How many times the live target the catch-up limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
-const CATCH_UP_LIMIT_FACTOR = 2;
+/** How many times the live target the jump limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
+const JUMP_LIMIT_FACTOR = 2;
 
 /** Whether a segment length is one a target can be computed from: a positive, finite number of milliseconds. */
 export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentMs is number {
@@ -97,27 +61,21 @@ export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentM
 }
 
 /**
- * The latency at which hls.js stops trying to recover gradually and seeks to the live edge instead.
+ * The latency at which hls.js jumps a viewer who has fallen behind forward to the live target.
  *
  * hls.js refuses a value at or below {@link LIVE_SYNC_DURATION_S}, throwing from the constructor, so
- * every mount of the player depends on the two staying ordered. The upper bound is the one that is
- * easy to get wrong, because nothing enforces it: hls.js only nudges the playback rate while the
- * drift is under `min(this, targetLatency + targetduration)` past the target, and only seeks once it
- * is past this. Set it high enough and the two stop meeting, leaving a viewer between the end of
- * catch-up and the start of the seek with neither running, which is what 10 and 30 did between 22
- * and 30 seconds of latency. At twice the target the ranges meet for **every** target duration, and
- * that is the reason for the bound: the target duration is whatever the uploader's segment length
- * makes it, not a number this side chooses. Larger values are not all broken, since a long enough
- * target duration closes the gap on its own, but which ones are safe then depends on a number this
- * side does not control.
+ * every mount of the player depends on the two staying ordered. With playback held at normal speed
+ * (see {@link LIVE_SYNC_PLAYBACK_RATE}) nothing pulls a viewer back gradually, so every stall adds to
+ * how far behind they sit until this is crossed and the jump skips them forward. At twice the target
+ * a viewer can lose as many seconds to stalls as the target itself before anything is skipped.
  *
  * This constant is the floor's pair, the limit that goes with {@link LIVE_SYNC_DURATION_S}. The pair a
  * live player runs with is computed from the segment length by {@link liveLatencyFor}, on the same
  * twice-the-target rule.
  */
-export const LIVE_MAX_LATENCY_DURATION_S = CATCH_UP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
+export const LIVE_MAX_LATENCY_DURATION_S = JUMP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
 
-/** The live target and catch-up limit hls.js works with. */
+/** The live target and jump limit hls.js works with. */
 interface LiveLatency {
   liveSyncDuration: number;
   liveMaxLatencyDuration: number;
@@ -125,33 +83,28 @@ interface LiveLatency {
 
 /**
  * The live target for a stage cutting segments of `segmentMs`: three segments behind the live edge,
- * never under {@link LIVE_SYNC_DURATION_S}, and the catch-up limit twice that, for the reason
+ * never under {@link LIVE_SYNC_DURATION_S}, and the jump limit twice that, for the reason
  * {@link LIVE_MAX_LATENCY_DURATION_S} gives. A length not known yet answers the floor.
  */
 export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatency {
   const liveSyncDuration = isKnownSegmentMs(segmentMs)
     ? Math.max(LIVE_SYNC_DURATION_S, (LIVE_SYNC_SEGMENTS * segmentMs) / 1000)
     : LIVE_SYNC_DURATION_S;
-  return { liveSyncDuration, liveMaxLatencyDuration: CATCH_UP_LIMIT_FACTOR * liveSyncDuration };
+  return { liveSyncDuration, liveMaxLatencyDuration: JUMP_LIMIT_FACTOR * liveSyncDuration };
 }
 
 /**
- * The fastest playback rate used to catch up after drifting behind the target.
+ * The playback rate a live viewer is held at: normal speed, always.
  *
- * hls.js reads exactly 1, its default, as "never adapt", so without this a second lost to a slow
- * fetch or a rebuffer is kept for the rest of the session and latency only ever grows, until it
- * crosses {@link LIVE_MAX_LATENCY_DURATION_S} and the viewer is jumped forward instead.
+ * hls.js reads exactly 1 as "never adapt" and then leaves the playback rate alone entirely, so a
+ * viewer who falls behind the target is never played fast to catch up. A stall leaves the viewer
+ * that much further behind, inside the room {@link LIVE_SYNC_DURATION_S} gives, and only past
+ * {@link LIVE_MAX_LATENCY_DURATION_S} does hls.js jump them forward to the target.
  *
- * 1.1 rather than the 1.5 the low-latency presets use. Browsers pitch-correct transparently to
- * around 1.1 and audibly past it, and 10% recovers a two second overshoot inside twenty seconds
- * without the viewer hearing that it happened.
- *
- * hls.js gates this on `lowLatencyMode` in the same condition, so the two have to stay together.
- * That flag defaults to true and is deliberately not set here, which is what R7 in the finding
- * register decided and the whole of its reason. Reading the two as unrelated is what would make
- * someone override the flag to false and kill this silently, so R7's own note carries the gate.
+ * Since hls.js never writes the rate, a speed the viewer picks from the native controls stays theirs
+ * without any guard.
  */
-export const MAX_LIVE_SYNC_PLAYBACK_RATE = 1.1;
+export const LIVE_SYNC_PLAYBACK_RATE = 1;
 
 /**
  * How many of a live playlist's newest segments, gaps not counted, a failed load may turn into a gap.
@@ -182,7 +135,7 @@ export const LIVE_GAP_WINDOW_MS = 5 * 60_000;
 export const HLS_TUNING = {
   liveSyncDuration: LIVE_SYNC_DURATION_S,
   liveMaxLatencyDuration: LIVE_MAX_LATENCY_DURATION_S,
-  maxLiveSyncPlaybackRate: MAX_LIVE_SYNC_PLAYBACK_RATE,
+  maxLiveSyncPlaybackRate: LIVE_SYNC_PLAYBACK_RATE,
   maxBufferLength: 60,
   maxMaxBufferLength: 120,
   maxBufferSize: 60 * MB,
