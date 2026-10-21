@@ -88,8 +88,8 @@ export const LIVE_SYNC_DURATION_S = 6;
  */
 export const LIVE_SYNC_SEGMENTS = 3;
 
-/** How many times the live target the catch-up limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
-const CATCH_UP_LIMIT_FACTOR = 2;
+/** How many times the live target the jump limit sits at, for the reason {@link LIVE_MAX_LATENCY_DURATION_S} gives. */
+const JUMP_LIMIT_FACTOR = 2;
 
 /** Whether a segment length is one a target can be computed from: a positive, finite number of milliseconds. */
 export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentMs is number {
@@ -97,27 +97,21 @@ export function isKnownSegmentMs(segmentMs: number | null | undefined): segmentM
 }
 
 /**
- * The latency at which hls.js stops trying to recover gradually and seeks to the live edge instead.
+ * The latency at which hls.js jumps a viewer who has fallen behind forward to the live target.
  *
  * hls.js refuses a value at or below {@link LIVE_SYNC_DURATION_S}, throwing from the constructor, so
- * every mount of the player depends on the two staying ordered. The upper bound is the one that is
- * easy to get wrong, because nothing enforces it: hls.js only nudges the playback rate while the
- * drift is under `min(this, targetLatency + targetduration)` past the target, and only seeks once it
- * is past this. Set it high enough and the two stop meeting, leaving a viewer between the end of
- * catch-up and the start of the seek with neither running, which is what 10 and 30 did between 22
- * and 30 seconds of latency. At twice the target the ranges meet for **every** target duration, and
- * that is the reason for the bound: the target duration is whatever the uploader's segment length
- * makes it, not a number this side chooses. Larger values are not all broken, since a long enough
- * target duration closes the gap on its own, but which ones are safe then depends on a number this
- * side does not control.
+ * every mount of the player depends on the two staying ordered. With playback held at normal speed
+ * (see {@link LIVE_SYNC_PLAYBACK_RATE}) nothing pulls a viewer back gradually, so every stall adds to
+ * how far behind they sit until this is crossed and the jump skips them forward. At twice the target
+ * a viewer can lose as many seconds to stalls as the target itself before anything is skipped.
  *
  * This constant is the floor's pair, the limit that goes with {@link LIVE_SYNC_DURATION_S}. The pair a
  * live player runs with is computed from the segment length by {@link liveLatencyFor}, on the same
  * twice-the-target rule.
  */
-export const LIVE_MAX_LATENCY_DURATION_S = CATCH_UP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
+export const LIVE_MAX_LATENCY_DURATION_S = JUMP_LIMIT_FACTOR * LIVE_SYNC_DURATION_S;
 
-/** The live target and catch-up limit hls.js works with. */
+/** The live target and jump limit hls.js works with. */
 interface LiveLatency {
   liveSyncDuration: number;
   liveMaxLatencyDuration: number;
@@ -125,33 +119,28 @@ interface LiveLatency {
 
 /**
  * The live target for a stage cutting segments of `segmentMs`: three segments behind the live edge,
- * never under {@link LIVE_SYNC_DURATION_S}, and the catch-up limit twice that, for the reason
+ * never under {@link LIVE_SYNC_DURATION_S}, and the jump limit twice that, for the reason
  * {@link LIVE_MAX_LATENCY_DURATION_S} gives. A length not known yet answers the floor.
  */
 export function liveLatencyFor(segmentMs: number | null | undefined): LiveLatency {
   const liveSyncDuration = isKnownSegmentMs(segmentMs)
     ? Math.max(LIVE_SYNC_DURATION_S, (LIVE_SYNC_SEGMENTS * segmentMs) / 1000)
     : LIVE_SYNC_DURATION_S;
-  return { liveSyncDuration, liveMaxLatencyDuration: CATCH_UP_LIMIT_FACTOR * liveSyncDuration };
+  return { liveSyncDuration, liveMaxLatencyDuration: JUMP_LIMIT_FACTOR * liveSyncDuration };
 }
 
 /**
- * The fastest playback rate used to catch up after drifting behind the target.
+ * The playback rate a live viewer is held at: normal speed, always.
  *
- * hls.js reads exactly 1, its default, as "never adapt", so without this a second lost to a slow
- * fetch or a rebuffer is kept for the rest of the session and latency only ever grows, until it
- * crosses {@link LIVE_MAX_LATENCY_DURATION_S} and the viewer is jumped forward instead.
+ * hls.js reads exactly 1 as "never adapt" and then leaves the playback rate alone entirely, so a
+ * viewer who falls behind the target is never played fast to catch up. A stall leaves the viewer
+ * that much further behind, inside the room {@link LIVE_SYNC_DURATION_S} gives, and only past
+ * {@link LIVE_MAX_LATENCY_DURATION_S} does hls.js jump them forward to the target.
  *
- * 1.1 rather than the 1.5 the low-latency presets use. Browsers pitch-correct transparently to
- * around 1.1 and audibly past it, and 10% recovers a two second overshoot inside twenty seconds
- * without the viewer hearing that it happened.
- *
- * hls.js gates this on `lowLatencyMode` in the same condition, so the two have to stay together.
- * That flag defaults to true and is deliberately not set here, which is what R7 in the finding
- * register decided and the whole of its reason. Reading the two as unrelated is what would make
- * someone override the flag to false and kill this silently, so R7's own note carries the gate.
+ * Since hls.js never writes the rate, a speed the viewer picks from the native controls stays theirs
+ * without any guard.
  */
-export const MAX_LIVE_SYNC_PLAYBACK_RATE = 1.1;
+export const LIVE_SYNC_PLAYBACK_RATE = 1;
 
 /**
  * How many of a live playlist's newest segments, gaps not counted, a failed load may turn into a gap.
@@ -182,7 +171,7 @@ export const LIVE_GAP_WINDOW_MS = 5 * 60_000;
 export const HLS_TUNING = {
   liveSyncDuration: LIVE_SYNC_DURATION_S,
   liveMaxLatencyDuration: LIVE_MAX_LATENCY_DURATION_S,
-  maxLiveSyncPlaybackRate: MAX_LIVE_SYNC_PLAYBACK_RATE,
+  maxLiveSyncPlaybackRate: LIVE_SYNC_PLAYBACK_RATE,
   maxBufferLength: 60,
   maxMaxBufferLength: 120,
   maxBufferSize: 60 * MB,

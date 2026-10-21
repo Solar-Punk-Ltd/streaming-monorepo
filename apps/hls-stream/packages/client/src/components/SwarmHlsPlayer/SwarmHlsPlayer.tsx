@@ -10,7 +10,6 @@ import { QoeOverlay } from './overlays/qoe/QoeOverlay';
 import { attachQoeTracking, initialMetrics, QoeMetrics } from './overlays/qoe/useHlsQoeMetrics';
 import { CustomFragmentLoader, CustomManifestLoader, manifestFetcher } from './CustomManifestLoader';
 import { FEED_STATE_LIVE, FeedState } from './feedState';
-import { attachLivePlaybackRateGuard } from './livePlaybackRate';
 import { LiveGapBudgetPerStream, skipFailedLiveSegment } from './liveSegmentGaps';
 import { attachLiveSyncToSegmentLength } from './liveSyncLength';
 import { ManifestStateManager } from './ManifestManagement';
@@ -83,9 +82,9 @@ const DEFAULT_HLS_TUNING: Readonly<HlsTuning> = Object.freeze({
   // Spread rather than restated. These are the buffering and latency numbers of
   // {@link HLS_TUNING}, each derived from a measurement recorded beside it, and a second copy here
   // is a second place for them to be wrong: the copy this replaces had drifted back to
-  // `liveSyncDuration: 10` and `liveMaxLatencyDuration: 30`, which is the pair `playerConfig.ts`
-  // names as leaving a viewer between the end of catch-up and the start of the seek with neither
-  // running, and it omitted `maxLiveSyncPlaybackRate` altogether.
+  // `liveSyncDuration: 10` and `liveMaxLatencyDuration: 30`, a jump limit three times the target
+  // rather than the twice `playerConfig.ts` derives, and it omitted `maxLiveSyncPlaybackRate`
+  // altogether.
   ...HLS_TUNING,
 
   // --- ABR ---
@@ -528,7 +527,6 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     }
 
     const detachQoe = enableQoeOverlay ? attachQoeTracking(video, hls, setMetrics) : null;
-    const detachRateGuard = hls ? attachLivePlaybackRateGuard(video, hls) : null;
     const detachLiveSync = hls ? attachLiveSyncToSegmentLength(hls, callerTuning) : null;
     const detachTestHandle = hls ? exposePlayerForInstrumentation(hls) : null;
 
@@ -593,7 +591,6 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.removeEventListener('timeupdate', onPlayedPastResume);
       detachResumeOnReturn?.();
       detachQoe?.();
-      detachRateGuard?.();
       detachLiveSync?.();
       detachStallReporter?.();
       detachReturnRejoin?.();

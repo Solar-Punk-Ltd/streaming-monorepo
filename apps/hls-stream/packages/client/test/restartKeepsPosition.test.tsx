@@ -92,7 +92,6 @@ vi.mock('../src/components/SwarmHlsPlayer/rungHealth', () => ({
   attachRungFailover: noDetach,
   attachWatchedRungReporter: noDetach,
 }));
-vi.mock('../src/components/SwarmHlsPlayer/livePlaybackRate', () => ({ attachLivePlaybackRateGuard: noDetach }));
 vi.mock('../src/components/SwarmHlsPlayer/liveSyncLength', () => ({ attachLiveSyncToSegmentLength: noDetach }));
 vi.mock('../src/components/SwarmHlsPlayer/playerTestHandle', () => ({ exposePlayerForInstrumentation: noDetach }));
 vi.mock('../src/components/SwarmHlsPlayer/playbackHealth', () => ({ attachPlaybackStallReporter: noDetach }));

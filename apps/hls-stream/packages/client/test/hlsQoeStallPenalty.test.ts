@@ -93,8 +93,7 @@ afterEach(() => {
  *
  * `liveSyncOnStallIncrease` defaults to 1 and `stallCount` falls back to zero only when a fresh
  * manifest loads. So **one** non-fatal stall moves the viewer's latency target up by as much as a
- * target duration and leaves it there for the rest of the broadcast, and the catch-up that exists to
- * pull latency back down measures itself against the moved target and stops firing.
+ * target duration and leaves it there for the rest of the broadcast.
  *
  * It cost a real measurement: the 1080p ABA of 2026-08-07 ran two identical control arms that came
  * back 0.92s apart, which the write-up called an unexplained drift in the sitting. One arm had

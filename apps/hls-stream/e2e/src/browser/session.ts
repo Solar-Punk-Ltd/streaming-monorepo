@@ -18,11 +18,7 @@
  * Both are read off the player's own live latency, which is why {@link ViewerSample} carries it.
  */
 
-import {
-  LIVE_MAX_LATENCY_DURATION_S,
-  LIVE_SYNC_DURATION_S,
-  MAX_LIVE_SYNC_PLAYBACK_RATE,
-} from '../bench/clientTuning.js';
+import { LIVE_MAX_LATENCY_DURATION_S, LIVE_SYNC_DURATION_S, LIVE_SYNC_PLAYBACK_RATE } from '../bench/clientTuning.js';
 
 import { feedStatesSeen, type ViewerFeedState } from './feedState.js';
 
@@ -47,7 +43,7 @@ export interface ViewerSample {
   paused: boolean;
   /** `video.readyState`. 4 is HAVE_ENOUGH_DATA. */
   readyState: number;
-  /** 1.1 while hls.js is catching up, 1 once it is at target. */
+  /** The media element's playback rate, which the client holds at 1. */
   playbackRate: number;
   /** Buffered media ahead of the playhead, in seconds. */
   bufferAheadS: number;
@@ -227,7 +223,7 @@ export function judgeLatencyTarget(
 }
 
 interface PlaybackAdvance {
-  /** Media seconds gained per wall-clock second. ~1 playing, ~1.1 catching up, ~0 stalled. */
+  /** Media seconds gained per wall-clock second. ~1 playing, ~0 stalled. */
   ratio: number;
   wallMs: number;
 }
@@ -367,7 +363,7 @@ export interface SessionSummary {
    *
    * This is what a viewer experienced: 1.0 means the picture kept up with the world, and the
    * shortfall below it is time they spent watching a frozen frame. Media the player jumped past is
-   * excluded, so this cannot exceed {@link MAX_LIVE_SYNC_PLAYBACK_RATE} however far it seeks.
+   * excluded, so this cannot exceed {@link LIVE_SYNC_PLAYBACK_RATE} however far it seeks.
    */
   overallAdvanceRatio: number;
   /**
@@ -505,7 +501,7 @@ function gainedAcrossRestarts<T extends ViewerSample>(samples: readonly T[], of:
  * Slack for reading `currentTime` and the clock at slightly different instants.
  *
  * Sized against the gap it has to sit in rather than picked. Sampling is a second apart, so an
- * honest interval gains at most {@link MAX_LIVE_SYNC_PLAYBACK_RATE} seconds, while the smallest seek
+ * honest interval gains at most {@link LIVE_SYNC_PLAYBACK_RATE} seconds, while the smallest seek
  * hls.js can make is {@link LIVE_MAX_LATENCY_DURATION_S} minus {@link LIVE_SYNC_DURATION_S}, six
  * seconds, because it only fires past the first and lands on the second. Anything between about a
  * tenth of a second and five separates them, and this sits in the middle of that.
@@ -529,9 +525,8 @@ interface PlayedMedia {
  * - **Backwards past {@link RESTART_REWIND_S}** is the client remounting its player, which starts
  *   again from whatever loads next. Nothing was watched or skipped, so the step counts as neither.
  * - **Forwards past what the clock allows** is a seek. The ceiling is
- *   {@link MAX_LIVE_SYNC_PLAYBACK_RATE} rather than the rate either sample reported, because hls.js
- *   may raise the rate between two samples and a ceiling that trusted the samples would call that a
- *   seek. What the step is credited is that ceiling, which is an upper bound on what could have
+ *   {@link LIVE_SYNC_PLAYBACK_RATE}, the rate the client holds live playback at, rather than the rate
+ *   either sample reported. What the step is credited is that ceiling, which is an upper bound on what could have
  *   played rather than a guess at how much did: the player probably spent most of the interval
  *   stalled, so this errs toward the flattering reading and still lands far below the old one.
  */
@@ -549,7 +544,7 @@ function mediaPlayed(samples: readonly ViewerSample[]): PlayedMedia {
       continue;
     }
 
-    const playable = ((sample.atMs - previous.atMs) / 1000) * MAX_LIVE_SYNC_PLAYBACK_RATE;
+    const playable = ((sample.atMs - previous.atMs) / 1000) * LIVE_SYNC_PLAYBACK_RATE;
     if (gained > playable + SEEK_TOLERANCE_S) {
       forwardSeeks += 1;
       seekedPastS += gained - playable;

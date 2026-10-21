@@ -16,13 +16,13 @@
 export const LIVE_SYNC_DURATION_S = 6;
 
 /**
- * The fastest hls.js may run playback while catching up, and so the fastest media time can honestly
- * outrun wall-clock time.
+ * The rate the client holds live playback at, and so the fastest media time can honestly outrun
+ * wall-clock time.
  *
  * Mirrored because it is the ceiling that separates playing from seeking. Anything gained above it
  * was jumped rather than watched, which is the whole basis of {@link SessionSummary.forwardSeeks}.
  */
-export const MAX_LIVE_SYNC_PLAYBACK_RATE = 1.1;
+export const LIVE_SYNC_PLAYBACK_RATE = 1;
 
 /**
  * The latency past which hls.js seeks to the live edge instead of drifting toward it.
@@ -59,8 +59,8 @@ export const MIRRORED_PLAYER_CONSTANTS: readonly MirroredPlayerConstant[] = [
     ifStale: 'every viewer latency the bench reports is wrong by the difference',
   },
   {
-    clientExport: 'MAX_LIVE_SYNC_PLAYBACK_RATE',
-    value: MAX_LIVE_SYNC_PLAYBACK_RATE,
-    ifStale: 'catch-up gets read as a seek, or a seek gets read as catch-up, in every advance ratio',
+    clientExport: 'LIVE_SYNC_PLAYBACK_RATE',
+    value: LIVE_SYNC_PLAYBACK_RATE,
+    ifStale: 'faster playback gets read as a seek, or a seek gets read as playback, in every advance ratio',
   },
 ];

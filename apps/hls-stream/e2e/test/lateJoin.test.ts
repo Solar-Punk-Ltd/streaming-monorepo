@@ -5,10 +5,10 @@ import { describe, it } from 'node:test';
 
 import { ROOT_DIR } from '../src/config.js';
 import {
-  CLIENT_CATCH_UP_LIMIT_FACTOR,
+  CLIENT_JUMP_LIMIT_FACTOR,
   CLIENT_LIVE_SYNC_FLOOR_S,
   CLIENT_LIVE_SYNC_SEGMENTS,
-  clientCatchUpLimitS,
+  clientJumpLimitS,
   lateJoinRefusal,
 } from '../src/harness/lateJoin.js';
 
@@ -23,12 +23,12 @@ describe('the client numbers the late-join bound is built from', () => {
   it('match the client', () => {
     assert.equal(declaredNumber('LIVE_SYNC_DURATION_S'), CLIENT_LIVE_SYNC_FLOOR_S);
     assert.equal(declaredNumber('LIVE_SYNC_SEGMENTS'), CLIENT_LIVE_SYNC_SEGMENTS);
-    assert.equal(declaredNumber('CATCH_UP_LIMIT_FACTOR'), CLIENT_CATCH_UP_LIMIT_FACTOR);
+    assert.equal(declaredNumber('JUMP_LIMIT_FACTOR'), CLIENT_JUMP_LIMIT_FACTOR);
   });
 
   it('follow the longer of the floor and three segments', () => {
-    assert.equal(clientCatchUpLimitS(1), 12);
-    assert.equal(clientCatchUpLimitS(4), 24);
+    assert.equal(clientJumpLimitS(1), 12);
+    assert.equal(clientJumpLimitS(4), 24);
   });
 });
 
@@ -36,7 +36,7 @@ describe('lateJoinRefusal', () => {
   const window = { windowSeconds: 40, fragmentSeconds: 1 };
 
   it('refuses a player that started at the window first entry', () => {
-    assert.match(lateJoinRefusal({ ...window, joinS: 40 }) ?? '', /past the client's 12s catch-up limit/);
+    assert.match(lateJoinRefusal({ ...window, joinS: 40 }) ?? '', /past the client's 12s jump limit/);
   });
 
   it('passes a player that started where the client aims', () => {

@@ -323,7 +323,7 @@ than what one could have fetched. They need the browser image on the host and th
 | `viewer/crash-writer-bee-outage` | (V9) A 20 s writer outage costs a segment, published as a gap entry, and the viewer plays through the hole                                                                                     |
 | `viewer/crash-engine-restart`    | (V10) The engine restart ends the broadcast, and the end reaches the screen                                                                                                                    |
 | `viewer/batch-drain-viewer`      | (V11) A viewer watches through one rung's postage running out: the picture keeps moving, they are never told the broadcast ended, and the master loses exactly that rung. Needs an armed stage |
-| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's catch-up limit, rather than at the head of the live window                                        |
+| `viewer/late-join`               | A viewer joining three minutes into a broadcast starts at the live edge, within the client's jump limit, rather than at the head of the live window                                            |
 
 - None of them asserts how far behind live the player sat. That figure is printed and filed.
 - V7 and V9 tolerate an overlay that says nothing during the freeze (`mustSpeak: false`). They refuse
