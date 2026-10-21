@@ -21,13 +21,16 @@ interface Attempts {
   pending: number;
   lastFailureAt: number;
   lockedUntil: number;
-  /** Failures this key gets free before it locks: {@link LOGIN_FREE_ATTEMPTS} unless the key has its own count. */
-  freeAttempts: number;
 }
 
-/** The account everywhere: the key of the account ceiling, {@link LOGIN_ACCOUNT_CEILING}. */
+const USERNAME_KEY_PREFIX = 'username:';
+
+/**
+ * The account everywhere: the key of the account ceiling, {@link LOGIN_ACCOUNT_CEILING}. Its free count belongs to the
+ * key ({@link freeAttemptsFor}), so whoever passes it gets the ceiling's count.
+ */
 export function usernameKey(username: string): string {
-  return `username:${username.toLowerCase()}`;
+  return `${USERNAME_KEY_PREFIX}${username.toLowerCase()}`;
 }
 
 /** The client address, as {@link limiterAddress} sees it: an IPv6 address by its /64. */
@@ -55,10 +58,22 @@ export function passwordChangeKey(userId: UserId): string {
   return `password-change:${userId}`;
 }
 
-/** A key with a free count of its own, rather than {@link LOGIN_FREE_ATTEMPTS}. */
-export interface CountedKey {
-  key: string;
-  freeAttempts: number;
+/**
+ * A signed-in user's own password asked again, from every address together: the admin's password change and its
+ * funding confirmations share it, so a stolen session gets the usual free failures in all, however many addresses it
+ * uses. A sign-in never counts on it, so guessing from outside cannot lock the owner's confirmations.
+ */
+export function confirmationKey(userId: UserId): string {
+  return `confirmation:${userId}`;
+}
+
+/**
+ * The failures a key gets free before it locks. A property of the key, never of the call that passes it: the
+ * ceiling's key ({@link usernameKey}) frees {@link LOGIN_ACCOUNT_CEILING} − 1, every other key
+ * {@link LOGIN_FREE_ATTEMPTS}.
+ */
+export function freeAttemptsFor(key: string): number {
+  return key.startsWith(USERNAME_KEY_PREFIX) ? LOGIN_ACCOUNT_CEILING - 1 : LOGIN_FREE_ATTEMPTS;
 }
 
 /** The keys one attempt is counted against. */
@@ -70,7 +85,7 @@ export interface AttemptKeys {
    * everywhere. A right password takes only its own attempt back out of these,
    * never anyone else's.
    */
-  shared?: readonly (string | CountedKey)[];
+  shared?: readonly string[];
 }
 
 /**
@@ -82,27 +97,31 @@ export interface AttemptKeys {
 export function signInKeys(username: string, ip: string): AttemptKeys {
   return {
     account: accountAtAddressKey(username, ip),
-    shared: [clientIpKey(ip), { key: usernameKey(username), freeAttempts: LOGIN_ACCOUNT_CEILING - 1 }],
+    shared: [clientIpKey(ip), usernameKey(username)],
   };
 }
 
 /**
  * An attempt that has been counted before it was made. Settle it with exactly
- * one of `fail` and `succeed` once the password has been checked.
+ * one of `fail` and `succeed` once the password has been checked, or with
+ * `release` when an error came first and the password's outcome is unknown.
  */
 export interface LoginAttempt {
   /** How long the caller must wait, or 0 when the attempt may go ahead. */
   readonly lockedForSeconds: number;
   /** The password was wrong. The attempt stays counted. */
   fail(): void;
-  /** The password was right. The attempt is taken back off the keys. */
+  /** The password was right. The attempt is taken back off the keys, and the account key is wiped. */
   succeed(): void;
+  /** Nothing is known about the password. The attempt is taken back off every key, and no earlier failure is wiped. */
+  release(): void;
 }
 
 /** A refused attempt reserved nothing, so it has nothing to settle. */
 const NOTHING_TO_SETTLE = {
   fail: () => undefined,
   succeed: () => undefined,
+  release: () => undefined,
 };
 
 /**
@@ -133,27 +152,28 @@ export class LoginLimiter {
    * reads it, and only the free attempts get through.
    */
   begin(keys: AttemptKeys): LoginAttempt {
-    const counted = [keys.account, ...(keys.shared ?? [])].map((key) =>
-      typeof key === 'string' ? { key, freeAttempts: LOGIN_FREE_ATTEMPTS } : key,
-    );
-    const all = counted.map(({ key }) => key);
+    const all = [keys.account, ...(keys.shared ?? [])];
     const now = this.now();
 
     const lockedForSeconds = Math.max(...all.map((key) => this.waitSeconds(key, now)));
     if (lockedForSeconds > 0) return { lockedForSeconds, ...NOTHING_TO_SETTLE };
 
     if (this.attempts.size >= MAX_TRACKED_KEYS) this.makeRoom(now);
-    for (const { key, freeAttempts } of counted) this.reserve(key, freeAttempts, now);
+    for (const key of all) this.reserve(key, now);
 
+    const release = (): void => {
+      for (const key of all) this.giveTheAttemptBack(key);
+    };
     return {
       lockedForSeconds: 0,
       fail: () => {
         for (const key of all) this.countFailure(key);
       },
       succeed: () => {
-        for (const key of all) this.giveTheAttemptBack(key);
+        release();
         this.attempts.delete(keys.account);
       },
+      release,
     };
   }
 
@@ -174,19 +194,19 @@ export class LoginLimiter {
     // Reserved attempts count towards the lockout even though none of them has
     // come back yet. Without that, twenty guesses sent at once would all pass
     // this check before the first of them had failed.
-    const withPending = entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending, entry.freeAttempts) : 0;
+    const withPending =
+      entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending, freeAttemptsFor(key)) : 0;
     const until = Math.max(entry.lockedUntil, withPending);
     return until <= now ? 0 : Math.ceil((until - now) / 1000);
   }
 
-  private reserve(key: string, freeAttempts: number, now: number): void {
+  private reserve(key: string, now: number): void {
     const entry = this.live(key, now);
     this.attempts.set(key, {
       failures: entry?.failures ?? 0,
       pending: (entry?.pending ?? 0) + 1,
       lastFailureAt: entry?.lastFailureAt ?? now,
       lockedUntil: entry?.lockedUntil ?? 0,
-      freeAttempts,
     });
   }
 
@@ -200,8 +220,7 @@ export class LoginLimiter {
       failures,
       pending: Math.max(0, entry.pending - 1),
       lastFailureAt: now,
-      lockedUntil: now + lockoutMsFor(failures, entry.freeAttempts),
-      freeAttempts: entry.freeAttempts,
+      lockedUntil: now + lockoutMsFor(failures, freeAttemptsFor(key)),
     });
   }
 
