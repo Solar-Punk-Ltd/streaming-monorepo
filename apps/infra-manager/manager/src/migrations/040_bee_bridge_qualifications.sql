@@ -1,9 +1,9 @@
--- The Bee image and Docker engine pairs the manager checked itself before any
--- transfer went through a bridge in them. The catalog in
--- src/domain/chequebook/beeBridgeQualification.ts stays as the seed, and this
--- table holds every other pair: a check that reads, and never writes, whether
--- the four paths the bridge script runs are there and executable and whether
--- bash has /dev/tcp.
+-- This table belonged to a Docker transport for chequebook transfers that the
+-- manager no longer has, and nothing reads it. It stays because this migration
+-- was applied. It held the Bee image and Docker engine pairs the manager had
+-- checked before a transfer went through a bridge in them: a check that read,
+-- and never wrote, whether the four paths the bridge script ran were there and
+-- executable and whether bash had /dev/tcp.
 --
 -- A pass qualifies exactly its tuple, under the check revision that made it.
 -- A failure is kept as history with the check it failed, and qualifies

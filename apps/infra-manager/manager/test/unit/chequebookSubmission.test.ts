@@ -147,8 +147,8 @@ describe('durable chequebook submission', () => {
     };
     await assert.rejects(h.service().submit(transferIntent()), (error: unknown) => {
       assert.ok(error instanceof ChequebookPreparationError, `got ${String(error)}`);
-      assert.deepEqual(error.refusal, { cause: 'target_changed', check: null });
-      assert.equal(error.message, chequebookRefusalSentence({ cause: 'target_changed', check: null }));
+      assert.deepEqual(error.refusal, { cause: 'target_changed' });
+      assert.equal(error.message, chequebookRefusalSentence({ cause: 'target_changed' }));
       return true;
     });
     assert.equal(h.submissions(), 0);
@@ -162,7 +162,7 @@ describe('durable chequebook submission', () => {
     await assert.rejects(service.submit(transferIntent()), (error: unknown) => {
       assert.ok(error instanceof Error);
       assert.equal(error.name, 'ChequebookPreparationError');
-      assert.equal(error.message, chequebookRefusalSentence({ cause: 'unavailable', check: null }));
+      assert.equal(error.message, chequebookRefusalSentence({ cause: 'unavailable' }));
       assert.ok(!JSON.stringify(error).includes('sensitive'));
       return true;
     });

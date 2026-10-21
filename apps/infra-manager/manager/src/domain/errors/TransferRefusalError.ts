@@ -1,6 +1,5 @@
 import {
   chequebookRefusal,
-  type BeeBridgeCheck,
   type ChequebookRefusal,
   type ChequebookRefusalCause,
 } from '@streaming-infra-manager/common';
@@ -14,9 +13,9 @@ import {
 export abstract class TransferRefusalError extends Error {
   readonly refusal: ChequebookRefusal;
 
-  protected constructor(message: string, cause: ChequebookRefusalCause, check: BeeBridgeCheck | null) {
+  protected constructor(message: string, cause: ChequebookRefusalCause) {
     super(message);
-    this.refusal = chequebookRefusal(cause, check);
+    this.refusal = chequebookRefusal(cause);
   }
 
   /** The refusal one of the manager's own chequebook errors carries, and null for anything else. */

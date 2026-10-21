@@ -111,8 +111,6 @@ The Docker-backed workflow's `integration` job runs the whole suite on a GitHub 
 
 ## The other suites
 
-- The native transport suites in `manager/test/native/` own temporary Unix sockets and fork Node
-  children. They need no manager, no Docker and no environment: `pnpm test:native` from `manager/`.
 - The SQL suites in `manager/test/database/` use disposable PostgreSQL databases with synthetic
   rows, one per suite family, through `pnpm test:database`. Setting `DATABASE_URL` does not select
   their target, and the runner refuses a database that already holds the manager's tables.

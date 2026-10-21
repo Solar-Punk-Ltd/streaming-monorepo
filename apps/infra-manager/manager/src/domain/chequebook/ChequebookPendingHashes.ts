@@ -1,17 +1,9 @@
 import type { ChequebookTransferContext, ChequebookOperation } from '@streaming-infra-manager/common';
 import { performance } from 'node:perf_hooks';
 import { ChainReadError } from '../errors/ChainReadError.js';
-import { PinnedBeeSession, normalizePinnedBeeSessionOptions, type BeeTransferSession } from './PinnedBeeSession.js';
-import {
-  ownedAcquisitionBudgets,
-  readBeeTransferIdentity,
-  type ResolveConfiguredBeeTarget,
-  type CaptureTransferTarget,
-  type AcquireBoundBeeStream,
-  type OwnedTransferPreparationOptions,
-} from './ChequebookTransferPreparation.js';
+import { PinnedBeeSession, type BeeTransferSession } from './PinnedBeeSession.js';
+import { readBeeTransferIdentity, type ResolveConfiguredBeeTarget } from './ChequebookTransferPreparation.js';
 import { recoveryHashes } from './recoveryObservation.js';
-import { requireBeeBindingTarget } from './DockerBeeBinding.js';
 
 type PendingSession = Pick<BeeTransferSession, 'getAddresses' | 'getWallet' | 'getChequebookAddress' | 'dispose'> & {
   getPendingTransactions(): Promise<unknown>;
@@ -106,9 +98,9 @@ export class ChequebookPendingHashes extends PendingHashesReader {
   ) {
     super(async (operation, signal, deadline) => {
       requireActive(signal, deadline);
-      // Only the deployment instance the move was sent through may answer for it, as on the Docker route: one
-      // recreated under the same name, with the same wallet, may hold an empty list while the original node still has
-      // the transfer pending. A saved move with no instance cannot be matched, so it is refused too.
+      // Only the deployment instance the move was sent through may answer for it: one recreated under the same name,
+      // with the same wallet, may hold an empty list while the original node still has the transfer pending. A saved
+      // move with no instance cannot be matched, so it is refused too.
       if (!operation.profileInstanceId) throw new ChainReadError();
       const target = await resolveTarget(operation.profileName);
       requireActive(signal, deadline);
@@ -116,44 +108,5 @@ export class ChequebookPendingHashes extends PendingHashesReader {
         throw new ChainReadError();
       return createSession(target.url);
     });
-  }
-
-  static fromOwnedTarget(
-    captureTarget: CaptureTransferTarget,
-    acquireBoundStream: AcquireBoundBeeStream,
-    options: OwnedTransferPreparationOptions = {},
-  ): Pick<ChequebookPendingHashes, 'read'> {
-    try {
-      const copied = structuredClone(options);
-      const sessionOptions = normalizePinnedBeeSessionOptions(copied);
-      const budgets = ownedAcquisitionBudgets(copied);
-      return new PendingHashesReader(async (operation, signal, deadline) => {
-        requireActive(signal, deadline);
-        if (!operation.profileInstanceId) throw new ChainReadError();
-        const target = structuredClone(await captureTarget(operation.profileName, operation.profileInstanceId));
-        requireActive(signal, deadline);
-        if (
-          target?.profile?.name !== operation.profileName ||
-          target.profile.instanceId !== operation.profileInstanceId
-        )
-          throw new ChainReadError();
-        if (target.profile.components) Object.freeze(target.profile.components);
-        Object.freeze(target.profile);
-        Object.freeze(target.reservation);
-        Object.freeze(target);
-        const acquired = await acquireBoundStream(target, budgets, signal);
-        try {
-          requireActive(signal, deadline);
-          requireBeeBindingTarget(structuredClone(acquired.binding), target);
-          requireActive(signal, deadline);
-          return PinnedBeeSession.fromStream(acquired.stream, sessionOptions);
-        } catch {
-          acquired.stream.destroy();
-          throw new ChainReadError();
-        }
-      }, copied.timeoutMs);
-    } catch {
-      throw new ChainReadError();
-    }
   }
 }

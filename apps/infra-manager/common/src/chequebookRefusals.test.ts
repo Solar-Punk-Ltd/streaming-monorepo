@@ -10,8 +10,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
-  BEE_BRIDGE_BINARIES,
-  BEE_BRIDGE_CHECKS,
   CHEQUEBOOK_PREFLIGHT_REFUSALS,
   CHEQUEBOOK_REFUSAL_CAUSES,
   chequebookPreflightSentence,
@@ -27,20 +25,12 @@ function assertPlain(sentence: string): void {
   assert.equal(sentence.includes(';'), false, sentence);
 }
 
-const everyRefusal = () => [
-  ...CHEQUEBOOK_REFUSAL_CAUSES.filter((cause) => cause !== 'bridge_not_qualified').map((cause) =>
-    chequebookRefusal(cause),
-  ),
-  chequebookRefusal('bridge_not_qualified'),
-  ...BEE_BRIDGE_CHECKS.map((check) => chequebookRefusal('bridge_not_qualified', check)),
-];
+const everyRefusal = () => CHEQUEBOOK_REFUSAL_CAUSES.map((cause) => chequebookRefusal(cause));
 
 describe('chequebook refusal causes', () => {
   it('names at least the causes a transfer on a new host can meet', () => {
     for (const cause of [
-      'docker_unreachable',
       'bee_container_not_found',
-      'bridge_not_qualified',
       'chain_endpoint_missing',
       'chain_unreachable',
       'wrong_chain',
@@ -50,7 +40,7 @@ describe('chequebook refusal causes', () => {
     }
   });
 
-  it('gives every cause, and every failed bridge check, a sentence of its own', () => {
+  it('gives every cause a sentence of its own', () => {
     const sentences = everyRefusal().map(chequebookRefusalSentence);
     assert.equal(new Set(sentences).size, sentences.length, 'no two refusals read the same');
     for (const sentence of sentences) {
@@ -67,24 +57,7 @@ describe('chequebook refusal causes', () => {
     for (const refusal of everyRefusal()) assert.match(chequebookRefusalSentence(refusal), /Nothing was sent\./);
   });
 
-  it('names the missing path when the bridge check found one missing', () => {
-    for (const [check, path] of Object.entries(BEE_BRIDGE_BINARIES)) {
-      assert.ok((BEE_BRIDGE_CHECKS as readonly string[]).includes(check), `${check} is one of the checks`);
-      assert.ok(
-        chequebookRefusalSentence(
-          chequebookRefusal('bridge_not_qualified', check as keyof typeof BEE_BRIDGE_BINARIES),
-        ).includes(path),
-        check,
-      );
-    }
-    assert.match(chequebookRefusalSentence(chequebookRefusal('bridge_not_qualified', 'dev_tcp')), /\/dev\/tcp/);
-  });
-
   it('names the setting to change when a manager setting is the cause', () => {
-    assert.match(
-      chequebookRefusalSentence(chequebookRefusal('docker_setting_invalid')),
-      /CHEQUEBOOK_DOCKER_TRANSPORTS/,
-    );
     for (const cause of ['chain_setting_invalid', 'chain_endpoint_missing'] as const) {
       const sentence = chequebookRefusalSentence(chequebookRefusal(cause));
       for (const setting of [/CHEQUEBOOK_RPC_ENDPOINTS/, /FUNDING_RPC_URL/, /BEE_RPC_ENDPOINT/]) {
@@ -93,14 +66,8 @@ describe('chequebook refusal causes', () => {
     }
   });
 
-  it('never sends the operator to Docker or ssh for a cause the Bee API route can answer', () => {
-    const DOCKER_ROUTE_ONLY = [
-      'docker_unreachable',
-      'docker_route_missing',
-      'docker_setting_invalid',
-      'bridge_not_qualified',
-    ];
-    for (const cause of CHEQUEBOOK_REFUSAL_CAUSES.filter((cause) => !DOCKER_ROUTE_ONLY.includes(cause))) {
+  it('never sends the operator to Docker or ssh', () => {
+    for (const cause of CHEQUEBOOK_REFUSAL_CAUSES) {
       const sentence = chequebookRefusalSentence(chequebookRefusal(cause));
       assert.doesNotMatch(sentence, /docker|ssh|endpoint the Bee node uses|started without/i, cause);
     }
@@ -110,28 +77,22 @@ describe('chequebook refusal causes', () => {
     assert.match(chequebookRefusalSentence(chequebookRefusal('bee_container_unsupported')), /port .*reserved/);
   });
 
-  it('carries a failed check only on a bridge that was not qualified', () => {
-    assert.throws(() => chequebookRefusal('docker_unreachable', 'bash'));
-    assert.deepEqual(chequebookRefusal('bridge_not_qualified', 'bash'), {
-      cause: 'bridge_not_qualified',
-      check: 'bash',
-    });
-    assert.deepEqual(chequebookRefusal('wrong_chain'), { cause: 'wrong_chain', check: null });
+  it('carries its cause and nothing else, frozen', () => {
+    assert.deepEqual(chequebookRefusal('wrong_chain'), { cause: 'wrong_chain' });
     assert.ok(Object.isFrozen(chequebookRefusal('wrong_chain')));
   });
 
-  it('recognises only a refusal drawn from the closed lists', () => {
+  it('recognises only a refusal drawn from the closed list', () => {
     for (const refusal of everyRefusal()) assert.equal(isChequebookRefusal(refusal), true);
     for (const value of [
       null,
       undefined,
-      'docker_unreachable',
+      'wrong_chain',
       {},
-      { cause: 'docker_unreachable' },
-      { cause: 'Connection refused by 10.0.0.1', check: null },
-      { cause: 'docker_unreachable', check: 'bash' },
-      { cause: 'bridge_not_qualified', check: '/usr/bin/whoami' },
-      { cause: 'wrong_chain', check: null, detail: 'x' },
+      { cause: 'not_a_cause' },
+      { cause: 'Connection refused by 10.0.0.1' },
+      { cause: 'wrong_chain', check: null },
+      { cause: 'wrong_chain', detail: 'x' },
     ]) {
       assert.equal(isChequebookRefusal(value), false, JSON.stringify(value));
     }

@@ -17,12 +17,12 @@ manager imports the shared packages), `tools/app-workspace` (the images build th
 `.oxfmtrc.json`, or the workflow file. Its steps run in `apps/infra-manager`. All four jobs run on
 `ubuntu-latest`.
 
-| Job        | What it runs                                                                                                                                                                                                                                                        | Limit  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| `checks`   | Install from the frozen lockfile, build `common`, type check every package with its tests, lint with oxlint, check formatting with oxfmt, the unit suites of `common`, the manager and the frontend, the manager's native transport suites, and the frontend build. | 20 min |
-| `database` | The SQL suites in `manager/test/database/`, each against its own disposable database in a Postgres service container, through `manager/test/database/run-all.mjs`.                                                                                                  | 20 min |
-| `browser`  | The suites under `frontend/test/`, most of them driving a real headless Chrome against a real Vite, through `frontend/test/run-all.mjs`.                                                                                                                            | 30 min |
-| `images`   | Builds `frontend/Dockerfile` and `manager/Dockerfile` the way a deploy builds them on the host, from a copy of the manager's folder made by `tools/app-workspace/in-copy.mjs`, and throws both images away. Nothing is pushed.                                      | 20 min |
+| Job        | What it runs                                                                                                                                                                                                                   | Limit  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| `checks`   | Install from the frozen lockfile, build `common`, type check every package with its tests, lint with oxlint, check formatting with oxfmt, the unit suites of `common`, the manager and the frontend, and the frontend build.   | 20 min |
+| `database` | The SQL suites in `manager/test/database/`, each against its own disposable database in a Postgres service container, through `manager/test/database/run-all.mjs`.                                                             | 20 min |
+| `browser`  | The suites under `frontend/test/`, most of them driving a real headless Chrome against a real Vite, through `frontend/test/run-all.mjs`.                                                                                       | 30 min |
+| `images`   | Builds `frontend/Dockerfile` and `manager/Dockerfile` the way a deploy builds them on the host, from a copy of the manager's folder made by `tools/app-workspace/in-copy.mjs`, and throws both images away. Nothing is pushed. | 20 min |
 
 The manager's unit tests compare the stack's guides, samples and contract fixtures against
 `apps/hls-stream` of the same commit, so nothing else is fetched.
@@ -115,12 +115,6 @@ three:
 cd manager
 SHLS_ROOT="$(mktemp -d)" BEE_LOCAL_HOST=127.0.0.1 DATABASE_URL=postgres://unused@localhost/unused \
   pnpm exec tsx --conditions=development --test test/unit/<file>
-```
-
-The native transport suites, which need nothing:
-
-```sh
-pnpm --filter @streaming-infra-manager/api test:native
 ```
 
 The SQL suites, on a disposable Postgres of their own:

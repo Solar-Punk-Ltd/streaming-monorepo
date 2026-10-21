@@ -5,7 +5,6 @@ import type { Duplex } from 'node:stream';
 import type { BeeTransaction, ChequebookBalance } from '@streaming-infra-manager/common';
 import type { BeeAddresses, BeeChequebookAddress, BeeWallet } from '../BeeClient.js';
 import { BeeConnectionError } from '../errors/BeeConnectionError.js';
-import { OwnedHttpStream } from './OwnedHttpStream.js';
 
 export interface BeeTransferSession {
   getAddresses(): Promise<BeeAddresses>;
@@ -25,7 +24,7 @@ export interface PinnedBeeSessionOptions {
   maxResponseBytes?: number;
 }
 
-export function normalizePinnedBeeSessionOptions(
+function normalizePinnedBeeSessionOptions(
   options: PinnedBeeSessionOptions,
 ): Readonly<Required<PinnedBeeSessionOptions>> {
   if (!options || typeof options !== 'object') throw new BeeConnectionError();
@@ -46,7 +45,10 @@ export function normalizePinnedBeeSessionOptions(
   return Object.freeze(value);
 }
 
-type ConnectionSource = { kind: 'url'; hostname: string; port: number } | { kind: 'owned'; stream: OwnedHttpStream };
+interface ConnectionSource {
+  readonly hostname: string;
+  readonly port: number;
+}
 
 class OneConnectionAgent extends http.Agent {
   #opened = false;
@@ -58,7 +60,6 @@ class OneConnectionAgent extends http.Agent {
     private readonly unavailable: () => void,
   ) {
     super({ keepAlive: true, maxSockets: 1, maxTotalSockets: 1, maxFreeSockets: 1 });
-    if (source.kind === 'owned') this.own(source.stream);
   }
 
   // Node's Agent calls this hook for every attempted connection, including replacement sockets.
@@ -71,7 +72,7 @@ class OneConnectionAgent extends http.Agent {
       return;
     }
     this.#opened = true;
-    if (this.source.kind === 'url') this.own(createConnection({ host: this.source.hostname, port: this.source.port }));
+    this.own(createConnection({ host: this.source.hostname, port: this.source.port }));
     return this.#socket;
   }
 
@@ -223,7 +224,7 @@ class HttpBeeSession implements BeeTransferSession {
   }
 }
 
-/** Only for a direct Bee listener or connection-preserving Docker port mapping, never a routing proxy. */
+/** Only for a direct Bee listener or a connection-preserving Docker port mapping, never a routing proxy. */
 export class PinnedBeeSession extends HttpBeeSession {
   constructor(baseUrl: string, options: PinnedBeeSessionOptions = {}) {
     let target: URL;
@@ -241,24 +242,6 @@ export class PinnedBeeSession extends HttpBeeSession {
     } catch {
       throw new BeeConnectionError();
     }
-    super(
-      target,
-      { kind: 'url', hostname: target.hostname.replace(/^\[|\]$/g, ''), port: Number(target.port || 80) },
-      options,
-    );
-  }
-
-  /** Takes ownership now. The fixed authority supplies HTTP headers only, never a network destination. */
-  static fromStream(
-    stream: Duplex,
-    options: PinnedBeeSessionOptions = {},
-  ): BeeTransferSession & Pick<HttpBeeSession, 'getPendingTransactions'> {
-    const owned = new OwnedHttpStream(stream);
-    try {
-      return new HttpBeeSession(new URL('http://bee.invalid/'), { kind: 'owned', stream: owned }, options);
-    } catch {
-      owned.destroy();
-      throw new BeeConnectionError();
-    }
+    super(target, { hostname: target.hostname.replace(/^\[|\]$/g, ''), port: Number(target.port || 80) }, options);
   }
 }

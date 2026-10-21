@@ -3,14 +3,14 @@
  *
  * Each case drives the production composition behind the real router and error
  * handler, breaks exactly one thing on the way to the node or the chain, and
- * reads the 503 back over HTTP: the cause the page keys its sentence on, the
- * failed bridge check where there is one, and the sentence itself. Nothing is
- * admitted and nothing is sent in any of them, and no answer carries upstream
- * text, an endpoint or a socket path.
+ * reads the 503 back over HTTP: the cause the page keys its sentence on, and
+ * the sentence itself. The node is reached through its Bee API at the
+ * deployment's address and the port its Bee container recorded, which must be
+ * the one the deployment's reservation owns. Nothing is admitted and nothing is
+ * sent in any of them, and no answer carries upstream text or an endpoint.
  */
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { PassThrough } from 'node:stream';
 import { describe, it, type TestContext } from 'node:test';
 import express from 'express';
 import pg from 'pg';
@@ -19,7 +19,6 @@ import {
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
-  type BeeBridgeCheck,
   type ChequebookRefusalCause,
 } from '@streaming-infra-manager/common';
 import { createChequebookRouter } from '../../src/api/routes/chequebook.js';
@@ -27,41 +26,25 @@ import { createRequireSession } from '../../src/api/middleware/requireSession.js
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
 import type { ChequebookService } from '../../src/domain/ChequebookService.js';
-import { acquireDockerBeeStream } from '../../src/domain/chequebook/acquireDockerBeeStream.js';
+import type { BeeWallet } from '../../src/domain/BeeClient.js';
 import type { ChequebookChainReader } from '../../src/domain/chequebook/ChequebookChainRegistry.js';
 import {
   createChequebookOperationsService,
-  type ChequebookServiceDependencies,
+  type ChequebookRuntime,
 } from '../../src/domain/chequebook/createChequebookOperationsService.js';
+import { BeeConnectionError } from '../../src/domain/errors/BeeConnectionError.js';
 import { ChequebookProfileChangedError } from '../../src/domain/errors/ChequebookProfileChangedError.js';
 import { ChequebookTargetChangedError } from '../../src/domain/errors/ChequebookTargetChangedError.js';
 import type { Profile } from '../../src/types/index.js';
 import {
   InMemoryChequebookOperations,
   profileInstanceId,
+  syntheticTarget,
   transferContext,
   transferIntent,
 } from '../support/chequebookOperations.js';
-import { qualifiedBridge } from '../support/qualifiedBeeBridge.js';
-import { fakeForwardHarness, remoteLocator } from '../support/sshForwardLifecycle.js';
-import {
-  syntheticContainerId,
-  syntheticContainerInspect,
-  syntheticDockerBee,
-  syntheticTarget,
-  type SyntheticBeeHandler,
-  type SyntheticDockerAnswer,
-} from '../support/syntheticDockerBee.js';
+import { syntheticBeeNode } from '../support/connectedChequebook.js';
 
-const localTransports = () =>
-  JSON.stringify({
-    [syntheticTarget.alias]: {
-      locator: { kind: 'unix', alias: syntheticTarget.alias, socketPath: '/synthetic/docker.sock' },
-      qualificationIds: ['synthetic-only'],
-    },
-  });
-const remoteTransports = () =>
-  JSON.stringify({ [syntheticTarget.alias]: { locator: remoteLocator(), qualificationIds: ['synthetic-only'] } });
 const configuredChain = '{"100":"https://rpc.example.invalid/private-token"}';
 
 function chainReader(overrides: Partial<ChequebookChainReader> = {}): ChequebookChainReader {
@@ -89,37 +72,70 @@ function chainReader(overrides: Partial<ChequebookChainReader> = {}): Chequebook
 }
 
 interface Breakage {
-  readonly runtime?: {
-    readonly rpcEndpoints?: string;
-    readonly chainEndpoint?: string;
-    readonly dockerTransports?: string;
-    readonly dockerHost?: string;
-  };
-  readonly dependencies?: (fixture: ReturnType<typeof syntheticDockerBee>) => Partial<ChequebookServiceDependencies>;
-  readonly bee?: SyntheticBeeHandler;
-  readonly docker?: SyntheticDockerAnswer;
+  readonly runtime?: Partial<ChequebookRuntime>;
+  readonly status?: Profile['status'];
+  readonly containers?: { service: string; ports: Record<string, number> }[];
+  readonly capture?: () => Promise<typeof syntheticTarget>;
+  readonly chainReader?: () => ChequebookChainReader;
+  /** What the node answers for its wallet, or null for a node that does not answer it. */
+  readonly wallet?: BeeWallet | null;
 }
 
 async function refusedDeposit(t: TestContext, breakage: Breakage) {
   const pool = new pg.Pool({ connectionString: 'postgres://unused' });
   t.after(() => pool.end());
-  const fixture = syntheticDockerBee(t, breakage.bee, false, breakage.docker);
   const repository = new InMemoryChequebookOperations();
+  const node = syntheticBeeNode();
+  const deployment = {
+    instance_id: profileInstanceId,
+    name: syntheticTarget.profile.name,
+    port_slot: 1,
+    host: 'bee-host',
+    kind: 'streamer',
+    components: null,
+    status: breakage.status ?? 'RUNNING',
+    created_at: new Date(0),
+    updated_at: new Date(0),
+    stack_version_id: 1,
+  } as Profile;
   const service = createChequebookOperationsService(
     pool,
-    { rpcEndpoints: configuredChain, dockerTransports: localTransports(), ...breakage.runtime },
+    { rpcEndpoints: configuredChain, ...breakage.runtime },
     {
       repository,
-      qualificationCatalog: [qualifiedBridge()],
-      captureTarget: async () => structuredClone(syntheticTarget),
-      createChainReader: () => chainReader(),
-      connectUnix: () => ({ stream: fixture.transport, connected: Promise.resolve() }),
-      preparation: { cleanupGraceMs: 20, timeoutMs: 3000 },
-      ...breakage.dependencies?.(fixture),
+      profiles: { findByName: async () => deployment },
+      containers: {
+        listApiContainers: async () =>
+          (
+            breakage.containers ?? [
+              { service: 'bee-uploader', ports: { BEE_UPLOADER_API_PORT: syntheticTarget.reservation.port } },
+            ]
+          ).map((container) => ({ ...container, buildId: null, buildCommit: null, buildLabel: null })),
+      },
+      captureTarget: breakage.capture ?? (async () => structuredClone(syntheticTarget)),
+      createChainReader: breakage.chainReader ?? (() => chainReader()),
+      createSession: (url) => {
+        const session = node.createSession(url);
+        const { wallet } = breakage;
+        if (wallet === undefined) return session;
+        return {
+          ...session,
+          getWallet: async () => {
+            if (wallet === null) throw new BeeConnectionError();
+            return structuredClone(wallet);
+          },
+        };
+      },
+      preparation: { timeoutMs: 3000 },
     },
   );
   t.after(() => service.shutdown());
-  return { ...(await answerDeposit(t, service)), repository, fixture };
+  return {
+    ...(await answerDeposit(t, service)),
+    repository,
+    sessions: () => node.sessionUrls().length,
+    posts: () => node.requests().filter((request) => request.method === 'POST').length,
+  };
 }
 
 /** Posts one deposit through the real router and error handler, as the page does, and reads the answer back. */
@@ -167,364 +183,41 @@ async function answerDeposit(t: TestContext, service: ReturnType<typeof createCh
   return { status: response.status, body: JSON.parse(text) as Record<string, unknown>, text };
 }
 
-function assertRefused(
-  answer: Awaited<ReturnType<typeof refusedDeposit>>,
-  cause: ChequebookRefusalCause,
-  check: BeeBridgeCheck | null = null,
-) {
+function assertRefused(answer: Awaited<ReturnType<typeof refusedDeposit>>, cause: ChequebookRefusalCause) {
   assert.equal(answer.status, 503, answer.text);
   assert.deepEqual(answer.body, {
     error: 'chequebook_preparation_unavailable',
     cause,
-    check,
-    message: chequebookRefusalSentence({ cause, check }),
+    message: chequebookRefusalSentence({ cause }),
   });
   assert.equal(answer.repository.rows.size, 0, 'nothing was admitted');
-  assert.equal(answer.fixture.counts().posts, 0, 'nothing was sent');
-  for (const secret of ['rpc.example.invalid', 'private', '/synthetic', 'ECONNREFUSED', 'example.invalid']) {
+  assert.equal(answer.posts(), 0, 'nothing was sent');
+  for (const secret of ['rpc.example.invalid', 'private', 'example.invalid']) {
     assert.equal(answer.text.includes(secret), false, `the answer carries no ${secret}`);
   }
 }
 
-const refuseContainerList =
-  (containers: unknown[]): SyntheticDockerAnswer =>
-  (path) =>
-    path === '/containers/json' ? { body: containers } : undefined;
-const inspectWith =
-  (change: (inspect: ReturnType<typeof syntheticContainerInspect>) => void): SyntheticDockerAnswer =>
-  (path) => {
-    if (path !== `/containers/${syntheticContainerId}/json`) return undefined;
-    const inspect = syntheticContainerInspect();
-    change(inspect);
-    return { body: inspect };
-  };
-const beeAnswers =
-  (url: string, status: number, body: unknown): SyntheticBeeHandler =>
-  (request, response) => {
-    if (request.url !== url) return false;
-    response.statusCode = status;
-    response.end(JSON.stringify(body));
-    return true;
-  };
-
-function remoteForward(fixture: ReturnType<typeof syntheticDockerBee>): Partial<ChequebookServiceDependencies> {
-  const remote = fakeForwardHarness();
-  remote.dependencies.clock = {
-    now: () => performance.now(),
-    schedule(call, milliseconds) {
-      const timer = setTimeout(call, milliseconds);
-      return () => clearTimeout(timer);
-    },
-  };
-  remote.dependencies.connect = () => ({ stream: fixture.transport, connected: Promise.resolve() });
-  remote.dependencies.acquire = acquireDockerBeeStream;
-  return { ssh: remote.dependencies };
-}
-
-describe('a refused transfer names its cause in the answer', { timeout: 20_000 }, () => {
-  it('Docker unreachable: the local socket refused the connection', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({
-          connectUnix: () => {
-            const stream = new PassThrough();
-            stream.destroy();
-            return { stream, connected: Promise.reject(new Error('connect ECONNREFUSED /synthetic/docker.sock')) };
-          },
-        }),
-      }),
-      'docker_unreachable',
-    );
-  });
-
-  it('Docker setting invalid: CHEQUEBOOK_DOCKER_TRANSPORTS does not parse', async (t) => {
-    assertRefused(await refusedDeposit(t, { runtime: { dockerTransports: '{broken' } }), 'docker_setting_invalid');
-  });
-
-  it('Docker route missing: a host written as user@host names no Host block, and nothing is configured for it', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { dockerTransports: undefined },
-        dependencies: () => ({
-          captureTarget: async () => ({ ...structuredClone(syntheticTarget), alias: 'deploy@bee-eu-1' }),
-        }),
-      }),
-      'docker_route_missing',
-    );
-  });
-
-  it('Docker route missing: DOCKER_HOST reaches the local Docker some other way than a socket', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { dockerTransports: undefined, dockerHost: 'tcp://127.0.0.1:2375' },
-        dependencies: () => ({
-          captureTarget: async () => ({ ...structuredClone(syntheticTarget), alias: 'localhost' }),
-        }),
-      }),
-      'docker_route_missing',
-    );
-  });
-
-  it('Bee container not found: Docker lists no running container for the deployment', async (t) => {
-    assertRefused(await refusedDeposit(t, { docker: refuseContainerList([]) }), 'bee_container_not_found');
-  });
-
-  it('Bee container not found reaches the answer through the ssh path too', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { dockerTransports: remoteTransports() },
-        docker: refuseContainerList([]),
-        dependencies: remoteForward,
-      }),
-      'bee_container_not_found',
-    );
-  });
-
-  it('Bee container unsupported: it publishes its API on another port than the reserved one', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        docker: inspectWith((inspect) => {
-          inspect.NetworkSettings.Ports['1633/tcp'] = [{ HostIp: '0.0.0.0', HostPort: '11634' }];
-        }),
-      }),
-      'bee_container_unsupported',
-    );
-  });
-
-  it('Bee container unsupported: it runs on the host network', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        docker: inspectWith((inspect) => {
-          inspect.HostConfig.NetworkMode = 'host';
-        }),
-      }),
-      'bee_container_unsupported',
-    );
-  });
-
-  it('bridge not qualified: the pinned qualification ids match no image the host runs', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({ qualificationCatalog: [{ ...qualifiedBridge(), engineVersion: '29.1.4' }] }),
-      }),
-      'bridge_not_qualified',
-      null,
-    );
-  });
-
-  it('target changed: the deployment is not in a state a transfer can own', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({
-          captureTarget: async () => {
-            throw new ChequebookTargetChangedError();
-          },
-        }),
-      }),
-      'target_changed',
-    );
-  });
-
-  it('target changed: the Docker it reached is another daemon than the verified one', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        docker: (path) => (path === '/info' ? { body: { ID: 'another-daemon', ServerVersion: '29.1.3' } } : undefined),
-      }),
-      'target_changed',
-    );
-  });
-
-  it('Bee unreadable: the node answers its wallet with an error', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, { bee: beeAnswers('/wallet', 500, { message: 'private upstream diagnostic' }) }),
-      'bee_unreadable',
-    );
-  });
-
-  it('unsupported chain: the node runs on a chain with no pinned BZZ token', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        bee: beeAnswers('/wallet', 200, {
-          chainID: 31337,
-          walletAddress: transferContext.nodeAddress,
-          chequebookContractAddress: transferContext.chequebookAddress,
-          bzzBalance: '1',
-          nativeTokenBalance: '1',
-        }),
-      }),
-      'unsupported_chain',
-    );
-  });
-
-  it('chain setting invalid: CHEQUEBOOK_RPC_ENDPOINTS does not parse', async (t) => {
-    assertRefused(await refusedDeposit(t, { runtime: { rpcEndpoints: '{broken' } }), 'chain_setting_invalid');
-  });
-
-  it("chain endpoint missing: nothing is configured for the node's chain and the node was started without one", async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { rpcEndpoints: '{"1":"https://rpc.example.invalid"}' },
-        docker: inspectWith((inspect) => {
-          inspect.Config.Cmd = ['start', '--full-node=false'];
-        }),
-      }),
-      'chain_endpoint_missing',
-    );
-  });
-
-  it("chain endpoint missing: with no endpoint configured, the node's own is never read", async (t) => {
-    // The node was started with an endpoint that answers for another chain; the registry never asks it.
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { rpcEndpoints: undefined },
-        dependencies: () => ({
-          createChainReader: () =>
-            chainReader({
-              async chainId() {
-                return 1;
-              },
-            }),
-        }),
-      }),
-      'chain_endpoint_missing',
-    );
-  });
-
-  it("wrong chain: the manager's default endpoint answers for another chain than the node's", async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        runtime: { rpcEndpoints: undefined, chainEndpoint: 'https://rpc.example.invalid/private-default' },
-        dependencies: () => ({
-          createChainReader: () =>
-            chainReader({
-              async chainId() {
-                return 1;
-              },
-            }),
-        }),
-      }),
-      'wrong_chain',
-    );
-  });
-
-  it('chain unreachable: the endpoint does not answer', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({
-          createChainReader: () =>
-            chainReader({
-              async chainId() {
-                throw new Error('fetch failed https://rpc.example.invalid/private-token');
-              },
-            }),
-        }),
-      }),
-      'chain_unreachable',
-    );
-  });
-
-  it("wrong chain: the endpoint answers for another chain than the node's", async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({
-          createChainReader: () =>
-            chainReader({
-              async chainId() {
-                return 1;
-              },
-            }),
-        }),
-      }),
-      'wrong_chain',
-    );
-  });
-
-  it('unavailable: a failure nothing classified still answers a fixed sentence', async (t) => {
-    assertRefused(
-      await refusedDeposit(t, {
-        dependencies: () => ({
-          captureTarget: async () => {
-            throw new Error('private synthetic driver diagnostic');
-          },
-        }),
-      }),
-      'unavailable',
-    );
-  });
-});
-
-/**
- * The direct route, as the running manager is built: the node is reached through its Bee API at the deployment's
- * address and the port its Bee container recorded, which must be the one the deployment's reservation owns. Each case
- * breaks one thing the resolver checks and reads the cause back, and no session to the node is ever opened.
- */
-interface DirectBreakage {
-  readonly status?: Profile['status'];
-  readonly containers?: { service: string; ports: Record<string, number> }[];
-  readonly capture?: () => Promise<typeof syntheticTarget>;
-}
-
-async function directDeposit(t: TestContext, breakage: DirectBreakage) {
-  const pool = new pg.Pool({ connectionString: 'postgres://unused' });
-  t.after(() => pool.end());
-  const repository = new InMemoryChequebookOperations();
-  let sessions = 0;
-  const deployment = {
-    instance_id: profileInstanceId,
-    name: syntheticTarget.profile.name,
-    port_slot: 1,
-    host: 'bee-host',
-    kind: 'streamer',
-    components: null,
-    status: breakage.status ?? 'RUNNING',
-    created_at: new Date(0),
-    updated_at: new Date(0),
-    stack_version_id: 1,
-  } as Profile;
-  const service = createChequebookOperationsService(
-    pool,
-    { rpcEndpoints: configuredChain },
-    {
-      repository,
-      profiles: { findByName: async () => deployment },
-      containers: {
-        listApiContainers: async () =>
-          (
-            breakage.containers ?? [
-              { service: 'bee-uploader', ports: { BEE_UPLOADER_API_PORT: syntheticTarget.reservation.port } },
-            ]
-          ).map((container) => ({ ...container, buildId: null, buildCommit: null, buildLabel: null })),
-      },
-      captureTarget: breakage.capture ?? (async () => structuredClone(syntheticTarget)),
-      createChainReader: () => chainReader(),
-      createSession: () => {
-        sessions++;
-        return assert.fail('no session is opened to a node the resolver refused');
-      },
-      preparation: { timeoutMs: 3000 },
-    },
-  );
-  t.after(() => service.shutdown());
-  return { ...(await answerDeposit(t, service)), repository, sessions: () => sessions };
-}
-
-function assertRefusedDirect(answer: Awaited<ReturnType<typeof directDeposit>>, cause: ChequebookRefusalCause) {
-  assert.equal(answer.status, 503, answer.text);
-  assert.equal(answer.body.error, 'chequebook_preparation_unavailable');
-  assert.equal(answer.body.cause, cause);
-  assert.equal(answer.body.check, null);
-  assert.equal(answer.repository.rows.size, 0, 'nothing was admitted');
+/** A refusal decided before any session to the node is opened. */
+function assertRefusedBeforeTheNode(answer: Awaited<ReturnType<typeof refusedDeposit>>, cause: ChequebookRefusalCause) {
+  assertRefused(answer, cause);
   assert.equal(answer.sessions(), 0, 'no session to the node was opened');
 }
 
-describe('a refused transfer on the direct route names its cause in the answer', { timeout: 20_000 }, () => {
+const otherChain = () =>
+  chainReader({
+    async chainId() {
+      return 1;
+    },
+  });
+
+describe('a refused transfer names its cause in the answer', { timeout: 20_000 }, () => {
   it('Bee container not found: no bee-uploader container is recorded for the deployment', async (t) => {
-    assertRefusedDirect(await directDeposit(t, { containers: [] }), 'bee_container_not_found');
+    assertRefusedBeforeTheNode(await refusedDeposit(t, { containers: [] }), 'bee_container_not_found');
   });
 
   it("Bee container unsupported: its recorded port is not the one the deployment's reservation owns", async (t) => {
-    assertRefusedDirect(
-      await directDeposit(t, {
+    assertRefusedBeforeTheNode(
+      await refusedDeposit(t, {
         containers: [
           { service: 'bee-uploader', ports: { BEE_UPLOADER_API_PORT: syntheticTarget.reservation.port + 10 } },
         ],
@@ -535,12 +228,92 @@ describe('a refused transfer on the direct route names its cause in the answer',
 
   it('target changed: the deployment is deploying, stopping or removing', async (t) => {
     for (const status of ['DEPLOYING', 'STOPPING', 'REMOVING'] as const) {
-      assertRefusedDirect(await directDeposit(t, { status }), 'target_changed');
+      assertRefusedBeforeTheNode(await refusedDeposit(t, { status }), 'target_changed');
     }
   });
 
+  it('target changed: the deployment is not in a state a transfer can own', async (t) => {
+    assertRefusedBeforeTheNode(
+      await refusedDeposit(t, {
+        capture: async () => {
+          throw new ChequebookTargetChangedError();
+        },
+      }),
+      'target_changed',
+    );
+  });
+
+  it('Bee unreadable: the node does not answer its wallet', async (t) => {
+    assertRefused(await refusedDeposit(t, { wallet: null }), 'bee_unreadable');
+  });
+
+  it('unsupported chain: the node runs on a chain with no pinned BZZ token', async (t) => {
+    assertRefused(
+      await refusedDeposit(t, {
+        wallet: {
+          chainID: 31337,
+          walletAddress: transferContext.nodeAddress,
+          chequebookContractAddress: transferContext.chequebookAddress,
+          bzzBalance: '1',
+          nativeTokenBalance: '1',
+        } as BeeWallet,
+      }),
+      'unsupported_chain',
+    );
+  });
+
+  it('chain setting invalid: CHEQUEBOOK_RPC_ENDPOINTS does not parse', async (t) => {
+    assertRefused(await refusedDeposit(t, { runtime: { rpcEndpoints: '{broken' } }), 'chain_setting_invalid');
+  });
+
+  it("chain endpoint missing: nothing is configured for the node's chain", async (t) => {
+    assertRefused(
+      await refusedDeposit(t, { runtime: { rpcEndpoints: '{"1":"https://rpc.example.invalid"}' } }),
+      'chain_endpoint_missing',
+    );
+  });
+
+  it("wrong chain: the manager's default endpoint answers for another chain than the node's", async (t) => {
+    assertRefused(
+      await refusedDeposit(t, {
+        runtime: { rpcEndpoints: undefined, chainEndpoint: 'https://rpc.example.invalid/private-default' },
+        chainReader: otherChain,
+      }),
+      'wrong_chain',
+    );
+  });
+
+  it('chain unreachable: the endpoint does not answer', async (t) => {
+    assertRefused(
+      await refusedDeposit(t, {
+        chainReader: () =>
+          chainReader({
+            async chainId() {
+              throw new Error('fetch failed https://rpc.example.invalid/private-token');
+            },
+          }),
+      }),
+      'chain_unreachable',
+    );
+  });
+
+  it("wrong chain: the endpoint answers for another chain than the node's", async (t) => {
+    assertRefused(await refusedDeposit(t, { chainReader: otherChain }), 'wrong_chain');
+  });
+
+  it('unavailable: a failure nothing classified still answers a fixed sentence', async (t) => {
+    assertRefusedBeforeTheNode(
+      await refusedDeposit(t, {
+        capture: async () => {
+          throw new Error('private synthetic driver diagnostic');
+        },
+      }),
+      'unavailable',
+    );
+  });
+
   it('a deployment removed or replaced since the page read it is answered with 409, not a refusal', async (t) => {
-    const answer = await directDeposit(t, {
+    const answer = await refusedDeposit(t, {
       capture: async () => {
         throw new ChequebookProfileChangedError();
       },

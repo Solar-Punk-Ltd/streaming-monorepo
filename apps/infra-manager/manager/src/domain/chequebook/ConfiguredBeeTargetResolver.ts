@@ -20,11 +20,11 @@ const CHANGING = ['DEPLOYING', 'STOPPING', 'REMOVING'];
  * The port the `bee-uploader` container recorded must be the one the
  * reservation says this deployment owns, or nothing is prepared: a port another
  * deployment has since been given is never dialled. Every refusal names its
- * cause, the way the Docker route's does: a deployment between two shapes, or
- * more than one Bee container recorded for it, is `target_changed`; no Bee
- * container is `bee_container_not_found`; a recorded port that is missing, out
- * of range or not the reserved one is `bee_container_unsupported`. A deployment
- * the capture finds removed or replaced keeps its own error, answered as 409.
+ * cause. A deployment between two shapes, or more than one Bee container
+ * recorded for it, is `target_changed`. No Bee container is
+ * `bee_container_not_found`. A recorded port that is missing, out of range or
+ * not the reserved one is `bee_container_unsupported`. A deployment the capture
+ * finds removed or replaced keeps its own error, answered as 409.
  */
 export class ConfiguredBeeTargetResolver {
   constructor(

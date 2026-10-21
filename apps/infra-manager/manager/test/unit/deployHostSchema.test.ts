@@ -3,11 +3,8 @@
  *
  * Unit test, no database. `pnpm test` in manager/.
  *
- * A `user@host` host deploys, and then the chequebook's Docker route refuses it,
- * because it opens `ssh -- <alias>` and a name with `@` is a destination there,
- * not a Host block. The deployment runs with money in it that the manager can
- * never move. So every body that names a host for something new refuses `@`,
- * and the UI's form check reads the same rule from common.
+ * Every body that names a host for something new refuses `@`, and the UI's
+ * form check reads the same rule from common.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';

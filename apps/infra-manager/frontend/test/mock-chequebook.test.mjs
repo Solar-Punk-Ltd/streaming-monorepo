@@ -176,8 +176,9 @@ test('mock refuses a submission it cannot prepare with a cause from the shared l
   assert.equal(response.status, 503);
   const body = await response.json();
   assert.equal(body.error, 'chequebook_preparation_unavailable');
-  assert.equal(isChequebookRefusal({ cause: body.cause, check: body.check }), true);
-  assert.equal(body.message, chequebookRefusalSentence({ cause: body.cause, check: body.check }));
+  assert.deepEqual(Object.keys(body).sort(), ['cause', 'error', 'message']);
+  assert.equal(isChequebookRefusal({ cause: body.cause }), true);
+  assert.equal(body.message, chequebookRefusalSentence({ cause: body.cause }));
   assert.equal(h.dispatched.length, 0);
 });
 

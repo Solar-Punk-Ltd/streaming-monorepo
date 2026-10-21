@@ -11,15 +11,9 @@ import { ChequebookPreflightRefusedError } from '../errors/ChequebookPreflightRe
 import type { ChequebookChainRegistry } from './ChequebookChainRegistry.js';
 import type { PreparedChequebookTransfer } from './ChequebookSubmission.js';
 import { normalizeTransferContext, normalizeTransferIntent, sameTransferIntent } from './operationIdentity.js';
-import { PinnedBeeSession, normalizePinnedBeeSessionOptions, type BeeTransferSession } from './PinnedBeeSession.js';
+import { PinnedBeeSession, type BeeTransferSession } from './PinnedBeeSession.js';
 import { tokenAddressForChain } from './transactionIdentity.js';
 import { sameFrozenTarget, type FrozenChequebookTarget } from './FrozenChequebookTarget.js';
-import {
-  normalizeDockerBeeAcquisitionOptions,
-  type DockerBeeAcquisitionOptions,
-  type AcquiredDockerBeeStream,
-} from './acquireDockerBeeStream.js';
-import { requireBeeBindingTarget } from './DockerBeeBinding.js';
 import { performance } from 'node:perf_hooks';
 
 /**
@@ -36,29 +30,7 @@ export interface ConfiguredBeeTarget {
 }
 export type ResolveConfiguredBeeTarget = (profileName: string) => Promise<ConfiguredBeeTarget>;
 
-export interface OwnedTransferPreparationOptions extends DockerBeeAcquisitionOptions {
-  timeoutMs?: number;
-  readTimeoutMs?: number;
-  maxResponseBytes?: number;
-}
 export type CaptureTransferTarget = (profileName: string, profileInstanceId: string) => Promise<FrozenChequebookTarget>;
-
-/** The Docker acquisition budgets an owned Bee session needs: its own read and send deadlines on top of the connection's. */
-export function ownedAcquisitionBudgets(
-  options: OwnedTransferPreparationOptions,
-): Readonly<Required<DockerBeeAcquisitionOptions>> {
-  const sessionOptions = normalizePinnedBeeSessionOptions(options);
-  return normalizeDockerBeeAcquisitionOptions({
-    ...options,
-    preflightTimeoutMs: sessionOptions.preflightTimeoutMs,
-    postTimeoutMs: sessionOptions.postTimeoutMs,
-  });
-}
-export type AcquireBoundBeeStream = (
-  target: FrozenChequebookTarget,
-  budgets: Readonly<DockerBeeAcquisitionOptions>,
-  lifetime: AbortSignal,
-) => Promise<AcquiredDockerBeeStream>;
 interface PreparationStep {
   readonly signal: AbortSignal;
   readonly deadline: number;
@@ -66,17 +38,10 @@ interface PreparationStep {
 interface TransferTargetLease {
   readonly session: BeeTransferSession;
   readonly submissionTarget?: FrozenChequebookTarget;
-  /** What the node's container was started with for its chain, read on the connection this lease owns. */
-  readonly chainEndpoint: string | null;
   recheck(step: PreparationStep): Promise<void>;
   dispose(): void;
 }
-type AcquireTransferTarget = (
-  intent: ChequebookTransferIntent,
-  step: PreparationStep,
-  lifetime: AbortSignal,
-) => Promise<TransferTargetLease>;
-type TransferChains = Pick<ChequebookChainRegistry, 'forPreparedNode'>;
+type TransferChains = Pick<ChequebookChainRegistry, 'forChain'>;
 
 function address(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-f]{40}$/i.test(value))
@@ -140,12 +105,13 @@ function sameIdentity(
   );
 }
 
-class TransferPreparation {
+export class ChequebookTransferPreparation {
   private readonly timeoutMs: number;
 
   constructor(
-    private readonly acquireTarget: AcquireTransferTarget,
+    private readonly resolveTarget: ResolveConfiguredBeeTarget,
     private readonly chains: TransferChains,
+    private readonly createSession: (url: string) => BeeTransferSession = (url) => new PinnedBeeSession(url),
     options: { timeoutMs?: number } = {},
   ) {
     this.timeoutMs = options.timeoutMs ?? 30_000;
@@ -156,18 +122,16 @@ class TransferPreparation {
   async prepare(input: ChequebookTransferIntent): Promise<PreparedChequebookTransfer> {
     const intent = normalizeTransferIntent(input);
     let lease: TransferTargetLease | undefined;
-    const lifetime = new AbortController();
     let disposed = false;
     const dispose = () => {
       if (!disposed) {
         disposed = true;
-        lifetime.abort();
         lease?.dispose();
       }
     };
     try {
       return await this.bounded(async (step) => {
-        const acquired = await this.acquireTarget(intent, step, lifetime.signal);
+        const acquired = await this.acquireTarget(intent, step);
         if (disposed || step.signal.aborted) {
           acquired.dispose();
           throw new ChequebookPreparationError();
@@ -179,12 +143,7 @@ class TransferPreparation {
           readBeeTransferIdentity(pinnedSession, step.signal, step.deadline),
         );
         const reader = await refusing('chain_unreachable', () =>
-          checked(
-            () =>
-              this.chains.forPreparedNode(identity.chainId, identity.nodeAddress, acquired.chainEndpoint, step.signal),
-            step.signal,
-            step.deadline,
-          ),
+          checked(() => this.chains.forChain(identity.chainId, step.signal), step.signal, step.deadline),
         );
         const start = await refusing('chain_unreachable', () =>
           checked(() => reader.blockHeader('latest', step.signal), step.signal, step.deadline),
@@ -271,6 +230,43 @@ class TransferPreparation {
     }
   }
 
+  private async acquireTarget(intent: ChequebookTransferIntent, step: PreparationStep): Promise<TransferTargetLease> {
+    const target = Object.freeze({
+      ...(await checked(() => this.resolveTarget(intent.profileName), step.signal, step.deadline)),
+    });
+    if (target.topology !== 'operator_asserted_direct' || !target.revision) throw new ChequebookPreparationError();
+    if (target.profileInstanceId !== intent.profileInstanceId) throw new ChequebookProfileChangedError();
+    requireActiveStep(step.signal, step.deadline);
+    const session = this.createSession(target.url);
+    return {
+      session,
+      submissionTarget: target.submissionTarget,
+      dispose: () => session.dispose(),
+      recheck: async (currentStep) => {
+        const current = await checked(
+          () => this.resolveTarget(intent.profileName),
+          currentStep.signal,
+          currentStep.deadline,
+        );
+        if (
+          current.profileInstanceId !== intent.profileInstanceId ||
+          current.topology !== target.topology ||
+          current.revision !== target.revision ||
+          current.url !== target.url
+        )
+          throw new ChequebookPreparationError();
+        // The ownership the journal admitted the move under: a deploy target verified again, or a reservation row
+        // that changed, would otherwise pass here and fail only when the dispatch is claimed, leaving the saved move
+        // submitting with nothing sent. A target the resolver brought no ownership for either time is unchanged
+        // here. The journal refuses to admit one anyway.
+        const sameOwnership = current.submissionTarget
+          ? sameFrozenTarget(target.submissionTarget, current.submissionTarget)
+          : target.submissionTarget === undefined;
+        if (!sameOwnership) throw new ChequebookPreparationError('target_changed');
+      },
+    };
+  }
+
   private async bounded<T>(action: (step: PreparationStep) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     const step = { signal: controller.signal, deadline: performance.now() + this.timeoutMs };
@@ -288,126 +284,6 @@ class TransferPreparation {
     } finally {
       clearTimeout(timer);
       controller.abort();
-    }
-  }
-}
-
-function frozenTarget(value: FrozenChequebookTarget, intent: ChequebookTransferIntent): FrozenChequebookTarget {
-  const target = structuredClone(value);
-  if (target?.profile?.name !== intent.profileName) throw new ChequebookPreparationError();
-  if (target.profile.instanceId !== intent.profileInstanceId) throw new ChequebookProfileChangedError();
-  if (target.profile.components) Object.freeze(target.profile.components);
-  Object.freeze(target.profile);
-  Object.freeze(target.reservation);
-  return Object.freeze(target);
-}
-
-export class ChequebookTransferPreparation extends TransferPreparation {
-  constructor(
-    resolveTarget: ResolveConfiguredBeeTarget,
-    chains: TransferChains,
-    createSession: (url: string) => BeeTransferSession = (url) => new PinnedBeeSession(url),
-    options: { timeoutMs?: number } = {},
-  ) {
-    super(
-      async (intent, step) => {
-        const target = Object.freeze({
-          ...(await checked(() => resolveTarget(intent.profileName), step.signal, step.deadline)),
-        });
-        if (target.topology !== 'operator_asserted_direct' || !target.revision) throw new ChequebookPreparationError();
-        if (target.profileInstanceId !== intent.profileInstanceId) throw new ChequebookProfileChangedError();
-        requireActiveStep(step.signal, step.deadline);
-        const session = createSession(target.url);
-        return {
-          session,
-          submissionTarget: target.submissionTarget,
-          chainEndpoint: null,
-          dispose: () => session.dispose(),
-          recheck: async (currentStep) => {
-            const current = await checked(
-              () => resolveTarget(intent.profileName),
-              currentStep.signal,
-              currentStep.deadline,
-            );
-            if (
-              current.profileInstanceId !== intent.profileInstanceId ||
-              current.topology !== target.topology ||
-              current.revision !== target.revision ||
-              current.url !== target.url
-            )
-              throw new ChequebookPreparationError();
-            // The ownership the journal admitted the move under, as the Docker route checks it: a deploy target
-            // verified again, or a reservation row that changed, would otherwise pass here and fail only when the
-            // dispatch is claimed, leaving the saved move submitting with nothing sent. A target the resolver
-            // brought no ownership for either time is unchanged here; the journal refuses to admit one anyway.
-            const sameOwnership = current.submissionTarget
-              ? sameFrozenTarget(target.submissionTarget, current.submissionTarget)
-              : target.submissionTarget === undefined;
-            if (!sameOwnership) throw new ChequebookPreparationError('target_changed');
-          },
-        };
-      },
-      chains,
-      options,
-    );
-  }
-
-  /** The injected acquirer must use the qualified pinned Docker handshake. */
-  static fromOwnedTarget(
-    captureTarget: CaptureTransferTarget,
-    acquireBoundStream: AcquireBoundBeeStream,
-    chains: TransferChains,
-    options: OwnedTransferPreparationOptions = {},
-  ): Pick<ChequebookTransferPreparation, 'prepare'> {
-    try {
-      const copied = structuredClone(options);
-      const sessionOptions = normalizePinnedBeeSessionOptions(copied);
-      const budgets = ownedAcquisitionBudgets(copied);
-      return new TransferPreparation(
-        async (intent, step, lifetime) => {
-          const target = frozenTarget(
-            await checked(
-              () => captureTarget(intent.profileName, intent.profileInstanceId),
-              step.signal,
-              step.deadline,
-            ),
-            intent,
-          );
-          requireActiveStep(step.signal, step.deadline);
-          const acquired = await acquireBoundStream(target, budgets, lifetime);
-          try {
-            requireActiveStep(step.signal, step.deadline);
-            lifetime.throwIfAborted();
-            requireBeeBindingTarget(structuredClone(acquired.binding), target);
-            requireActiveStep(step.signal, step.deadline);
-            const session = PinnedBeeSession.fromStream(acquired.stream, sessionOptions);
-            return {
-              session,
-              submissionTarget: target,
-              chainEndpoint: acquired.chainEndpoint,
-              dispose: () => session.dispose(),
-              recheck: async (currentStep) => {
-                const current = frozenTarget(
-                  await checked(
-                    () => captureTarget(intent.profileName, intent.profileInstanceId),
-                    currentStep.signal,
-                    currentStep.deadline,
-                  ),
-                  intent,
-                );
-                if (!sameFrozenTarget(target, current)) throw new ChequebookPreparationError('target_changed');
-              },
-            };
-          } catch (error) {
-            acquired.stream.destroy();
-            throw ChequebookPreparationError.keeping(error, 'bee_unreadable');
-          }
-        },
-        chains,
-        { timeoutMs: copied.timeoutMs },
-      );
-    } catch {
-      throw new ChequebookPreparationError();
     }
   }
 }

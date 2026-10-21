@@ -163,13 +163,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
       apiServer?.close(),
       chequebookOperations?.shutdown(),
     ]);
-    if (transferCleanup.status === 'rejected') throw new Error('Transfer transport cleanup could not be verified.');
-    for (const outcome of transferCleanup.value ?? []) {
-      if (outcome.state === 'unverified')
-        logger.warn(
-          `[Shutdown] transfer transport ${outcome.leaseId}: ${outcome.reason} (${outcome.remaining.join(', ')})`,
-        );
-    }
+    if (transferCleanup.status === 'rejected') throw new Error('Transfer session cleanup could not be verified.');
     if (apiClosed.status === 'rejected') throw new Error('API shutdown could not be verified.');
     apiServer = undefined;
     if (database) {

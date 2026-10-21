@@ -1,6 +1,7 @@
 import { ChequebookOperationChangedError } from '../../src/domain/errors/ChequebookOperationChangedError.js';
 import { historyCursor, normalizeHistoryQuery } from '../../src/domain/chequebook/chequebookHistory.js';
 import type { ChainTransaction } from '../../src/domain/chequebook/chainEvidence.js';
+import type { FrozenChequebookTarget } from '../../src/domain/chequebook/FrozenChequebookTarget.js';
 import { matchesChequebookTransfer } from '../../src/domain/chequebook/transactionIdentity.js';
 import {
   normalizeRecoveryObservation,
@@ -28,6 +29,27 @@ import type {
 } from '../../src/domain/chequebook/ChequebookOperationRepository.js';
 
 export const profileInstanceId = '11111111-1111-4111-8111-111111111111';
+
+/** The ownership a synthetic deployment's transfer is admitted under. */
+export const syntheticTarget: FrozenChequebookTarget = {
+  version: 1,
+  alias: 'synthetic-host',
+  daemonId: 'synthetic-daemon',
+  verifiedAt: '2026-09-09T00:00:00.000001Z',
+  profile: {
+    name: 'test-deployment',
+    instanceId: profileInstanceId,
+    intentRevision: 1,
+    engineConfigRevision: 1,
+    kind: 'bee',
+    components: null,
+    host: 'synthetic-host',
+    portSlot: 1,
+    stackVersionId: 1,
+    status: 'RUNNING',
+  },
+  reservation: { id: 1, protocol: 'tcp', port: 11633, service: 'bee-uploader', portVar: 'BEE_UPLOADER_API_PORT' },
+};
 const generations = new Map<string, string>([['test-deployment', profileInstanceId]]);
 export function instanceForProfile(name: string): string {
   let generation = generations.get(name);

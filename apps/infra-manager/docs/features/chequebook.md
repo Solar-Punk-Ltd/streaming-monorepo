@@ -239,7 +239,7 @@ Other answers:
 - `409 operation_changed`: the operation changed after the operator reviewed
   it.
 - `503 chequebook_preparation_unavailable` with
-  `{ error, cause, check, message }`: the manager could not prepare the
+  `{ error, cause, message }`: the manager could not prepare the
   transfer. Nothing was recorded or sent. `cause` is one of
   `CHEQUEBOOK_REFUSAL_CAUSES` in `common/src/chequebookRefusals.ts`, and
   `message` is that cause's sentence. The answer carries no upstream text and
@@ -247,7 +247,7 @@ Other answers:
 - `503 chequebook_journal_unavailable`: the journal could not be read or
   written.
 
-The causes a running manager answers:
+The causes:
 
 | Cause                       | When                                                                                                    |
 | --------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -262,10 +262,6 @@ The causes a running manager answers:
 | `unsupported_chain`         | The node runs on a chain whose BZZ token the manager does not know.                                     |
 | `unavailable`               | No such deployment, no Bee node of its own, or a Bee API address that is not plain `http`.              |
 
-The list also holds `docker_unreachable`, `docker_route_missing`,
-`docker_setting_invalid` and `bridge_not_qualified`. The running manager never
-answers them, and `check` is always `null` from it.
-
 The admin moves chequebooks through the same preparation, the same last
 check and the same journal, on its own bearer-token route,
 `POST /api/admin-funding/chequebook-operations`
@@ -276,13 +272,12 @@ Check, Resolve and Assert work on them as on any other operation.
 
 ## Settings
 
-| Setting                        | What it does                                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `CHEQUEBOOK_FLOOR_BZZ`         | The floor in BZZ, default `0.5`, above zero with at most 16 decimal places. A malformed value stops the manager at startup.    |
-| `CHEQUEBOOK_RPC_ENDPOINTS`     | Optional JSON object from chain id to endpoint, for example `{"100":"https://rpc.example.com"}`. Wins for each chain it names. |
-| `FUNDING_RPC_URL`              | The default chain endpoint for any chain the setting above does not name.                                                      |
-| `BEE_RPC_ENDPOINT`             | The default when `FUNDING_RPC_URL` is unset.                                                                                   |
-| `CHEQUEBOOK_DOCKER_TRANSPORTS` | Not read by the running manager.                                                                                               |
+| Setting                    | What it does                                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `CHEQUEBOOK_FLOOR_BZZ`     | The floor in BZZ, default `0.5`, above zero with at most 16 decimal places. A malformed value stops the manager at startup.    |
+| `CHEQUEBOOK_RPC_ENDPOINTS` | Optional JSON object from chain id to endpoint, for example `{"100":"https://rpc.example.com"}`. Wins for each chain it names. |
+| `FUNDING_RPC_URL`          | The default chain endpoint for any chain the setting above does not name.                                                      |
+| `BEE_RPC_ENDPOINT`         | The default when `FUNDING_RPC_URL` is unset.                                                                                   |
 
 The chain settings are read at startup. A change takes effect after a restart.
 
