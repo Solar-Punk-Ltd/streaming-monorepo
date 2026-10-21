@@ -109,6 +109,15 @@ with a redeploy.
     playing, the player rejoins the live broadcast. A viewer still watching the recording further back
     is not moved.
   - A broadcast that never comes back stays on "This broadcast has ended".
+- **Coming back to the page.** A phone that locks pauses the video, and Safari on an iPhone does not
+  start it again on unlock.
+  - When the page is visible again on a live stream that is paused, playback starts again, and it
+    catches up to live once the player has read the newest playlist.
+  - A pause the viewer made while watching, more than a second before the page was hidden, stays
+    paused. A stream that is already playing is left to the player, and a recording is never touched.
+  - A pause the viewer makes while the page is hidden, from the lock screen's controls, by taking out
+    earphones or with a media key, is undone when the page comes back. The rule is in
+    `resumeOnReturn.ts`.
 - **HLS playback.** Video and audio through hls.js with custom loaders, see
   [Custom hls.js Loaders](#custom-hlsjs-loaders).
 - **Sources.** The build's gateways plus any number of gateways and Bee nodes a viewer adds, read as

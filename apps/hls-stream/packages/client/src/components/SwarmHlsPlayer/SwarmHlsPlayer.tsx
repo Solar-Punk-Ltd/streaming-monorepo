@@ -20,6 +20,7 @@ import { buildPlayerConfig, HLS_TUNING } from './playerConfig';
 import { exposePlayerForInstrumentation } from './playerTestHandle';
 import { buildSwarmUri } from './playlist';
 import { nextRestartResume, restartResumeOf, type RestartResume } from './restartResume';
+import { attachResumeOnReturn } from './resumeOnReturn';
 import { attachReturningBroadcastRejoin } from './returningBroadcast';
 import { attachActiveRungFollower, attachRungFailover, attachWatchedRungReporter } from './rungHealth';
 
@@ -381,6 +382,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const onHlsPlay = () => {
       hls?.startLoad();
     };
+    let detachResumeOnReturn: (() => void) | null = null;
     const onPlayedPastResume = () => {
       const resume = resumeAfterRestartRef.current;
       if (resume && video.currentTime > resume.positionS) {
@@ -399,6 +401,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         const kept = resumeAfterRestartRef.current;
         const read = hls ? restartResumeOf(hls.levels[hls.currentLevel]?.details, video.currentTime, sourceUrl) : null;
         resumeAfterRestartRef.current = nextRestartResume(read, kept?.sourceUrl === sourceUrl ? kept : null, cause);
+        detachResumeOnReturn?.();
         hls?.destroy();
         setRestartTrigger((prev) => prev + 1);
       };
@@ -410,6 +413,16 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.addEventListener('pause', onHlsPause);
       video.addEventListener('play', onHlsPlay);
       video.addEventListener('timeupdate', onPlayedPastResume);
+      // An iPhone pauses the video when the phone locks and does not resume it on unlock.
+      const returningHls = hls;
+      detachResumeOnReturn = attachResumeOnReturn(
+        video,
+        { document, window },
+        () => returningHls.latestLevelDetails?.live ?? false,
+        (err) => {
+          console.warn('[SwarmHls] resuming the live stream after the page came back failed:', err);
+        },
+      );
 
       hls.on(Events.ERROR, (_event, data) => {
         if (
@@ -563,6 +576,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       video.removeEventListener('pause', onHlsPause);
       video.removeEventListener('play', onHlsPlay);
       video.removeEventListener('timeupdate', onPlayedPastResume);
+      detachResumeOnReturn?.();
       detachQoe?.();
       detachRateGuard?.();
       detachLiveSync?.();
