@@ -13,14 +13,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  accountAtAddressKey,
   clientIpKey,
   LoginLimiter,
   MAX_TRACKED_KEYS,
   passwordChangeKey,
+  signInKeys,
   usernameKey,
   type AttemptKeys,
 } from './LoginLimiter.js';
-import { LOGIN_FORGET_MS } from './rules.js';
+import { LOGIN_ACCOUNT_CEILING, LOGIN_FORGET_MS } from './rules.js';
 
 const MINUTE = 60 * 1000;
 const KEY = usernameKey('operator');
@@ -214,5 +216,131 @@ describe('LoginLimiter', () => {
     // more failure is the sixth and locks for two minutes.
     wrongPassword(limiter);
     assert.equal(limiter.retryAfterSeconds(KEY), 120);
+  });
+});
+
+/** `count` addresses, each its own, none sharing a /64. */
+function addresses(count: number): string[] {
+  return Array.from({ length: count }, (_, n) => `198.51.${Math.floor(n / 250)}.${(n % 250) + 1}`);
+}
+
+/** Fails one sign-in to `username` from each address in turn, `times` failures in all, at most 4 per address. */
+function spreadFailures(limiter: LoginLimiter, username: string, times: number): string[] {
+  const from = addresses(Math.ceil(times / 4));
+  for (let n = 0; n < times; n += 1) {
+    const attempt = limiter.begin(signInKeys(username, from[n % from.length]!));
+    assert.equal(attempt.lockedForSeconds, 0, `failure ${n + 1} was let through`);
+    attempt.fail();
+  }
+  return from;
+}
+
+describe('a key with its own free count', () => {
+  it('locks after its own count, while the account key beside it keeps the usual five', () => {
+    const { limiter } = limiterAt();
+    const keys: AttemptKeys = { account: 'account:a', shared: [{ key: 'wide', freeAttempts: 9 }] };
+    // Nine failures on the wide key from nine accounts: still free, and each account has only one failure.
+    for (let n = 0; n < 9; n += 1) {
+      limiter.begin({ account: `account:${n}`, shared: [{ key: 'wide', freeAttempts: 9 }] }).fail();
+    }
+    assert.equal(limiter.retryAfterSeconds('wide'), 0);
+    limiter.begin(keys).fail();
+    assert.equal(limiter.retryAfterSeconds('wide'), 60, 'the tenth locks for a minute');
+  });
+});
+
+describe('the keys a sign-in counts on', () => {
+  it('locks the account at one address after five failures, and leaves it free at another', () => {
+    const { limiter } = limiterAt();
+    for (let n = 0; n < 5; n += 1) limiter.begin(signInKeys('operator', '192.0.2.10')).fail();
+
+    assert.ok(limiter.begin(signInKeys('operator', '192.0.2.10')).lockedForSeconds > 0);
+    const elsewhere = limiter.begin(signInKeys('operator', '192.0.2.20'));
+    assert.equal(elsewhere.lockedForSeconds, 0);
+    elsewhere.succeed();
+  });
+
+  it('locks an address after five failures across several accounts', () => {
+    const { limiter } = limiterAt();
+    for (let n = 0; n < 5; n += 1) limiter.begin(signInKeys(`user${n}`, '192.0.2.10')).fail();
+
+    assert.ok(limiter.begin(signInKeys('someone-else', '192.0.2.10')).lockedForSeconds > 0);
+  });
+
+  it(`frees 99 failures from many addresses, and locks every address at the ${LOGIN_ACCOUNT_CEILING}th`, () => {
+    const { limiter } = limiterAt();
+    const from = spreadFailures(limiter, 'operator', LOGIN_ACCOUNT_CEILING - 1);
+    assert.ok(from.length >= 20, 'spread over at least twenty addresses');
+
+    // A fresh address is still let in after 99, and a right password there takes back only its own attempt.
+    const fresh = limiter.begin(signInKeys('operator', '203.0.113.1'));
+    assert.equal(fresh.lockedForSeconds, 0);
+    fresh.succeed();
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 0);
+
+    const hundredth = limiter.begin(signInKeys('operator', '203.0.113.2'));
+    assert.equal(hundredth.lockedForSeconds, 0);
+    hundredth.fail();
+
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 60, 'the 100th locks for a minute');
+    for (const ip of ['203.0.113.3', ...from.slice(0, 3)]) {
+      assert.ok(limiter.begin(signInKeys('operator', ip)).lockedForSeconds > 0, ip);
+    }
+    const other = limiter.begin(signInKeys('someone-else', '203.0.113.3'));
+    assert.equal(other.lockedForSeconds, 0, 'another account at a fresh address is not locked');
+    other.succeed();
+  });
+
+  it("gives back only its own attempt on a right password elsewhere: the ceiling's count stands", () => {
+    const { limiter } = limiterAt();
+    spreadFailures(limiter, 'operator', LOGIN_ACCOUNT_CEILING - 2);
+
+    limiter.begin(signInKeys('operator', '203.0.113.1')).succeed();
+
+    // 98 failures still stand: two more, and the second of them locks.
+    limiter.begin(signInKeys('operator', '203.0.113.2')).fail();
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 0);
+    limiter.begin(signInKeys('operator', '203.0.113.3')).fail();
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 60);
+  });
+
+  it("keeps the address's and the ceiling's earlier failures when an attempt is settled after an error", () => {
+    // An error after `begin` settles the attempt with succeed(), as both apps' sign-ins do: that wipes only the
+    // account at that address; the address and the ceiling give back only that attempt.
+    const { limiter } = limiterAt();
+    for (let n = 0; n < 3; n += 1) limiter.begin(signInKeys('operator', '192.0.2.10')).fail();
+    spreadFailures(limiter, 'operator', LOGIN_ACCOUNT_CEILING - 5);
+
+    limiter.begin(signInKeys('operator', '192.0.2.10')).succeed();
+
+    // The address still holds its three: a fourth and a fifth from other accounts, and the fifth locks it.
+    limiter.begin(signInKeys('user-a', '192.0.2.10')).fail();
+    assert.equal(limiter.retryAfterSeconds(clientIpKey('192.0.2.10')), 0);
+    limiter.begin(signInKeys('user-b', '192.0.2.10')).fail();
+    assert.equal(limiter.retryAfterSeconds(clientIpKey('192.0.2.10')), 60);
+    // The ceiling still holds its 98: two more, and the second locks.
+    limiter.begin(signInKeys('operator', '203.0.113.2')).fail();
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 0);
+    limiter.begin(signInKeys('operator', '203.0.113.3')).fail();
+    assert.equal(limiter.retryAfterSeconds(usernameKey('operator')), 60);
+  });
+
+  it('counts two addresses in one /64 as one, and two /64s apart', () => {
+    const { limiter } = limiterAt();
+    for (let n = 0; n < 5; n += 1) limiter.begin(signInKeys('operator', `2001:db8:0:1::${n + 1}`)).fail();
+
+    assert.ok(limiter.begin(signInKeys('operator', '2001:db8:0:1:ffff:ffff:ffff:ffff')).lockedForSeconds > 0);
+    const otherNetwork = limiter.begin(signInKeys('operator', '2001:db8:0:2::1'));
+    assert.equal(otherNetwork.lockedForSeconds, 0);
+    otherNetwork.succeed();
+    assert.equal(accountAtAddressKey('operator', '2001:db8:0:1::7'), 'account:operator@2001:db8:0:1::/64');
+  });
+
+  it('counts an IPv4-mapped IPv6 address as the IPv4 address', () => {
+    const { limiter } = limiterAt();
+    for (let n = 0; n < 5; n += 1) limiter.begin(signInKeys('operator', '::ffff:192.0.2.10')).fail();
+
+    assert.ok(limiter.begin(signInKeys('operator', '192.0.2.10')).lockedForSeconds > 0);
+    assert.equal(clientIpKey('::ffff:192.0.2.10'), clientIpKey('192.0.2.10'));
   });
 });

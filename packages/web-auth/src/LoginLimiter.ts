@@ -1,4 +1,5 @@
-import { LOGIN_FORGET_MS, lockoutMsFor } from './rules.js';
+import { limiterAddress } from './clientIp.js';
+import { LOGIN_ACCOUNT_CEILING, LOGIN_FORGET_MS, LOGIN_FREE_ATTEMPTS, lockoutMsFor } from './rules.js';
 
 /**
  * Ceiling on tracked keys. Every failed attempt makes an entry under whatever
@@ -20,14 +21,26 @@ interface Attempts {
   pending: number;
   lastFailureAt: number;
   lockedUntil: number;
+  /** Failures this key gets free before it locks: {@link LOGIN_FREE_ATTEMPTS} unless the key has its own count. */
+  freeAttempts: number;
 }
 
+/** The account everywhere: the key of the account ceiling, {@link LOGIN_ACCOUNT_CEILING}. */
 export function usernameKey(username: string): string {
   return `username:${username.toLowerCase()}`;
 }
 
+/** The client address, as {@link limiterAddress} sees it: an IPv6 address by its /64. */
 export function clientIpKey(ip: string): string {
-  return `ip:${ip}`;
+  return `ip:${limiterAddress(ip)}`;
+}
+
+/**
+ * The account at one address: the key a sign-in's free failures and its lockout count on, so guesses from one place
+ * lock that account there and nowhere else. The admin's own password checks count on it too.
+ */
+export function accountAtAddressKey(username: string, ip: string): string {
+  return `account:${username.toLowerCase()}@${limiterAddress(ip)}`;
 }
 
 /** A user's id as each backend stores it, a serial number or a uuid. */
@@ -42,15 +55,35 @@ export function passwordChangeKey(userId: UserId): string {
   return `password-change:${userId}`;
 }
 
+/** A key with a free count of its own, rather than {@link LOGIN_FREE_ATTEMPTS}. */
+export interface CountedKey {
+  key: string;
+  freeAttempts: number;
+}
+
 /** The keys one attempt is counted against. */
 export interface AttemptKeys {
   /** The account being tried. A right password wipes this key clean. */
   account: string;
   /**
-   * Keys many accounts share, such as the client address. A right password
-   * takes only its own attempt back out of these, never anyone else's.
+   * Keys many attempts share, such as the client address or the account
+   * everywhere. A right password takes only its own attempt back out of these,
+   * never anyone else's.
    */
-  shared?: readonly string[];
+  shared?: readonly (string | CountedKey)[];
+}
+
+/**
+ * The keys a sign-in counts on: the account at that address, which a right
+ * password wipes; the address, across every account; and the account
+ * everywhere, the ceiling, whose 99 failures from all addresses together are
+ * free and whose 100th locks.
+ */
+export function signInKeys(username: string, ip: string): AttemptKeys {
+  return {
+    account: accountAtAddressKey(username, ip),
+    shared: [clientIpKey(ip), { key: usernameKey(username), freeAttempts: LOGIN_ACCOUNT_CEILING - 1 }],
+  };
 }
 
 /**
@@ -76,9 +109,11 @@ const NOTHING_TO_SETTLE = {
  * Brute-force throttling for sign-in, held in memory in the single API process.
  *
  * Five failures on a key lock it for a minute, and every failure after that
- * doubles the wait up to an hour. Keys are the username and the client IP, so
- * neither guessing one password from many places nor many passwords from one
- * place gets more than five free tries.
+ * doubles the wait up to an hour. A sign-in counts on three keys
+ * ({@link signInKeys}): the account at that address, the address, and the
+ * account everywhere, whose free count is the ceiling's. So guessing from one
+ * place locks that place, and many places together lock the account after
+ * {@link LOGIN_ACCOUNT_CEILING}, while the owner signs in from elsewhere.
  *
  * In memory rather than in Postgres on purpose: the backend runs as one
  * process, and a limiter that has to survive a restart would be a write per
@@ -98,14 +133,17 @@ export class LoginLimiter {
    * reads it, and only the free attempts get through.
    */
   begin(keys: AttemptKeys): LoginAttempt {
-    const all = [keys.account, ...(keys.shared ?? [])];
+    const counted = [keys.account, ...(keys.shared ?? [])].map((key) =>
+      typeof key === 'string' ? { key, freeAttempts: LOGIN_FREE_ATTEMPTS } : key,
+    );
+    const all = counted.map(({ key }) => key);
     const now = this.now();
 
     const lockedForSeconds = Math.max(...all.map((key) => this.waitSeconds(key, now)));
     if (lockedForSeconds > 0) return { lockedForSeconds, ...NOTHING_TO_SETTLE };
 
     if (this.attempts.size >= MAX_TRACKED_KEYS) this.makeRoom(now);
-    for (const key of all) this.reserve(key, now);
+    for (const { key, freeAttempts } of counted) this.reserve(key, freeAttempts, now);
 
     return {
       lockedForSeconds: 0,
@@ -136,18 +174,19 @@ export class LoginLimiter {
     // Reserved attempts count towards the lockout even though none of them has
     // come back yet. Without that, twenty guesses sent at once would all pass
     // this check before the first of them had failed.
-    const withPending = entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending) : 0;
+    const withPending = entry.pending > 0 ? now + lockoutMsFor(entry.failures + entry.pending, entry.freeAttempts) : 0;
     const until = Math.max(entry.lockedUntil, withPending);
     return until <= now ? 0 : Math.ceil((until - now) / 1000);
   }
 
-  private reserve(key: string, now: number): void {
+  private reserve(key: string, freeAttempts: number, now: number): void {
     const entry = this.live(key, now);
     this.attempts.set(key, {
       failures: entry?.failures ?? 0,
       pending: (entry?.pending ?? 0) + 1,
       lastFailureAt: entry?.lastFailureAt ?? now,
       lockedUntil: entry?.lockedUntil ?? 0,
+      freeAttempts,
     });
   }
 
@@ -161,7 +200,8 @@ export class LoginLimiter {
       failures,
       pending: Math.max(0, entry.pending - 1),
       lastFailureAt: now,
-      lockedUntil: now + lockoutMsFor(failures),
+      lockedUntil: now + lockoutMsFor(failures, entry.freeAttempts),
+      freeAttempts: entry.freeAttempts,
     });
   }
 
