@@ -8,7 +8,9 @@
  * A return only plays, it never seeks. The pause handler stopped loading, so hls.js's live sync
  * position is still worked out from the playlist read before the lock and would land a lock's length
  * behind live, or behind the playhead when the broadcast has stalled. Playing restarts loading through
- * the player's play handler, and hls.js moves the viewer to live itself once the playlist reloads.
+ * the player's play handler, and playback goes on from where it paused. Live plays at normal speed, so
+ * a short lock adds its length to how far behind live the viewer sits, and only past twice the target
+ * does hls.js jump them forward to it.
  *
  * Which event an iPhone sends first on unlock, the pause or the page becoming visible, is not known.
  * So the rule records the viewer's own pauses rather than the system's: any pause it cannot show was

@@ -40,7 +40,7 @@ const MB = 1024 * 1024;
  * media than this asks for puts a joining viewer at the live edge with less runway than this says.
  * The uploader's window is budgeted against one chunk rather than counted in segments. A segment
  * line is a duration and a bare Swarm reference, so measured against the shipped builder it holds
- * 12.5 s at a 0.25 s segment and 25.5 s at a 0.5 s segment. `ManifestManager.test.ts` reads this
+ * 15.5 s at a 0.5 s segment, the shortest any profile publishes. `ManifestManager.test.ts` reads this
  * constant out of this file and fails if the window stops covering it.
  */
 export const LIVE_SYNC_DURATION_S = 12;

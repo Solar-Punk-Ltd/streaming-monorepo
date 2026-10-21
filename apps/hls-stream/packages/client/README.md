@@ -111,8 +111,9 @@ with a redeploy.
   - A broadcast that never comes back stays on "This broadcast has ended".
 - **Coming back to the page.** A phone that locks pauses the video, and Safari on an iPhone does not
   start it again on unlock.
-  - When the page is visible again on a live stream that is paused, playback starts again, and it
-    catches up to live once the player has read the newest playlist.
+  - When the page is visible again on a live stream that is paused, playback starts again from where
+    it stopped. Live plays at normal speed, so a short lock adds its length to how far behind live
+    the viewer sits, and only past twice the target does hls.js jump them forward to it.
   - A pause the viewer made while watching, more than a second before the page was hidden, stays
     paused. A stream that is already playing is left to the player, and a recording is never touched.
   - A pause the viewer makes while the page is hidden, from the lock screen's controls, by taking out
