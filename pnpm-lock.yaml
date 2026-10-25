@@ -177,6 +177,7 @@ overrides:
   qs: ^6.16.0
   smol-toml@<=1.7.0: 1.7.1
   ws: ^8.21.0
+  zod@<4.6.6: 4.6.6
 
 importers:
 
@@ -381,8 +382,8 @@ importers:
         specifier: 9.3.3
         version: 9.3.3
       zod:
-        specifier: 4.6.4
-        version: 4.6.4
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@swarm-hls-stream/shared':
         specifier: workspace:*
@@ -415,7 +416,7 @@ importers:
         version: link:../../../packages/web-auth
       viem:
         specifier: 2.56.5
-        version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
+        version: 2.56.5(typescript@7.0.2)
     devDependencies:
       '@types/node':
         specifier: 24.13.4
@@ -452,7 +453,7 @@ importers:
         version: 19.3.0(react@19.3.0)
       viem:
         specifier: 2.56.5
-        version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
+        version: 2.56.5(typescript@7.0.2)
     devDependencies:
       '@types/node':
         specifier: 24.13.4
@@ -507,7 +508,7 @@ importers:
         version: 6.0.0
       viem:
         specifier: 2.56.5
-        version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
+        version: 2.56.5(typescript@7.0.2)
       yup:
         specifier: 1.7.1
         version: 1.7.1
@@ -561,7 +562,7 @@ importers:
         version: 8.23.0
       viem:
         specifier: 2.56.5
-        version: 2.56.5(typescript@7.0.2)(zod@4.6.4)
+        version: 2.56.5(typescript@7.0.2)
       yup:
         specifier: 1.7.1
         version: 1.7.1
@@ -683,8 +684,8 @@ importers:
   packages/contracts:
     dependencies:
       zod:
-        specifier: 4.6.4
-        version: 4.6.4
+        specifier: 4.6.6
+        version: 4.6.6
     devDependencies:
       '@types/node':
         specifier: 24.13.4
@@ -2589,7 +2590,7 @@ packages:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
     peerDependencies:
       typescript: '>=5.0.4'
-      zod: ^3.22.0 || ^4.0.0
+      zod: 4.6.6
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -4711,8 +4712,8 @@ packages:
   yup@1.7.1:
     resolution: {integrity: sha512-GKHFX2nXul2/4Dtfxhozv701jLQHdf6J34YDh2cEkpqoo8le5Mg6/LrdseVLrFarmFygZTlfIhHx/QKfb/QWXw==}
 
-  zod@4.6.4:
-    resolution: {integrity: sha512-AXSD6hvGdvRjajG/l1cC+d6IrhH+sjmPKtYeQdJIK8MFJl3LyClzS+o/YsVC+zQZPupAaeH5skwwm8YqYH7BqA==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
 snapshots:
 
@@ -5250,7 +5251,7 @@ snapshots:
       isomorphic-ws: 5.0.0(ws@8.21.3)
       semver: 7.8.5
       ws: 8.21.3
-      zod: 4.6.4
+      zod: 4.6.6
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -6237,10 +6238,9 @@ snapshots:
     dependencies:
       argparse: 2.0.1
 
-  abitype@1.2.3(typescript@7.0.2)(zod@4.6.4):
+  abitype@1.2.3(typescript@7.0.2):
     optionalDependencies:
       typescript: 7.0.2
-      zod: 4.6.4
 
   accepts@2.0.0:
     dependencies:
@@ -7356,7 +7356,7 @@ snapshots:
 
   mutation-server-protocol@0.4.1:
     dependencies:
-      zod: 4.6.4
+      zod: 4.6.6
 
   mutation-testing-elements@3.8.4: {}
 
@@ -7615,7 +7615,7 @@ snapshots:
 
   os-browserify@0.3.0: {}
 
-  ox@0.14.44(typescript@7.0.2)(zod@4.6.4):
+  ox@0.14.44(typescript@7.0.2):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -7623,7 +7623,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.4)
+      abitype: 1.2.3(typescript@7.0.2)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 7.0.2
@@ -8400,15 +8400,15 @@ snapshots:
 
   verkit@0.3.2: {}
 
-  viem@2.56.5(typescript@7.0.2)(zod@4.6.4):
+  viem@2.56.5(typescript@7.0.2):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.4)
+      abitype: 1.2.3(typescript@7.0.2)
       isows: 1.0.7(ws@8.21.3)
-      ox: 0.14.44(typescript@7.0.2)(zod@4.6.4)
+      ox: 0.14.44(typescript@7.0.2)
       ws: 8.21.3
     optionalDependencies:
       typescript: 7.0.2
@@ -8572,4 +8572,4 @@ snapshots:
       toposort: 2.0.2
       type-fest: 2.19.0
 
-  zod@4.6.4: {}
+  zod@4.6.6: {}

@@ -67,3 +67,6 @@ overrides:
   # took a release days old. Ends when Nx's own smol-toml is 1.7.1 or later.
   'smol-toml@<=1.7.0': 1.7.1
   ws: ^8.21.0
+  # GHSA-mrhx-c7xc-m3w5. bee-js, abitype and mutation-server-protocol take zod 4 by a range the lockfile held at
+  # 4.6.4. Exact, and only below the fix, so it lifts no zod 3 and takes no release younger than the fix.
+  'zod@<4.6.6': 4.6.6
