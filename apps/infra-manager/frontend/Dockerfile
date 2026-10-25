@@ -1,7 +1,7 @@
 # Builds the React SPA and serves it (plus reverse-proxies API calls) via nginx.
 # Used on the deploy server — devs reach it through an SSH tunnel to port 8080.
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 WORKDIR /repo
 # The pnpm the root package.json names in packageManager, as manager/Dockerfile
 # takes it. A pnpm of another major reads the lockfile's settings from another
@@ -30,7 +30,7 @@ COPY frontend ./frontend
 RUN pnpm --filter @streaming-infra-manager/frontend-prototype build
 
 # --- runtime stage ----------------------------------------------------------
-FROM nginx:1.30.4-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
+FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/frontend/dist /usr/share/nginx/html
 

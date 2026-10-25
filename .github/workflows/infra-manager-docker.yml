@@ -91,9 +91,10 @@ jobs:
       (github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'docker-checks'))
     # The shared image race. The shared image tag reproduced and closed on
     # throwaway projects.
-    # The versions this ran on are in the harness output, and they are not the
-    # Engine 29.1.3 and Compose 5.1.4 pair the qualification names. That
-    # qualification stays a separate obligation, see docs/ci.md.
+    # The versions this ran on are in the harness output, and they are the
+    # runner's, not the Compose the api image pins in manager/Dockerfile. The
+    # run against the pinned Compose is the harness inside that image, see
+    # docs/ci.md.
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

@@ -174,6 +174,16 @@ bash manager/test/docker/stack-version-build.sh <commit> <repo-url>
 `stack-version-build.sh` builds the whole stack from a pushed commit, so it belongs on a runner
 rather than a laptop.
 
+The runner's Compose is not the one the api image pins, and the deploy scripts run the pinned one.
+To run the image race against that Compose, run the harness inside the api image built above, with
+the daemon's socket handed in. A change of the pin in `manager/Dockerfile` repeats this run:
+
+```sh
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD/manager/test/docker/shared-image-race.sh:/harness.sh:ro" \
+  --entrypoint bash manager-api:checks /harness.sh [rounds]
+```
+
 The integration suite needs a running manager, a user and the sign-in pair in its environment.
 [manager/test/integration/README.md](../manager/test/integration/README.md) has the steps.
 

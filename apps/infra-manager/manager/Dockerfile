@@ -12,7 +12,7 @@
 # builds that commit on the host under the versions root at boot
 # (StackVersionService.ensureBundledBuild).
 
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
 WORKDIR /repo
 RUN corepack enable
 
@@ -40,7 +40,7 @@ RUN pnpm --filter @streaming-infra-manager/api... build
 RUN pnpm deploy --filter=@streaming-infra-manager/api --prod /out
 
 # --- runtime stage ----------------------------------------------------------
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 WORKDIR /app
 
 # git is for manager/scripts/stack-version-build.sh, which clones and updates
@@ -49,12 +49,16 @@ WORKDIR /app
 # The Compose plugin is pinned. The deploy scripts run docker compose from
 # inside this container, so this is the Compose that decides how a container
 # is created from an image tag, and the shared image race the deploy guard
-# closes was verified against exactly this version (the host's api container
-# was read at Compose v5.1.4 on 2026-09-07). An Alpine revision bump of the
-# same version is a deliberate edit here, never a silent move.
+# closes was verified against exactly this version. It moved from 5.1.4 to
+# 5.6.1 on 2026-10-25, when Alpine 3.24 stopped offering 5.1.4, and
+# manager/test/docker/shared-image-race.sh was run again inside this image
+# against Compose 5.6.1: the race reproduced with the shared tag and
+# per-project image names kept every container's own content. Any change of
+# this pin, an Alpine revision of the same version included, is a deliberate
+# edit here with that run repeated, never a silent move.
 RUN apk add --no-cache \
       bash jq git \
-      docker-cli docker-cli-compose=5.1.4-r2 \
+      docker-cli docker-cli-compose=5.6.1-r0 \
       rsync openssh-client \
       ca-certificates
 
