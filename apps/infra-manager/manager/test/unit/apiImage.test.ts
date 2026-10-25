@@ -3,9 +3,9 @@
  *
  * The deploy scripts run docker compose from inside the api container, so
  * the Compose that decides how a container is created from a shared tag is
- * the api image's. The host's api container was read on 2026-09-07 at
- * Compose v5.1.4, which is what the shared image race harness runs against,
- * and an unpinned package would move under that reading.
+ * the api image's. The shared image race harness was run inside the image at
+ * Compose 5.6.1 on 2026-10-25, and an unpinned package would move under that
+ * run.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -18,8 +18,8 @@ const dockerfile = readFileSync(join(here, '..', '..', 'Dockerfile'), 'utf8');
 const compose = readFileSync(join(here, '..', '..', 'docker-compose.yml'), 'utf8');
 
 describe('the api image', () => {
-  it('pins the Compose plugin to the version the host runs and the harness verifies', () => {
-    assert.match(dockerfile, /docker-cli-compose=5\.1\.4-r\d+/);
+  it('pins the Compose plugin to the version the harness verified', () => {
+    assert.match(dockerfile, /docker-cli-compose=5\.6\.1-r\d+/);
     assert.equal(
       /\bdocker-cli-compose\s/.test(dockerfile.replace(/docker-cli-compose=[^\s]+/g, '')),
       false,

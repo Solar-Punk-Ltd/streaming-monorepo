@@ -49,12 +49,16 @@ WORKDIR /app
 # The Compose plugin is pinned. The deploy scripts run docker compose from
 # inside this container, so this is the Compose that decides how a container
 # is created from an image tag, and the shared image race the deploy guard
-# closes was verified against exactly this version (the host's api container
-# was read at Compose v5.1.4 on 2026-09-07). An Alpine revision bump of the
-# same version is a deliberate edit here, never a silent move.
+# closes was verified against exactly this version. It moved from 5.1.4 to
+# 5.6.1 on 2026-10-25, when Alpine 3.24 stopped offering 5.1.4, and
+# manager/test/docker/shared-image-race.sh was run again inside this image
+# against Compose 5.6.1: the race reproduced with the shared tag and
+# per-project image names kept every container's own content. Any change of
+# this pin, an Alpine revision of the same version included, is a deliberate
+# edit here with that run repeated, never a silent move.
 RUN apk add --no-cache \
       bash jq git \
-      docker-cli docker-cli-compose=5.1.4-r2 \
+      docker-cli docker-cli-compose=5.6.1-r0 \
       rsync openssh-client \
       ca-certificates
 
