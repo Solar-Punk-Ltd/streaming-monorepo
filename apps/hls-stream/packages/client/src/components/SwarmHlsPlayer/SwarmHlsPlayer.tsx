@@ -28,7 +28,6 @@ import './SwarmHlsPlayer.scss';
 /** Pins playback to a named rung, `AUTO_LEVEL` hands the choice back to hls.js's ABR. */
 const AUTO_LEVEL = 'auto';
 
-// TODO Consider switching to React.MediaHTMLAttributes<HTMLMediaElement> to support <audio> as well
 /**
  * The settings this component lets a caller retune.
  *
