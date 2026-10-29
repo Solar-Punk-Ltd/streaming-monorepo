@@ -47,6 +47,8 @@ The mode is chosen when the deployment is created and cannot change after. An up
 different mode is refused, because switching a node's mode changes what its data directory and
 its chequebook mean.
 
+The manager does not read the wallet or chequebook of a light viewer gateway. Fund it by hand.
+
 ### A custom endpoint stays private
 
 A custom endpoint URL can carry a provider key, so it is private deployment input. A profile in
@@ -66,6 +68,9 @@ The edit drawer starts the custom endpoint field empty. Leaving it empty on an u
 choice sends no URL, and the manager keeps the stored one. Typing a replacement sends the
 replacement. Choosing the manager's or the stack's source clears the stored URL, also when an API
 client sends only the new source.
+
+A Bee node prints its whole chain endpoint into its own container log on its host, which the manager
+cannot prevent. Prefer an endpoint that carries no key, such as a proxy on the host that holds it.
 
 ### The manager's own endpoint
 
@@ -138,10 +143,3 @@ Profile fields, on `POST /profiles`, `PUT /profiles/:name` and `POST /groups`:
 Answers carry `has_rpc_endpoint` and `rpc_endpoint_host` in place of the URL. `GET /config`
 answers `beeRpcEndpoint` as `{ configured, host }`. The full routes are in
 [../../manager/README.md](../../manager/README.md).
-
-## Limits
-
-- The manager does not read the wallet or chequebook of a light viewer gateway. Fund it by hand.
-- A Bee node prints its whole chain endpoint into its own container log on its host, which the
-  manager cannot prevent. Prefer an endpoint that carries no key, such as a proxy on the host that
-  holds it.

@@ -111,6 +111,9 @@ Adding a user, removing one and signing someone else out need an admin. "Who can
 under [Endpoints](../docs/features/auth-and-public-access.md#endpoints) on the auth page says who
 is an admin.
 
+**No HTTPS of its own.** The sign-in gate is only as good as the transport in front of it. The
+host's edge, `infra/edge` at the repository root, terminates TLS. The deploy guide has the steps.
+
 ## Conventions
 
 - Command routes (deploy, stop, health, version builds) stream their output as Server-Sent Events:
@@ -180,6 +183,17 @@ is the whole contract.
   `network_host`: the deploy target in `host` with the SSH alias resolved away, so a client has an
   address to build links from. It equals `host` when there is nothing to resolve. Another is
   `pendingStamp`, see [The uploader held back for a stamp](#the-uploader-held-back-for-a-stamp).
+
+**At most 100 deployments per host.** A port slot is a whole number from 1 to 100, and a stack
+version may declare a lower ceiling, which the manager honours. The stack in this repository
+declares 99, so a host running it holds at most 99 deployments. A stopped deployment still holds its
+slot.
+
+**Some slots are skipped.** The WHATWG fetch standard lists ports that Node's fetch and every
+browser refuse ([port blocking](https://fetch.spec.whatwg.org/#port-blocking)), and a slot's ports
+all follow from its number. So a new deployment skips any slot that would put a port on that list
+(`FETCH_BLOCKED_PORTS` in `src/domain/ports/fetchBlockedPorts.ts`). With the bundled port table that
+is slot 8, whose API port is 10080.
 
 ### Uploader health
 
@@ -285,6 +299,16 @@ what still runs otherwise. A daemon that cannot be reached leaves the row `ERROR
 
 A stop that fails before its script starts marks the deployment `ERROR` with the reason at once. A
 stop of a deployment that was replaced since the request read it is refused as an instance change.
+
+**Commands stream over a held connection.** Closing it does not stop a deploy, a deploy-uploader or
+a stop: each finishes on its own, the new state arrives as `profile.changed` on `/events`, and a
+manager restarted mid-run reconciles the row at boot. Only a health check stops when its client goes
+away.
+
+**A deployment's status changes only on a deploy, a stop or another action.** An uploader that
+failed its deploy, for example on a postage batch with less than `STAMP_MIN_TTL_HOURS` (12) left,
+and then started by itself once the batch was topped up, still shows **Last deploy failed** while it
+runs healthy. Deploy it again to clear the status.
 
 ### The uploader held back for a stamp
 
@@ -899,6 +923,9 @@ stream key, SRT passphrase and batch.
 Step 3 of [Opening the manager to the internet](../deploy/README.md#3-generate-and-review-the-host-firewall)
 is what the firewall export is for.
 
+**A target is verified before it is used.** `localhost` is the ordinary case. Another alias is
+refused until the manager has read a Docker daemon identity on it over SSH.
+
 ## Configuration and version
 
 | Method | Path        | Answer                                                                      |
@@ -1007,6 +1034,9 @@ The collector polls Docker only while a client is connected to `/metrics/stream`
   which `docker-compose.yml` sets up. Without them the host fields fall back to capacity or null.
   Host network traffic is read from `/host/proc/1/net/dev`, the host init process's view.
 
+**A remote Bee node's data is outside the manager's reach.** The disk figure and the cleanup on
+removal cover the manager's own host only.
+
 ## Example session
 
 Sign in first. The cookie file carries the session through the rest, and every request that is not
@@ -1086,33 +1116,3 @@ keys an operator sets by hand. `docker-compose.yml` sets `SHLS_ROOT` and `BEE_DA
 `MANAGER_ROOT` and `STACK_VERSIONS_ROOT` are mounted into the api container at the same absolute
 path they have on the host, because the Docker daemon runs on the host and reads every path in a
 Compose file as a host path.
-
-## Limits
-
-- **At most 100 deployments per host.** A port slot is a whole number from 1 to 100, and a stack
-  version may declare a lower ceiling, which the manager honours. The stack in this repository
-  declares 99, so a host running it holds at most 99 deployments. A stopped deployment still holds
-  its slot.
-- **Some slots are skipped.** The WHATWG fetch standard lists ports that Node's fetch and every
-  browser refuse ([port blocking](https://fetch.spec.whatwg.org/#port-blocking)), and a slot's
-  ports all follow from its number. So a new deployment skips any slot that would put a port on
-  that list (`FETCH_BLOCKED_PORTS` in `src/domain/ports/fetchBlockedPorts.ts`). With the bundled
-  port table that is slot 8, whose API port is 10080.
-- **No HTTPS of its own.** The sign-in gate is only as good as the transport in front of it. The
-  host's edge, `infra/edge` at the repository root, terminates TLS. The deploy guide has the steps.
-- **Commands stream over a held connection.** Closing it does not stop a deploy, a
-  deploy-uploader or a stop: each finishes on its own, the new state arrives as `profile.changed`
-  on `/events`, and a manager restarted mid-run reconciles the row at boot. Only a health check
-  stops when its client goes away.
-- **A target is verified before it is used.** `localhost` is the ordinary case. Another alias is
-  refused until the manager has read a Docker daemon identity on it over SSH.
-- **A deployment's status changes only on a deploy, a stop or another action.** An uploader that
-  failed its deploy, for example on a postage batch with less than `STAMP_MIN_TTL_HOURS` (12) left,
-  and then started by itself once the batch was topped up, still shows **Last deploy failed** while
-  it runs healthy. Deploy it again to clear the status.
-- **A remote Bee node's data is outside the manager's reach.** The disk figure and the cleanup on
-  removal cover the manager's own host only.
-- **The engines' live status is not read.** The manager does not yet ask SRS or OvenMediaEngine what
-  is publishing right now, even on a stack version that publishes SRS's API port. The Engine card
-  and `GET /profiles/:name/engine` give the reason in `liveUnavailableReason` instead (see
-  [Engine control](#engine-control)).

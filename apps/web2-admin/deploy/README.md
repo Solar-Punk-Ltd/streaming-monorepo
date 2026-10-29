@@ -21,8 +21,8 @@ In short:
    ([Public HTTPS: the host's edge](#public-https-the-hosts-edge)).
 
 `deploy.sh` takes the same flags and runs the same way as the stack's deploy
-script, with standard input closed and output streamed, so that the manager can
-run it. The manager does not run it yet ([Known limits](#known-limits)).
+script, with standard input closed and output streamed. It is run by hand, not
+by the manager.
 
 ## One-time host setup
 
@@ -218,6 +218,9 @@ The deploy exits non-zero on any failure. When the stack does not come up in
 time it prints `docker compose ps` and the last log lines of the services it
 deployed before exiting.
 
+**Two deploys to one host at the same time are not guarded against.** They write
+into the same tree.
+
 ### The version
 
 Before a release the operator tags the commit with the tag script, step 1 of
@@ -376,6 +379,10 @@ export WEB2_ADMIN_ENV_FILE=../backend/.env.brand-a
 docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file backend/.env.brand-a logs -f api
 ```
 
+**There is no stop, health or clean script, and no database backup.** Stop,
+check and clean a profile with compose by hand. `down -v` deletes the profile's
+database.
+
 ## Public HTTPS: the host's edge
 
 One Caddy per host serves the consoles that host publishes on its loopback,
@@ -396,6 +403,15 @@ admin.example.org {
     reverse_proxy 127.0.0.1:9090
 }
 ```
+
+**The edge does not filter `/api/internal`.** The stack's uploaders call the
+admin's internal API. Without the edge nothing outside the host reaches it. With
+the edge, nginx passes all of `/api/` through, so
+`https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a bearer
+token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in constant
+time) on the manager's routes, and a stage's own token, known by its sha256, on
+the uploader's. The edge passes it through so that an uploader on a stage host
+can reach the admin at the address the manager's link names.
 
 ### Before the first run
 
@@ -606,27 +622,3 @@ admin's `test` script runs them, and from the repository root:
 ```sh
 node --test 'apps/web2-admin/deploy/test/*.test.mjs'
 ```
-
-## Known limits
-
-- **The manager does not run this script yet.** `deploy.sh` takes the flags
-  the manager hands the stack's deploy script, closed standard input included.
-  Before the manager can run it, three things are open: where the manager's
-  checkout of this repository lives and how it writes
-  `apps/web2-admin/backend/.env.<profile>`, whether it passes the stack-only
-  flags `--feed-owner`, `--feed-topic` and `--stamp-id`, which this script
-  refuses, and the `stop.sh`, `health.sh` and `clean.sh` the manager expects
-  beside `deploy.sh`, which the admin does not have.
-- **No stop, health or clean script, and no database backup.** Use compose by
-  hand ([Running compose by hand](#running-compose-by-hand)) until they exist.
-  `down -v` deletes the profile's database.
-- **Two deploys to one host at the same time are not guarded against.** They
-  write into the same tree.
-- **The edge does not filter `/api/internal`.** The stack's uploaders call the
-  admin's internal API. Without the edge nothing outside the host reaches it.
-  With the edge, nginx passes all of `/api/` through, so
-  `https://<ADMIN_DOMAIN>/api/internal` answers from anywhere, guarded by a
-  bearer token alone: `INTERNAL_API_TOKEN` (32 characters or more, compared in
-  constant time) on the manager's routes, and a stage's own token, known by its
-  sha256, on the uploader's. The edge passes it through so that an uploader on
-  a stage host can reach the admin at the address the manager's link names.

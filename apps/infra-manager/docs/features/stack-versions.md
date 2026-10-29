@@ -18,6 +18,8 @@ A version list that arrives late still leaves a usable selector. A later change 
 
 Updating a version does not restart its deployments. The build a version publishes and the build a deployment runs are separate facts. A deployment moves to the new build on its own next deploy.
 
+Version selection applies to new deployments only. An existing deployment or group stays on the version it was created with.
+
 ## Versions page
 
 The **Versions** page lists the bundled version and every added version. Each card shows the version name, its ref, the repository and folder its stack came from, the commit, the build state, whether it is the default and whether it is **Tested**. Details expand for the contract and build information. The actions stay reachable at narrow widths.
@@ -89,6 +91,10 @@ Pruning keeps the current and previous builds, builds of unresolved jobs, builds
 
 Removing a version rechecks its identity and every hold while it locks the version's row. File cleanup starts only after those checks pass. Before it deletes anything, the manager writes a `<name>.removal.json` marker beside the version. A crash or partial cleanup leaves the marker in place, so the row cannot become deployable again. Updates, deployment admission and execution copies refuse a marked version. Retrying the removal finishes the cleanup. The marker stays after a successful removal. A new version of the same name is allowed only when the marker is valid and belongs to an older version id. An unreadable, malformed, active or newer marker is refused. Every configured path must stay inside the verified versions directory.
 
+The inventory stamps do not detect a writer who changes a file of a published build and then restores its size, mode and modification time. Such a writer already has write access to the versions root.
+
+After a build's first deploy nothing reads its bytes again, so a byte that rots on disk under it goes unnoticed.
+
 ## Host configuration and runtime files
 
 Every version keeps three kinds of file that you own, in `<name>/`: the base `.env`, `deploy/config.json`, and one `.env` per engine the version ships a sample for. The settings page and `manager/scripts/stack-config-edit.sh` commit them as one revision under a shared lock. Each file is replaced atomically, and the revision manifest with their hashes is written last.
@@ -125,11 +131,17 @@ Preparing a copy logs which build it copies and how many files that is. A copy o
 
 The directories are owner only. The engines mount files out of the copy read only: the SRS compose file mounts its config template, entrypoint and healthcheck, and the OvenMediaEngine one mounts its `Server.xml` template and entrypoint. Read only matters, because those files share their inodes with the build. A version that keeps no immutable builds gets no copy and runs from its flat tree.
 
+A write through one of a copy's linked paths after the build's last stat walk reaches the build through the shared inode without the copy seeing it. The window is milliseconds, inside an owner only directory nothing has started from yet.
+
+When the executions directory and the builds sit on different volumes, every file of a build is copied and read on every deploy.
+
 ### When a copy is removed
 
 A copy is recorded as launched before anything can start from it. A deployment keeps the copy it runs from and the one before it while a deploy is in flight, so a deploy that fails leaves the tree that last worked. After a successful deploy it keeps one, and a removed deployment keeps none. A copy nothing ever ran from is removed with its failed deploy or at the next boot.
 
 A launched copy is removed only when the deployment has a newer launched copy or has been removed, the copy's job has finished, no deploy attempt for the deployment is open, and a complete Docker observation of the local host finds no container that mounts it, runs in it or depends on it. When the observation is incomplete or any container's dependency is unknown, the copy is kept. A copy on a remote target is always kept, because its files live on another host that the manager cannot inspect this way. Removing a copy releases its hold on the build.
+
+Execution copies on a remote target are never removed by the manager.
 
 ## Settings for one version
 
@@ -140,6 +152,8 @@ The page masks a secret until you choose **Reveal**, marks a value that still eq
 A save keeps every byte you did not change, because these files carry the host's own documentation in their comments and can also be edited over ssh. An env file is rewritten from its current bytes: each key the save names has its value replaced in place, keeping any `export` prefix, the spacing up to the equals sign and a trailing carriage return. Every comment, blank line and untouched line is copied through, and a key the file does not have is appended. The deploy config is edited as text, with a **Reset to sample** action.
 
 The values come back in the clear, secrets included. The routes are behind the session gate, and a value you cannot see is one you cannot check. Any signed-in account can reach this page, as with every other version route.
+
+Any signed-in account can read and change a version's settings, secrets included.
 
 ## Routes
 
@@ -210,13 +224,3 @@ The player names the release it was built as in its QoE overlay, which `?qoe=1` 
 A deploy reads the label and commit from the manifest of the build it was admitted on and passes them to the stack's deploy script as `--release-label` and `--release-commit`. The script builds them into the client as `VITE_APP_RELEASE_LABEL` and `VITE_APP_RELEASE_COMMIT`. Once the deploy is observed, the overlay names the same release as the At a glance card. A build with no label passes neither flag, and a manifest commit shorter than 40 characters is left out, so the overlay shows the label alone. The script writes them only for a target that builds the client. Stop and health never receive them. The script holds the label to `^[A-Za-z0-9._+/-]{1,96}$` and the commit to `^[0-9a-f]{40}$`, refuses anything else before it deploys, and writes both empty without the flags. The player prints them as text.
 
 The flags go only to a version whose contract has `playerRelease`. A version whose deploy script has no case arm for both `--release-label=*` and `--release-commit=*` in `_lib.sh` would read an unknown flag as a service name and refuse the deploy, so such a version is given only the arguments it knows, and its player shows no release. A stored contract with no such field reads as false until a build reads the contract again. The version card's contract line says `player shows its release` on a version that has it.
-
-## Limits
-
-- An existing deployment or group cannot yet move to another version. Version selection applies to new deployments only.
-- The inventory stamps do not detect a writer who changes a file of a published build and then restores its size, mode and modification time. Such a writer already has write access to the versions root.
-- After a build's first deploy nothing reads its bytes again, so a byte that rots on disk under it goes unnoticed.
-- A write through one of a copy's linked paths after the build's last stat walk reaches the build through the shared inode without the copy seeing it. The window is milliseconds, inside an owner only directory nothing has started from yet.
-- When the executions directory and the builds sit on different volumes, every file of a build is copied and read on every deploy.
-- Any signed-in account can read and change a version's settings, secrets included. There is no narrower role for this page yet.
-- Execution copies on a remote target are never removed by the manager.

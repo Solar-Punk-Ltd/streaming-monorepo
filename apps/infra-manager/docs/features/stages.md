@@ -156,6 +156,14 @@ Every moment the admin orders records by is the manager's own. A record's
 uploader readings, so the admin keeps the newest reading whichever push arrives
 last.
 
+The push outcomes and the last catalogue reading and push are kept in memory. A
+restarted manager says "not pushed yet" or "not sent yet" until its first push.
+A running stage is pushed within 30 seconds of the start, and the catalogue
+record at start. Retirements are kept in the database and survive a restart.
+
+When the manager shuts down the publishers stop first, and no push starts after
+that.
+
 ## When a deployment goes
 
 A removed deployment's stage is retired with `DELETE`, carrying
@@ -193,6 +201,10 @@ Which retirements are sent:
 
 While the link stores no address or no token, a retirement waits for one.
 
+A deployment whose record could not be put together since the manager started
+(`skipped-no-record`) is not retired when it is removed. A stage the admin
+stored from a push before a restart then stays active there.
+
 ## To whom
 
 To the manager's admin link, `PUT <link>/api/internal/stages/<stageId>`, with
@@ -207,6 +219,11 @@ alone, plain http only to the manager's own host
 ([web2-admin-link.md](web2-admin-link.md#plain-http-and-the-managers-own-host)),
 follows no redirect, gives up after five seconds a call and reads at most 64 KiB
 of an answer.
+
+One admin link per manager. A stage on another admin's origin is not pushed.
+
+A deployment whose `ADMIN_API_URL` moves to another origin is not pushed any
+more, and its stage stays at the admin it left until that admin retires it.
 
 ## Outcomes
 
@@ -234,6 +251,10 @@ answered, its address or a token.
 The last outcome of each deployment and its time are kept in memory. The log
 says a deployment's outcome when it changes, and why its record could not be put
 together once.
+
+Between a rotation and the redeploy, the running uploader's token is refused
+once the next push lands, so the uploader cannot report until it is redeployed.
+The card says so before it asks.
 
 ## In the console
 
@@ -270,6 +291,12 @@ together once.
 `pnpm -C frontend dev:mock` shows the card and the Stages page against a mock
 manager. A mock stage whose name carries `legacy` has a shared token, and one
 whose name carries `standalone` has none.
+
+A rung under another manager has no reading, and a pool's verdict does not read
+its rungs.
+
+The stage card estimates the ingest address from the page's own host for a
+deployment on the manager's host. The record uses `PUBLIC_HOST`.
 
 ## Routes
 
@@ -415,6 +442,9 @@ outcome is `skipped-no-record`, and the log says why once.
 designation refused a batch whose kind was not reported and a batch's kind never
 changes.
 
+The catalogue stamp record goes to the link as it is now. A link moved to
+another admin leaves the old one holding the last record it was sent.
+
 ### When and to whom the catalogue record goes
 
 To the manager's admin link, `PUT <link>/api/internal/catalogue-stamp`, with
@@ -490,27 +520,3 @@ be tried.
 | `ADMIN_API_URL`, `ADMIN_API_TOKEN`              | the deployment                | the admin the uploader reports to and its token ([web2-admin-link.md](web2-admin-link.md))                           |
 | `SRS_SRT_PORT`, `SRS_RTMP_PORT`, `OME_SRT_PORT` | the version's port table      | the ingest ports, shifted by the deployment's slot                                                                   |
 | `SRT_PASSPHRASE`                                | the deployment or the version | the SRT passphrase the record carries                                                                                |
-
-## Limits
-
-- One admin link per manager. A stage on another admin's origin is not pushed.
-- A deployment whose `ADMIN_API_URL` moves to another origin is not pushed any
-  more, and its stage stays at the admin it left until that admin retires it.
-- A deployment whose record could not be put together since the manager started
-  (`skipped-no-record`) is not retired when it is removed. A stage the admin
-  stored from a push before a restart then stays active there.
-- The push outcomes and the last catalogue reading and push are kept in memory. A
-  restarted manager says "not pushed yet" or "not sent yet" until its first push.
-  A running stage is pushed within 30 seconds of the start, and the catalogue
-  record at start. Retirements are kept in the database and survive a restart.
-- The catalogue stamp record goes to the link as it is now. A link moved to
-  another admin leaves the old one holding the last record it was sent.
-- When the manager shuts down the publishers stop first, and no push starts after
-  that.
-- A rung under another manager has no reading, and a pool's verdict does not read
-  its rungs.
-- The stage card estimates the ingest address from the page's own host for a
-  deployment on the manager's host. The record uses `PUBLIC_HOST`.
-- Between a rotation and the redeploy, the running uploader's token is refused
-  once the next push lands, so the uploader cannot report until it is redeployed.
-  The card says so before it asks.

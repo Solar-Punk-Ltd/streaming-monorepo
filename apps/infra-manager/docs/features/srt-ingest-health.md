@@ -105,6 +105,24 @@ deployment at a time.
   text is returned, stored, logged or rendered. A failed read is logged as the kind of failure,
   such as `DockerUnavailableError` or `ENOENT`, never with its message.
 
+A crafted SRT stream id can put fake numbers on the card. A publisher chooses its stream id and SRS
+quotes it into its log, so an id carrying a newline and then a line in the exact report shape is
+counted as a report. On a deployment with an SRT passphrase the publisher needs the passphrase to
+connect at all.
+
+A crafted RTMP connection can put fake numbers and a fake state on the card, with no key. SRS prints
+the tcUrl, pageUrl, swfUrl and key parameter of the connect command as they came, before any hook
+runs, so one TCP connection to the public RTMP port can write a line in report shape. It can forge
+the RTMP part, `measured` with any numbers or `unattributed`, and the SRT counts and verdict. It
+cannot forge text, since a line is read only when it is one whole report.
+
+A read that reaches its byte or time bound keeps the older part of the minute, because Docker sends
+the window oldest first. 20,000 lines of the lengths SRS and libsrt write do not reach it.
+
+A remote answer larger than 64 KiB reads as `unreadable`. Every remote read goes through the same
+command runner, whose output stops at 64 KiB (`manager/src/domain/ports/TargetDocker.ts`). That is
+about 460 report lines, more than seventy publishers on one SRS in one minute.
+
 ### The reading
 
 The SRT reports in the window are summed into one reading, across connections too, since a
@@ -137,6 +155,12 @@ read):
 
 RTMP runs over TCP, which resends what it loses, so SRS reports no loss for it and the RTMP part
 has no verdict. A link that cannot keep up shows as a bitrate below what the encoder sends.
+
+The reading does not say how old its newest report is. A publisher that left fifty seconds ago still
+shows the minute it was sending.
+
+An RTMP publisher that stopped beside another still sending keeps its bitrate in the sum for up to a
+minute, until its reports leave the window. It takes two RTMP broadcasts on one stage at once.
 
 ## How to use it in the console
 
@@ -174,6 +198,9 @@ A degraded or bad SRT link carries the remedy, as a warning or an error:
 The suggested 4000 ms is twice the manager's default `SRT_LATENCY` of 2000 ms. The card names no
 current latency, because it cannot see the one SRS runs with.
 
+The suggested 4000 ms is a fixed number. A deployment already set above it gets a suggestion that
+changes nothing.
+
 ### Offline preview
 
 `pnpm --filter @streaming-infra-manager/frontend-prototype dev:mock` serves the console against an
@@ -198,27 +225,3 @@ Stack keys the card depends on:
 | ------------- | ---------------------------------------------------------------------------- |
 | `SRT_LATENCY` | The SRT latency SRS runs with, the setting the remedy's first step leads to  |
 | `ABR_VHOST`   | The vhost the ABR rungs publish on, left out of the RTMP part. Default `abr` |
-
-## Limits
-
-- A crafted SRT stream id can put fake numbers on the card. A publisher chooses its stream id and
-  SRS quotes it into its log, so an id carrying a newline and then a line in the exact report
-  shape is counted as a report. On a deployment with an SRT passphrase the publisher needs the
-  passphrase to connect at all.
-- A crafted RTMP connection can put fake numbers and a fake state on the card, with no key. SRS
-  prints the tcUrl, pageUrl, swfUrl and key parameter of the connect command as they came, before
-  any hook runs, so one TCP connection to the public RTMP port can write a line in report shape.
-  It can forge the RTMP part, `measured` with any numbers or `unattributed`, and the SRT counts and
-  verdict. It cannot forge text, since a line is read only when it is one whole report.
-- A read that reaches its byte or time bound keeps the older part of the minute, because Docker
-  sends the window oldest first. 20,000 lines of the lengths SRS and libsrt write do not reach it.
-- The reading does not say how old its newest report is. A publisher that left fifty seconds ago
-  still shows the minute it was sending.
-- A remote answer larger than 64 KiB reads as `unreadable`. Every remote read goes through the
-  same command runner, whose output stops at 64 KiB (`manager/src/domain/ports/TargetDocker.ts`).
-  That is about 460 report lines, more than seventy publishers on one SRS in one minute.
-- The suggested 4000 ms is a fixed number. A deployment already set above it gets a suggestion
-  that changes nothing.
-- An RTMP publisher that stopped beside another still sending keeps its bitrate in the sum for up
-  to a minute, until its reports leave the window. It takes two RTMP broadcasts on one stage at
-  once.

@@ -32,6 +32,22 @@ Segments in ──▶ StreamOrchestrator ──▶ StreamUploader ──▶ Swar
 - **Announce.** The stream list, called the catalogue, is a Swarm feed that says which streams exist
   and whether each is live or recorded.
 
+A segment and the playlist that names it race by about a tenth of a second. The uploader writes
+segment bytes deferred, so the feed slot that names a segment can become readable before the segment
+itself. A reader at the live edge can then get a 404 for a segment that is readable a moment later.
+A player retries and does not notice.
+
+The catalogue and every master playlist are written through the coordinator's node and batch, the
+lowest rung's. If that batch runs dry, the master cannot be rewritten and the recording cannot be
+announced for any rung. There is no coordinator failover.
+
+A single-rendition stage whose publisher keyframe interval does not divide `HLS_FRAGMENT` cuts
+segments longer than declared. The dates stay right, but every `#EXT-X-GAP` entry is sized at the
+declared length. See [concepts.md](concepts.md#the-manifest-contract).
+
+Some ladder cases keep rungs apart in numbering or dates. See
+[concepts.md](concepts.md#every-rung-of-a-ladder-dates-from-one-line).
+
 ## Two modes
 
 | Mode                    | Turned on by          | Who owns the catalogue                                                                                                                               |
@@ -113,6 +129,11 @@ on `BEE_PUBLISHERS`.
 Engine settings, such as `SRS_MEDIA_PATH` or the `OME_*` variables, live in `engines/<name>/.env`.
 Copy [engines/srs/.env.sample](../../engines/srs/.env.sample) or
 [engines/ome/.env.sample](../../engines/ome/.env.sample) to start.
+
+Each rung's batch is read once at start from `BEE_PUBLISHERS`. Replacing a batch needs a redeploy.
+
+`stamp:buy` buys the same amount and depth for every rung, although 1080p fills a given batch about
+seven times sooner than 360p.
 
 ## Engines
 
@@ -287,6 +308,10 @@ OME's stream id is percent-encoded, because the key sits inside a value that is 
 `publish-key.sh` prints the encoded form.
 
 Rotating `PUBLISH_KEY_SECRET` invalidates every key at once. There is no per-stream revocation.
+
+A deployment without a publish key starts a new session when a broadcaster returns from a different
+address. Set `PUBLISH_KEY_SECRET`, or run in admin mode, to keep one session across an address
+change.
 
 ## Admin mode
 
@@ -493,26 +518,6 @@ Reading the per-rung breakdowns:
   before it announces them, because the ladder asks for more announcements a second than SRS can
   deliver. See the announcement ceiling in the
   [engines reference](../../engines/README.md#the-announcement-ceiling).
-
-## Known limits
-
-- A segment and the playlist that names it race by about a tenth of a second. The uploader writes
-  segment bytes deferred, so the feed slot that names a segment can become readable before the
-  segment itself. A reader at the live edge can then get a 404 for a segment that is readable a
-  moment later. A player retries and does not notice.
-- The catalogue and every master playlist are written through the coordinator's node and batch, the
-  lowest rung's. If that batch runs dry, the master cannot be rewritten and the recording cannot be
-  announced for any rung. The uploader has no coordinator failover.
-- Each rung's batch is read once at start from `BEE_PUBLISHERS`. Replacing a batch needs a redeploy.
-- `stamp:buy` buys the same amount and depth for every rung, although 1080p fills a given batch about
-  seven times sooner than 360p.
-- A deployment without a publish key starts a new session when a broadcaster returns from a different
-  address. Set `PUBLISH_KEY_SECRET`, or run in admin mode, to keep one session across an address change.
-- A single-rendition stage whose publisher keyframe interval does not divide `HLS_FRAGMENT` cuts
-  segments longer than declared. The dates stay right, but every `#EXT-X-GAP` entry is sized at the
-  declared length. See [concepts.md](concepts.md#the-manifest-contract).
-- Two ladder cases keep rungs apart in numbering or dates. See
-  [concepts.md](concepts.md#known-gaps-in-ladder-alignment).
 
 ## Local development
 

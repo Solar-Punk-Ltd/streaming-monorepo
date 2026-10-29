@@ -200,6 +200,13 @@ that cost, for example "Top up for 1.318627974316032 BZZ". Where the node's
 wallet was read and holds less than the cost, the confirm is off and the dialog
 says how much the wallet holds.
 
+Nothing warns about a top-up that leaves a batch under a day, which the contract
+refuses as well. This only happens on a batch with less than a day left, where
+the dialog's hint already says what a day costs.
+
+The manager does not check the wallet before a top-up. The page does, where it
+read the wallet, and Bee refuses one it cannot pay as "out of funds".
+
 ### Dilute
 
 Raises a batch's depth. Every step doubles the chunks the batch holds and the
@@ -220,6 +227,11 @@ and the confirm stays off. Otherwise the confirm names the depth, for example
 
 A batch diluted with little time left warns as ending soon, and a top-up buys
 that life back.
+
+The dialog and the manager judge a dilution's remaining life at today's price.
+If the price falls before the next block, the contract could have accepted a
+dilution right at the one-day boundary that they refused. Topping the batch up
+first gets past it either way.
 
 ## The catalogue node's pinned batch
 
@@ -264,6 +276,14 @@ new depth. An uploader that has already reported `postage_refused` keeps
 reporting it until it is deployed again, because the stack's uploader keeps
 that reason for the life of its process (the stack's
 `packages/stream-uploader/README.md`).
+
+A refusal from Bee reaches the page as `502 bee_node_unreachable` with Bee's
+words in its message, the code every failed call to a node gets, which reads as
+though the node did not answer.
+
+A top-up or dilute of a batch the node holds but has not made usable yet is
+answered by Bee with 400 "batch not usable", which the manager passes on as `502
+bee_node_unreachable`. The page never offers either on such a batch.
 
 ## What the manager refuses before Bee is asked
 
@@ -321,21 +341,3 @@ journalled before the node is asked, so the same request is never sent twice.
 | `frontend/src/uploaders/TopUpStampDialog.tsx`, `topUpView.ts`, `DiluteStampDialog.tsx`, `diluteView.ts`, `BatchSummary.tsx` | The two dialogs and what they show before you confirm.                                                      |
 | `frontend/src/deployments/StorageCard.tsx`                                                                                  | Opens the dialogs, sends the change, reads the node again and says what was sent.                           |
 | `frontend/dev/mock-stamps.mjs`                                                                                              | The offline mock's stamp routes, with the manager's schemas and refusals. It seeds a full immutable batch.  |
-
-## Limits
-
-- The dialog and the manager judge a dilution's remaining life at today's
-  price. If the price falls before the next block, the contract could have
-  accepted a dilution right at the one-day boundary that they refused. Topping
-  the batch up first gets past it either way.
-- Nothing warns about a top-up that leaves a batch under a day, which the
-  contract refuses as well. This only happens on a batch with less than a day
-  left, where the dialog's hint already says what a day costs.
-- The manager does not check the wallet before a top-up. The page does, where
-  it read the wallet, and Bee refuses one it cannot pay as "out of funds".
-- A refusal from Bee reaches the page as `502 bee_node_unreachable` with Bee's
-  words in its message, the code every failed call to a node gets, which reads
-  as though the node did not answer.
-- A top-up or dilute of a batch the node holds but has not made usable yet is
-  answered by Bee with 400 "batch not usable", which the manager passes on as
-  `502 bee_node_unreachable`. The page never offers either on such a batch.

@@ -30,6 +30,13 @@ admins add the rest from the Access page.
 An **admin** is a user who can manage users: add one, remove one, and sign someone else out.
 "Who can manage users" under [Endpoints](#endpoints) has the rules.
 
+There is no password reset. A user who forgets theirs is removed by an admin and added again.
+
+A user's admin role cannot be changed after the user is added.
+
+The admin role gates user management only. Every signed-in user can deploy, spend postage and
+chequebook funds, and read SRT passphrases.
+
 ### Sessions
 
 Signing in opens a **session**. The browser holds its token in the cookie `sim_session`
@@ -99,6 +106,11 @@ keys count an address as `limiterAddress` gives it:
 In front of the API, the web server also limits `/auth/login` to ten requests a minute per address
 with a burst of five, and answers 429 past it. This stops a flood before each attempt pays for a
 slow scrypt hash.
+
+The lockout lives in the API process's memory, so a restart clears it.
+
+Enough addresses together can still lock an account's sign-in for everyone: about a hundred
+failures, from many addresses. Its sessions keep working, and so does its password change.
 
 ### The write header
 
@@ -247,6 +259,8 @@ reference.
   URL.
 - `GET /config` answers the host-wide SRT passphrase to any signed-in user.
 
+`GET /config` answers the host-wide SRT passphrase to any signed-in user.
+
 ## Opening the manager to the internet
 
 The manager has three layers between a browser on the internet and the things it controls. The
@@ -329,6 +343,11 @@ So the three controls work together: the API binds keep the unprotected ports on
 forward chain drops everything else Docker publishes, and the input chain covers the host itself.
 Step 3 of the deploy guide has the command and what to check in the draft.
 
+The firewall generator prints a draft. Applying it is the host operator's step.
+
+The firewall draft opens no RTMP port. A host that takes broadcasts over RTMP needs that port opened
+by hand.
+
 ## Settings
 
 Keys in `manager/.env`:
@@ -342,18 +361,3 @@ Keys in `manager/.env`:
 
 The stack's `*_BIND` and `*_API_LISTEN` keys are in the deploy guide's step 2. The manager's other
 settings are in the [API reference](../../manager/README.md).
-
-## Limits
-
-- The login does not yet offer two-factor sign-in or single sign-on.
-- There is no password reset. A user who forgets theirs is removed by an admin and added again.
-- A user's admin role cannot be changed after the user is added.
-- The admin role gates user management only. Every signed-in user can deploy, spend postage and
-  chequebook funds, and read SRT passphrases.
-- The lockout lives in the API process's memory, so a restart clears it.
-- Enough addresses together can still lock an account's sign-in for everyone: about a hundred
-  failures, from many addresses. Its sessions keep working, and so does its password change.
-- `GET /config` answers the host-wide SRT passphrase to any signed-in user.
-- The firewall generator prints a draft. Applying it is the host operator's step.
-- The firewall draft opens no RTMP port. A host that takes broadcasts over RTMP needs that port
-  opened by hand.

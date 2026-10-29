@@ -342,7 +342,7 @@ The epochs are stored with the group in `state/ladder/groups.json` and in each r
 so a crash after a restart keeps the re-anchored dating. The recording is built by the same function
 as the live playlists, so it carries the same dates.
 
-### Known gaps in ladder alignment
+Three cases keep rungs apart in numbering or dates:
 
 - **A rung reaped while every sibling is away** has no live line to join. Its new session numbers from
   its own feed head and dates from the ladder's opening line, while the siblings' return mints a line at
