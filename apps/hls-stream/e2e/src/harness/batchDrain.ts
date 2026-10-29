@@ -23,9 +23,8 @@
  * batch is spent after one run and stays on the node as a dead entry, still listed and still usable
  * while it has TTL. Armed onto it a second time, the rung refuses its FIRST upload, so the refusal
  * line arrives before all four rungs have published and the suite reads a ladder that never had four
- * rungs as one that lost a rung. `stageStamps.ts` deliberately does not judge fill, because
- * `deploy/scripts/stamp-guard.sh` and the uploader's own `PostageGate` own that stop line for an
- * ordinary batch. This is a different question about a different batch: not "is there headroom" but
+ * rungs as one that lost a rung. `stageStamps.ts` deliberately does not judge fill, because the
+ * uploader's own `PostageGate` owns that stop line for an ordinary batch. This is a different question about a different batch: not "is there headroom" but
  * "has this drain batch been used already".
  *
  * ## ⛔ Why the target is never the coordinator

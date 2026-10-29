@@ -3,16 +3,14 @@
  *
  * ## What this promotes, and from where
  *
- * The browser drivers under `e2e/browser/` have always been measurement runs: a person launches one
- * through `deploy/scripts/browser-on-host.sh`, reads the report it writes and forms a judgement. The
+ * The browser drivers under `e2e/browser/` have always been measurement runs: a person launches one,
+ * reads the report it writes and forms a judgement. The
  * suite's own viewer legs were HTTP polls, so nothing under `suites/` had ever opened a player. This
  * is the same launch, made by the suite, with the result parsed into something a test can assert on.
  *
- * The launch is `browser-on-host.sh`'s, which reaches docker through `bench-on-host.sh`. Host
- * networking so the client and the gateway are both loopback, the invoking user so artifacts do not
+ * Host networking so the client and the gateway are both loopback, the invoking user so artifacts do not
  * come back owned by root, the host docker group so the mounted socket is readable, and the shared
- * memory Chrome needs. ⛔ That last one is the single difference between the two bench scripts:
- * `byte-source-arms.sh` omits `--shm-size`, and docker's 64MB default makes Chrome crash partway
+ * memory Chrome needs. ⛔ Without `--shm-size`, docker's 64MB default makes Chrome crash partway
  * through a video session rather than at startup, which reads as the stream failing.
  *
  * ## ⛔ Why the artifact is found by reading the driver's own line
@@ -56,7 +54,7 @@ import { shellQuoted } from './shellQuote.js';
 /** Where the bench image mounts the checkout, and the working directory the driver runs in. */
 const CONTAINER_REPO = '/repo';
 
-/** The browser image `deploy/scripts/browser-on-host.sh` builds and `byte-source-arms.sh` runs. */
+/** The browser image built from `e2e/Dockerfile.browser`. */
 export const DEFAULT_BROWSER_IMAGE = 'swarm-hls-browser:latest';
 
 /**
@@ -1233,8 +1231,7 @@ export function browserArmHostSetup(repoDir: string, env: NodeJS.ProcessEnv = pr
     throw new Error(
       'E2E_BROWSER_REPO_DIR is required to launch a viewer: it is the absolute path of the bench ' +
         'checkout ON THE HOST, which is bind-mounted into the browser container as /repo. The suite ' +
-        'runs from inside that mount and cannot work the host path out for itself. It is the same ' +
-        'directory deploy/scripts/bench-on-host.sh rsyncs to, BENCH_REPO in byte-source-arms.sh.',
+        'runs from inside that mount and cannot work the host path out for itself.',
     );
   }
   return {
@@ -1245,16 +1242,16 @@ export function browserArmHostSetup(repoDir: string, env: NodeJS.ProcessEnv = pr
 }
 
 /**
- * The environment a viewer arm is run with, which is `byte-source-arms.sh`'s minus the treatments.
+ * The environment a viewer arm is run with.
  *
  * `E2E_SSH_TARGET=local` is what makes the driver's own harness shell out rather than try to ssh from
  * the host to itself, and `127.0.0.1` is what the publisher and the client are reached on from a
  * host-networked container. The harness reads the gateway's Bee API where the deploy bound it.
  *
  * ⭐ Loopback deliberately, and not an oversight: {@link browserArmCommand} runs this container with
- * `--network host`, so ingest and the client genuinely are on its loopback. The container that is NOT is the
- * one `deploy/scripts/bench-on-host.sh --own-network` starts, which sets `E2E_LOCAL_HOST_ADDRESS`
- * and moves all three of these to `host.docker.internal`. Nothing here launches that one.
+ * `--network host`, so ingest and the client genuinely are on its loopback. A container with a
+ * network of its own sets `E2E_LOCAL_HOST_ADDRESS` and moves all three of these to
+ * `host.docker.internal`. Nothing here launches that one.
  *
  * ⛔⛔⛔ **`E2E_RUN_PROFILE` travels with the other two, and it did not until now.** The suite states
  * which deployment the arm points at and never said which RUN it is, so the container resolved
@@ -1324,8 +1321,7 @@ export function browserArmScript(options: BrowserArmOptions): string {
 /**
  * Watch a live broadcast in a real browser on the deployment host, and report what the viewer got.
  *
- * Runs to completion: the arm holds the ssh session for the whole watch, exactly as
- * `bench-on-host.sh` does, and a non-zero exit surfaces as a rejection. ⭐ A refused arm is usually
+ * Runs to completion: the arm holds the ssh session for the whole watch, and a non-zero exit surfaces as a rejection. ⭐ A refused arm is usually
  * one of the driver's own gates rejecting the condition, which is the harness working rather than
  * failing, and the message it throws says which gate.
  */

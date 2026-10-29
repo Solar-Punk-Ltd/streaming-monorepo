@@ -23,8 +23,7 @@ import { PUBLISHER_GOP_SECONDS } from './publisher.js';
  * It is a prediction from the running config, not an observation of published media. It cannot see
  * an encoder failing to deliver the cadence its own config asks for, because that shows up only in
  * the raw `#EXTINF` of a live playlist and reading one needs a broadcast, which is real money on
- * every second. `deploy/scripts/stage-fingerprint.sh` is that gate and runs during a sitting, where
- * the broadcast is already paid for. This one sits earlier and costs one `docker exec` of a text
+ * every second. This one sits earlier and costs one `docker exec` of a text
  * file: no publish, no stamp, no BZZ, nothing on the deployment changed.
  *
  * The fault it does catch is the one that is otherwise never caught, because it looks exactly like a

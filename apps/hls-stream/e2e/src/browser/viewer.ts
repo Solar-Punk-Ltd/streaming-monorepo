@@ -110,8 +110,7 @@ export async function discoverWatchUrl(page: Page, clientUrl: string): Promise<s
  * on a 48-core host says nothing about one thread. `TaskDuration` over wall time does say it.
  *
  * ⛔ Opt-in, and unset by default, so a run that does not ask for it launches exactly as before. The
- * sampler lives outside this process (see `deploy/scripts/main-thread.mjs`) for the same reason the
- * node metrics do: a reading taken by the thing under measurement stops when that thing stops.
+ * sampler lives outside this process for the same reason the node metrics do: a reading taken by the thing under measurement stops when that thing stops.
  */
 const CDP_PORT = process.env.VIEWER_CDP_PORT ?? '';
 
@@ -185,7 +184,7 @@ interface WorkerAwareViewer {
  */
 export async function launchViewerWatchingWorkers(into: WebSocketTraffic): Promise<WorkerAwareViewer> {
   // ⛔ `VIEWER_CDP_PORT` where it is set, rather than a second port beside it. That variable is what
-  // the outside main-thread sampler reads through (`deploy/scripts/main-thread.mjs`), and Chrome
+  // the outside main-thread sampler reads through, and Chrome
   // opens one debugging endpoint: picking our own would move the endpoint out from under a sampler
   // that was told where to look, and it would fail with nothing to say why.
   const named = Number(CDP_PORT);

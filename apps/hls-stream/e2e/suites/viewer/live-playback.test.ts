@@ -45,8 +45,7 @@ import { requireByteSource, viewerGate } from '../../src/viewerCoverage.js';
 /**
  * How long the viewer watches.
  *
- * `byte-source-arms.sh` refuses an arm under two minutes as "too short for a player to reach steady
- * state", and its own default is six. Four keeps the join, which is a seek, from dominating the
+ * An arm under two minutes is too short for a player to reach steady state. Four keeps the join, which is a seek, from dominating the
  * ratio below, without buying more broadcast than the question needs.
  */
 const WATCH_MINUTES = 4;

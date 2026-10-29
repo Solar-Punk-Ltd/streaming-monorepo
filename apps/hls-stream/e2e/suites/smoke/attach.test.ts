@@ -45,8 +45,8 @@ describe('attach smoke (read-only)', () => {
    * operator makes first and its whole job is to report what is out there.
    *
    * ⭐ The fill is printed beside the TTL and NOTHING here refuses on it. A batch at 90% with a year
-   * of TTL clears this case and is about to be refused by `deploy/scripts/stamp-guard.sh` and by the
-   * uploader's own `PostageGate`, which are where the stop line lives. Printing it is what turns that
+   * of TTL clears this case and is about to be refused by the uploader's own `PostageGate`, which is
+   * where the stop line lives. Printing it is what turns that
    * into something an operator sees on the run they make first rather than mid-sitting.
    */
   it('finds every publisher node holding the batch it is configured with, with TTL headroom', async () => {

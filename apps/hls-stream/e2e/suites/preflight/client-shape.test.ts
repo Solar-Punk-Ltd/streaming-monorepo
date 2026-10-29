@@ -18,8 +18,8 @@ import { makeHost } from '../../src/harness/host.js';
  * agree with.
  *
  * ⛔⛔⛔ **The gap this closes, and it has been open the whole time.**
- * `deploy/scripts/bench-on-host.sh` syncs this repo to the host on every run and runs the harness
- * from it. It does NOT rebuild the client image. So the harness can be current while the client a
+ * The harness checkout on the host is synced on every run and the harness runs from it. The client
+ * image is NOT rebuilt with it. So the harness can be current while the client a
  * viewer is served is weeks old, and until this gate nothing in the path noticed. The harness-side
  * version of the same staleness was found three days old under a sitting about to be paid for, and
  * the client-side version was found FIFTEEN days old under a browser sitting that had already run.

@@ -64,13 +64,11 @@
  * Both refuse **after** the artifact is written, so a refused run keeps the reading that refused it.
  * See `src/browser/capProof.ts`.
  *
- * Usage, on the deployment host, against a stream that has already finished:
- *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:vod -- \
- *     BROWSER_VOD_OWNER=<owner> BROWSER_VOD_TOPIC=<rawTopic>
+ * Usage, on the deployment host, against a stream that has already finished: `pnpm browser:vod`,
+ * with `BROWSER_VOD_OWNER=<owner> BROWSER_VOD_TOPIC=<rawTopic>`.
  *
- * And the same recording with its link squeezed to 2800 kbps:
- *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:vod -- \
- *     BROWSER_VOD_OWNER=<owner> BROWSER_VOD_TOPIC=<rawTopic> BROWSER_VOD_SQUEEZE_KBPS=2800
+ * And the same recording with its link squeezed to 2800 kbps: the same, with
+ * `BROWSER_VOD_SQUEEZE_KBPS=2800` as well.
  */
 
 import { parseSwarmUri } from '@swarm-hls-stream/shared';

@@ -37,9 +37,7 @@ import {
  * the `HLS_FRAGMENT` both containers were started with, through two `docker inspect` reads. **No
  * broadcast, no publish, no stamp, no BZZ, and nothing on the deployment changed.** Reading raw
  * `#EXTINF` off a live playlist would be an observation rather than a prediction, and it needs a
- * broadcast, which is real money on every second. `deploy/scripts/stage-fingerprint.sh` already does
- * exactly that, during a sitting, where the broadcast is paid for either way. This one sits earlier
- * and cheaper and catches the fault that one is too late to save money on.
+ * broadcast, which is real money on every second. This one sits earlier and costs nothing.
  *
  * ## ⛔⛔⛔ Two containers work to that one number, and this reads both
  *

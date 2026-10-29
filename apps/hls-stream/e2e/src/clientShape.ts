@@ -3,8 +3,8 @@
  * checked out with.
  *
  * ⛔⛔⛔ The gap this closes is the client-side twin of the 2026-09-01 uploader sitting, and it has
- * been open the whole time. `deploy/scripts/bench-on-host.sh` syncs this repo to the host on every
- * run and does NOT rebuild the client image, so the harness can be new while the served client is
+ * been open the whole time. The harness checkout on the host is synced on every run and the client
+ * image is NOT rebuilt with it, so the harness can be new while the served client is
  * weeks old. Everything under `e2e/src/browser/` parses that client's behaviour: its console lines,
  * the fetch backend it publishes on `globalThis`, the weeb-3 worker it serves. A rename on either
  * side leaves the harness reading a client that never learned about it, and the reading blames the
@@ -31,7 +31,7 @@
 
 import { execFileSync } from 'node:child_process';
 
-/** What `bench-on-host.sh` carries in, computed on the operator's machine where `.git` exists. */
+/** What a run on the host is handed, computed on the operator's machine where `.git` exists. */
 export const EXPECT_CLIENT_TREE = 'E2E_EXPECT_CLIENT_TREE';
 export const EXPECT_SHARED_TREE = 'E2E_EXPECT_SHARED_TREE';
 export const EXPECT_CONTRACTS_TREE = 'E2E_EXPECT_CONTRACTS_TREE';
@@ -134,7 +134,7 @@ export function parseClientBuildStamp(body: string): ClientBuildStamp | null {
  * What the served client is measured against, or null when nothing can say.
  *
  * ⛔ The run script wins over git, because it is the only side that can be right on the deployment
- * host: `bench-on-host.sh` excludes `.git` from its rsync, so a harness there has no history to ask.
+ * host: the synced checkout there has no `.git`, so a harness there has no history to ask.
  * An empty variable is an unanswered question rather than an expectation of an empty tree.
  */
 export function readClientShapeExpectation(
@@ -180,8 +180,8 @@ function isInsideGitCheckout(dir: string, env: NodeJS.ProcessEnv): boolean {
 /**
  * The trees the checkout at `stackDir` holds, or null when it has no history to ask.
  *
- * ⛔ Null is the ordinary answer on the deployment host, not an error: `bench-on-host.sh` excludes
- * `.git` from its rsync, so a harness there cannot answer this for itself and the run script passes
+ * ⛔ Null is the ordinary answer on the deployment host, not an error: the synced checkout there has
+ * no `.git`, so a harness there cannot answer this for itself and the run script passes
  * the answer in instead.
  *
  * The stack's tree paths start with `./` so git reads them from `stackDir` rather than from the
@@ -224,11 +224,11 @@ export function readGitClientTrees(stackDir: string, env: NodeJS.ProcessEnv = pr
 
 const NO_EXPECTATION =
   'This run cannot say which client sources it expects, so it refuses rather than passing: an ' +
-  'unknown expectation is not a match. A run launched through `deploy/scripts/bench-on-host.sh` ' +
-  `carries ${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE}, ${EXPECT_CONTRACTS_TREE} and ` +
-  `${EXPECT_CLIENT_DIRTY} into the ` +
+  'unknown expectation is not a match. A run on the deployment host must be handed ' +
+  `${EXPECT_CLIENT_TREE}, ${EXPECT_SHARED_TREE}, ${EXPECT_CONTRACTS_TREE} and ` +
+  `${EXPECT_CLIENT_DIRTY} in its ` +
   'container, and a run from a checkout reads them out of git. This one had neither, so either ' +
-  'launch it through that script or run it from a checkout with its history.';
+  'set them or run it from a checkout with its history.';
 
 const REDEPLOY = 'Redeploy the client (`deploy/scripts/deploy.sh client`) and run again.';
 

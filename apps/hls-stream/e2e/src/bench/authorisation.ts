@@ -3,17 +3,11 @@
  *
  * ## ⛔⛔ A THRESHOLD WRITTEN DOWN IS NOT A CONTROL, ONLY A GATE THAT REFUSES IS
  *
- * `pnpm bench:latency` and `pnpm bench:longrun` publish a real broadcast through the deployment's own
- * Bee nodes and pay for every segment in postage and bandwidth, exactly as a scenario suite does. The
- * suites are gated: `suites/preflight/` reads the operator's authorisation and every node's chequebook
- * before a broadcast starts, and every suite's `before()` reads every publisher's postage TTL. The
- * benches read none of it until 2026-09-16. What stood in for the gate was
- * `deploy/scripts/bench-on-host.sh`, which prepends `pnpm e2e:preflight` to any script whose own
- * definition does not carry the suites, and that covers a bench launched through the wrapper and
- * nothing else. `e2e/README.md` documented a bare `pnpm bench:latency`, so the documented way to run
- * it was the ungated way.
- *
- * A wrapper is an instruction. This is the control, and it sits inside the process that spends.
+ * A script that publishes a broadcast through the deployment's own Bee nodes pays for every segment
+ * in postage and bandwidth, exactly as a scenario suite does. The suites are gated:
+ * `suites/preflight/` reads the operator's authorisation and every node's chequebook before a
+ * broadcast starts, and every suite's `before()` reads every publisher's postage TTL. A script outside
+ * the suites asks the same questions here, inside the process that spends.
  *
  * ## The three questions, in the words the suites already refuse in
  *

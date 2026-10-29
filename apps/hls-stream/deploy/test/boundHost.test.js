@@ -155,38 +155,6 @@ process.stdout.write(answer);
   return () => readFileSync(journal, 'utf8').split('\n').filter(Boolean);
 }
 
-/**
- * The money guards and the node readings, which run on the deployment host and used to read every
- * node at 127.0.0.1. Nothing listens there for a Bee API on a default Linux host since the APIs bind
- * to the bridge address, so the guards got no answer at all.
- */
-describe('stamp-guard.sh reads the batch where the deploy bound the node', () => {
-  it('dials the bridge address when the node’s bind names none', async () => {
-    const sandbox = makeSandbox();
-    const urls = stubListeningCurl(sandbox, [`${BRIDGE}:10075`]);
-
-    const run = await runScript(sandbox, 'stamp-guard.sh', ['--batch', BATCH, '--port', '10075']);
-
-    assert.equal(run.exitCode, 0, `${run.stdout}${run.stderr}`);
-    assert.deepEqual(urls(), [`http://${BRIDGE}:10075/stamps`]);
-  });
-
-  it('dials the address the node’s bind names, and prints it in the fix it hands over', async () => {
-    const sandbox = makeSandbox();
-    const urls = stubListeningCurl(sandbox, ['198.51.100.7:10075'], { utilization: 250 });
-
-    const run = await runScript(sandbox, 'stamp-guard.sh', ['--batch', BATCH, '--port', '10075'], {
-      BEE_UPLOADER_API_PORT: '10075',
-      BEE_UPLOADER_API_BIND: '198.51.100.7',
-    });
-
-    assert.deepEqual(urls(), ['http://198.51.100.7:10075/stamps']);
-    assert.equal(run.exitCode, 1, 'a batch past the stop line was let through');
-    assert.match(run.stdout, /REFUSING TO START/);
-    assert.match(run.stdout, /curl -s -XPATCH http:\/\/198\.51\.100\.7:10075\/stamps\/dilute\//);
-  });
-});
-
 describe('spend-ledger.sh baselines each node where the deploy bound it', () => {
   const env = (lines = []) => ({ '.env': ['STAMP=stamp', 'STREAM_KEY=key', ...lines].join('\n') + '\n' });
 

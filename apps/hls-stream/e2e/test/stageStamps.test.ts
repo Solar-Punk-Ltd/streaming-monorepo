@@ -239,9 +239,9 @@ describe('stageStampsRefusal', () => {
 
   /**
    * ⛔⛔ The fill is carried for the smoke run to PRINT and this rule deliberately does not read it.
-   * How full a batch is belongs to `deploy/scripts/stamp-guard.sh` and to the uploader's own
-   * `PostageGate`, both of which refuse a batch too full to take the next chunk. A third opinion here
-   * would mean an operator had to work out which of the three had stopped them.
+   * How full a batch is belongs to the uploader's own `PostageGate`, which refuses a batch too full to
+   * take the next chunk. A second opinion here would mean an operator had to work out which of the two
+   * had stopped them.
    *
    * ⭐ Pinned rather than left implicit, because "it also refuses at 95%" is the change somebody makes
    * in good faith, and the refusal it adds fires on a stage the two real gates were about to explain

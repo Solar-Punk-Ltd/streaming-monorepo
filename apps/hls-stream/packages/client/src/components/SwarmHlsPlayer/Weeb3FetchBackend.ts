@@ -108,8 +108,7 @@ const importWeeb3: Weeb3ModuleLoader = () => import('@lat-murmeldjur/weeb_3');
  * ⛔ **The 200 / 82 / 0 figures below are refuted for separate processes.** They were measured on
  * 2026-08-11 and read as a per-machine limit. On 2026-08-15 six separate Chrome processes on one
  * laptop each reached 200, then twelve did, then twelve penned pens each held all 40 nodes they were
- * given with flat per-pen cost. See `deploy/scripts/cdp.mjs` for the likely cause, a slow first
- * contact on a machine's first node combined with a peer floor on a short timeout.
+ * given with flat per-pen cost. The likely cause is a slow first contact on a machine's first node combined with a peer floor on a short timeout.
  *
  * ⚠️ **What is still untested is the case this file actually cares about**: several weeb-3 nodes
  * inside ONE tab. Every arm that refuted the per-machine claim ran one node per tab, so none of them

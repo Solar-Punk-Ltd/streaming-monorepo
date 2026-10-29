@@ -88,7 +88,7 @@ export function viewerCoverageRefusal({ expectation, backend, repoDir }: ViewerC
       'This run asked for a real viewer and set no E2E_BROWSER_REPO_DIR, so no viewer suite can ' +
       'launch a browser at all: every one of them would reach `browserArmHostSetup` and throw, ' +
       'after the paid suites ahead of them had already published. It is the absolute path of the ' +
-      'bench checkout ON THE HOST, the directory deploy/scripts/bench-on-host.sh rsyncs to, because ' +
+      'harness checkout ON THE HOST, because ' +
       'the browser container bind-mounts it as /repo and nothing inside a mount can work out where ' +
       'it came from.'
     );

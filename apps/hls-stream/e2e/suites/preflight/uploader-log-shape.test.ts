@@ -38,8 +38,8 @@ import { makeHost } from '../../src/harness/host.js';
  *
  * ⛔⛔⛔ **The failure this exists for, walked into on 2026-09-01 at the cost of a paid sitting.**
  * `Manifest uploaded at SOC index N` gained a stream id that morning, because on a four rung ladder
- * the four SOC counters were indistinguishable. `bench-on-host.sh` syncs this repo to the host and
- * runs the harness from it. It does NOT redeploy the uploader, which ships as a prebuilt `dist/`.
+ * the four SOC counters were indistinguishable. The harness checkout on the host is synced and the
+ * harness runs from it. That does NOT redeploy the uploader, which ships as a prebuilt `dist/`.
  * So the harness looked for the new line, the deployment wrote the old one, and `bee-outage-long`
  * and `service/happy-path` both went red for "manifest publishes never resumed" against a stage that
  * was publishing manifests the entire time. Two false reds, both reading as product faults.

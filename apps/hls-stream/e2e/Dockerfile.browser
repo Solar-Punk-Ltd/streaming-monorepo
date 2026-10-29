@@ -57,7 +57,7 @@ RUN apt-get update \
 
 # `curl` is what `Host.localJson` shells out to, and the docker client is how a crash scenario stops
 # and starts the container it is injecting a fault into. Both talk to the host over what
-# `bench-on-host.sh` already mounts, so this adds a client and no daemon. Pinned, and taken from the
+# the container already has mounted, so this adds a client and no daemon. Pinned, and taken from the
 # static tarball for the reason `Dockerfile.bench` gives: the alternative is adding docker's apt
 # repository to pull one binary.
 #
@@ -66,9 +66,9 @@ RUN apt-get update \
 # the fault's time and the sample's time come from different clocks on different machines, and the
 # quantity being measured is a few seconds.
 #
-# `iproute2` is `tc` and `ip`, which `deploy/scripts/shape-container-ingress.sh` needs to put a real
+# `iproute2` is `tc` and `ip`, which an ingress shaper needs to put a real
 # ingress policer on this container's own interface. ⛔ It belongs in THIS image and not only in
-# `Dockerfile.bench`: `browser-on-host.sh` builds this one, so a shaped viewer arm runs here, and
+# `Dockerfile.bench`, because a shaped viewer arm runs here, and
 # the shaper refuses the run rather than measuring an unshaped link when `tc` is absent.
 #
 # ⛔ `tc` carries `cap_net_admin` as a FILE capability, set here while there is still a root to set it.

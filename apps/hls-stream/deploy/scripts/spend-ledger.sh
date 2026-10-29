@@ -263,4 +263,4 @@ fi
 
 echo ""
 echo "spend-ledger: wrote ${LEDGER}${BACKUP:+ (previous file at ${BACKUP##*/})}."
-echo "  Both gates read it: the e2e preflight and deploy/scripts/spend-ceiling.sh."
+echo "  The e2e preflight reads it."

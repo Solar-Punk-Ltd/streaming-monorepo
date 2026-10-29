@@ -110,8 +110,7 @@ export interface E2EConfig {
    *
    * Only the `local` transport uses it, and only for a port that answers on loopback: over ssh the
    * command runs on the deployment host and dials loopback there, and a port in {@link boundPorts}
-   * is dialled where the deploy bound it. See `harness/host.ts` and `--own-network` in
-   * `deploy/scripts/bench-on-host.sh`.
+   * is dialled where the deploy bound it. See `harness/host.ts`.
    *
    * ⛔ Separate from {@link publicHost}, which is the address a PUBLISHER dials and a VIEWER is
    * pointed at from wherever the suite runs. This is the address a container uses to reach back out

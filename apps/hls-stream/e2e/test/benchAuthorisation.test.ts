@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
 import { requireBenchAuthorised } from '../src/bench/authorisation.js';
 import { type E2EConfig, loadConfig } from '../src/config.js';
@@ -11,14 +10,12 @@ import type { Host, ServiceTarget, Stamp } from '../src/harness/host.js';
 import type { PublisherRoute } from '../src/harness/publishers.js';
 
 /**
- * The gate that stops `pnpm bench:latency` and `pnpm bench:longrun` publishing a broadcast nobody
- * authorised, on a stage that cannot pay for it or cannot stamp it.
+ * The gate that stops a script outside the suites publishing a broadcast nobody authorised, on a
+ * stage that cannot pay for it or cannot stamp it.
  *
  * Both scripts publish through the deployment's own Bee nodes and spend real postage and bandwidth,
  * and until 2026-09-16 neither read the operator's ledger, either chequebook or any publisher's postage
- * TTL. `deploy/scripts/bench-on-host.sh` prepends the preflight suites to a bench launched through
- * it, which is an instruction rather than a control: the README documented a bare `pnpm bench:latency`
- * and that path was ungated.
+ * TTL.
  *
  * The rules themselves are covered next door, in `spendCeiling.test.ts` and `stageStamps.test.ts`,
  * because the gate calls those helpers rather than restating them. What is left here, and it is the
@@ -27,8 +24,6 @@ import type { PublisherRoute } from '../src/harness/publishers.js';
  * every other no has to throw rather than be returned, since only a throw reaches `main().catch` and
  * becomes a non-zero exit.
  */
-
-const E2E_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const PLUR_PER_BZZ = 10n ** 16n;
 
@@ -210,7 +205,7 @@ describe('requireBenchAuthorised', () => {
   });
 
   /**
-   * What `bench/longrun.ts` needs and a scenario does not. Ten minutes of TTL clears the floor every
+   * What a long run needs and a scenario does not. Ten minutes of TTL clears the floor every
    * suite uses and still expires twenty minutes into a half-hour broadcast, so a run that lasts longer
    * than the floor asks for its own length instead.
    */
@@ -223,25 +218,4 @@ describe('requireBenchAuthorised', () => {
     );
     assert.match(await requireBenchAuthorised(halfHourStage(), cfg, { ledgerPath: ledger() }), /^authorised/);
   });
-});
-
-/**
- * ⛔ That the two benches actually call the gate, which is a grep because it cannot be anything else.
- *
- * `bench/latency.ts` and `bench/longrun.ts` run their own `main()` on import and reach ffmpeg, a
- * gateway and a deployment before the gate, so nothing here can drive one. The finding this closes was
- * exactly an uncalled gate: the helpers all existed, the preflight suites used them, and the two
- * scripts that spend called none of them. A gate nothing calls is what was already shipping.
- */
-describe('the benches that publish call the gate', () => {
-  for (const script of ['latency.ts', 'longrun.ts']) {
-    it(`bench/${script} requires the run to be authorised before it publishes`, () => {
-      const source = readFileSync(join(E2E_DIR, 'bench', script), 'utf8');
-      const gate = source.indexOf('await requireBenchAuthorised(');
-      const spend = source.indexOf('await measureLatency(');
-
-      assert.ok(gate > 0, `bench/${script} does not call requireBenchAuthorised, so nothing gates its spend`);
-      assert.ok(spend > gate, `bench/${script} publishes before it asks whether it may spend`);
-    });
-  }
 });

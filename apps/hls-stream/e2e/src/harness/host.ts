@@ -111,7 +111,7 @@ export const LOCAL_TARGET = 'local';
  * Which is what every bench and every viewer arm has been, so this was a literal until 2026-09-02.
  * A container given a network namespace of its own has nothing on its own loopback, and the
  * uploader, the four bee nodes and the client are then one hop away over the docker bridge. See
- * `E2E_LOCAL_HOST_ADDRESS` in `config.ts` and `--own-network` in `deploy/scripts/bench-on-host.sh`.
+ * `E2E_LOCAL_HOST_ADDRESS` in `config.ts`.
  */
 export const DEFAULT_LOCAL_HOST_ADDRESS = 'localhost';
 

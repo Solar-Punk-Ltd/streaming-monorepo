@@ -36,9 +36,8 @@
  * question has no answer there.
  *
  * Batch **utilization** is carried on each reading and nothing here judges it. How full a batch is
- * stays the job of `deploy/scripts/stamp-guard.sh` and of the uploader's own `PostageGate`, both of
- * which refuse a batch that is too full to accept the next chunk and both of which own the stop line.
- * A third opinion about the same number, in a third place, would mean an operator had to find out
+ * stays the job of the uploader's own `PostageGate`, which refuses a batch that is too full to accept
+ * the next chunk and owns the stop line. A second opinion about the same number, in a second place, would mean an operator had to find out
  * which of the three had fired. This gate asks the one thing neither of those asks per run, which is
  * whether each publisher can stamp with its configured batch for as long as a scenario lasts, and it
  * reports that batch's fill so the read-only smoke run can show a node the other two are about to
@@ -99,9 +98,9 @@ export interface NodeStampReading {
    * How full that batch is, as a percentage of its fullest bucket's capacity, or null when unlisted.
    *
    * ⛔⛔ **Display only, and {@link stageStampsRefusal} deliberately ignores it.** How full a batch is
-   * stays the job of `deploy/scripts/stamp-guard.sh` and the uploader's own `PostageGate`, both of
-   * which refuse a batch too full to accept the next chunk and both of which own the stop line.
-   * Refusing on it here would put a third opinion about the same number in a third place, and the one
+   * stays the job of the uploader's own `PostageGate`, which refuses a batch too full to accept the
+   * next chunk and owns the stop line. Refusing on it here would put a second opinion about the same
+   * number in a second place, and the one
    * that fired first would be the one an operator had to go and find.
    *
    * ⭐ Carried anyway because the read-only smoke run prints these, and a node at 90% with a year of
@@ -122,7 +121,7 @@ export interface NodeStampReading {
 }
 
 /**
- * How full a batch is, as a percentage, by the same arithmetic `deploy/scripts/stamp-guard.sh` uses.
+ * How full a batch is, as a percentage.
  *
  * `utilization` is the fullest of `2 ^ (depth - bucketDepth)` buckets, so this is what the batch
  * actually enforces rather than a share of bytes uploaded.
@@ -259,7 +258,7 @@ export async function readStageStamps(host: Host, cfg: E2EConfig): Promise<NodeS
  *
  * ⚠️ The gateway node is deliberately not read: it serves retrievals and holds no upload batch, so
  * this question does not apply to it. Batch utilization is read and never judged, because refusing on
- * it stays with `deploy/scripts/stamp-guard.sh` and the uploader's own `PostageGate`. This asks only
+ * it stays with the uploader's own `PostageGate`. This asks only
  * whether each publisher can stamp with the batch it will actually spend, for as long as a scenario
  * runs.
  */

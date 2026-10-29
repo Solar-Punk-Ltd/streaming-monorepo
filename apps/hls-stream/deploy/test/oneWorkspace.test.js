@@ -1,32 +1,12 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import {
-  cpSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  readlinkSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import {
-  ALL_REMOTE,
-  BENCH_STAGE,
-  BENCH_TARGET,
-  GIT_STUB,
-  makeSandbox,
-  removeSandboxes,
-  runScript,
-  runScriptOk,
-} from './helpers/sandbox.js';
+import { ALL_REMOTE, GIT_STUB, makeSandbox, removeSandboxes, runScript, runScriptOk } from './helpers/sandbox.js';
 import { classifySpawn, SPAWN_ABSENT, SPAWN_OK, SPAWN_TIMED_OUT } from './helpers/spawnOutcome.js';
 
 /** `docker compose config` parses files without the daemon, so this bound only guards a wedged CLI. */
@@ -186,26 +166,6 @@ function oneWorkspace({ config, ownPair = false, realRsync = false, sharedPackag
   return { workspace, sandbox };
 }
 
-/** Every file and link under `dir`, by its path from there: a file's text, or `-> ` and a link's target. */
-function treeOf(dir) {
-  const tree = {};
-  const walk = (folder) => {
-    for (const name of readdirSync(folder)) {
-      const path = join(folder, name);
-      const entry = lstatSync(path);
-      if (entry.isSymbolicLink()) {
-        tree[relative(dir, path)] = `-> ${readlinkSync(path)}`;
-      } else if (entry.isDirectory()) {
-        walk(path);
-      } else {
-        tree[relative(dir, path)] = readFileSync(path, 'utf8');
-      }
-    }
-  };
-  walk(dir);
-  return tree;
-}
-
 /** What tools/app-workspace writes for the stack of `workspace`, run here into a folder of the test's own. */
 function expectedCut(workspace) {
   const out = mkdtempSync(join(tmpdir(), 'expected-cut-'));
@@ -363,86 +323,6 @@ describe('a local deploy from a checkout of the one workspace', () => {
 
     assert.notEqual(run.exitCode, 0);
     assert.deepEqual(readdirSync(tmp), []);
-  });
-});
-
-/** Where bench-on-host.sh mirrors the stack on its target, and the ledger it will not sync without. */
-const REMOTE_BENCH_DIR = 'swarm-hls-bench';
-const SPEND_LEDGER = '.spend-ledger.env';
-const OWNER_LEDGER = 'authorised_at=2026-09-03T09:32:45Z\n';
-
-describe('bench-on-host.sh from a checkout of the one workspace', () => {
-  it("mirrors the stack with its lockfile cut out of the root's, and leaves nothing behind", async () => {
-    const { workspace, sandbox } = oneWorkspace();
-    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
-    const tmp = ownTmpdir();
-
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
-      TMPDIR: tmp,
-    });
-
-    const cut = expectedCut(workspace);
-    const mirror = join(sandbox.remoteHome, REMOTE_BENCH_DIR);
-    assert.equal(readFileSync(join(mirror, 'pnpm-lock.yaml'), 'utf8'), cut.lockfile);
-    assert.equal(readFileSync(join(mirror, 'pnpm-workspace.yaml'), 'utf8'), cut.workspace);
-    assert.ok(existsSync(join(mirror, 'package.json')), "the stack's own files are mirrored as before");
-    assert.deepEqual(readdirSync(tmp), [], 'the cut folder is gone');
-    assert.equal(existsSync(join(sandbox.root, 'pnpm-lock.yaml')), false, 'nothing was written into the checkout');
-  });
-
-  /**
-   * Through this machine's own rsync, into a mirror seeded as an earlier run left it: the stack's own
-   * lockfile, a file the checkout no longer has, and what the harness wrote on the host, which the
-   * sync excludes. The same rsync run without the cut folder, into an identical mirror, is what
-   * --delete does from the stack alone. The two may differ by the pair and nothing else.
-   */
-  it("leaves the mirror as rsync --delete leaves it from the stack alone, and the stack's pair besides", async () => {
-    const { workspace, sandbox } = oneWorkspace({ realRsync: true });
-    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
-    const earlier = {
-      'pnpm-lock.yaml': "lockfileVersion: '9.0'\n# the stack's own, from before the one workspace\n",
-      'stale.txt': 'a file the checkout no longer has\n',
-      'reports/kept.txt': 'a report the harness wrote on the host\n',
-      'bench-results/kept.md': 'a result the harness wrote on the host\n',
-    };
-    write(join(sandbox.remoteHome, REMOTE_BENCH_DIR), earlier);
-    const alone = join(ownTmpdir(), 'mirror');
-    write(alone, earlier);
-    const tmp = ownTmpdir();
-
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
-      TMPDIR: tmp,
-      RSYNC_ALONE_DEST: alone,
-      RSYNC_ALONE_SKIP: tmp,
-    });
-
-    const cutSources = sandbox.rsyncArgv().filter((arg) => arg.startsWith(tmp));
-    assert.equal(cutSources.length, 1, `one source under TMPDIR, the cut: ${sandbox.rsyncArgv().join(' ')}`);
-    const cut = expectedCut(workspace);
-    const withoutPair = treeOf(alone);
-    assert.deepEqual(treeOf(sandbox.rsyncAfter), {
-      ...withoutPair,
-      'pnpm-lock.yaml': cut.lockfile,
-      'pnpm-workspace.yaml': cut.workspace,
-    });
-    assert.equal(withoutPair['stale.txt'], undefined, '--delete removed what the checkout no longer has');
-    assert.equal(withoutPair['pnpm-lock.yaml'], undefined, "alone, --delete would have removed the mirror's lockfile");
-    assert.equal(withoutPair['reports/kept.txt'], earlier['reports/kept.txt']);
-    assert.equal(withoutPair['bench-results/kept.md'], earlier['bench-results/kept.md']);
-  });
-
-  it('mirrors a stack that keeps its own lockfile as before', async () => {
-    const { sandbox } = oneWorkspace({ ownPair: true });
-    writeFileSync(join(sandbox.root, SPEND_LEDGER), OWNER_LEDGER);
-
-    await runScriptOk(sandbox, 'bench-on-host.sh', ['--target', BENCH_TARGET, ...BENCH_STAGE, '--setup-only'], {
-      TMPDIR: ownTmpdir(),
-    });
-
-    assert.equal(
-      readFileSync(join(sandbox.remoteHome, REMOTE_BENCH_DIR, 'pnpm-lock.yaml'), 'utf8'),
-      "lockfileVersion: '9.0'\n# the stack's own\n",
-    );
   });
 });
 

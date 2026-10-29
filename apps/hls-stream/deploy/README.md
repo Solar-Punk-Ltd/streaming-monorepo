@@ -465,36 +465,8 @@ original id is in the newest `.bak`. Before each redeploy the script saves the u
 to `~/drain-<profile>-<rung>-<utc>.uploader.log` on the deployment host, because a redeploy replaces
 the container and its log. No batch id is printed whole.
 
-### bench-on-host.sh
-
-```bash
-bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> [--script bench:latency]
-bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> --setup-only   # sync, build, install, then stop
-bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> --no-setup     # reuse what is on the host
-```
-
-Runs a benchmark or a browser driver on the deployment host rather than a workstation, so capture and
-fetch share one clock and your own uplink stays out of the reading. It syncs the checkout, builds an
-image there, and runs one script in a container over SSH. `--target`, `--profile` and `--portSlot` are
-required, and so they are for `browser-on-host.sh`, `bench-sweep.sh` and `bench-profiles.sh`.
-
-- **The container is named `<profile>-harness-slot<N>`.** Every phase of a launch uses that name, so
-  `docker stop <profile>-harness-slot<N>` always stops what the script started.
-- **Every script runs behind the e2e preflight gates.** A `test:e2e*` script already chains them. Any
-  other script, a `browser:*` driver or a `bench:*` run, gets `pnpm e2e:preflight && ` in front, so a
-  refusal exits before anything is published. No flag turns this off.
-- **A launch is refused when that container exists on the target at all**, running or exited. Two
-  harness runs on one stage read each other's broadcasts. The refusal prints the `docker stop` or
-  `docker rm` that clears it, and the script runs neither for you.
-- **An interrupted launch stops its container.** A trap on INT, TERM and EXIT sends one `docker stop`
-  over SSH, capped at 20 seconds (`BENCH_STOP_DEADLINE_SECONDS`). It is best effort: a Ctrl-C can
-  occasionally kill the shell before the trap runs. The refusal above catches any container left
-  behind.
-- **A launch from a checkout with no `.spend-ledger.env` at its root is refused** before it syncs, so a
-  checkout holding only tracked files never replaces the host's harness copy.
-
 `drain-stage.sh` has no spend gate, because it spends nothing itself. The broadcast that drains the
-batch is launched through `bench-on-host.sh`, behind the gates.
+batch runs behind the e2e preflight gates.
 
 ### Node and postage commands
 

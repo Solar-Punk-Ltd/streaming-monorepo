@@ -5,9 +5,7 @@
  *
  * Every `pnpm e2e:run` against the deployed stack costs real BZZ in postage and bandwidth. The operator
  * sets a spend ceiling, and until this existed the only thing holding a run to it was an operator
- * remembering the number at launch time. `deploy/scripts/spend-ceiling.sh` already refuses a bench
- * sitting on this same ledger, so the rules here are that gate's, restated for the suite. The two
- * read one file so two paths cannot each spend the whole allowance.
+ * remembering the number at launch time.
  *
  * ## What it measures spend with
  *
@@ -42,9 +40,7 @@
  * to 0.000 BZZ against a ceiling 1.98 of which was already gone. A note printed beside the number
  * would not have stopped any of that, which is why this refuses instead of annotating.
  *
- * ✅ The two gates agree. `deploy/scripts/spend-ceiling.sh` refuses a bench sitting on a rise on this
- * same reasoning, and neither path will now measure a night from starts that predate a deposit. Keep
- * them in step: they read one file and answer one question.
+ * ✅ So no run measures a night from starts that predate a deposit.
  *
  * The per-node clamp survives underneath the refusal, and is deliberately kept rather than made
  * redundant by it. Summing signed deltas would let a top-up on one node pay for an overrun on the

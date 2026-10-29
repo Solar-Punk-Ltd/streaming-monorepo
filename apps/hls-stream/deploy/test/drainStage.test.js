@@ -1087,8 +1087,8 @@ describe('drain-stage takes its TTL floor from the file the container reads', ()
  * one thing the sitting was for.
  *
  * ⚠️ The dump lands in the home directory of the account the deployment is reached as, beside the
- * `~/swarm-hls-bench` checkout `bench-on-host.sh` keeps rather than inside it, because that script
- * syncs with `rsync --delete` and would remove it at the next sitting. These tests point `HOME` at
+ * `~/swarm-hls-bench` harness checkout rather than inside it, because that checkout is synced with
+ * `rsync --delete`, which would remove it at the next sync. These tests point `HOME` at
  * the sandbox, so the path under test is the real one and nothing is written to the operator's own
  * home.
  */

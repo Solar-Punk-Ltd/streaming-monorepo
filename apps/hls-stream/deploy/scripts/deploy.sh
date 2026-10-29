@@ -104,8 +104,7 @@ check_stamp() {
     local stamp_val publishers_val
     # A deployment that splits its bees per rung carries one batch per rung in BEE_PUBLISHERS and
     # never reads STAMP at all: the uploader's own `buildPublishers` takes the per-rung pool the
-    # moment that variable is set. `capacity-gate.sh` names the same either-or when it decides which
-    # batch to check, and `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when
+    # moment that variable is set, and `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when
     # unsplit". So this guard accepts either, and does not refuse an ABR deployment for an empty
     # STAMP its uploader never reads.
     publishers_val=$(grep -E '^BEE_PUBLISHERS=' "$ENV_FILE" | cut -d= -f2- | tr -d '[:space:]')
@@ -659,9 +658,8 @@ sync_to_remote() {
 # The sources whose content decides what a viewer is actually served: the two packages of the stack
 # vite compiles into the bundle, plus the image and the nginx template that decide how it is served.
 #
-# `bench-on-host.sh` answers the harness side of the same question over the same four paths, and
-# `deploy/test/clientBuildStamp.test.js` is what holds the two lists together. A path in one and not
-# the other is a source that can change a viewer's client while both sides still call it a match.
+# `deploy/test/clientBuildStamp.test.js` holds the stamp to these four paths. A path left out is a
+# source that can change a viewer's client while the stamp still calls it a match.
 CLIENT_SOURCE_PATHS=(
   "packages/client"
   "packages/shared"
@@ -674,7 +672,7 @@ CLIENT_SOURCE_PATHS=(
 # The image serves them at `/build-stamp.json` and the `client-shape` e2e preflight reads them back
 # over HTTP, so a sitting whose served client did not come from the harness checkout's own sources is
 # refused before the first frame. Nothing else notices that drift: this script builds the image and
-# `bench-on-host.sh`, which every browser run goes through, never rebuilds it.
+# nothing else rebuilds it.
 #
 # ⚠️ Every value is empty when git cannot answer, and the deploy carries on regardless. A tree built
 # from an export has no history to name, and the gate refuses on the empty hash rather than this

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { benchResultsDir } from '../benchResults.js';
 
-export const REPORT_DIR = benchResultsDir();
+const REPORT_DIR = benchResultsDir();
 
 /**
  * A run's identity: one string that names its report, its json, its request log and its screenshots.
@@ -149,7 +149,7 @@ export function envNumberOrNull(name: string): number | null {
 export function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
-    throw new Error(`${name} is required. browser-on-host.sh reads it out of the deployed profile.`);
+    throw new Error(`${name} is required. Read it out of the deployed profile.`);
   }
   return value;
 }

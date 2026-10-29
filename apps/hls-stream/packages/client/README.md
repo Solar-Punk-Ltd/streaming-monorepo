@@ -64,8 +64,7 @@ the file off the filesystem with no configuration of its own.
 
 It exists because nothing else can tell a stale client from a current one. The e2e suites
 ([e2e/README.md](../../e2e/README.md)) read this client's console lines to judge its behaviour.
-`bench-on-host.sh` copies those suites to the deployment host on every run and never rebuilds this
-image, so the client on the host and the suites can come from different sources without any sign.
+The suites are synced to the deployment host on every run and this image is not rebuilt with them, so the client on the host and the suites can come from different sources without any sign.
 The `client-shape` e2e preflight reads the stamp over HTTP and refuses to start a test run whose
 served client was not built from the same checkout as the suites. A build whose args were never
 passed writes empty hashes, which that check reads as a client built without a stamp and answers

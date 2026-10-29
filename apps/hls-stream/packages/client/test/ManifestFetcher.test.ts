@@ -1107,8 +1107,7 @@ describe('ManifestFetcher against a gateway that stops answering', () => {
  * poll, and so reported the lookup's freeze as the product's.
  *
  * Both sides now route through `nextFeedRequest`, and this is the client's arm of that: the same
- * assertion runs in `packages/shared/test/feedFollow.test.ts` against the shared decision and in
- * `e2e/test/gateway.test.ts` against the bench's follower.
+ * assertion runs in `packages/shared/test/feedFollow.test.ts` against the shared decision.
  */
 describe('following the feed costs one head lookup', () => {
   let fetcher: ManifestFetcher;
