@@ -167,11 +167,10 @@ interface LadderEntry {
  * slot past a slot that is late. The loader serves hls.js's level reloads out of what it has read.
  *
  * ⭐ **One rung at a time**: only the quality being watched is requested. Every rung of the ladder
- * is registered, and only the playing rung is
- * walked, plus the one being switched to while a switch is under way. Walking all four used to make a
- * switch free, at up to about 320 requests a minute, half of them for an index not written yet. A
- * switch now pays the {@link NewestIndexFinder}'s reads for the new rung while hls.js plays the old one
- * from its buffer.
+ * is registered, and only the playing rung is walked, plus the one being switched to while a switch
+ * is under way. Walking all four used to make a switch free, at up to about 320 requests a minute,
+ * half of them for an index not written yet. A switch now pays the {@link NewestIndexFinder}'s
+ * reads for the new rung while hls.js plays the old one from its buffer.
  */
 export class LadderFeedPoller {
   private readonly rungs = new Map<string, RungEntry>();

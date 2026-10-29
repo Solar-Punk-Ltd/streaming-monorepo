@@ -31,8 +31,8 @@ import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestMa
 
 /**
  * The player follows only the quality it plays: one quality request at a time, for the quality being
- * watched. One case per behaviour, plus the two traps the uploader's own code sets: rungs whose indexes do not line up, and
- * rungs whose stamps run seconds apart. Neither may be read as a dead rung.
+ * watched. One case per behaviour, plus the two traps the uploader's own code sets: rungs whose
+ * indexes do not line up, and rungs whose stamps run seconds apart. Neither may be read as a dead rung.
  */
 
 const OWNER = 'aabbcc';
