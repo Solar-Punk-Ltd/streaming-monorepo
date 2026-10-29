@@ -15,7 +15,7 @@ let passphrase: string | null = 'pass-one';
 
 before(async () => {
   app = await startRouterTestApp(
-    createConfigRouter('0.5', async () => passphrase, 'https://user:key@rpc.example.org:8545/v1/secret', 'swarm-dev'),
+    createConfigRouter('0.5', async () => passphrase, 'https://user:key@rpc.example.org:8545/v1/secret', 'my-instance'),
   );
 });
 
@@ -53,7 +53,7 @@ describe('GET /config', () => {
   it('answers the name this manager instance goes by, which the sidebar shows', async () => {
     const res = await call(app, 'GET', '/');
 
-    assert.equal((res.body as { instanceName: unknown }).instanceName, 'swarm-dev');
+    assert.equal((res.body as { instanceName: unknown }).instanceName, 'my-instance');
   });
 
   it('says the manager has none when it was given none', async () => {
