@@ -94,14 +94,14 @@ export const MIN_PANEL_SIZE: Size = { width: 160, height: 120 };
 const DEFAULT_BUTTON_RIGHT_OFFSET = 50;
 const DEFAULT_BUTTON_TOP = 10;
 /**
- * The owner's default width. Inside its 1 px border and 10 px padding it leaves 228 px, about 33
+ * The default width. Inside its 1 px border and 10 px padding it leaves 228 px, about 33
  * characters of the 11 px monospace once the rows' 8 px gap is taken: a label with its usual value
  * fits on one line. A deployed build's release line wraps at this width, and so does a ladder rung
  * marked both capped and unaffordable.
  */
 export const DEFAULT_PANEL_WIDTH = 250;
 /**
- * The owner's default height, tall enough for every row of a local build's panel with a three-rung
+ * The default height, tall enough for every row of a local build's panel with a three-rung
  * ladder. A deployed build's release line, a longer ladder or a rung that wraps add lines, which
  * scroll. It is shortened to the space down to the window's bottom where there is less.
  */

@@ -26,7 +26,7 @@ after(removeSandboxes);
  */
 const REMOTE_BENCH_DIR = 'swarm-hls-bench';
 
-/** The owner's authorisation to spend, which the script refuses to run without. */
+/** The written authorisation to spend, which the script refuses to run without. */
 const SPEND_LEDGER = '.spend-ledger.env';
 const OWNER_LEDGER = 'authorised_at=2026-09-03T09:32:45Z\n';
 

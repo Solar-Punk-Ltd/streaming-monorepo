@@ -190,7 +190,7 @@ function xbzz(plur: bigint | string): string {
 
 /**
  * Refuses a request the schema cannot, or a caller of the service that skipped it: a target that is not whole PLUR of
- * 30 digits at most, or is under the owner's floor of 1 xBZZ; no item; an available balance that is not whole PLUR of
+ * 30 digits at most, or is under the floor of 1 xBZZ; no item; an available balance that is not whole PLUR of
  * 30 digits at most; and a node named twice. Each before the manager is asked anything.
  */
 export function checkChequebookShape(request: FundingChequebookOperationsRequest): void {

@@ -39,7 +39,7 @@
  *
  * ## ⛔ The cap itself became the suspect
  *
- * The owner's correction of 2026-09-02 was that Chrome's `Network.emulateNetworkConditions` is a
+ * A correction of 2026-09-02 was that Chrome's `Network.emulateNetworkConditions` is a
  * prime suspect for what the probe found, rather than the node: it is one aggregate budget the
  * browser schedules across every transport itself, and how it divides one across an in-tab node's
  * ~200 WebSockets is not a fact about a link of that speed. So {@link CapSource} rides on every row,
@@ -51,7 +51,7 @@
  * reader compares them, and no figure refuses a run.
  *
  * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository)
- * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction.
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its correction.
  */
 
 import { type CapProof, capProofLine, judgeRecorderProof, type RecorderProof, recorderProofLine } from './capProof.js';
@@ -100,7 +100,7 @@ const CAP_SOURCES = ['cdp', 'external'] as const;
  * container's own interface, installed and proved by `deploy/scripts/shape-container-ingress.sh`
  * before the browser opens.
  *
- * ⛔⛔ On every row, every idle window and the run, and not as a footnote. The owner's correction of
+ * ⛔⛔ On every row, every idle window and the run, and not as a footnote. A correction of
  * 2026-09-02 was that the emulation is a prime suspect for what the probe found, so which cap a
  * figure was taken under is part of the figure. A report that did not carry it would be one more
  * artifact whose conditions have to be reconstructed from the command line that produced it.

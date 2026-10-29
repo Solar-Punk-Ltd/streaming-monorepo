@@ -3,7 +3,7 @@
  *
  * The manager answers those routes 200 with a null in them, and the page used
  * to render every one of those nulls as "not checked", which reads as nobody
- * having asked. The owner watched a node answer its probes in under a
+ * having asked. An operator watched a node answer its probes in under a
  * millisecond and read "Funding not checked" off the page at the same time.
  *
  * So each reading now carries why it is missing, and these pin the sentences

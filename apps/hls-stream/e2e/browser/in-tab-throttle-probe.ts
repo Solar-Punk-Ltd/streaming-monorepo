@@ -67,7 +67,7 @@
  *     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
  *
  * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository), written before this existed.
- * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction, which is
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its correction, which is
  *   why arm 2 exists.
  */
 

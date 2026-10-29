@@ -38,7 +38,7 @@ const SCRIPTS = join(ROOT, 'deploy/scripts');
 const REMOTE_BENCH_DIR = 'swarm-hls-bench';
 
 /**
- * The other seed. The script refuses a checkout without the owner's ledger before it syncs anything,
+ * The other seed. The script refuses a checkout without the spend ledger before it syncs anything,
  * which `benchOnHostLedgerGuard.test.js` holds it to, so every run here launches from one that has it.
  */
 const SPEND_LEDGER = '.spend-ledger.env';

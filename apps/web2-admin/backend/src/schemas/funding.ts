@@ -206,7 +206,7 @@ export function stampOperationItemsOf(body: FundingStampOperationsBody): StampOp
  */
 const CHEQUEBOOK_PLUR_RE = /^(0|[1-9]\d{0,29})$/;
 
-/** Whether PLUR that passed {@link CHEQUEBOOK_PLUR_RE}, or none, is at least the owner's floor of 1 xBZZ. */
+/** Whether PLUR that passed {@link CHEQUEBOOK_PLUR_RE}, or none, is at least the floor of 1 xBZZ. */
 function atLeastTheFloor(value: string | undefined): boolean {
   return value === undefined || !CHEQUEBOOK_PLUR_RE.test(value)
     ? true
@@ -227,7 +227,7 @@ const chequebookItemSchema = object({
 
 /**
  * `POST /api/funding/chequebook-operations`: `FundingChequebookOperationsRequest`. The target is PLUR as a decimal
- * string, at least the owner's floor of 1 xBZZ (`CHEQUEBOOK_TARGET_MIN_PLUR`). A node at most once, and an item at the
+ * string, at least the floor of 1 xBZZ (`CHEQUEBOOK_TARGET_MIN_PLUR`). A node at most once, and an item at the
  * target, are the service's checks, which answer a 400 and a 409.
  */
 export const fundingChequebookOperationsSchema = object({

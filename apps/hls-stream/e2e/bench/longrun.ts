@@ -12,7 +12,7 @@
  * most of the point.
  *
  * ⛔⛔ Same gates too, and it carries them itself rather than relying on the wrapper below to prepend
- * them: the owner's authorisation, every publisher's chequebook and every publisher's postage TTL.
+ * them: the spend authorisation, every publisher's chequebook and every publisher's postage TTL.
  * This is the longest paid broadcast in the package, so it is the run with the most to lose from a
  * batch that expires partway, and the postage floor it asks for is its own length rather than the ten
  * minutes a scenario asks for. See `src/bench/authorisation.ts`.

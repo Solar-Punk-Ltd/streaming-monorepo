@@ -110,7 +110,7 @@ describe('an operator can run every single-suite e2e script from the repo root',
  * scripts are two commands joined by `&&`, the preflight and then the suite, so
  * `E2E_DRAIN_ARMED=1 tsx <preflight> && tsx <suite>` declares the arming to the gates and to nothing
  * else. The suites then read no declaration, `drainNotDeclared` skips them both, and a sitting that
- * armed a batch the owner paid for and bought a broadcast reports zero tests as a green run. Written
+ * armed a paid batch and bought a broadcast reports zero tests as a green run. Written
  * and shipped that way on 2026-09-05 and caught by review rather than by a run.
  *
  * ⭐ The rule is proven here by running `sh` rather than asserted from memory of it, because the

@@ -1556,7 +1556,7 @@ chequebook bulk with. The arithmetic is `chequebookPlan.ts` of
 
 A request's body is checked first, `400 validation_error`: a `targetPlur` of
 whole PLUR as a string of decimal digits, 30 at most, and at least 1 xBZZ, the
-owner's floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
+floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
 PLUR). One item at least and 200 at most, each a node id as the contract takes
 it and an `availablePlur` of whole PLUR, 30 digits at most. Thirty digits keep
 the move within what the manager's chequebook journal holds, and are far more

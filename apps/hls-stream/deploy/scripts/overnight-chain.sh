@@ -6,7 +6,7 @@
 #
 # Every previous unattended night here ran only work that **could not spend**: the arms were unfunded,
 # so `/chequebook/balance` answered `chain disabled` and the node itself was the proof. That rule was
-# mine, written when nobody had authorised an overnight spend, and it is not the rule any more. This
+# written when no overnight spend had been authorised, and it is not the rule any more. This
 # chain publishes and it costs money.
 #
 # So "cannot spend" is replaced by "cannot overspend", which needs gates rather than a promise:

@@ -92,7 +92,7 @@ describe('when a postage batch is worth saying something about', () => {
   });
 
   /**
-   * The thresholds are the owner's, from the funding protocol: stop and ask at 75% of a bucket or
+   * The thresholds come from the funding protocol: stop and ask at 75% of a bucket or
    * under 2 days. Pinned at the boundary because a sweep's rows are only comparable inside one
    * sitting, so a threshold that fires late wastes the runs already in the sweep rather than the
    * ones after it.

@@ -528,7 +528,7 @@ describe('distArgs', () => {
   it('requests dist and nothing else', () => {
     // Asking npm for two fields flattens the response to the top level, so .signatures and
     // .attestations come back undefined and every package reports as unsigned. It is a named trap in
-    // the owner's dependency rule, and nothing but this test stands between an edit and it.
+    // the dependency rule, and nothing but this test stands between an edit and it.
     assert.deepEqual(distArgs('express@5.2.1'), ['view', 'express@5.2.1', 'dist', '--json']);
     assert.equal(distArgs('express@5.2.1').filter((a) => !a.startsWith('--') && a !== 'view').length, 2);
   });
@@ -596,7 +596,7 @@ describe('provenance summary', () => {
     assert.equal(summarise(few).unsigned, '3: p0@1.0.0, p1@1.0.0, p2@1.0.0');
   });
 
-  it('treats exactly two weeks as not fresh, the window of the owner dependency rule', () => {
+  it('treats exactly two weeks as not fresh, the window of the dependency rule', () => {
     assert.equal(summarise([entry('boundary@1.0.0', 'signed', true, 14)]).fresh, 'none');
     assert.match(summarise([entry('boundary@1.0.0', 'signed', true, 13)]).fresh, /boundary@1\.0\.0 \(13d\)/);
   });

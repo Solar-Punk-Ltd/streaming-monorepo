@@ -7,7 +7,7 @@
  * read, then the three gates say whether this run may spend at all, and only then does a publish
  * begin and postage start being spent.
  *
- * ⛔⛔ The gates are the same three the scenario suites run, in the same words: the owner's
+ * ⛔⛔ The gates are the same three the scenario suites run, in the same words: the spend
  * authorisation in `.spend-ledger.env`, every publisher node's chequebook, and every publisher's
  * postage TTL. They are called here rather than left to `deploy/scripts/bench-on-host.sh`, which
  * prepends `pnpm e2e:preflight` and therefore gates only a run launched through it. See

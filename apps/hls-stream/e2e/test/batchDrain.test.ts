@@ -359,7 +359,7 @@ describe('singleRefusalRefusal', () => {
   }
 
   /**
-   * ⛔ The owner's prose rule, landing where an operator reads it after a paid drain. Bee's answers
+   * ⛔ The prose rule, landing where an operator reads it after a paid drain. Bee's answers
    * were joined with semicolons, which is punctuation this repo writes nowhere else in prose, and
    * two answers ran together as one clause on the line that is the whole record of what bee said.
    */

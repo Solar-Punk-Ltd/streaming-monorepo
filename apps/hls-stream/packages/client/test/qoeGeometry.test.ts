@@ -249,7 +249,7 @@ describe('defaultRect', () => {
     assert.equal(r.height, DEFAULT_PANEL_HEIGHT);
   });
 
-  it("opens 250 × 800 below the owner's audio bar, a 420 px player at 635, 163 in a 1692 × 1311 window", () => {
+  it('opens 250 × 800 below an audio bar, a 420 px player at 635, 163 in a 1692 × 1311 window', () => {
     const window = windowBounds({
       viewportWidth: 1692,
       viewportHeight: 1311,

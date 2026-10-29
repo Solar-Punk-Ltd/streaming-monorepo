@@ -5,7 +5,7 @@
  *
  * Everything this project has measured at a viewer is a startup figure. A run publishes for a couple
  * of minutes, the player joins, settles, and the run ends while it is still in the first stretch it
- * ever reached. The owner's actual question has always been steady state: does the stream hold, for
+ * ever reached. The actual question has always been steady state: does the stream hold, for
  * an hour, at a constant latency.
  *
  * A single median over an hour cannot answer that either. A run that spends its first half perfect

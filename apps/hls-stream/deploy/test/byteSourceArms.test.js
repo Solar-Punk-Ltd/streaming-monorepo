@@ -449,7 +449,7 @@ describe('a sitting that refuses leaves the bench host as it found it', () => {
 describe('the spend ceiling stands between the operator and the broadcast', () => {
   it('refuses a sitting with no authorisation at all, and publishes nothing', async () => {
     const stubs = setup();
-    // The owner authorises a night by writing the ledger. Without one there is no authorisation, and
+    // A night is authorised by writing the ledger. Without one there is no authorisation, and
     // the safe reading of a missing file is zero rather than unlimited.
     rmSync(stubs.ledger);
 
