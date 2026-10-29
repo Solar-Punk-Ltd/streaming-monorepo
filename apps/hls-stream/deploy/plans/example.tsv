@@ -1,0 +1,10 @@
+# An example plan for deploy/scripts/overnight-chain.sh, one sitting per line, TAB separated:
+#   <name>  <deadline_minutes>  <driver>  <KEY=VAL|KEY=VAL|...>
+#
+# The driver is resolved beside the chain script. Settings are separated by `|`, because one value
+# can hold spaces, as `ARMS` does when it names two arms. Lines starting with `#` are skipped.
+#
+# The first sitting is a two-hour broadcast at a 0.5 s GOP, the second a four-hour one at 2.0 s.
+# Each deadline leaves room past its MINUTES for the publisher margin and the teardown.
+short-gop-soak	140	viewer-arms.sh	ARMS=soak-short:0.5|ROUNDS=1|WARMUP_ROUNDS=0|MINUTES=120|PUBLISHER_MARGIN_S=120|METRICS_INTERVAL_S=120
+long-gop-soak	270	viewer-arms.sh	ARMS=soak-long:2.0|ROUNDS=1|WARMUP_ROUNDS=0|MINUTES=240|PUBLISHER_MARGIN_S=120|METRICS_INTERVAL_S=120

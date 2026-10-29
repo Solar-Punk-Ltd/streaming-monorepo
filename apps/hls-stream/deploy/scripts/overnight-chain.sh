@@ -39,6 +39,8 @@
 # Plan file, one sitting per line, TAB separated:
 #   <name>  <deadline_minutes>  <driver>  <KEY=VAL|KEY=VAL|...>
 #
+# `deploy/plans/example.tsv` is an example plan.
+#
 # The driver is resolved beside this script, so a plan names it as `viewer-arms.sh` and does not
 # repeat the directory. A path starting with `/` is run exactly as given, which is what lets a
 # caller point at a driver kept somewhere else without a stub having to be written into
