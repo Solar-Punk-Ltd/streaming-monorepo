@@ -11,6 +11,15 @@ failures: they stop containers, freeze Bee nodes and kill the uploader.
 | `e2e/suites/`  | Fault scenarios, service checks, viewer checks in a real browser  | yes                | yes            |
 | `e2e/browser/` | Browser drivers that measure a viewer and report, with no verdict | yes                | yes            |
 
+## Status
+
+The unit tests (`e2e/test/` and each package's `test/`) run in CI on every change and are kept
+current. The live suites in `e2e/suites/`, the drivers in `e2e/browser/` and the probes in
+`e2e/src/probes/` compile against the current code, but CI does not run them, and they were last run
+against a live deployment in October 2026. They are not maintained as a supported test product: treat
+them as a reference for how the pipeline can be tested, and expect to adapt paths, image tags and
+settings to your own deployment before a run.
+
 ## Unit tests
 
 ```bash
@@ -23,7 +32,7 @@ test as steps of one job, and the format check as a job of its own. None of `sui
 the tables on this page are the only place a suite is listed. `test/readmeSuiteTables.test.ts` checks
 that every suite file has a row here and every row names a file.
 
-`packages/shared` has no publish-key test of its own yet. Its publish-key code is exercised through
+`packages/shared` has no publish-key test of its own. Its publish-key code is exercised through
 the uploader's tests. The client's `typecheck` covers `src/` only, so its `test/` folder is not
 type-checked.
 
@@ -517,8 +526,8 @@ can call a slid window a first playlist.
 
 ## Stale builds
 
-The harness checkout on the host is synced on every run, and the uploader and client images are not
-rebuilt with it. Two gates refuse a stage whose deployed code is older than the harness that reads it:
+The harness runs from a checkout of this repository on the host, and the uploader and client images
+are not rebuilt with it. Two gates refuse a stage whose deployed code is older than the harness that reads it:
 
 - **`preflight/uploader-log-shape`** reads the deployed uploader's built code with one `docker exec`
   and checks it writes every log family the harness parses. A message reworded in this checkout and not
@@ -527,7 +536,7 @@ rebuilt with it. Two gates refuse a stage whose deployed code is older than the 
 - **`preflight/client-shape`** reads `/build-stamp.json` from the served client over HTTP and compares
   the tree hashes of `packages/client`, `packages/shared` and the workspace `packages/contracts` with
   this checkout's. A run on the host is handed those hashes as `E2E_EXPECT_CLIENT_TREE`,
-  `E2E_EXPECT_SHARED_TREE` and `E2E_EXPECT_CONTRACTS_TREE`, because the synced checkout has no `.git`. Tree
+  `E2E_EXPECT_SHARED_TREE` and `E2E_EXPECT_CONTRACTS_TREE`, because a checkout copied to the host may have no `.git`. Tree
   hashes are content hashes, so a rebuild from unchanged sources still matches. It refuses four ways:
   no readable stamp, a mismatched tree, a build from uncommitted sources on either side, and an
   expectation it cannot establish.
