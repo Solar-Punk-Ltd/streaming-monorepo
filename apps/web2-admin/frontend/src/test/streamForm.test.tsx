@@ -198,7 +198,7 @@ describe('StreamFormPage validation', () => {
     expect(screen.getByText(/Stream saved, but the thumbnail did not/)).toBeInTheDocument();
   });
 
-  it('offers no media type choice: every new stream is a video stream (SPDV-1674)', () => {
+  it('offers no media type choice: every new stream is a video stream', () => {
     mockFetch([]);
     renderCreateForm();
 
@@ -207,7 +207,7 @@ describe('StreamFormPage validation', () => {
     expect(screen.queryByRole('radio', { name: 'Video Stream' })).not.toBeInTheDocument();
   });
 
-  it('saves an Audio Only draft as a video stream (SPDV-1674)', async () => {
+  it('saves an Audio Only draft as a video stream', async () => {
     let sent: unknown;
     mockFetch([
       {
@@ -408,7 +408,7 @@ describe('StreamFormPage tags', () => {
 });
 
 describe('StreamFormPage thumbnail', () => {
-  it('rejects an image over 5MB beside the picker, with both sizes, and keeps it out of the form (SPDV-1667)', async () => {
+  it('rejects an image over 5MB beside the picker, with both sizes, and keeps it out of the form', async () => {
     mockFetch([]);
     renderCreateForm();
 
@@ -447,7 +447,7 @@ describe('StreamFormPage thumbnail', () => {
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
 
-  it('rejects a text file renamed to .png (SPDV-1668)', async () => {
+  it('rejects a text file renamed to .png', async () => {
     mockFetch([]);
     renderCreateForm();
 
@@ -687,7 +687,7 @@ describe('ScheduleField', () => {
     expect(openTimeMenu().map((o) => o.textContent)).toContain('18:07');
   });
 
-  it('leaves the slots today has already spent open, since the start is only shown (SPDV-1675)', () => {
+  it('leaves the slots today has already spent open, since the start is only shown', () => {
     renderField();
 
     const options = openTimeMenu();
@@ -697,7 +697,7 @@ describe('ScheduleField', () => {
     expect(byLabel.get('18:00')).not.toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('picks a day that has already gone by out of the popover calendar (SPDV-1675)', async () => {
+  it('picks a day that has already gone by out of the popover calendar', async () => {
     const onChange = renderField();
 
     fireEvent.click(screen.getByRole('button', { name: /choose date/i }));
@@ -788,7 +788,7 @@ describe('ScheduleField', () => {
   });
 });
 
-describe('StreamFormPage start in the past (SPDV-1675)', () => {
+describe('StreamFormPage start in the past', () => {
   /** Monday 14 September 2026, 14:23. */
   const NOW = new Date(2026, 8, 14, 14, 23, 0);
 

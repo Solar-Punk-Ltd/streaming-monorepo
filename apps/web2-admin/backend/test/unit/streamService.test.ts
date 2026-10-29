@@ -150,7 +150,7 @@ describe('StreamService audit', () => {
     );
   });
 
-  it('refuses a thumbnail whose bytes are not a picture, whatever its type claims (SPDV-1668)', async () => {
+  it('refuses a thumbnail whose bytes are not a picture, whatever its type claims', async () => {
     const { store, audit, service } = setup();
     const row = store.add(streamRow());
 

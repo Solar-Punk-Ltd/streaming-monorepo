@@ -1,5 +1,5 @@
 /**
- * What the Storage card says after a batch is set with Use (SPDV-1437).
+ * What the Storage card says after a batch is set with Use.
  *
  * Use stores the batch and restarts nothing, and a stream uploader reads its
  * batch once, when it starts. So until the uploader restarts it keeps paying

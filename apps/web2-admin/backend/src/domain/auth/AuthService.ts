@@ -361,7 +361,7 @@ export class AuthService {
   /**
    * The current password of the session's user, counted on two keys. The account at the request's address, the key a
    * sign-in from that address counts on: a wrong one is a failed sign-in there, five of them lock sign-in there too,
-   * and an account locked at that address is refused here as well (SPDV-1580, SPDV-1664). And the account's
+   * and an account locked at that address is refused here as well. And the account's
    * confirmations from every address together ({@link confirmationKey}), which the password change and the funding
    * confirmations share: a stolen session gets four free failures in all however many addresses it uses, and the fifth
    * locks them everywhere. A right password takes only its own attempt back from that one. A lockout of the account at

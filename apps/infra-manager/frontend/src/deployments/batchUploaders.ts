@@ -18,7 +18,7 @@ import { wordList } from './settings/settingsText';
 
 /**
  * The stream uploaders that pay with a Bee node's batches, and what the
- * node's Storage card says about them after a Use (SPDV-1437).
+ * node's Storage card says about them after a Use.
  *
  * A stream uploader reads its batch once, when it starts, from `STAMP` on a
  * single-node deployment and from its rung's entry in `BEE_PUBLISHERS` on an
