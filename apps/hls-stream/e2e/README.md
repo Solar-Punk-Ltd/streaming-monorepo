@@ -662,10 +662,3 @@ report says that passing them does not prove the cap landed.
 - `PUBLISH_KEY_SECRET` resolves from the same env files, so the harness derives the same per-stream key
   as the deployment. Left empty, the harness publishes without a key, which a deployment that checks
   keys refuses.
-
-## Not covered
-
-Seeking, viewer scale, soak, a quality lock (the client has only `?level=<rung>`, which turns ABR off),
-and audio quality beyond "a tone is present". The proof that each rung's bytes leave through its own Bee
-node, read from the nodes' own counters, is not built: the suites read only the uploader's per-rung
-counters (`e2e/src/harness/uploaderMetrics.ts`). If it is not a row above, the suites do not verify it.
