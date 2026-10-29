@@ -74,16 +74,14 @@ fetch standard blocks is never given out, as for a single deployment.
    `frontend/src/forms/wizard/wizardState.ts`), whose members are
    interchangeable.
 2. Turn on **Deploy several at once as a group**. The **Name** field becomes
-   **Group name**, and a **How many** field appears, 2 by default. Above 20
-   members (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`) the
+   **Group name**, and a **How many** field appears, 2 by default. The size has
+   no upper bound. Above 20 members (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`) the
    step says "Large group, double check before deploying." For a stream it says
    that every member shares one stream key.
 3. Fill the other steps as for one deployment.
 4. Press **Deploy group (N)**. Every member is created, then deployed.
 
 Editing a single deployment happens in its own drawer, which has no group mode.
-
-The size has no upper bound. The wizard warns above 20.
 
 ### The deployments table
 

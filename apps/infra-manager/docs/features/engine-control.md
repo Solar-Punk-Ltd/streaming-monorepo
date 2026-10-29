@@ -28,6 +28,8 @@ Every stream and ABR uploader deployment page has an **Engine** card, between **
 - **Restart** asks first, for example `Restart SRS 6 for stream1?`, and says what a restart costs: for the engine, the publisher is disconnected for a few seconds and reconnects if the broadcaster is set to retry. Settings are not changed. Restart is off while the deployment is stopped or a deploy is running, and the button's tooltip says why.
 - **Logs** opens a dialog with the last 200 lines of a container, a **Refresh** button and a switch between the deployment's containers. Its second tab, **Effective config**, shows the generated `srs.conf` or `Server.xml` as the running container has it, read only, with a copy button. It is the fastest way to see which values actually applied.
 
+The SRS API, once a version publishes its port, has no authentication enabled. The firewall rules in [auth-and-public-access.md](auth-and-public-access.md) cover that port. OvenMediaEngine's API is off in the stack's template.
+
 The **At a glance** card shows the engine in one line, such as `SRS · segment 2 s · window 15 s`, from the same readings as the Engine card. A value saved but not yet applied is marked `saved, not applied`.
 
 ## The settings
@@ -58,10 +60,6 @@ Each field in the console shows its label with its key, its unit, the default an
 A save stores the settings and recreates nothing. **Apply** on the Stack settings card then recreates the containers that read what changed: the engine for an engine setting, the engine and the uploader for the segment length, and the uploader alone for the OvenMediaEngine poll interval. [deployment-settings.md](deployment-settings.md) describes the card.
 
 Creating a group with `POST /groups` takes `engine_settings` and writes them to every member, and a member added later takes what its siblings run.
-
-The SRS API, once a version publishes its port, has no authentication enabled. The firewall rules in [auth-and-public-access.md](auth-and-public-access.md) cover that port.
-
-OvenMediaEngine's API is off in the stack's template.
 
 ### Defaults the manager owns
 

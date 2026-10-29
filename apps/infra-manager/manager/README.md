@@ -184,6 +184,8 @@ is the whole contract.
   address to build links from. It equals `host` when there is nothing to resolve. Another is
   `pendingStamp`, see [The uploader held back for a stamp](#the-uploader-held-back-for-a-stamp).
 
+### Port slots
+
 **At most 100 deployments per host.** A port slot is a whole number from 1 to 100, and a stack
 version may declare a lower ceiling, which the manager honours. The stack in this repository
 declares 99, so a host running it holds at most 99 deployments. A stopped deployment still holds its

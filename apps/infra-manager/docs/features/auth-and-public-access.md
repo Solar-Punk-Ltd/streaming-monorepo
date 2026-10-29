@@ -259,8 +259,6 @@ reference.
   URL.
 - `GET /config` answers the host-wide SRT passphrase to any signed-in user.
 
-`GET /config` answers the host-wide SRT passphrase to any signed-in user.
-
 ## Opening the manager to the internet
 
 The manager has three layers between a browser on the internet and the things it controls. The
