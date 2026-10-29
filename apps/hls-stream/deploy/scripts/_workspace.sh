@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Where the stack's lockfile comes from in a checkout of the one workspace, for deploy.sh and
-# bench-on-host.sh alike. Sourced, never run.
+# Where the stack's lockfile comes from in a checkout of the one workspace, for deploy.sh. Sourced,
+# never run.
 #
 # An image build and an install on a host read pnpm-lock.yaml and pnpm-workspace.yaml at the root of
 # the stack's folder. Every build tree the manager makes holds them there, and so does a checkout from

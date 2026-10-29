@@ -149,8 +149,8 @@ export class BeePublisherPool {
    * at all. Riding it on the 1080p node would take discovery down first, while three rungs were
    * still publishing perfectly well.
    *
-   * TODO: the pool stays ordered so a dead node can be skipped by walking it. Failover is not wired
-   * up yet, so losing this node blocks new viewers from joining while existing ones play on.
+   * The pool is ordered, and the coordinator is always its first node. Losing this node blocks new
+   * viewers from joining while existing ones play on.
    */
   public coordinator(): BeePublisher {
     return this.ordered[0];

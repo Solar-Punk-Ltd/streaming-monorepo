@@ -32,7 +32,7 @@ test('another RIFF file, a WAV, is not a picture', () => {
   assert.equal(sniffThumbnailMime(ascii('RIFF\u0000\u0000\u0000\u0000WAVE')), null);
 });
 
-test('a text file renamed to .png is not a picture (SPDV-1668)', () => {
+test('a text file renamed to .png is not a picture', () => {
   assert.equal(sniffThumbnailMime(ascii('hello, this is not a picture\n')), null);
 });
 

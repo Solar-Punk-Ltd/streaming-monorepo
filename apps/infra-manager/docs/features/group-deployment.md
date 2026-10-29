@@ -48,6 +48,16 @@ Everything the create form fills is applied to every member as it is:
 No admin token is shared. Each uploader linked to the manager's admin gets a
 token of its own at its first deploy ([web2-admin-link.md](web2-admin-link.md)).
 
+A group's members all run on one host.
+
+Every member of a group that runs a stream uploader signs with the same stream
+key, so they all publish under one owner. That suits fan-out tests and rarely a
+real stage.
+
+An ABR node pool takes no `stamp_id` at create or in an edit, because one batch
+would then pay for every rung, and takes no added members, because a new member
+would carry no rung name ([abr-ladder.md](abr-ladder.md)).
+
 ### What each member has of its own
 
 Its name, and its port slot. Each member takes the lowest free slot, with the
@@ -64,8 +74,8 @@ fetch standard blocks is never given out, as for a single deployment.
    `frontend/src/forms/wizard/wizardState.ts`), whose members are
    interchangeable.
 2. Turn on **Deploy several at once as a group**. The **Name** field becomes
-   **Group name**, and a **How many** field appears, 2 by default. Above 20
-   members (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`) the
+   **Group name**, and a **How many** field appears, 2 by default. The size has
+   no upper bound. Above 20 members (`LARGE_GROUP` in `frontend/src/forms/wizard/steps/BasicsStep.tsx`) the
    step says "Large group, double check before deploying." For a stream it says
    that every member shares one stream key.
 3. Fill the other steps as for one deployment.
@@ -142,19 +152,3 @@ null included, is applied to every member.
 | 409 `group_changed`                  | a removal whose `expectedName` is not the group's name               |
 | 409 `group_not_empty`                | a removal of a group that still has members                          |
 | 409 `ladder_group_invalid_operation` | a `stamp_id` for an ABR node pool, or members added to one           |
-
-## Limits
-
-- A group cannot yet redeploy all its members in one action. Members are
-  redeployed one by one, or through an edit of the shared settings.
-- A group's members all run on one host. A group cannot yet spread its members
-  across hosts.
-- A member cannot yet override a shared setting. Change it on the member itself,
-  where it stops matching its siblings.
-- Every member of a group that runs a stream uploader signs with the same stream
-  key, so they all publish under one owner. That suits fan-out tests and rarely a
-  real stage. The manager does not yet generate a key per member.
-- The size has no upper bound. The wizard warns above 20.
-- An ABR node pool takes no `stamp_id` at create or in an edit, because one batch
-  would then pay for every rung, and takes no added members, because a new member
-  would carry no rung name ([abr-ladder.md](abr-ladder.md)).

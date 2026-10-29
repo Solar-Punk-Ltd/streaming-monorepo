@@ -49,11 +49,9 @@ describe('the command that launches a viewer', () => {
   });
 
   /**
-   * ⛔ The one difference between the two bench scripts, and it is not cosmetic. `bench-on-host.sh`
-   * passes it and `byte-source-arms.sh` does not. Chrome puts its renderer's shared buffers in
-   * /dev/shm, and docker's 64MB default makes it crash PARTWAY THROUGH a video session rather than at
-   * startup, which reads as the stream failing. `browser-on-host.sh` routes through the script that
-   * passes it, so this follows that one.
+   * ⛔ Not cosmetic. Chrome puts its renderer's shared buffers in /dev/shm, and docker's 64MB default
+   * makes it crash PARTWAY THROUGH a video session rather than at startup, which reads as the stream
+   * failing.
    */
   it('gives Chrome the shared memory it needs to survive a whole session', () => {
     assert.match(browserArmCommand(LAUNCH), /--shm-size=2g/);

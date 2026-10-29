@@ -79,7 +79,7 @@ function freshForm(): FormState {
 }
 
 /**
- * Audio Only is no longer offered (SPDV-1674), so the form saves a stream as video. A stream the API has locked the
+ * Audio Only is no longer offered, so the form saves a stream as video. A stream the API has locked the
  * media type of, once it is published or has gone live, keeps the one it has, because the API refuses to change it.
  */
 function mediaTypeToSave(stream: Stream): MediaType {
@@ -141,7 +141,7 @@ export function StreamFormPage() {
   const [picked, setPicked] = useState<File | null>(null);
   const [removeStored, setRemoveStored] = useState(false);
   // A refused pick is shown beside the picker, at the foot of a long form. In the form's own error
-  // line at the top it was off screen, and the operator saw nothing happen (SPDV-1667).
+  // line at the top it was off screen, and the operator saw nothing happen.
   const [thumbnailError, setThumbnailError] = useState<string | null>(null);
   // Counts picks and route changes, so a pick whose file read finishes after a newer pick, or after
   // the form moved to another stream, is dropped instead of landing on the wrong one.

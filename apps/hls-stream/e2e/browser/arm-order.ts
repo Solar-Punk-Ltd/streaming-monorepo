@@ -1,8 +1,8 @@
 /**
  * `pnpm browser:arm-order <rounds>` — print the order a funded-versus-unfunded sitting runs its arms.
  *
- * ⛔ It exists so the shell driver does not derive the order itself. `burn-rates.sh` was written
- * because one constant lived in three scripts at four different values, corrected only where somebody
+ * ⛔ It exists so the shell driver does not derive the order itself. The shared burn rate was
+ * written because one constant lived in three scripts at four different values, corrected only where somebody
  * happened to be looking, and an ordering rule is the same kind of thing: I have already had this one
  * wrong here once, carried from sitting to sitting as a slogan rather than as its arithmetic.
  *

@@ -19,8 +19,8 @@ import {
 } from '../src/clientShape.js';
 
 /**
- * ⛔ Every case here is the client-side twin of the 2026-09-01 uploader sitting. `bench-on-host.sh`
- * syncs the harness checkout to the host on every run and never rebuilds the client image, so the
+ * ⛔ Every case here is the client-side twin of the 2026-09-01 uploader sitting. The harness checkout
+ * on the host is synced on every run and the client image is never rebuilt with it, so the
  * harness can parse a client that is weeks older than itself and nothing notices.
  */
 
@@ -189,7 +189,7 @@ describe('refusing a stage whose served client is not this checkout', () => {
     assert.ok(refusal, 'a run with no expectation was measured against nothing and passed');
     assert.match(refusal, /E2E_EXPECT_CLIENT_TREE/);
     assert.match(refusal, /E2E_EXPECT_CONTRACTS_TREE/);
-    assert.match(refusal, /bench-on-host\.sh/);
+    assert.match(refusal, /deployment host must be handed/);
   });
 
   it('refuses a client serving no stamp, and names redeploying it as the fix', () => {

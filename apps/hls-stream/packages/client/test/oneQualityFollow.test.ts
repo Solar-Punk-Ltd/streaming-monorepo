@@ -30,10 +30,9 @@ import { waitFor } from './helpers/waiting.js';
 import { SEGMENTS_AS_WRITTEN } from '../src/components/SwarmHlsPlayer/ManifestManagement';
 
 /**
- * The player follows only the quality it plays (the owner, 2026-10-07: "only one quality request at the
- * time. Not 4! We only request what we watch."). One case per row of the plan's behaviour checklist,
- * Q1 to Q7, plus the two traps the uploader's own code sets: rungs whose indexes do not line up, and
- * rungs whose stamps run seconds apart. Neither may be read as a dead rung.
+ * The player follows only the quality it plays: one quality request at a time, for the quality being
+ * watched. One case per behaviour, plus the two traps the uploader's own code sets: rungs whose
+ * indexes do not line up, and rungs whose stamps run seconds apart. Neither may be read as a dead rung.
  */
 
 const OWNER = 'aabbcc';
@@ -510,7 +509,7 @@ describe('Q3: the playing quality stops', () => {
     );
   });
 
-  /** Decision 37: the player fails over again and again until it is on a quality that moves. */
+  /** The player fails over again and again until it is on a quality that moves. */
   it('fails over a second time when the quality it moved to stops as well', async () => {
     const rig = makeRig();
     rig.gateway.publishLive(TOP, 'top', 20);

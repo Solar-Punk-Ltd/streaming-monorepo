@@ -143,7 +143,7 @@ export function bucketCapacity(batch: Pick<BatchLimits, 'depth' | 'bucketDepth'>
 }
 
 /**
- * The owner's thresholds for stopping and asking, rather than anything Bee enforces. A sweep's rows
+ * The thresholds for stopping and asking, rather than anything Bee enforces. A sweep's rows
  * are only comparable inside one sitting, so a batch that runs out halfway wastes the runs already
  * in it, and both of these are set to fire before that rather than during it.
  */

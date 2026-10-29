@@ -24,7 +24,7 @@
  *
  * It sequences, and every figure comes out of `src/browser/inTabProbe.ts` and
  * `src/browser/webSocketTraffic.ts`, where `node --test` can reach them.
- * `deploy/scripts/in-browser-concurrency-sweep.js` records the reason: every in-browser throughput
+ * The reason: every in-browser throughput
  * figure this project retracted before 2026-08-11 was retracted for the arithmetic applied
  * afterwards rather than for a mistimed fetch.
  *
@@ -59,15 +59,13 @@
  * preflight proved rather than against the label, and it is not redundant with that preflight: the
  * shaper measured a curl from the container's own namespace, and this measures the node.
  *
- * Usage, on the deployment host. Arm 1, the emulated cap:
- *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:in-tab-throttle-probe
+ * Usage, on the deployment host. Arm 1, the emulated cap: `pnpm browser:in-tab-throttle-probe`.
  *
- * Arm 2, a real shaped link at the same rate:
- *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --own-network --shape-kbps 2800 \
- *     --script browser:in-tab-throttle-probe -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
+ * Arm 2, a real shaped link at the same rate, in a container with its own network and an ingress
+ * shaper: the same, with `PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800`.
  *
  * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository), written before this existed.
- * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction, which is
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its correction, which is
  *   why arm 2 exists.
  */
 

@@ -20,7 +20,7 @@ import { nodeGroups, type NodeGroup } from './balance';
  * amount is BigInt in PLUR.
  */
 
-/** The least target, as the page says it: 1, in xBZZ, as the owner set it. */
+/** The least target, as the page says it: 1, in xBZZ. */
 const FLOOR = formatUnits(CHEQUEBOOK_TARGET_MIN_PLUR, XBZZ_DECIMALS);
 
 /** Said beside the target field. */

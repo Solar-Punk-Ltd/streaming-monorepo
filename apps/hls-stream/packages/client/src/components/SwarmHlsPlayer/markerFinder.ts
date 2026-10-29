@@ -17,7 +17,7 @@ import { RungFeedReader } from './rungFeedReader';
 export const MARKER_REUSE_MS = 5_000;
 
 /**
- * Finds a rung's newest index from the ladder's time marker (decision 35), and searches as before
+ * Finds a rung's newest index from the ladder's time marker, and searches as before
  * when there is none.
  *
  * The uploader writes one marker per ladder every ten seconds naming every rung's newest index (see

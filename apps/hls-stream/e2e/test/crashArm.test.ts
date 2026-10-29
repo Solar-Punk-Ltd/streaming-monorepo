@@ -268,7 +268,7 @@ describe('whether a crash arm is a viewer who was watching when the fault landed
   });
 
   /**
-   * ⭐ The other half of the same ruling, and the sharper half. V10 was refused live for freezing
+   * ⭐ The other half of the same rule, and the sharper half. V10 was refused live for freezing
    * 16.3s against a FLOOR of 20s: it failed for costing the viewer less than the matrix recorded.
    */
   it('passes an arm the fault barely touched, which no longer reads as a fault that never landed', () => {
@@ -433,7 +433,7 @@ describe('whether what the client told the viewer while the picture was stopped 
   });
 
   /**
-   * ⭐ The direction that matters after the 2026-08-29 ruling. These cases used to assert the
+   * ⭐ The direction that matters most. These cases used to assert the
    * silence EXACTLY, so a fix for the silent overlay gap turned them red for the product improving.
    * It must turn them green.
    */

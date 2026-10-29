@@ -14,7 +14,7 @@
  *
  * {@link recordWebSocketTraffic} is a listener that appends and sums nothing. Every figure comes out
  * of the pure functions below, which `test/webSocketTraffic.test.ts` exercises on hand-built frames.
- * `deploy/scripts/in-browser-concurrency-sweep.js` records why: every in-browser throughput figure
+ * Why: every in-browser throughput figure
  * this project retracted before 2026-08-11 was retracted for the arithmetic applied afterwards
  * rather than for a mistimed fetch.
  */

@@ -189,7 +189,7 @@ describe('B — bee crash > retry window: the segment is dropped, reported, and 
    *
    * ⛔ The catalog is held to never fewer entries than before, keyed by the feed each names. A list written from a
    * read-back that had not caught up is how a restart shortens it, and a shorter list is broadcasts a viewer can no
-   * longer find. ⚠️ The pause length is printed and never asserted, by the owner rule that e2e checks correctness.
+   * longer find. ⚠️ The pause length is printed and never asserted, because e2e checks correctness.
    */
   it('keeps every catalog entry and moves every rung head again once the nodes are back', async () => {
     assert.ok(nodesBackAt !== undefined, 'the outage case above never brought the nodes back, so nothing is read');

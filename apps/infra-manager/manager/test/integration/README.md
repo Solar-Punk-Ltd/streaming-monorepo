@@ -78,6 +78,9 @@ message contains the password.
 The Docker-backed workflow's `integration` job runs the whole suite on a GitHub runner. See
 [CI and local checks](../../../docs/ci.md).
 
+Viewer groups use two members and the ABR cases a fixed four-rung pool. Several files can run at
+once, so that is not a cap on the whole suite.
+
 ## What it creates, and what it removes
 
 - Every resource the suite asks for is named `itest-<run>-<what>-<random>`, and teardown refuses a
@@ -94,6 +97,9 @@ The Docker-backed workflow's `integration` job runs the whole suite on a GitHub 
   request has a five second budget, and an accepted removal is watched for up to 60 seconds. A
   refused or timed out write is not retried. A failed cleanup never counts as a clean run.
 
+A lost create answer can leave a deployment whose identity was never confirmed. The suite reports it
+and leaves it for you to inspect.
+
 ## Timeouts
 
 - Reads and authentication wait at most 30 seconds for an answer (`FAST_REQUEST_TIMEOUT_MS`).
@@ -101,13 +107,6 @@ The Docker-backed workflow's `integration` job runs the whole suite on a GitHub 
   proxy budget.
 - After an accepted write, `waitForStatus` polls for up to 240 seconds, the `DEPLOY_TIMEOUT` every
   file passes it. Its own default is 180 seconds.
-
-## Limits
-
-- Viewer groups use two members and the ABR cases a fixed four-rung pool. Several files can run at
-  once, so that is not a cap on the whole suite.
-- A lost create answer can leave a deployment whose identity was never confirmed. The suite
-  reports it and leaves it for you to inspect.
 
 ## The other suites
 

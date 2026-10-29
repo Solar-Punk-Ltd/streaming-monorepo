@@ -5,7 +5,7 @@ export const INSTANCE_NAME_MAX_LENGTH = 40;
 const INSTANCE_NAME_RE = new RegExp(`^[A-Za-z0-9._-]{1,${INSTANCE_NAME_MAX_LENGTH}}$`);
 
 /**
- * The name a manager instance goes by, such as `swarm-dev`, from MANAGER_INSTANCE_NAME: trimmed, and null when it is
+ * The name a manager instance goes by, such as `my-instance`, from MANAGER_INSTANCE_NAME: trimmed, and null when it is
  * unset, blank or of another shape. The manager answers it on `GET /config` and the sidebar shows it beside the build.
  */
 export function instanceName(raw: unknown): string | null {

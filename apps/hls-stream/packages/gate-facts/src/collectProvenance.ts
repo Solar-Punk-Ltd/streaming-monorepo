@@ -6,7 +6,7 @@ import { CollectionError, type FactGroup } from './types.js';
 const REGISTRY_CONCURRENCY = 12;
 
 /**
- * The window of the owner's dependency rule, which flags a version published less than about two weeks
+ * The window of the dependency rule, which flags a version published less than about two weeks
  * ago, so the fresh row lists the versions that rule flags.
  */
 const FRESH_DAYS = 14;
@@ -38,7 +38,7 @@ export interface VersionProvenance {
  *
  * `dist` must be the ONLY field requested. Asking for two makes npm flatten the result to the top
  * level, so `.signatures` and `.attestations` come back undefined and every package in the tree
- * reports as unsigned. That is a named trap in the owner's dependency rule, and nothing but this
+ * reports as unsigned. That is a named trap in the dependency rule, and nothing but this
  * constant and its test stands between a future edit and reintroducing it.
  */
 export function distArgs(spec: string): string[] {
@@ -196,7 +196,7 @@ function allVersions(lockfiles: Lockfiles): string {
  * repository.
  *
  * Every lockfile the repository tracks is read, not only the stack's: the root one since the repository became one
- * workspace, each app's own before. The owner's dependency rule covers every version a change introduces, and in
+ * workspace, each app's own before. The dependency rule covers every version a change introduces, and in
  * one workspace a stack change can bring versions that only another app reaches, through a root override or a
  * changed dedupe. Comparing the union of versions also reads a change across that move correctly: the apps' three
  * lockfiles becoming one at the root introduces nothing that was already pinned.
@@ -208,7 +208,7 @@ function allVersions(lockfiles: Lockfiles): string {
  * Returns null when the change moved no lockfile. A failed read is a thrown `CollectionError` rather than a null,
  * because "no dependency changed" and "I could not tell" must not render the same.
  *
- * This covers two of the owner's four dependency checks. The other two are named in the artifact rather than left
+ * This covers two of the four dependency checks. The other two are named in the artifact rather than left
  * out silently, because a section that lists some checks reads as listing all of them, and the auditor is told not
  * to re-derive what the block already emits.
  */

@@ -75,6 +75,11 @@ node address.
 
 ## The admin's side
 
+The admin reaches the catalogue node's Bee API, which asks for no password, so the Bee host's
+firewall admits the control host to that one node.
+
+A stage on OvenMediaEngine is listed and cannot take streams from the admin.
+
 ### The internal routes
 
 These routes live under `/api/internal`, which is mounted ahead of the admin's cross-site check
@@ -244,6 +249,10 @@ time to live has run out.
   one row per stage with its readiness, owner, ingest, token kind and last push, or the reason its
   record could not be built. `apps/infra-manager/docs/features/stages.md` is the manager's page.
 
+One admin link per manager. Stages whose `ADMIN_API_URL` is on another origin are not pushed, and
+the deployment page says so. Such a stage's uploader is refused by the admin it names, since the
+admin takes a stage's own token alone and learns it only from the manager linked to it.
+
 ## The uploader's side
 
 The uploader's boot check, `assertAdminSignsAsThisService` in
@@ -395,13 +404,3 @@ of the move uses a fake Bee, so only this proves it against a real node.
 If every step holds, the move can be turned on where it is needed. If a slot or a thumbnail came out
 at another reference, the move stops before the switch, the admin keeps writing with A, and the log
 and the Stages page say which.
-
-## Limits
-
-- One admin link per manager. Stages whose `ADMIN_API_URL` is on another origin are not pushed, and
-  the deployment page says so. Such a stage's uploader is refused by the admin it names, since the
-  admin takes a stage's own token alone and learns it only from the manager linked to it.
-- The admin reaches the catalogue node's Bee API, which asks for no password, so the Bee host's
-  firewall admits the control host to that one node.
-- Separating several brands inside one admin is not built.
-- A stage on OvenMediaEngine is listed and cannot take streams from the admin.

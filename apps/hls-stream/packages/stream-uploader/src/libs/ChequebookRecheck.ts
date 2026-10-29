@@ -77,7 +77,7 @@ const MS_PER_SECOND = 1_000;
  *   warned about in the log, and a node that has stopped answering shows on the upload path anyway.
  *
  * ⛔ This reports and does nothing else. A low chequebook neither stops nor refuses a broadcast, and
- * nothing here moves money: funding a node is the owner's, from the node's own wallet.
+ * nothing here moves money: funding a node is done by hand, from the node's own wallet.
  */
 export class ChequebookRecheck {
   private readonly clock: Clock;

@@ -273,8 +273,7 @@ describe('the local transport', () => {
  * Loopback for as long as the container shared the host's network namespace, which every bench and
  * every viewer arm did. A container given a namespace of its own reaches nothing on its own
  * loopback: the uploader, the bee nodes and the client are all on the host, one hop away over the
- * bridge, and `deploy/scripts/bench-on-host.sh --own-network` names that hop
- * `host.docker.internal`. Every one of these calls is built into a shell line, so the address is
+ * bridge, and a container with a network of its own names that hop `host.docker.internal`. Every one of these calls is built into a shell line, so the address is
  * screened by `loadConfig` before it ever arrives here.
  */
 describe('the address the local transport curls', () => {

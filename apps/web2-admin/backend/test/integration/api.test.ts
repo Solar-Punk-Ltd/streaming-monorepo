@@ -306,7 +306,7 @@ describe('stream lifecycle', () => {
     assert.equal((response.body as { error: string }).error, 'unsupported_media_type');
   });
 
-  it('refuses a text file sent as a PNG and keeps the stored thumbnail (SPDV-1668)', async () => {
+  it('refuses a text file sent as a PNG and keeps the stored thumbnail', async () => {
     const response = await raw('PUT', `/api/streams/${stream.id}/thumbnail`, {
       raw: Buffer.from('a text file renamed to fake.png\n'),
       contentType: 'image/png',

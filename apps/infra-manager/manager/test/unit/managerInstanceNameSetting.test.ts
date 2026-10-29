@@ -1,5 +1,5 @@
 /**
- * MANAGER_INSTANCE_NAME: the name this manager instance goes by, such as swarm-dev, which the sidebar shows beside
+ * MANAGER_INSTANCE_NAME: the name this manager instance goes by, such as my-instance, which the sidebar shows beside
  * the build it runs.
  *
  * Unit test, no database. `pnpm test` in manager/.
@@ -18,7 +18,7 @@ describe('the name this manager instance goes by', () => {
   });
 
   it('takes a short name of letters, digits, dots, dashes and underscores, trimmed', () => {
-    assert.equal(managerInstanceName('swarm-dev'), 'swarm-dev');
+    assert.equal(managerInstanceName('my-instance'), 'my-instance');
     assert.equal(managerInstanceName('  qa_1.eu '), 'qa_1.eu');
   });
 

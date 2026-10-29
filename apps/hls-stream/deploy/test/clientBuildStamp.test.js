@@ -14,9 +14,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPTS = join(ROOT, 'deploy/scripts');
 
 /**
- * What the served client is judged against, computed by `deploy.sh` when it builds the image and by
- * `bench-on-host.sh` when it syncs the harness, so the `client-shape` preflight has two independent
- * readings of the same thing to compare.
+ * What the served client is judged against, computed by `deploy.sh` when it builds the image, so the
+ * `client-shape` preflight has a reading to compare with the harness checkout.
  *
  * ⛔ Observed as the override file compose was pointed at, recorded by the docker stub while it still
  * existed, because both deploy paths delete it the moment compose returns. Compose interpolates build
@@ -156,27 +155,6 @@ describe('deploy.sh minting the client build stamp', () => {
   });
 });
 
-/**
- * ⛔⛔ The two sides have to agree on what "the client sources" are, or the gate compares one answer
- * against a different question. `deploy.sh` decides what the image records and `bench-on-host.sh`
- * decides what the harness expects, and a path added to one and not the other is a source that can
- * change a viewer's client while both sides still call it a match.
- */
-describe('the two sides of the client stamp asking about the same sources', () => {
-  const scripts = ['deploy.sh', 'bench-on-host.sh'].map((name) => ({
-    name,
-    body: readFileSync(join(SCRIPTS, name), 'utf8'),
-  }));
-
-  for (const path of [...CLIENT_SOURCE_PATHS, CONTRACTS_PACKAGE]) {
-    it(`both scripts judge dirtiness over ${path}`, () => {
-      for (const { name, body } of scripts) {
-        assert.ok(body.includes(path), `${name} does not name ${path}`);
-      }
-    });
-  }
-});
-
 /** Where the stack sits inside a larger repository in the case that needs one. Any depth would do. */
 const STACK_SUBFOLDER = 'apps/hls-stream';
 
@@ -196,8 +174,6 @@ const FIXTURE_IDENTITY = {
 
 const STAMP_FUNCTION = /^client_build_stamp_text\(\) \{\n[\s\S]*?\n\}$/m;
 const SOURCE_PATHS_ARRAY = /^CLIENT_SOURCE_PATHS=\(\n[\s\S]*?\n\)$/m;
-const EXPECTED_TREE_FUNCTION = /^git_tree_or_empty\(\) \{\n[\s\S]*?\n\}$/m;
-const EXPECTED_WORKSPACE_TREE_FUNCTION = /^workspace_tree_or_empty\(\) \{\n[\s\S]*?\n\}$/m;
 
 const fixtureDirs = [];
 
@@ -288,18 +264,6 @@ function stampFrom(stack, env = {}) {
 }
 
 /**
- * The tree `bench-on-host.sh` expects for `pkg`, from the function it ships run with `REPO_ROOT` at
- * `stack`. The path goes in as an argument rather than into the program text.
- */
-function expectedTreeFrom(stack, pkg, env = {}) {
-  const [lifted] = liftFrom('bench-on-host.sh', [EXPECTED_TREE_FUNCTION]);
-  return execFileSync('bash', ['-c', `${lifted}\ngit_tree_or_empty "$1"`, 'bash', pkg], {
-    encoding: 'utf8',
-    env: { ...machineEnv(), ...env, REPO_ROOT: stack },
-  });
-}
-
-/**
  * ⛔⛔ What a path after `HEAD:` means to git, which the stub cannot say because it answers by exact
  * text. A bare `HEAD:packages/client` is read from the repository root, and `HEAD:./packages/client`
  * from the folder `-C` names. The two agree for a checkout of this repository on its own. They part
@@ -351,45 +315,6 @@ describe('the client stamp read by a real git, wherever the stack sits', () => {
 });
 
 /**
- * ⛔⛔ The other side of the same comparison. `bench-on-host.sh` computes the trees every sitting
- * carries into the container as the expectation the gate measures the stamp against, and it asks
- * git the same question the stamp does, so it has the same answer to get right. Its own filter
- * passes on nothing that is not an object name, so from a subfolder git's echoed argument became an
- * empty expectation, and the gate refused every sitting as unable to say what it expects.
- */
-describe('the trees bench-on-host.sh expects, read by a real git, wherever the stack sits', () => {
-  it('names the trees from the stack folder when the stack sits inside a larger repository', () => {
-    const { repo, stack } = commitStackFixture(STACK_SUBFOLDER);
-    assert.throws(
-      () => gitIn(stack, 'rev-parse', 'HEAD:packages/client'),
-      Error,
-      'the fixture has to be one where a bare path after HEAD: names nothing from the stack folder',
-    );
-
-    for (const pkg of STAMPED_PACKAGES) {
-      assert.equal(expectedTreeFrom(stack, pkg), gitIn(repo, 'rev-parse', `HEAD:${STACK_SUBFOLDER}/${pkg}`), pkg);
-    }
-  });
-
-  it('gives a checkout of the stack on its own the same trees the root-relative form gives', () => {
-    const { repo, stack } = commitStackFixture('');
-
-    for (const pkg of STAMPED_PACKAGES) {
-      assert.equal(expectedTreeFrom(stack, pkg), gitIn(repo, 'rev-parse', `HEAD:${pkg}`), pkg);
-    }
-  });
-
-  it('still expects nothing of a stack with no history', () => {
-    const exported = tempDir('client-stamp-export-');
-    writeStampedPackages(exported);
-
-    for (const pkg of STAMPED_PACKAGES) {
-      assert.equal(expectedTreeFrom(exported, pkg, { GIT_CEILING_DIRECTORIES: dirname(exported) }), '', pkg);
-    }
-  });
-});
-
-/**
  * A throwaway checkout of the one workspace: the stack at {@link STACK_SUBFOLDER} and, unless
  * `contracts` is false, the contracts package at the root's {@link CONTRACTS_PACKAGE}, committed once.
  */
@@ -408,22 +333,10 @@ function commitWorkspaceFixture({ contracts = true } = {}) {
 }
 
 /**
- * The contracts tree `bench-on-host.sh` expects, from the functions it ships run with `REPO_ROOT` at
- * `stack` and `WORKSPACE_ROOT` at `workspaceRoot`.
- */
-function expectedContractsTreeFrom(stack, workspaceRoot) {
-  const lifted = liftFrom('bench-on-host.sh', [EXPECTED_TREE_FUNCTION, EXPECTED_WORKSPACE_TREE_FUNCTION]);
-  return execFileSync('bash', ['-c', `${lifted.join('\n')}\nworkspace_tree_or_empty "$1"`, 'bash', CONTRACTS_PACKAGE], {
-    encoding: 'utf8',
-    env: { ...machineEnv(), REPO_ROOT: stack, WORKSPACE_ROOT: workspaceRoot },
-  });
-}
-
-/**
  * ⛔⛔ The stack's shared package re-exports the contracts package, so vite compiles its sources into
  * the bundle, and a change there alone reaches a viewer with the client and shared trees untouched.
- * It sits at the root of the one workspace rather than in the stack's folder, so both sides read it
- * from the workspace root `deploy.sh` and `bench-on-host.sh` already work out. A stack that keeps its
+ * It sits at the root of the one workspace rather than in the stack's folder, so the stamp reads it
+ * from the workspace root `deploy.sh` already works out. A stack that keeps its
  * own lockfile has no such root, and a commit without the package has no such tree: both read as
  * empty, the way a missing shared tree does.
  */
@@ -463,19 +376,5 @@ describe('the contracts tree, read by a real git from the root of the one worksp
     const stamp = stampFrom(stack, { WORKSPACE_ROOT: repo });
 
     assert.equal(stamp.CLIENT_BUILD_DIRTY, '1');
-  });
-
-  it('has bench-on-host.sh expect the same contracts tree the stamp names', () => {
-    const { repo, stack } = commitWorkspaceFixture();
-
-    assert.equal(expectedContractsTreeFrom(stack, repo), gitIn(repo, 'rev-parse', `HEAD:${CONTRACTS_PACKAGE}`));
-  });
-
-  it('has bench-on-host.sh expect no contracts tree where there is no workspace root or no package', () => {
-    const withPackage = commitWorkspaceFixture();
-    const withoutPackage = commitWorkspaceFixture({ contracts: false });
-
-    assert.equal(expectedContractsTreeFrom(withPackage.stack, ''), '');
-    assert.equal(expectedContractsTreeFrom(withoutPackage.stack, withoutPackage.repo), '');
   });
 });

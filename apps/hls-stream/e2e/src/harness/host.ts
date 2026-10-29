@@ -111,7 +111,7 @@ export const LOCAL_TARGET = 'local';
  * Which is what every bench and every viewer arm has been, so this was a literal until 2026-09-02.
  * A container given a network namespace of its own has nothing on its own loopback, and the
  * uploader, the four bee nodes and the client are then one hop away over the docker bridge. See
- * `E2E_LOCAL_HOST_ADDRESS` in `config.ts` and `--own-network` in `deploy/scripts/bench-on-host.sh`.
+ * `E2E_LOCAL_HOST_ADDRESS` in `config.ts`.
  */
 export const DEFAULT_LOCAL_HOST_ADDRESS = 'localhost';
 
@@ -376,7 +376,7 @@ export class Host {
    * 2026-08-03 that the funding preflight must report a shortfall and print the command rather than
    * deposit it. A harness that is not allowed to move money should not carry the one method whose
    * own docstring explained how, so the method and the `-X POST` under it went together. A later
-   * spend-capable call is a decision to take to the owner, not a parameter to put back.
+   * spend-capable call is a decision for a maintainer, not a parameter to put back.
    */
   async localJson<T>(target: ServiceTarget, path: string, timeoutS: number = 5): Promise<T> {
     return this.curlJson<T>(target, path, timeoutS);

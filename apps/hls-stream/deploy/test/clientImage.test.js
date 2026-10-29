@@ -131,8 +131,8 @@ describe('client image caching what is safe to cache', () => {
  * The client image recording which sources it was built from, served as `/build-stamp.json`.
  *
  * ⛔ The failure this exists for is the client-side twin of the 2026-09-01 uploader sitting.
- * `bench-on-host.sh` syncs the harness checkout to the host on every run and never rebuilds the
- * client image, so the harness can be new while the served client is weeks old. The browser harness
+ * The harness checkout on the host is synced on every run and the client image is not rebuilt with
+ * it, so the harness can be new while the served client is weeks old. The browser harness
  * parses the served client's console lines, the fetch backend it publishes on `globalThis` and the
  * weeb-3 worker it serves, and nothing noticed the two disagreeing. The stamp is what the
  * `client-shape` e2e preflight reads to refuse that before a broadcast starts.

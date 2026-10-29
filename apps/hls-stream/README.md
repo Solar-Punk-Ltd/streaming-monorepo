@@ -49,7 +49,7 @@ The [deploy guide](deploy/README.md) walks through each step.
 | [Engines](engines/README.md)                                       | SRS and OME, the SRS fork, the ABR ladder, your own config file              |
 | [Client](packages/client/README.md)                                | The viewer: settings, the node picker, playback behaviour, the QoE overlay   |
 | [CLI](packages/cli/README.md)                                      | Bee node and postage batch commands                                          |
-| [Testing](e2e/README.md)                                           | Unit tests, the end-to-end suites, browser drivers, the latency benchmark    |
+| [Testing](e2e/README.md)                                           | Unit tests, the end-to-end suites and browser drivers                        |
 
 ## Packages
 

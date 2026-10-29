@@ -43,7 +43,7 @@ const digitsOf = (text: string) => text.replace(/\D/g, '');
  * `datetime-local` string the API helpers have always converted.
  *
  * The scheduled start is only shown to viewers and starts nothing, so a day
- * or a time that has already gone by can be picked like any other (SPDV-1675).
+ * or a time that has already gone by can be picked like any other.
  */
 export function ScheduleField({ value, onChange, error = false, disabled = false, helperText }: ScheduleFieldProps) {
   const now = new Date();

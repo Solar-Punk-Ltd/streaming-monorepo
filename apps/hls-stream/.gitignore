@@ -36,18 +36,16 @@ packages/client/public/weeb-3/
 reports/mutation/
 
 # Every measurement run's output: raw json, markdown reports, request logs, screenshots and sweep
-# logs. The harnesses write to `BENCH_RESULTS_DIR`, which defaults to this folder, and
-# `bench-on-host.sh` copies a host's folder back here after every run. Results are a deployment's
-# own data and are never tracked.
+# logs. The harnesses write to `BENCH_RESULTS_DIR`, which defaults to this folder. Results are a
+# deployment's own data and are never tracked.
 /bench-results/
 
 # Stryker drains the command runner's stdout slowly, and the uploader suite times out against
 # that backpressure. Redirecting it to a file is what makes the dry run pass.
 .stryker-test-output.log
 
-# The night's spend authorisation and its dated predecessors. Written when the owner gives it,
-# never committed. Lives in the LOCAL repo root: bench-on-host.sh syncs with --delete and no
-# exclusion for it, so a copy that exists only on the host is deleted by the next sync.
+# The night's spend authorisation and its dated predecessors. Written when a maintainer gives it,
+# never committed.
 .spend-ledger.env*
 
 # What each rung was publishing through before drain-stage.sh armed it, one file per profile. It

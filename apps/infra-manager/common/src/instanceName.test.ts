@@ -10,7 +10,7 @@ import { INSTANCE_NAME_MAX_LENGTH, instanceName } from './instanceName.js';
 
 describe('the name of a manager instance', () => {
   it('takes letters, digits, dots, dashes and underscores, trimmed', () => {
-    assert.equal(instanceName('swarm-dev'), 'swarm-dev');
+    assert.equal(instanceName('my-instance'), 'my-instance');
     assert.equal(instanceName('  qa_1.eu  '), 'qa_1.eu');
   });
 

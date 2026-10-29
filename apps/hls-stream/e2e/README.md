@@ -9,8 +9,16 @@ failures: they stop containers, freeze Bee nodes and kill the uploader.
 | -------------- | ----------------------------------------------------------------- | ------------------ | -------------- |
 | Unit tests     | Each package's own `test/`, and `e2e/test/` for this harness      | no                 | no             |
 | `e2e/suites/`  | Fault scenarios, service checks, viewer checks in a real browser  | yes                | yes            |
-| `e2e/bench/`   | The latency benchmark                                             | yes                | yes            |
 | `e2e/browser/` | Browser drivers that measure a viewer and report, with no verdict | yes                | yes            |
+
+## Status
+
+The unit tests (`e2e/test/` and each package's `test/`) run in CI on every change and are kept
+current. The live suites in `e2e/suites/`, the drivers in `e2e/browser/` and the probes in
+`e2e/src/probes/` compile against the current code, but CI does not run them, and they were last run
+against a live deployment in October 2026. They are not maintained as a supported test product: treat
+them as a reference for how the pipeline can be tested, and expect to adapt paths, image tags and
+settings to your own deployment before a run.
 
 ## Unit tests
 
@@ -24,7 +32,7 @@ test as steps of one job, and the format check as a job of its own. None of `sui
 the tables on this page are the only place a suite is listed. `test/readmeSuiteTables.test.ts` checks
 that every suite file has a row here and every row names a file.
 
-`packages/shared` has no publish-key test of its own yet. Its publish-key code is exercised through
+`packages/shared` has no publish-key test of its own. Its publish-key code is exercised through
 the uploader's tests. The client's `typecheck` covers `src/` only, so its `test/` folder is not
 type-checked.
 
@@ -110,11 +118,11 @@ gateway. It belongs to the run, not the deployment. The default run profile sets
 
 A browser run also needs:
 
-| Variable                | Default                    | What it is                                                                                                                                  |
-| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `E2E_BROWSER_REPO_DIR`  | required                   | Absolute path of the harness checkout on the host, mounted into the browser container as `/repo`. The directory `bench-on-host.sh` syncs to |
-| `E2E_BROWSER_IMAGE`     | `swarm-hls-browser:latest` | The image `browser-on-host.sh` builds from `e2e/Dockerfile.browser`                                                                         |
-| `E2E_BROWSER_CONTAINER` | `e2e-viewer-browser`       | The browser container's name. Reclaimed by exact name before each run                                                                       |
+| Variable                | Default                    | What it is                                                                                       |
+| ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
+| `E2E_BROWSER_REPO_DIR`  | required                   | Absolute path of the harness checkout on the host, mounted into the browser container as `/repo` |
+| `E2E_BROWSER_IMAGE`     | `swarm-hls-browser:latest` | The image built from `e2e/Dockerfile.browser`                                                    |
+| `E2E_BROWSER_CONTAINER` | `e2e-viewer-browser`       | The browser container's name. Reclaimed by exact name before each run                            |
 
 `E2E_BROWSER_REPO_DIR` has no default because the suite runs inside that mount and cannot work out the
 host path. A guessed path that did not exist would make Docker mount an empty directory.
@@ -141,8 +149,7 @@ gateway profile uses 1.0 s. `preflight/segment-length` reads `E2E_EXPECT_SEGMENT
 The engine cuts segments by `HLS_FRAGMENT` and the uploader dates them by it, so the gate reads both
 containers and refuses a pair that disagrees. It reads the SRS config with one `docker exec cat` and
 each container's environment with `docker inspect`, so it publishes nothing. It cannot see an encoder
-that misses its own cadence. `deploy/scripts/stage-fingerprint.sh` reads raw `#EXTINF` off a live
-playlist for that. A refused run names the fix:
+that misses its own cadence. A refused run names the fix:
 
 ```bash
 echo 'HLS_FRAGMENT=2.0' >> .env.<profile>
@@ -200,11 +207,6 @@ and `# fail` blocks. Sum them.
 | `pnpm e2e:batch-drain-viewer`      | `viewer/batch-drain-viewer`, on an armed stage                   |
 | `pnpm e2e:rtmp`                    | `suites/ingest/`                                                 |
 | `pnpm e2e:admin`                   | `suites/admin/`                                                  |
-
-Browser drivers launched through `deploy/scripts/bench-on-host.sh`, directly or through
-`browser-on-host.sh`, run the same gates first. The older measurement scripts under `deploy/scripts/` that
-start the browser image themselves, such as `byte-source-arms.sh`, are not gated. A launch is also
-refused from a checkout with no `.spend-ledger.env` at its root.
 
 ### Run profiles
 
@@ -524,8 +526,8 @@ can call a slid window a first playlist.
 
 ## Stale builds
 
-`bench-on-host.sh` syncs this checkout to the host on every run and never rebuilds the uploader or
-client images. Two gates refuse a stage whose deployed code is older than the harness that reads it:
+The harness runs from a checkout of this repository on the host, and the uploader and client images
+are not rebuilt with it. Two gates refuse a stage whose deployed code is older than the harness that reads it:
 
 - **`preflight/uploader-log-shape`** reads the deployed uploader's built code with one `docker exec`
   and checks it writes every log family the harness parses. A message reworded in this checkout and not
@@ -533,8 +535,8 @@ client images. Two gates refuse a stage whose deployed code is older than the ha
   the silence. Its refusal names redeploying as the fix, not rewording the patterns.
 - **`preflight/client-shape`** reads `/build-stamp.json` from the served client over HTTP and compares
   the tree hashes of `packages/client`, `packages/shared` and the workspace `packages/contracts` with
-  this checkout's. `bench-on-host.sh` passes those hashes in as `E2E_EXPECT_CLIENT_TREE`,
-  `E2E_EXPECT_SHARED_TREE` and `E2E_EXPECT_CONTRACTS_TREE`, because its sync excludes `.git`. Tree
+  this checkout's. A run on the host is handed those hashes as `E2E_EXPECT_CLIENT_TREE`,
+  `E2E_EXPECT_SHARED_TREE` and `E2E_EXPECT_CONTRACTS_TREE`, because a checkout copied to the host may have no `.git`. Tree
   hashes are content hashes, so a rebuild from unchanged sources still matches. It refuses four ways:
   no readable stamp, a mismatched tree, a build from uncommitted sources on either side, and an
   expectation it cannot establish.
@@ -545,8 +547,7 @@ lines at all.
 ## Browser drivers
 
 A driver is a script under `e2e/browser/` that you run and read the output of. It produces a report and
-has no verdict. Launch drivers on the deployment host through `deploy/scripts/browser-on-host.sh`, which
-runs the preflight gates first.
+has no verdict. Run drivers on the deployment host, after the preflight gates (`pnpm e2e:preflight`).
 
 ### The in-browser node first
 
@@ -617,8 +618,7 @@ recording through the client's retrieval path, uncapped and capped, counting the
 around each. It costs no BZZ and needs no gate.
 
 ```bash
-deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> \
-  --script browser:in-tab-throttle-probe
+pnpm browser:in-tab-throttle-probe
 ```
 
 `PROBE_OWNER`, `PROBE_TOPIC_360_HEX` and `PROBE_TOPIC_1080_HEX` choose the recording.
@@ -660,90 +660,6 @@ weeb-3's own page publishes no retrieval handle, so `browser:weeb3-native` gets 
 over the cap refuses, and a phase that gained media while the recorder counted nothing refuses. Its
 report says that passing them does not prove the cap landed.
 
-### A real shaped link
-
-Chrome's network emulation is one budget the browser divides across every socket, and an in-tab node
-holds about two hundred of them, so it is not the same as a slow link. To measure under a real one:
-
-```bash
-deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> \
-  --own-network --shape-kbps 2800 --script browser:in-tab-throttle-probe \
-  -- PROBE_CAP_MODE=external PROBE_CAP_KBPS=2800
-```
-
-`--shape-kbps` implies `--own-network`, which gives the browser container its own network namespace.
-With host networking it would share one namespace with every Bee node and the uploader, and a shaper
-inside it would throttle all of them. The cost is loopback, so `E2E_LOCAL_HOST_ADDRESS`,
-`E2E_PUBLIC_HOST` and `BROWSER_CLIENT_URL` move to `host.docker.internal`.
-
-`deploy/scripts/shape-container-ingress.sh` installs a `tc` ingress policer on the container's own
-interface, download only. It refuses the run rather than measure an unshaped link: when the client
-answers on the container's own loopback (the namespace is shared), when the client is unreachable
-across the bridge, when `tc` is missing or denied, and when the measured rate is more than 25% under or
-15% over the cap. `PROBE_EXTERNAL_CAP_MEASURED_BPS` carries the measured rate into the driver.
-
-`PROBE_CAP_MODE=external` applies no emulation, runs one idle window rather than three, and omits the
-uncapped rows, because the policer holds for the life of the container. Every row carries `capSource`.
-`--cap-add=NET_ADMIN` can leave the capability permitted but not effective on some runc versions, and
-the shaper names that when `tc` is denied.
-
-Paid crash and buffer-sweep runs go through their gated wrappers on the host,
-`deploy/scripts/crash-arms.sh` and `deploy/scripts/buffer-sweep-sitting.sh`, with the same gates as
-every other run, and a run that does not name its byte source is refused.
-
-## The latency benchmark
-
-From a workstation:
-
-```bash
-deploy/scripts/bench-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script bench:latency
-```
-
-On the deployment host itself:
-
-```bash
-pnpm bench:latency
-```
-
-It publishes a real stream, follows it through the feed a viewer reads, and reports how far behind
-live that viewer is, split into segment duration, upload, feed write, propagation and fetch, plus the
-player's configured buffer. It writes a markdown report and its JSON to `BENCH_RESULTS_DIR`,
-`bench-results/` in the stack's folder by default, ignored by git. The client's live target is three
-segments with a floor of 12 s (`LIVE_SYNC_DURATION_S` in
-`packages/client/src/components/SwarmHlsPlayer/playerConfig.ts`).
-
-- **How the picture is timed.** ffmpeg publishes with `-use_wallclock_as_timestamps 1 -copyts`, so each
-  frame carries the bench machine's clock, and ffprobe reads every video packet's timestamp from the
-  fetched segment. MPEG-TS timestamps wrap every 26.5 hours or so, which `src/bench/wallclock.ts`
-  folds back.
-- **How much media a segment holds is measured.** The earliest timestamp anchors the capture instant.
-  The span between the earliest and latest, plus one median gap for the final frame, is what the
-  segment holds. The report prints the engine's declared `#EXTINF` beside it.
-- **Both ends are timed on one machine.** The publisher runs here and the gateway is fetched from here
-  over HTTP, so no clock skew enters. Set `BENCH_GATEWAY_URL`, or forward the port with `ssh -L`. The run
-  refuses to start when the gateway is unreachable. Through `bench-on-host.sh` there is nothing to set.
-- **It checks itself first, for free.** It publishes to a local file, probes it and recovers the capture
-  instants offline in about fifteen seconds, and checks that consecutive segments are contiguous.
-- **It refuses before it spends.** It reads the spend ceiling in `.spend-ledger.env`, every publisher's
-  chequebook and every publisher's postage time to live, through the same helpers the suites use
-  (`src/bench/authorisation.ts`). A missing ledger is a refusal.
-- **It refuses to guess.** An engine that rebases timestamps yields a plausible but wrong number. A
-  frame cannot be captured before the publisher started, nor fetched before it was captured, so outside
-  those bounds the run says the timestamps did not survive. The per-hop split from the uploader's log
-  still works then.
-
-| Variable             | Default                             | What it is                                       |
-| -------------------- | ----------------------------------- | ------------------------------------------------ |
-| `BENCH_GATEWAY_URL`  | `http://<publicHost>:<gatewayPort>` | Viewer gateway, as reachable from this machine   |
-| `BENCH_SAMPLES`      | `5`                                 | Segments carried end to end                      |
-| `BENCH_FPS`          | `30`                                |                                                  |
-| `BENCH_GOP_SECONDS`  | `2`                                 | Keyframe interval, which bounds segment duration |
-| `BENCH_BITRATE_KBPS` | `2500`                              |                                                  |
-| `BENCH_SIZE`         | `1280x720`                          |                                                  |
-
-The deployment has to log at `debug`, and the run checks before it publishes. Each run takes one set of
-these values. There is no matrix runner.
-
 ## Prerequisites
 
 - `ssh <target>` works without a prompt.
@@ -755,10 +671,3 @@ these values. There is no matrix runner.
 - `PUBLISH_KEY_SECRET` resolves from the same env files, so the harness derives the same per-stream key
   as the deployment. Left empty, the harness publishes without a key, which a deployment that checks
   keys refuses.
-
-## Not covered
-
-Seeking, viewer scale, soak, a quality lock (the client has only `?level=<rung>`, which turns ABR off),
-and audio quality beyond "a tone is present". The proof that each rung's bytes leave through its own Bee
-node, read from the nodes' own counters, is not built: the suites read only the uploader's per-rung
-counters (`e2e/src/harness/uploaderMetrics.ts`). If it is not a row above, the suites do not verify it.

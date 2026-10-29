@@ -12,7 +12,7 @@
  *
  * That second one has a history. Refusing only on an answer was the rule, then
  * a change of 2026-09-07 made a silent node a refusal too, and a change of
- * 2026-09-17 put it back. The owner then took it the whole way the same day:
+ * 2026-09-17 put it back. A later change the same day took it the whole way:
  * this check never refuses a start at all. An operator who wants the uploader up
  * on an unfunded node gets it up, and what that costs is uploads that stall,
  * which is visible on the deployment page rather than guessed at.

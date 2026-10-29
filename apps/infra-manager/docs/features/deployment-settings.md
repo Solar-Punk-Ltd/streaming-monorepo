@@ -26,6 +26,8 @@ The controls that decide a key are: the services the deployment runs, its postag
 
 A generated secret is the exception. A value stored for it replaces the generated one, and the generated one is kept for when the value is reset.
 
+A member added to a group takes the settings of the group's first member, so a value changed on that member alone travels to the new one.
+
 ## The engine settings
 
 Every engine setting the deployment reads is listed as its own to set, whether the version's samples declare it or not, in the order of the engine's field list: for SRS the segment length, the force-close ceiling, the playlist window and the SRT latency, and on an ABR uploader the seven transcoding settings and each rung's width, height and bitrate. For OvenMediaEngine they are the segment duration and count and the uploader's poll interval. The field list is `common/src/engineSettings.ts`, and the page takes each setting's label, unit, help, kind, bounds and choices from it.
@@ -45,9 +47,19 @@ Apply recreates the containers that read what changed: the engine for an engine 
 
 The engine settings route, `PUT /profiles/:name/engine-settings`, is for scripts that save and recreate in one call, see [engine-control.md](engine-control.md#routes). It moves the same revision as this card and reads the stored settings with that revision before it writes. It is refused with `engine_settings_changed` when a save from the card landed in between, and a page that read before it is refused with `deployment_settings_changed`. Neither save overwrites the other unseen.
 
+Right after a save, the list and the deployment's row are read one after the other, so for that moment the Engine card can mark the value from before the save. A page that another person's save changed shows the old value, unmarked, until its row is read again.
+
+An engine setting's default is read from the host's base `.env` and the version's own fallback, not from the engine's own env file, `engines/<engine>/.env`, which the version settings page can also set. Where that file sets an engine setting, an unset one falls back to its value rather than to the default shown.
+
+A key that only some sections of a config file read is not flagged on its row, only one that no section reads. The Engine card still shows each reading.
+
 ## What is never shown
 
 A secret, anything the settings page masks, is never answered, only whether one is stored. A chain endpoint is answered by its host alone, because its path or user info can carry a provider's key. The log names the keys a save changed and never a value.
+
+The page cannot store an empty secret, because an empty secret field means keep what is stored. A reset puts back what the version sets.
+
+A stored secret's default says what the version sets. The list does not say whether the manager had generated one before, which is the value a reset of such a key goes back to.
 
 ## Where they are kept
 
@@ -67,6 +79,8 @@ Each key also carries `runningValue`, the value the running containers that read
 Apply redeploys only the containers that are behind. When a changed key reaches only the deploy scripts, it redeploys everything. A stopped deployment's **Start** uses the stored values anyway, so Apply refuses a stopped deployment. Apply is also refused, with the engine's own sentence, while the deploy would refuse the stored engine settings.
 
 A save names the revision the page read, and a save made against an older one is refused. Two people editing at once cannot overwrite each other unseen.
+
+A container started without the per-container records reads unknown until the deployment's next deploy. Apply has nothing to recreate for it, so a saved value reaches it at that next deploy, such as a Stop and a Start.
 
 ## The shape a value may have
 
@@ -104,6 +118,8 @@ Above the list, a banner names the settings the running containers are behind on
 
 The editor is `frontend/src/deployments/settings/DeploymentSettingsEditor.tsx`, and the card only frames it. It fits 390 pixels with no sideways scroll. The mock manager answers the three routes, so `pnpm -C frontend dev:mock` shows it with no manager.
 
+The stack's sample has no section rule closing "Per-rung Bee nodes", so the start gate settings that follow it are listed under that section.
+
 ## In the new-deployment wizard
 
 A deployment is created with its settings already set. The wizard's settings step ends with an **Advanced settings** fold, closed until opened, because most deployments keep every version value. Its line says what it holds and, once values are typed, how many the create sends or which value it cannot send.
@@ -119,6 +135,10 @@ Opened, it shows the same list, rows and fields as the deployment's page, read f
 Deploy sends the typed keys the current list takes as `stack_settings`. The manager checks them against the same list with the rules a save uses, `settingEditProblems`, and refuses the whole create over one bad key, naming it. Accepted values are stored at the insert, plain and secret apart, so the first deploy writes them and the deployment's page lists them as its own at revision 0. A group gives every member the same values, and a member added to a group later takes those of the group's first member, as it takes that member's engine settings. The review step names the keys the create sets and never a value.
 
 The editor is `frontend/src/deployments/settings/NewDeploymentSettingsEditor.tsx`, built from the same `SettingsList` as the page's editor, and the fold is `frontend/src/forms/wizard/steps/AdvancedSettings.tsx`.
+
+The wizard's typed values live only while the dialog is open. Closing it forgets them.
+
+The wizard checks a typed value against the list it read, and the manager checks it again against the version's current build when the create arrives. A build published in between can refuse a create the wizard let through, and the refusal names the key.
 
 ## Routes
 
@@ -140,16 +160,3 @@ All routes need a signed-in session. The full reference, with the answer shapes,
 | 409 `profile_instance_changed`    | The deployment was removed and created again under the same name.                        |
 | 409 `profile_busy`                | The deployment is being removed, or, for Apply, is deploying or stopping.                |
 | 409 `profile_stopped`             | Apply on a stopped deployment.                                                           |
-
-## Limits
-
-- The stack's sample has no section rule closing "Per-rung Bee nodes", so the start gate settings that follow it are listed under that section.
-- A container started without the per-container records reads unknown until the deployment's next deploy. Apply has nothing to recreate for it, so a saved value reaches it at that next deploy, such as a Stop and a Start.
-- The page cannot store an empty secret, because an empty secret field means keep what is stored. A reset puts back what the version sets.
-- A stored secret's default says what the version sets. The list does not say whether the manager had generated one before, which is the value a reset of such a key goes back to.
-- The wizard's typed values live only while the dialog is open. Closing it forgets them.
-- A member added to a group takes the settings of the group's first member, so a value changed on that member alone travels to the new one.
-- The wizard checks a typed value against the list it read, and the manager checks it again against the version's current build when the create arrives. A build published in between can refuse a create the wizard let through, and the refusal names the key.
-- Right after a save, the list and the deployment's row are read one after the other, so for that moment the Engine card can mark the value from before the save. A page that another person's save changed shows the old value, unmarked, until its row is read again.
-- An engine setting's default is read from the host's base `.env` and the version's own fallback, not from the engine's own env file, `engines/<engine>/.env`, which the version settings page can also set. Where that file sets an engine setting, an unset one falls back to its value rather than to the default shown.
-- A key that only some sections of a config file read is not flagged on its row, only one that no section reads. The Engine card still shows each reading.

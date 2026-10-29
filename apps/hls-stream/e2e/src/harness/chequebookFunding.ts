@@ -32,8 +32,7 @@
  *
  * `suites/preflight/chequebook-funding.test.ts` held the floor and every sentence until 2026-09-16, so
  * a second gate asking the same question had to restate both, and two copies of a refusal drift.
- * `bench/latency.ts` and `bench/longrun.ts` publish and spend without going anywhere near `suites/`,
- * and they now ask this through {@link requireChequebookFunding} and get the same answer in the same
+ * A script that publishes and spends without going anywhere near `suites/` asks this through {@link requireChequebookFunding} and get the same answer in the same
  * words. `spendCeiling.ts` and `stageStamps.ts` are laid out this way for the same reason: nothing
  * under `suites/` runs in CI, so the rule lives where a unit test can reach it and the suite is wiring.
  *

@@ -11,8 +11,8 @@ import { StopWaiting, waitFor } from '../src/harness/wait.js';
  * one partial answer aborted the wait with the raw transport error, so a paid broadcast went red
  * naming the product for a hiccup in how the harness was looking at it.
  *
- * ⛔ And why one throw must still get through. `waitForAnnouncement` in `bench/run.ts` reads whether
- * the publisher process is alive, and a publisher that died on its own arguments is knowable two
+ * ⛔ And why one throw must still get through. A caller that reads whether the publisher process is
+ * alive needs it, because a publisher that died on its own arguments is knowable two
  * seconds in. Polling that out spends the whole ceiling on an ingest that can never arrive and then
  * reports a timeout against the uploader. That is what {@link StopWaiting} is for.
  *

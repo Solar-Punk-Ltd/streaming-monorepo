@@ -69,7 +69,7 @@ NOTEWORTHY_DISCARDED_SHARE = 0.05
 # Five percent covers the run's own boundaries, where the first and last segments are partly outside
 # the window, while catching the 7 to 10% shortfall that made the 0.25s rows unreadable.
 READER_PACE_TOLERANCE = 0.05
-# Mirrors `MAX_WALK_PER_READ` in `e2e/src/bench/gateway.ts`, for the verdict text only. A reader
+# The most feed slots one read walks, for the verdict text only. A reader
 # sitting at the bound every poll is one publisher speed-up away from falling behind, which is worth
 # reading off a passing run rather than discovering from the next failing one.
 MAX_WALK_PER_READ = 32

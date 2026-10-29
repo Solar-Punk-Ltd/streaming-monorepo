@@ -103,6 +103,9 @@ At deploy, `writeProfileEnv` writes `BEE_PUBLISHERS`, `ABR_ENABLED=true` and `AB
 the deployment's env file. `srs` and the uploader both read all three, so the ladder the engine
 encodes and the ladder the uploader publishes come from one definition.
 
+The Bee API is unauthenticated, and the uploader must reach all four rung API ports. Keep them on a
+private network.
+
 ### Each rung's size and bitrate
 
 The four rung names are fixed, because the pool has one Bee node per rung named after it and the
@@ -164,6 +167,9 @@ freed slot is reused by the next deployment on that host, so an entry can come t
 unrelated Bee node. That rung's uploads are then refused while the other three carry on. Paste
 the string again after rebuilding a rung.
 
+A pool string pasted from another manager does not follow the pool. Paste it again after a rung buys
+a new batch or is rebuilt.
+
 ### When a rung's node does not answer
 
 A rung that does not answer does not stop the uploader starting. The manager asks no node before
@@ -188,6 +194,9 @@ uploads fail until the uploader is deployed again with a batch that pays.
 
 A stack build whose uploader reports none of these fields shows only that the container is
 running.
+
+The coordinator has no failover. When the `360p` node is down, new viewers cannot join while
+existing ones keep playing.
 
 ## Rung validity
 
@@ -251,6 +260,9 @@ address it reads the node on itself. The two can differ, and only the published 
 the uploader. A failed probe is `unreachable` and warns rather than blocks: the manager and the
 uploader are separate containers with separate routes, and for a remote member NAT hairpinning
 explains a failure as well as a wrong address does.
+
+The address probe runs from the manager, not from the uploader, so an unreachable address only
+warns.
 
 ### The batch
 
@@ -319,6 +331,9 @@ Three group operations refuse a pool with 409 `ladder_group_invalid_operation`:
 
 All of them read `deployment_groups.kind`, so a pool that has lost a rung still refuses them.
 
+Nothing keeps a pool whole after creation. Any rung can be stopped or removed on its own. The group
+page names the missing rung.
+
 ## A single-node uploader on an external Bee node
 
 A single-node deployment can publish to a Bee API it does not run. That is `profiles.bee_url`,
@@ -356,19 +371,5 @@ Routes:
 
 The full answers are in [../../manager/README.md](../../manager/README.md), under Groups.
 
-## Limits
-
-- Nothing keeps a pool whole after creation. Any rung can be stopped or removed on its own. The
-  group page names the missing rung.
-- Ports are sparse. A rung takes a full port slot of 10 ports, so a pool reserves 40 ports. At
-  the manager's cap of 100 slots (`MANAGER_SLOT_CAP`) that is 25 pools on one host.
-- The Bee API is unauthenticated, and the uploader must reach all four rung API ports. Keep them
-  on a private network.
-- The manager does not yet top up or replace a rung's batch on its own before it runs out. Each
-  repair is one manual change per rung.
-- The address probe runs from the manager, not from the uploader, so an unreachable address only
-  warns.
-- The coordinator has no failover. When the `360p` node is down, new viewers cannot join while
-  existing ones keep playing.
-- A pool string pasted from another manager does not follow the pool. Paste it again after a rung
-  buys a new batch or is rebuilt.
+Ports are sparse. A rung takes a full port slot of 10 ports, so a pool reserves 40 ports. At the
+manager's cap of 100 slots (`MANAGER_SLOT_CAP`) that is 25 pools on one host.

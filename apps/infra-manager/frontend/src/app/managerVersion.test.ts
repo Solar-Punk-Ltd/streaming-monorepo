@@ -20,7 +20,7 @@ const COMMIT = '635b4e1753cd35d06191fdd54a1f426f7478d438';
 const SHORT = '635b4e175';
 
 /** The whole sidebar as markup, as a signed-in page renders it, for a manager that answered `managerVersion`. */
-function sidebarMarkup(managerVersion: VersionInfo | null, instanceName: string | null = 'swarm-dev'): string {
+function sidebarMarkup(managerVersion: VersionInfo | null, instanceName: string | null = 'my-instance'): string {
   const session: SessionStore = {
     state: { status: 'signedIn', id: 1, username: 'operator', isAdmin: true, expiresAt: '2026-10-08T00:00:00.000Z' },
     signIn: async () => {
@@ -94,22 +94,22 @@ describe('the line under "Streaming Infra"', () => {
   });
 
   it('starts with the name of the instance when the manager has one', () => {
-    assert.deepEqual(sidebarLine({ label: 'v1.1.1', commit: COMMIT }, 'swarm-dev'), {
-      text: `swarm-dev · v1.1.1 (${SHORT})`,
+    assert.deepEqual(sidebarLine({ label: 'v1.1.1', commit: COMMIT }, 'my-instance'), {
+      text: `my-instance · v1.1.1 (${SHORT})`,
       title: COMMIT,
     });
-    assert.deepEqual(sidebarLine({ label: null, commit: null }, 'swarm-dev'), {
-      text: 'swarm-dev · development build',
+    assert.deepEqual(sidebarLine({ label: null, commit: null }, 'my-instance'), {
+      text: 'my-instance · development build',
       title: null,
     });
-    assert.deepEqual(sidebarLine(null, 'swarm-dev'), { text: 'swarm-dev', title: null });
+    assert.deepEqual(sidebarLine(null, 'my-instance'), { text: 'my-instance', title: null });
   });
 
   it('sits in the sidebar under "Streaming Infra", above the pages, and names no host', () => {
     const markup = sidebarMarkup({ label: 'v1.1.1', commit: COMMIT });
 
     const product = markup.indexOf('Streaming Infra');
-    const line = markup.indexOf(`title="${COMMIT}">swarm-dev · v1.1.1 (${SHORT})</span>`);
+    const line = markup.indexOf(`title="${COMMIT}">my-instance · v1.1.1 (${SHORT})</span>`);
     assert.notEqual(product, -1, markup);
     assert.ok(line > product, 'the instance and its build are named under the product');
     assert.ok(line < markup.indexOf('Overview'), 'and above the first page');

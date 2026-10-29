@@ -32,6 +32,8 @@ An omitted setting is **Not specified**. Conflicting values, unsupported syntax 
 
 When the page receives a changed deployment or configuration revision, the Engine card hides old readings at once. A failed or timed-out refresh does not bring stale values back.
 
+The Engine card reads the configured file, not what the running engine loaded.
+
 ## What validation establishes
 
 | Engine          | Before recreation                                                                                                                                                                                                       | After recreation                                                                                                                                             | What a pass does not establish                                                       |
@@ -45,6 +47,10 @@ The manager refuses a changed callback route even when every placeholder is kept
 
 A failed OME TCP connection is a diagnostic about reachability. If the engine stayed running, that failure alone does not prove the file is bad and does not trigger a revert. The card keeps the diagnostic. An `applied` rollout means these bounded checks completed. It is not a verdict that publishing works.
 
+The checks do not prove that a stream publishes, reaches Swarm or plays. They are bounded parse, start and reachability checks.
+
+OME validation is the manager's own XML check, not OME's parser.
+
 ## Rollouts and recovery
 
 Every apply or reset is a stored operation. It records the deployment's lifetime identity, its configuration and intent revisions, the previous file, the container identity and the current state. The lifetime identity changes when a deployment is removed and created again, even under the same name.
@@ -54,6 +60,8 @@ Apply, reset and recovery take one atomic claim on the configuration operation a
 Startup verification begins after the engine is recreated and the deployment is `RUNNING`. A stopped engine, a restart or another startup failure can trigger one recovery attempt with the previous file. Every recovery step checks that the operation still owns the same deployment and revisions. A newer edit, stop, start, removal or replacement supersedes the old operation, and an old watcher does not undo the newer action.
 
 The stack can also refuse its own startup command before the deployment reaches `RUNNING`. That is an apply failure. If recovery then recreates the previous file, the deployment is `RUNNING` again while the operation stays `failed`, its reason says the previous file is back, and the card offers **Verify now**. A failure the manager's watch detects later ends `reverted` when the same recovery succeeds. The two states tell you where the file failed.
+
+Recovery restores the previous file at most once per rollout, and that recovery can fail.
 
 ### States
 
@@ -89,11 +97,3 @@ All routes need a signed-in session. The full reference is in [the API reference
 | POST   | `/profiles/:name/engine-config/restore-previous` |                       | 202 and a deployment snapshot                                                                                     |
 
 A 202 means the recreation was accepted. Read the operation's later state for its outcome. A successful HTTP answer does not prove playback.
-
-## Limits
-
-- An existing deployment cannot yet move to another stack version, so a custom file stays tied to the version it was written for.
-- The checks do not prove that a stream publishes, reaches Swarm or plays. They are bounded parse, start and reachability checks.
-- OME validation is the manager's own XML check, not OME's parser.
-- Recovery restores the previous file at most once per rollout, and that recovery can fail.
-- The Engine card reads the configured file, not what the running engine loaded.

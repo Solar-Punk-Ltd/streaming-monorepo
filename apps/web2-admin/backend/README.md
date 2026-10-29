@@ -32,6 +32,12 @@ using the limits from `@streaming-monorepo/web2-admin-common`. Swarm is reached 
 Passwords, session tokens and the brand wallet's encryption use `node:crypto`, and the brand
 wallet's key and transfers use viem.
 
+**A stream belongs to the installation.** Every signed-in user sees and can
+edit, publish, unpublish and delete every stream. `streams.user_id` records who
+drafted a row and scopes no query. The audit log records who acted on it.
+Removing a user keeps their streams and sets `user_id` to null, and the stream's
+`stream.create` audit row still names them.
+
 ## Run it
 
 From this folder, with the workspace installed at the repository root:
@@ -236,6 +242,9 @@ A weak password or a bad username is `400 validation_error` with the reason in
   the last admin. The user's streams stay, with `user_id` set to null) and
   `POST /api/auth/users/:id/revoke` (admin, or anyone for themselves) are the
   Access page.
+
+**Sessions are unbounded per user.** Ended sessions are pruned on sign-in and by
+a daily sweep.
 
 ### Streams
 
@@ -951,6 +960,15 @@ curl -sS -X DELETE http://127.0.0.1:9877/api/internal/stages/5f0c2a8e-1b2c-4d3e-
 # {"retired":true}
 ```
 
+**A stage on a token the manager did not generate reports nothing** until its
+token is rotated in the manager and the stage is redeployed. A published stream
+with no stage takes no broadcast until it is unpublished, given a stage and
+published again.
+
+**Every push writes an access log line.** The `[HTTP]` line is at info for each
+of the manager's pushes, every 30 seconds per stage, although the stage service
+logs an unchanged push at debug.
+
 ## Finalizing a stream
 
 The uploader accepts a stream that is already `vod`, so a broadcaster who
@@ -1028,6 +1046,11 @@ connects just before the window runs out goes live on the old key, and the sweep
 key a moment later. The broadcast carries on, since nothing here stops an encoder, but a
 reconnect is refused until the operator copies the new SRT line into the encoder. This is
 accepted in this version.
+
+**Nothing polls.** A state report is the only thing that moves a stream to
+`live` or `vod`. An uploader that stops without reporting leaves the stream live
+on the catalogue, and the console cannot end it: unpublish and delete refuse a
+live stream.
 
 ## Funding
 
@@ -1533,7 +1556,7 @@ chequebook bulk with. The arithmetic is `chequebookPlan.ts` of
 
 A request's body is checked first, `400 validation_error`: a `targetPlur` of
 whole PLUR as a string of decimal digits, 30 at most, and at least 1 xBZZ, the
-owner's floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
+floor (`CHEQUEBOOK_TARGET_MIN_PLUR` of `web2-admin-common`, 10^16
 PLUR). One item at least and 200 at most, each a node id as the contract takes
 it and an `availablePlur` of whole PLUR, 30 digits at most. Thirty digits keep
 the move within what the manager's chequebook journal holds, and are far more
@@ -1850,29 +1873,9 @@ SELECT at, action, details FROM audit_log
  WHERE actor_kind = 'manager' AND details ->> 'stageId' = '<stage id>' ORDER BY at;
 ```
 
-## Known limits
+**The audit log is never pruned.** Nothing deletes from `audit_log`, so it grows
+for the life of the database.
 
-- **A stream belongs to the installation.** Every signed-in user sees and can
-  edit, publish, unpublish and delete every stream. `streams.user_id` records
-  who drafted a row and scopes no query. The audit log records who acted on
-  it. Removing a user keeps their streams and sets `user_id` to null, and the
-  stream's `stream.create` audit row still names them. The admin does not yet
-  keep one brand's streams apart from another's.
-- **The audit log is never pruned.** Nothing deletes from `audit_log`, so it
-  grows for the life of the database.
-- **The fields an edit changed are read, not locked.** `stream.update` compares
-  the row read before the UPDATE with the one it returns, so two edits racing
-  can each be recorded against the other's starting point.
-- **Nothing polls.** A state report is the only thing that moves a stream to
-  `live` or `vod`. An uploader that stops without reporting leaves the stream
-  live on the catalogue, and the console cannot end it: unpublish and delete
-  refuse a live stream.
-- **A stage on a token the manager did not generate reports nothing** until
-  its token is rotated in the manager and the stage is redeployed. A published
-  stream with no stage takes no broadcast until it is unpublished, given a
-  stage and published again.
-- **Every push writes an access log line.** The `[HTTP]` line is at info for
-  each of the manager's pushes, every 30 seconds per stage, although the stage
-  service logs an unchanged push at debug.
-- **Sessions are unbounded per user.** Ended sessions are pruned on sign-in and
-  by a daily sweep.
+**The fields an edit changed are read, not locked.** `stream.update` compares
+the row read before the UPDATE with the one it returns, so two edits racing can
+each be recorded against the other's starting point.

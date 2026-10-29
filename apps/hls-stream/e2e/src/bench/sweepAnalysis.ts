@@ -8,7 +8,7 @@
  */
 
 /** One measured segment, reduced to the two quantities the buffer question needs. */
-export interface BufferSample {
+interface BufferSample {
   totalMs: number;
   segmentMs: number;
 }
@@ -76,7 +76,7 @@ export function recommendBufferMs(
 }
 
 /** One measured segment, reduced to what the delivery question needs. */
-export interface DeliverySample {
+interface DeliverySample {
   /** Video PES packets found in the segment's bytes, which for this encode is one per frame. */
   videoPacketCount: number;
   segmentMs: number;
@@ -131,30 +131,6 @@ export function frameDelivery(samples: readonly DeliverySample[]): FrameDelivery
 export function arrivalTailMs(samples: readonly BufferSample[]): number {
   const delays = samples.map((sample) => sample.totalMs - sample.segmentMs);
   return Math.max(...delays) - median(delays);
-}
-
-/** Every run taken at one setting, collapsed into the row a grid prints. */
-export interface GridRow {
-  label: string;
-  runs: number;
-  samples: number;
-  medianTotalMs: number;
-  minTotalMs: number;
-  maxTotalMs: number;
-  /** Median of each hop across every sample at this setting. */
-  hopMs: Record<string, number>;
-  /**
-   * Median absolute clock skew across the runs, which is the only thing the artifact records that
-   * says where the publisher ran. On the deployment host it measured 3ms and from a workstation
-   * 157ms, so a row mixing the two is comparing two networks rather than two settings.
-   */
-  skewMs: number;
-  /** What a viewer would sit behind live here, at the buffer this setting can support. */
-  buffer: BufferRecommendation;
-  /** Whether the picture that arrived is the picture that was published. */
-  delivery: FrameDelivery;
-  /** How far the worst arrival sat above the typical one, which is what the buffer has to absorb. */
-  tailMs: number;
 }
 
 export function median(values: readonly number[]): number {

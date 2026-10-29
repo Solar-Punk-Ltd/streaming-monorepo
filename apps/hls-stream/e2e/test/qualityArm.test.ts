@@ -612,8 +612,9 @@ describe('what became of the attempts the player abandoned', () => {
  * keep working on the files already on disk. This one was written on 2026-08-28, before the fragment
  * instrument existed at all, and every reading in it is still good.
  *
- * ⭐ A real run's file, kept byte for byte, rather than a fixture written for the test, because a
- * written fixture comes from whoever changes the reader and a real run's file does not.
+ * ⭐ A real run's file, kept as it was written apart from its postage batch id, rather than a fixture
+ * written for the test, because a written fixture comes from whoever changes the reader and a real
+ * run's file does not.
  */
 describe('an artifact from before any of these readings existed', () => {
   const ARCHIVED = join(E2E_DIR, 'test', 'fixtures', 'browser-watch-2026-08-28T15-35-20-729Z.json');

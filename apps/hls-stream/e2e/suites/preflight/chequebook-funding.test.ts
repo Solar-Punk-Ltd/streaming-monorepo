@@ -17,8 +17,8 @@ import { nodesBehind } from '../../src/harness/publishers.js';
  * scenario: it runs first (ahead of scenarios/ and service/) so a drained chequebook fails loudly and
  * early instead of surfacing later as opaque upload stalls.
  *
- * Read-only, and it used to not be: the deposit it once made itself was removed on the owner's
- * decision of 2026-08-03. The reasoning, the floor and every sentence it refuses with live in
+ * Read-only, and it used to not be: the deposit it once made itself was removed on
+ * 2026-08-03. The reasoning, the floor and every sentence it refuses with live in
  * `src/harness/chequebookFunding.ts`, because nothing under `suites/` runs in CI and because the
  * latency and long-run benches ask the same question without going anywhere near this directory.
  * That leaves this file as wiring and a place to print what the stage is holding.

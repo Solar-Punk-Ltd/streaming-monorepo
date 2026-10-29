@@ -10,17 +10,14 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 /**
  * That every single-suite e2e script can actually be run the way an operator runs it.
  *
- * ⛔⛔ `bench-on-host.sh` runs `pnpm ${SCRIPT}` from the repo ROOT, not from `e2e`. Its reading of the
- * manifests at launch only decides whether the preflight prelude is prepended, and a script whose
- * definition already runs the gates first, every `e2e:*` script among them, is passed through
- * untouched. So a suite script the e2e package declares and the
- * root cannot reach fails on the host with an empty stdout and a non-zero exit that says nothing
- * about what is wrong, and under `pnpm --silent` it prints nothing at all.
+ * ⛔⛔ An operator runs `pnpm e2e:<suite>` from the stack ROOT, not from `e2e`. So a suite script the
+ * e2e package declares and the root cannot reach fails on the host with an empty stdout and a
+ * non-zero exit that says nothing about what is wrong, and under `pnpm --silent` it prints nothing
+ * at all.
  *
- * ⛔⛔⛔ This is the same defect `browserScriptPassthrough.test.js` exists for, in the other script
- * family, and that file records what it cost twice: `browser:arm-order` with no root entry on
+ * ⛔⛔⛔ The `browser:*` family hit the same defect twice: `browser:arm-order` with no root entry on
  * 2026-08-13, then `browser:quality` and `browser:rung-outage` on 2026-08-30, both after the
- * broadcast had already started. The `e2e:*` family had no such check at all.
+ * broadcast had already started.
  *
  * ⭐ Stated as a property of the two manifests rather than as a sweep of call sites, so a NEW way of
  * launching one cannot defeat it. Every `test:e2e:*` the e2e package declares must be reachable from
@@ -52,7 +49,7 @@ describe('an operator can run every single-suite e2e script from the repo root',
     assert.ok(declared.includes('test:e2e:broadcast-ended'), 'V5 has no single-suite script');
   });
 
-  it('has a root passthrough for each, since bench-on-host runs pnpm from /repo', () => {
+  it('has a root passthrough for each, since an operator runs pnpm from the stack root', () => {
     const { root, e2e } = manifests();
 
     const missing = declaredSuiteScripts(e2e).filter((name) => !(rootNameFor(name) in root));
@@ -110,7 +107,7 @@ describe('an operator can run every single-suite e2e script from the repo root',
  * scripts are two commands joined by `&&`, the preflight and then the suite, so
  * `E2E_DRAIN_ARMED=1 tsx <preflight> && tsx <suite>` declares the arming to the gates and to nothing
  * else. The suites then read no declaration, `drainNotDeclared` skips them both, and a sitting that
- * armed a batch the owner paid for and bought a broadcast reports zero tests as a green run. Written
+ * armed a paid batch and bought a broadcast reports zero tests as a green run. Written
  * and shipped that way on 2026-09-05 and caught by review rather than by a run.
  *
  * ⭐ The rule is proven here by running `sh` rather than asserted from memory of it, because the

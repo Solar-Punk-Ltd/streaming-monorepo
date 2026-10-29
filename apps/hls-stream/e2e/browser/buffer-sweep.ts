@@ -16,12 +16,8 @@
  * ⛔ The first arms are warm-up and are discarded, and the counted arms run in the reverse order, so
  * a gradient over the sitting cannot align itself with the swept axis.
  *
- * Usage, against a broadcast that is already running:
- *   deploy/scripts/browser-on-host.sh --target <host> --profile <profile> --portSlot <slot> --script browser:buffer-sweep -- BROWSER_ARM_SECONDS=240
- *
- * A paid sweep goes through `deploy/scripts/buffer-sweep-sitting.sh` instead, which sizes and
- * publishes the one broadcast the whole sweep rides, puts the spend gates in the path, and refuses
- * to run without a named byte source.
+ * Usage, against a broadcast that is already running: `pnpm browser:buffer-sweep`, with
+ * `BROWSER_ARM_SECONDS=240`.
  */
 
 import {

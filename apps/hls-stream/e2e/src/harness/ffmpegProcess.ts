@@ -14,7 +14,7 @@ import { type ChildProcess, spawn as nodeSpawn } from 'node:child_process';
 const STOP_GRACE_MS = 3_000;
 
 /** How a process ended. Both fields are null when it never started, which is a spawn failure. */
-export interface FfmpegExit {
+interface FfmpegExit {
   code: number | null;
   signal: NodeJS.Signals | null;
 }

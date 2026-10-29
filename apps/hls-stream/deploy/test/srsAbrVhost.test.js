@@ -25,8 +25,7 @@ const LADDER_VHOST = 'abr';
  * Reading the first match would not have caught it either. With a ladder enabled the config holds
  * two of every HLS directive, the ingest vhost's first and the ladder's second, so a regex over the
  * whole file reports the ingest value twice and passes while the ladder runs on anything at all.
- * Every assertion here is scoped to one vhost block for that reason. That is the same defect that
- * made the stage-fingerprint gate read a four-rung ladder as compliant off one playlist.
+ * Every assertion here is scoped to one vhost block for that reason.
  *
  * Two values carry real consequences:
  *

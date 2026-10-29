@@ -4597,7 +4597,7 @@
   "cost": {
     "before": {
       "atMs": 1787931320819,
-      "batchId": "1412677d8ebc5cd627c19a9a3034a345f5741a2ab97dc2ce6d63c5b02e24d612",
+      "batchId": "abababababababababababababababababababababababababababababababab",
       "postageUtilization": 77,
       "postageCapacity": 256,
       "postageTtlDays": 12.557638888888889,
@@ -4606,7 +4606,7 @@
     },
     "after": {
       "atMs": 1787931630172,
-      "batchId": "1412677d8ebc5cd627c19a9a3034a345f5741a2ab97dc2ce6d63c5b02e24d612",
+      "batchId": "abababababababababababababababababababababababababababababababab",
       "postageUtilization": 78,
       "postageCapacity": 256,
       "postageTtlDays": 12.554166666666667,

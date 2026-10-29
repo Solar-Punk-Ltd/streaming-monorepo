@@ -29,12 +29,10 @@
 #
 # ## Why there is no spend-ledger gate here
 #
-# `bench-on-host.sh` refuses to launch from a checkout without `.spend-ledger.env`, the owner's
-# written authorisation, because everything it starts publishes and every published segment is paid
-# for out of a chequebook. Nothing in this script spends from a chequebook. `print-buy` prints,
+# Nothing in this script spends from a chequebook. `print-buy` prints,
 # `status` reads, and `arm` and `restore` rewrite one line of an env file and restart a container.
-# The one purchase in the whole sitting is the owner running the printed command from their own
-# shell, and the broadcast that follows is launched through `bench-on-host.sh`, behind that gate.
+# The one purchase in the whole sitting is the printed command, run by hand, and the broadcast that
+# follows runs behind the e2e preflight gates.
 #
 # Usage:
 #   deploy/scripts/drain-stage.sh --profile=<profile> --portSlot=<slot> --rung=1080p print-buy [--days=2] [--depth=17]
@@ -739,9 +737,8 @@ back_up_env() {
 # replaced container has none. The suite had reported a count, and a count says nothing about which
 # batch on which stream bee refused or in what words.
 #
-# ⚠️ Beside the bench checkout and never inside it. `bench-on-host.sh` keeps the harness at
-# `~/swarm-hls-bench` on this same host and syncs it with `rsync --delete`, so a file written into
-# that directory is gone at the next sitting's setup.
+# ⚠️ Beside the harness checkout and never inside it, because that checkout is synced with
+# `rsync --delete`, so a file written into it is gone at the next sync.
 #
 # ⚠️ A dump that fails says so and returns 0, deliberately. A stage left armed because a log could
 # not be written is worse than a lost log, and this runs on the restore path.

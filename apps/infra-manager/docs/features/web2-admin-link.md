@@ -73,6 +73,10 @@ link's token ([stages.md](stages.md#to-whom)). A new token is used at the next
 push. An address on another origin stops their pushes with
 `skipped-other-origin`, since each deployment keeps its own address.
 
+A create through the API is given the manager's link only when the link stores
+an address and a token. An address alone is not given, since the uploader would
+refuse to start with no token.
+
 ## A token of its own
 
 Every uploader linked to the manager's admin presents a token of its own
@@ -100,6 +104,12 @@ deployment (`NextDeployEnv.ownAdminToken`), and `shared` for any other: a typed
 token, a copy of the link's, or a version's. The admin refuses every `shared`
 token from an uploader. Its Stages page says the token is refused until it is
 rotated, and the deployment's Test connection answers `token-not-own`.
+
+A token of its own is written only for the link's origin. A link moved to
+another origin after the deploy that generated it leaves the deployment's
+uploader without it. Such a deployment is refused at save by the rule, and at
+deploy its uploader refuses to start until a token is typed for the address or
+the link is put back.
 
 ### Rotating an uploader's token
 
@@ -165,6 +175,18 @@ The pages say it before the manager refuses. The Manager settings card names it
 under the token field and keeps Save and Test connection off. The wizard's group
 says the manager's stored token was saved for another address, holds Continue,
 and offers a button that moves to a token typed there, with focus in its field.
+
+A stored token at the link's address is refused at a save and a create. One
+already stored stays until a save of either key or a rotation takes it out, and
+its Test connection says `token-not-own`.
+
+A token typed for another address reaches only an admin that still takes typed
+tokens from uploaders. An admin that takes only a stage's own token learns it
+only from the manager linked to it.
+
+The origin rule guards the tokens the manager stores, the manager's and a
+deployment's own. A token the version's base `.env` sets travels with that
+file's own address and is not held to it.
 
 ## Plain http and the manager's own host
 
@@ -292,6 +314,13 @@ admin said, the address or a token. The log names who tested and the outcome.
 | `not-linked`             | there is no address, so the uploader runs standalone                                       |
 | `no-token`               | there is an address and no token, which the uploader refuses to start with                 |
 
+The card's test uses the saved values. A change that is not saved yet is tested
+once it is saved, and the card says so while one is pending.
+
+A query string in the address passes the field and reaches the uploader, which
+puts its paths after the query and so asks the wrong thing. Test connection
+builds its requests the same way and answers `not-admin` for it.
+
 ### What it reaches
 
 The test runs from where the manager runs, so an address only the deployment's
@@ -332,6 +361,15 @@ Every sentence can be seen with `pnpm -C frontend dev:mock`. The mock manager's
 Test connection reads its outcome off the address, so
 `https://unreachable.admin.offline.example` answers `unreachable`, and so on.
 
+A signed-in user can save the manager's link with an address and a new token of
+their own, or type a token for any address. The stored token itself goes only to
+the origin it was saved for. The same user can already deploy containers on the
+host.
+
+The page cannot tell an empty token from a stored one before a save, because no
+secret value reaches it. The rule on the two keys is answered by the manager's
+refusal under Save rather than before it.
+
 ## Settings and routes
 
 | Setting                       | Where          | What it does                                                                                                                          |
@@ -351,35 +389,3 @@ The full reference is
 | POST   | `/manager-settings/admin-link/test`        | `{ url, token: { source }, tokenFor?, feedOwner? }` | `{ outcome }`                                                |
 | POST   | `/profiles/:name/settings/admin-link/test` |                                                     | `{ outcome }` for what the next deploy gives the uploader    |
 | POST   | `/profiles/:name/admin-token/rotate`       |                                                     | `{ message }`, the sentence the card shows                   |
-
-## Limits
-
-- A create through the API is given the manager's link only when the link stores
-  an address and a token. An address alone is not given, since the uploader would
-  refuse to start with no token.
-- A token of its own is written only for the link's origin. A link moved to
-  another origin after the deploy that generated it leaves the deployment's
-  uploader without it. Such a deployment is refused at save by the rule, and at
-  deploy its uploader refuses to start until a token is typed for the address or
-  the link is put back.
-- A stored token at the link's address is refused at a save and a create. One
-  already stored stays until a save of either key or a rotation takes it out, and
-  its Test connection says `token-not-own`.
-- A token typed for another address reaches only an admin that still takes typed
-  tokens from uploaders. An admin that takes only a stage's own token learns it
-  only from the manager linked to it.
-- The card's test uses the saved values. A change that is not saved yet is tested
-  once it is saved, and the card says so while one is pending.
-- A signed-in user can save the manager's link with an address and a new token of
-  their own, or type a token for any address. The stored token itself goes only to
-  the origin it was saved for. The same user can already deploy containers on the
-  host.
-- The origin rule guards the tokens the manager stores, the manager's and a
-  deployment's own. A token the version's base `.env` sets travels with that
-  file's own address and is not held to it.
-- A query string in the address passes the field and reaches the uploader, which
-  puts its paths after the query and so asks the wrong thing. Test connection
-  builds its requests the same way and answers `not-admin` for it.
-- The page cannot tell an empty token from a stored one before a save, because no
-  secret value reaches it. The rule on the two keys is answered by the manager's
-  refusal under Save rather than before it.

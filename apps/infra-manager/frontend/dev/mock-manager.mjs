@@ -606,9 +606,9 @@ const ROUTES = [
         // The host and never the URL: this one carries a path after it, which
         // is where a real endpoint's API key would sit.
         beeRpcEndpoint: configuredBeeRpcEndpoint(managerEndpoint()),
-        // The name the sidebar shows beside the build: swarm-dev unless the mock is started with
+        // The name the sidebar shows beside the build: my-instance unless the mock is started with
         // MANAGER_INSTANCE_NAME set, and none when that is set to something blank or of another shape.
-        instanceName: instanceName(process.env.MANAGER_INSTANCE_NAME ?? 'swarm-dev'),
+        instanceName: instanceName(process.env.MANAGER_INSTANCE_NAME ?? 'my-instance'),
       });
     },
   ],

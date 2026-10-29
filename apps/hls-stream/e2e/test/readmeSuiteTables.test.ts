@@ -33,7 +33,7 @@ const FAMILIES = readdirSync(join(E2E_DIR, 'suites'), { withFileTypes: true })
  *
  * ⭐ Stated in both directions on purpose. A row with no file is a suite an operator would go looking
  * for, and a file with no row is a suite nobody knows to run, which for this feature means an
- * arming, a batch the owner paid for and a broadcast.
+ * arming, a paid batch and a broadcast.
  */
 describe('the README names every suite, and every suite has a README row', () => {
   const readme = readFileSync(join(E2E_DIR, 'README.md'), 'utf8');

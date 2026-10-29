@@ -37,3 +37,6 @@ deploy/.deployed-commit
 deploy/edge/Caddyfile
 deploy/edge/Caddyfile.tmp
 
+
+# Local editor and agent settings.
+.claude/

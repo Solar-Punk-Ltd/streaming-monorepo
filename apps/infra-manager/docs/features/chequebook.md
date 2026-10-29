@@ -135,6 +135,18 @@ checks, finality and recovery all read the chain there. The endpoint the node
 itself was started with is not read. An endpoint is never logged, answered or
 put in an error.
 
+A transfer needs the node's Bee API to answer the manager on its reserved port,
+as stamp operations do.
+
+A transfer needs a chain endpoint in the manager's settings for the node's
+chain. The manager does not use the node's own endpoint.
+
+The connection boundary is the node's Bee API address. It cannot pin the signer
+behind a proxy that routes requests to different nodes.
+
+Some xDAI in the wallet is checked before sending. It does not guarantee the gas
+is enough, and Bee or the chain can still refuse the transaction.
+
 ## States and confirmation
 
 | State        | Meaning                                                                                                                                                        |
@@ -178,6 +190,15 @@ address, the chequebook, the token, the amount, the direction, the actor, the
 deployment instance, the block recorded at preparation and a lower bound on
 the node's nonce. The nonce bound is an observation, not a reservation.
 
+A node with any operation whose `failureReason` is `hash_conflict` accepts no
+new transfer.
+
+Receipt polling stops after 30 minutes. A transaction mined later is found by
+**Check**.
+
+The chain endpoint must support the `finalized` block tag. Without it no
+transfer settles.
+
 ## Recovery
 
 The detail page offers three actions. Each sends `expectedAccountId`, and none
@@ -208,6 +229,9 @@ When answers conflict, the conflict wins over any earlier final label. The
 detail page shows every hash and answer it holds. The candidate list in an
 answer is bounded. When `additionalEvidenceInResponseJournal` is true, the
 journal holds more hashes than the list shows.
+
+An assertion accepts the risk of paying twice. It proves neither that nothing
+was sent nor that anything settled.
 
 ## API contract
 
@@ -301,22 +325,3 @@ bound, lies at or after the recorded start block, and has the exact call data:
   `a9059cbb`, with the chequebook as recipient and the saved amount,
 - a withdrawal calls the chequebook's `withdraw(uint256)`, selector
   `2e1a7d4d`, with the saved amount.
-
-## Limits
-
-- A transfer needs the node's Bee API to answer the manager on its reserved
-  port, as stamp operations do.
-- A transfer needs a chain endpoint in the manager's settings for the node's
-  chain. The manager does not use the node's own endpoint.
-- The connection boundary is the node's Bee API address. It cannot pin the
-  signer behind a proxy that routes requests to different nodes.
-- Some xDAI in the wallet is checked before sending. It does not guarantee the
-  gas is enough, and Bee or the chain can still refuse the transaction.
-- A node with any operation whose `failureReason` is `hash_conflict` accepts
-  no new transfer.
-- Receipt polling stops after 30 minutes. A transaction mined later is found
-  by **Check**.
-- The chain endpoint must support the `finalized` block tag. Without it no
-  transfer settles.
-- An assertion accepts the risk of paying twice. It proves neither that
-  nothing was sent nor that anything settled.

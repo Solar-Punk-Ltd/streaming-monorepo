@@ -25,10 +25,10 @@ const CONSTANT = 'RUNG_DEATH_LAG_SEGMENTS';
  * How many rungs the uploader takes out of what the master advertises at once, set on 2026-09-01
  * after a broadcast ending made the player delete three rungs of four and hls.js go fatal.
  *
- * ⛔ The player had the same limit, `MAX_RUNGS_DROPPED_PER_LADDER`, until decision 37 on 2026-10-07:
+ * ⛔ The player had the same limit, `MAX_RUNGS_DROPPED_PER_LADDER`, until 2026-10-07:
  * it now drops every rung it announces until the viewer is on one that moves. It announces a rung only
  * while another rung is seen moving, the playing one at a refused switch or a sibling at a failover, and
- * a broadcast that stops everywhere shows none, so the cascade the limit was ruled in to stop has
+ * a broadcast that stops everywhere shows none, so the cascade the limit was put in to stop has
  * nothing to drive it. The uploader keeps its limit for the
  * master, and the player's is pinned as absent, so a cap coming back into it is looked at.
  */
@@ -86,20 +86,20 @@ describe('how much of a ladder may be dropped at once', () => {
       null,
       `${UPLOADER_DROP_LIMIT} is not declared in ${UPLOADER_LIVENESS}. Either it was renamed, or the uploader ` +
         'stopped limiting how much of a ladder the master stops advertising at once, which is the failure ' +
-        'this limit was ruled in to stop.',
+        'this limit was put in to stop.',
     );
   });
 
   /**
-   * ⛔ Pinned to the ruling, because a different number would satisfy the presence check above and is
-   * not what was decided.
+   * ⛔ Pinned to one, because a different number would satisfy the presence check above and is
+   * not what a broadcast ending needs.
    */
   it('is one in the uploader, which is what a broadcast ending needs', () => {
     assert.equal(
       declaredValueOf(UPLOADER_LIVENESS, UPLOADER_DROP_LIMIT),
       1,
       `the uploader would take ${declaredValueOf(UPLOADER_LIVENESS, UPLOADER_DROP_LIMIT)} rungs out of the ` +
-        'master at once. The ruling was one: a second rung going quiet is a broadcast ending, not two rungs failing.',
+        'master at once. The limit is one: a second rung going quiet is a broadcast ending, not two rungs failing.',
     );
   });
 
@@ -107,7 +107,7 @@ describe('how much of a ladder may be dropped at once', () => {
     assert.equal(
       declaredValueOf(PLAYER_RUNG_HEALTH, PLAYER_DROP_LIMIT),
       null,
-      `${PLAYER_DROP_LIMIT} is declared in ${PLAYER_RUNG_HEALTH} again. Decision 37 took the player's cap out, ` +
+      `${PLAYER_DROP_LIMIT} is declared in ${PLAYER_RUNG_HEALTH} again. The player's cap was taken out, ` +
         'because a refused switch used it up and left a viewer frozen on the next rung to stop.',
     );
   });

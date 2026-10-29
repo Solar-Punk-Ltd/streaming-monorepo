@@ -23,6 +23,8 @@ from any wallet it likes.
   at handover. With it the brand can move the funds from any wallet app.
 - The wallet has no spending limits. The brand keeps in it only what the coming months need.
 
+One admin holds one brand wallet.
+
 ## The Funding page
 
 The page has three tabs. They keep what you tick, type and choose while you stay on the Funding
@@ -162,8 +164,3 @@ the next send and the Funding page refresh the open one, and the page resumes it
 
 The sample env files describe each setting in full, and the admin's deploy script refuses the
 sample values of the secret and the token.
-
-## Limits
-
-- The brand wallet's secret cannot yet be changed for an existing wallet.
-- One admin holds one brand wallet. Separating several brands inside one admin is not built.

@@ -18,13 +18,13 @@ stream, or fund a node, until it is back.
 
 ## The parts
 
-| Part         | Role                                                                                                                                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| The console  | The only surface an operator touches: streams and the stage each is on, the stages the manager pushed with their readiness, stamps and chequebooks, the catalogue's batch, funding, and the users who may sign in.                                           |
-| The API      | Every change an operator can make, in one place. It is the only writer of the catalogue, so who may do what is enforced in one place. It takes the manager's pushes and each stage uploader's reports on bearer tokens, and calls the manager's funding API. |
-| Postgres     | Users and sessions, streams and their stages, the records the manager pushed, every catalogue write with its exact bytes, the funding journals and the audit log.                                                                                            |
-| Sign-in      | Usernames, passwords, an admin role and server-side sessions ([web2-admin-auth.md](web2-admin-auth.md)).                                                                                                                                                     |
-| The contract | `@streaming-monorepo/web2-admin-common`, the types the API answers and the console reads.                                                                                                                                                                    |
+| Part         | Role                                                                                                                                                                                                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The console  | The only surface an operator touches: streams and the stage each is on, the stages the manager pushed with their readiness, stamps and chequebooks, the catalogue's batch, funding, and the users who may sign in. It has two looks, and a host's default look is a setting. |
+| The API      | Every change an operator can make, in one place. It is the only writer of the catalogue, so who may do what is enforced in one place. It takes the manager's pushes and each stage uploader's reports on bearer tokens, and calls the manager's funding API.                 |
+| Postgres     | Users and sessions, streams and their stages, the records the manager pushed, every catalogue write with its exact bytes, the funding journals and the audit log.                                                                                                            |
+| Sign-in      | Usernames, passwords, an admin role and server-side sessions ([web2-admin-auth.md](web2-admin-auth.md)).                                                                                                                                                                     |
+| The contract | `@streaming-monorepo/web2-admin-common`, the types the API answers and the console reads.                                                                                                                                                                                    |
 
 ## How it relates to the manager and the stack
 
@@ -84,18 +84,10 @@ again.
   id. It learns them from the manager's pushes, and refuses to publish, saying why, until the
   manager has designated a catalogue batch.
 - It does not serve media. Ingest, the bitrate ladder, packaging and upload live on a stage host.
-
-## Not yet built
-
-- **Separate brands.** One admin serves one installation. Every signed-in operator can act on every
-  stream, and the audit log records who did. Keeping one brand's streams apart from another's, and
-  how a brand proves who it is, are not yet built.
-- **Branding.** The console has two looks, and a host's default look is a setting. A brand's logo,
-  colours and domain, turned into the configuration the viewer reads, are not yet built.
-- **The manager deploying the admin.** The admin's deploy script takes the manager's flags, but the
-  manager does not run it yet. [The deploy guide](../../apps/web2-admin/deploy/README.md#known-limits)
-  lists what that step still needs.
-- **Chat.** Whether viewer chat runs over Swarm feeds or a websocket in the admin is not decided.
+- It serves one installation. Every signed-in operator can act on every stream, and the audit log
+  records who did.
+- It is not deployed by the manager. Its deploy script takes the manager's flags and is run by hand
+  ([the deploy guide](../../apps/web2-admin/deploy/README.md#deploying)).
 
 ## The stack it is built on
 

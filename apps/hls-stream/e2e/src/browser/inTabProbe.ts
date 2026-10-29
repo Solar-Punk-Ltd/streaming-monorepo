@@ -39,7 +39,7 @@
  *
  * ## ⛔ The cap itself became the suspect
  *
- * The owner's correction of 2026-09-02 was that Chrome's `Network.emulateNetworkConditions` is a
+ * A correction of 2026-09-02 was that Chrome's `Network.emulateNetworkConditions` is a
  * prime suspect for what the probe found, rather than the node: it is one aggregate budget the
  * browser schedules across every transport itself, and how it divides one across an in-tab node's
  * ~200 WebSockets is not a fact about a link of that speed. So {@link CapSource} rides on every row,
@@ -51,7 +51,7 @@
  * reader compares them, and no figure refuses a run.
  *
  * @see the `in-tab-throttle-probe-prediction-2026-09-02` measurement (kept outside the repository)
- * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its owner's correction.
+ * @see the `in-tab-throttle-probe-result-2026-09-02` measurement (kept outside the repository), and its correction.
  */
 
 import { type CapProof, capProofLine, judgeRecorderProof, type RecorderProof, recorderProofLine } from './capProof.js';
@@ -97,10 +97,9 @@ const CAP_SOURCES = ['cdp', 'external'] as const;
  *
  * `cdp` is Chrome's `Network.emulateNetworkConditions`, which is what every capped reading this
  * project has ever taken was made under. `external` is a real `tc` ingress policer on the
- * container's own interface, installed and proved by `deploy/scripts/shape-container-ingress.sh`
- * before the browser opens.
+ * container's own interface, installed and proved by an ingress shaper before the browser opens.
  *
- * ⛔⛔ On every row, every idle window and the run, and not as a footnote. The owner's correction of
+ * ⛔⛔ On every row, every idle window and the run, and not as a footnote. A correction of
  * 2026-09-02 was that the emulation is a prime suspect for what the probe found, so which cap a
  * figure was taken under is part of the figure. A report that did not carry it would be one more
  * artifact whose conditions have to be reconstructed from the command line that produced it.
@@ -150,8 +149,7 @@ export function externalCapRefusal(capKbps: number, measuredBps: number | null):
     return (
       'this run says PROBE_CAP_MODE=external and carries no PROBE_EXTERNAL_CAP_MEASURED_BPS, so ' +
       'nothing establishes that a shaper was installed at all, let alone at what rate. ' +
-      'deploy/scripts/shape-container-ingress.sh writes it, and bench-on-host.sh --shape-kbps is ' +
-      'what runs the shaper before the driver.'
+      'The ingress shaper that runs before the driver writes it.'
     );
   }
   const allowed = kbpsAsBytesPerSecond(capKbps);
@@ -685,7 +683,7 @@ function h0Line(run: InTabProbeRun): string {
       `${grouped(run.externalCapMeasuredBps)} B/s.** H0 asks whether Chromium's emulation reached the ` +
       'WebSocket transport, and there is no emulation here: the cap is a `tc` ingress policer on the ' +
       "container's own interface, under every socket the tab opens, and " +
-      '`deploy/scripts/shape-container-ingress.sh` measured what it delivers against a real download ' +
+      'the shaper measured what it delivers against a real download ' +
       'from the host before this run was allowed to start.'
     );
   }
@@ -719,7 +717,7 @@ function proofSection(run: InTabProbeRun): string[] {
     ...(run.capSource === 'external'
       ? [
           '⭐ **The cap proof is judged against the rate the shaper PROVED, not the rate the rows are ' +
-            'labelled with.** `deploy/scripts/shape-container-ingress.sh` measured its policer against a ' +
+            'labelled with.** The shaper measured its policer against a ' +
             'real download from the host before the browser opened, and `externalCapRefusal` has already ' +
             'refused this run if the label and that measurement disagree. The two readings answer ' +
             'different questions: the shaper measured a curl from the container, and this measures the ' +
@@ -799,7 +797,7 @@ function whatRanSection(run: InTabProbeRun): string[] {
     run.capSource === 'external'
       ? `**The cap is a real shaped link, not Chrome's emulation.** A \`tc\` ingress policer at ` +
         `${run.capKbps} kbit/s on the container's own interface, under every socket the tab opens, ` +
-        `proved by \`deploy/scripts/shape-container-ingress.sh\` at ` +
+        `proved by the ingress shaper at ` +
         `${run.externalCapMeasuredBps === null ? 'no measured rate' : `${grouped(run.externalCapMeasuredBps)} B/s`} ` +
         'against a real download from the host before the browser opened.'
       : `**The cap is Chrome's \`Network.emulateNetworkConditions\`**, applied over CDP at ` +

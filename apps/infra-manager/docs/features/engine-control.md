@@ -14,6 +14,8 @@ Those variables reach the container through compose interpolation of three files
 
 Changing an engine setting therefore means storing it in the database, writing it into `.env.<name>`, and recreating the containers that read it. A deployment can also run its own engine config file instead of the version's template, see [engine-config.md](engine-config.md).
 
+The SRS web console is not served on any deployment, because the stack mounts the media volume over its directory.
+
 ## The Engine card
 
 Every stream and ABR uploader deployment page has an **Engine** card, between **Publish** and **Stack settings**.
@@ -25,6 +27,8 @@ Every stream and ABR uploader deployment page has an **Engine** card, between **
 - **Config file** opens the engine config editor, see [engine-config.md](engine-config.md).
 - **Restart** asks first, for example `Restart SRS 6 for stream1?`, and says what a restart costs: for the engine, the publisher is disconnected for a few seconds and reconnects if the broadcaster is set to retry. Settings are not changed. Restart is off while the deployment is stopped or a deploy is running, and the button's tooltip says why.
 - **Logs** opens a dialog with the last 200 lines of a container, a **Refresh** button and a switch between the deployment's containers. Its second tab, **Effective config**, shows the generated `srs.conf` or `Server.xml` as the running container has it, read only, with a copy button. It is the fastest way to see which values actually applied.
+
+The SRS API, once a version publishes its port, has no authentication enabled. The firewall rules in [auth-and-public-access.md](auth-and-public-access.md) cover that port. OvenMediaEngine's API is off in the stack's template.
 
 The **At a glance** card shows the engine in one line, such as `SRS · segment 2 s · window 15 s`, from the same readings as the Engine card. A value saved but not yet applied is marked `saved, not applied`.
 
@@ -105,11 +109,3 @@ All routes need a signed-in session. The full reference is in [the API reference
 | 409 `container_not_running`    | No container of that service is running.                                                        |
 | 409 `engine_settings_changed`  | A save from the Stack settings card moved the settings revision.                                |
 | 409 `profile_instance_changed` | `expectedInstanceId` names a deployment that was removed and created again under the same name. |
-
-## Limits
-
-- Live status, the publisher, codec, resolution, bitrate and uptime of a running stream, is not built yet. The Engine card says why on every version.
-- The SRS API, once a version publishes its port, has no authentication enabled. The firewall rules in [auth-and-public-access.md](auth-and-public-access.md) cover that port.
-- OvenMediaEngine's API is off in the stack's template, so live status for OME needs a template change as well.
-- Engine settings cannot yet be changed for a whole group in one write. Each member is changed on its own page.
-- The SRS web console is not served on any deployment, because the stack mounts the media volume over its directory.

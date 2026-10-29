@@ -195,8 +195,7 @@ jobs:
     # compose. The uploader's image copies its built dist, which git ignores,
     # so the stack is built first, as deploy.sh does, and the copy is told to
     # carry dist. The bench and browser images build with e2e/ as their
-    # context, as bench-on-host.sh builds them, and use npm and no pnpm
-    # lockfile. They go through the copy all the same, because the copy holds
+    # context and use npm and no pnpm lockfile. They go through the copy all the same, because the copy holds
     # only what git tracks, as the host's folder does, where the checkout's
     # e2e/ also holds the node_modules this job's install put there.
     runs-on: ubuntu-latest

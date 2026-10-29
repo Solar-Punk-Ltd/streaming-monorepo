@@ -294,7 +294,7 @@ describe('what the running containers are behind on', () => {
 /**
  * The value a running container was started with, as its record keeps it in
  * clear. The stamp card reads it to mark the batch a running uploader pays
- * with, which after a Use is not the batch the deployment stores (SPDV-1437).
+ * with, which after a Use is not the batch the deployment stores.
  */
 describe('what the running containers were started with', () => {
   it('answers the recorded value beside the next one, so a saved change shows what it replaces', () => {

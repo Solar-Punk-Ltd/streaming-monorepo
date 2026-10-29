@@ -22,9 +22,7 @@ import {
  *
  * The operator authorises an amount by writing `.spend-ledger.env` at the repository root. Until this
  * existed nothing read it at launch time, so every launch was gated by an operator remembering the
- * number, which is a threshold written down rather than a control. `deploy/scripts/spend-ceiling.sh`
- * refuses a bench sitting on the same ledger, and the two read one file so two paths cannot each
- * spend the whole allowance.
+ * number, which is a threshold written down rather than a control.
  *
  * Read-only, and only reads: the uploader's routing, one chequebook balance per node that can spend,
  * and one local file. It costs nothing, so it can refuse while the stack is still cold.

@@ -19,8 +19,7 @@ import {
  *
  * Every run against the deployed stack costs real BZZ in postage and bandwidth, and until this
  * existed the only thing holding a run to its authorisation was an operator remembering the number.
- * `deploy/scripts/spend-ceiling.sh` already refuses a bench sitting on the same ledger, so the rules
- * pinned here are that gate's, restated for the suite: `availableBalance` per node against its
+ * The rules pinned here: `availableBalance` per node against its
  * baseline, a rise clamped to zero, and a missing ledger refused rather than read as unlimited.
  *
  * The arithmetic is in BigInt because a chequebook balance in PLUR is past 2^53, and several cases
@@ -429,8 +428,7 @@ describe('why a run is refused, or is not', () => {
    * On 2026-08-14 a 12 BZZ deposit into the gateway turned that node's 0.5406 BZZ of real spend into
    * a clamped zero. The uploader was topped up minutes later, which would have taken the printed
    * total to 0.000 BZZ against a ceiling 1.98 of which was already gone. A note beside the number
-   * would not have stopped that. `deploy/scripts/spend-ceiling.sh` refuses for the same reason, and
-   * the two gates now agree.
+   * would not have stopped that.
    */
   describe('after a deposit', () => {
     it('refuses even though the ceiling arithmetic is nowhere near it', () => {

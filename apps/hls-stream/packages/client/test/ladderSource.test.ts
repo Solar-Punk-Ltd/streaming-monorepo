@@ -164,7 +164,7 @@ describe('the ladder entry points', () => {
     });
 
     /**
-     * Only the quality hls.js plays is read (the owner, 2026-10-07). A level request starts that rung, a
+     * Only the quality hls.js plays is read. A level request starts that rung, a
      * second one starts the rung switched to, and the switch reported by hls.js stops the first.
      * Counted on the requests a real fetch makes, by the rung each one names.
      */
@@ -268,7 +268,7 @@ describe('the ladder entry points', () => {
   });
 
   /**
-   * Decision 33 (the owner, 2026-10-07): a stream whose entry in the stream list names its renditions is
+   * A stream whose entry in the stream list names its renditions is
    * answered with the master built from them, and the master feed is not read at all. That read was
    * the slowest at start, 4.2 to 4.7 s in phase 0, a head lookup of the master topic.
    */

@@ -39,8 +39,8 @@ const THROW_GRACE_MS = 60_000;
 /**
  * A condition saying its wait can no longer succeed, so {@link waitFor} gives up on the spot.
  *
- * ⛔ The one throw {@link waitFor} does not treat as a failed read. `waitForAnnouncement` in
- * `bench/run.ts` reads whether the publisher process is still alive, and a publisher that died on
+ * ⛔ The one throw {@link waitFor} does not treat as a failed read. A caller that reads whether the
+ * publisher process is still alive needs it, because a publisher that died on
  * its own arguments is knowable two seconds in: without an immediate give-up the run spends its
  * whole ninety second ceiling waiting for an ingest that can never arrive and then reports a timeout,
  * which names the uploader for an encoder that never started.

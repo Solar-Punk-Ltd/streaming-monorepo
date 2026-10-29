@@ -89,15 +89,6 @@ export const GIT_STUB = {
 
 const sandboxes = [];
 
-/**
- * The host the bench scripts are pointed at in a test. They take no default, since a default named
- * one real machine, so every launch of `bench-on-host.sh` here passes it with `--target`.
- */
-export const BENCH_TARGET = 'bench.example.org';
-
-/** The stage a bench launch names beside its target, as `--profile` and `--portSlot`. */
-export const BENCH_STAGE = ['--profile', 'bench-stage', '--portSlot', '7'];
-
 export function removeSandboxes() {
   for (const dir of sandboxes) {
     rmSync(dir, { recursive: true, force: true });
@@ -147,7 +138,7 @@ export function makeSandbox({
   // Seeded with what `sync_to_remote` would have left, because `rsync` is stubbed out: a remote
   // deploy expects `deploy/` and the node init script to be there before it runs anything.
   //
-  // A stack placed at a given root is mirrored whole by bench-on-host.sh, and the rsync stub honours
+  // A stack placed at a given root is mirrored whole by a remote deploy, and the rsync stub honours
   // no --exclude, so its stand-in host lives in a folder of its own rather than inside the stack.
   const remoteHome = givenRoot ? mkdtempSync(join(tmpdir(), 'remote-home-')) : join(root, 'remote-home');
   if (givenRoot) {
@@ -183,7 +174,7 @@ export function makeSandbox({
   }
   writeNodeStub(join(binDir, 'docker'), dockerStub(localJournal, project));
   writeStub(join(binDir, 'ssh'), sshStub(remoteHome, remoteJournal, sshJournal));
-  // Outside the stack, which bench-on-host.sh mirrors whole.
+  // Outside the stack, which a remote deploy mirrors whole.
   const rsyncRecord = realRsync ? mkdtempSync(join(tmpdir(), 'rsync-record-')) : null;
   if (realRsync) {
     sandboxes.push(rsyncRecord);
@@ -439,7 +430,7 @@ export const REAL_RSYNC = (process.env.PATH ?? '')
  * With RSYNC_ALONE_DEST set it first runs the same rsync into that folder, without the source that
  * starts with RSYNC_ALONE_SKIP, which is what --delete does without the cut. It runs that one right
  * before the real one because a stack placed at a given root holds this sandbox's own journals,
- * which bench-on-host.sh mirrors and which change as the script goes on: back to back, both see the
+ * which a remote deploy mirrors and which change as the script goes on: back to back, both see the
  * same tree. openrsync, macOS's rsync, starts its receiving side as `rsync --server` from PATH, which
  * goes straight on to the real one.
  */

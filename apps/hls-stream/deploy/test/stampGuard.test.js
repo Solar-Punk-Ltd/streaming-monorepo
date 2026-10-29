@@ -34,8 +34,8 @@ function runHeadless(sandbox, name, args = []) {
 
 /**
  * Four rungs, each with its own node and its own batch, which is what a deployment that splits its
- * bees per rung carries instead of a single STAMP. The batch ids are 64 hex characters because
- * `capacity-gate.sh` refuses anything shorter as a truncated paste.
+ * bees per rung carries instead of a single STAMP. The batch ids are 64 hex characters, the length
+ * of a real batch id.
  */
 const PUBLISHERS = [
   '360p@http://localhost:1633',
@@ -83,8 +83,7 @@ const withEnv = (env) => makeSandbox({ envFiles: { '.env': `${env}\nSTREAM_KEY=k
  *
  * A deployment that splits its bees per rung names one batch per rung in BEE_PUBLISHERS and never
  * reads STAMP: `stream-uploader`'s own `buildPublishers` takes the per-rung pool the moment that
- * variable is set, `capacity-gate.sh` names BEE_PUBLISHERS as the batch source ahead of STAMP, and
- * `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when unsplit". The guard in
+ * variable is set, and `.env.sample` says the batch is the one in BEE_PUBLISHERS "or STAMP when unsplit". The guard in
  * `deploy.sh` was the one place that had not been told, so it read an empty STAMP as an unfunded
  * uploader and refused an ABR deployment that was fully funded.
  *
