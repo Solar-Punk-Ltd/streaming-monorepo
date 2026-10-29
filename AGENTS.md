@@ -39,7 +39,7 @@ and how the pieces fit under `docs/`. Read it before moving anything.
 - A bug gets its own pull request, with a test that fails before the fix, never inside a move.
 - `apps/hls-stream` and `apps/infra-manager` are developed here like everything else. The
   repositories they came from get nothing new, and nothing more is pulled from them.
-- Nothing is deployed to a host without the owner's word. Every check that can be made without
+- Nothing is deployed to a host without a maintainer's approval. Every check that can be made without
   a host is made first.
 - Real host names, addresses and domains stay out of the repository. Name a host by its role and
   an address by a placeholder.

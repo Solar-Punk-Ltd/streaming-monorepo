@@ -258,7 +258,7 @@ const whatWasFound = (service: string, observed: readonly ObservedContainer[]): 
  * operator knows what to stop again.
  *
  * A removal interrupted before it removed anything therefore reads as RUNNING,
- * which is what such a deployment is. Ruled acceptable: the row is back where
+ * which is what such a deployment is. That is acceptable: the row is back where
  * an operator can act on it, and Remove is one click, where keeping REMOVING
  * refuses every later action as busy.
  *

@@ -36,7 +36,7 @@
 --   amount_plur  what moves, in PLUR: more than nothing, and at most 30
 --                digits, as the manager's own chequebook journal holds one.
 --   target_plur  the available balance the request brings the chequebook to,
---                in PLUR: 1 xBZZ or more, the owner's floor.
+--                in PLUR: 1 xBZZ or more, the funding floor.
 --   available_plur
 --                the chequebook's available balance the move was worked out
 --                from, again when the request came in: of the one the page

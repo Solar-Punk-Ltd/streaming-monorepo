@@ -22,8 +22,8 @@ import { parseSwarmUri } from './playlist';
  * a new index means the playing rung alone stopped. It announces that rung, and this side takes the
  * level out and moves the viewer to the sibling.
  *
- * ⛔ **Every announced rung is dropped, however many came before** (decision 37, 2026-10-07: "what if we
- * simply allow any drop until one is healthy?"). A cap of one per ladder stood here from 2026-09-01,
+ * ⛔ **Every announced rung is dropped, however many came before**, until one is healthy. A cap of
+ * one per ladder stood here from 2026-09-01,
  * when an uploader dying read as every rung failing in turn and the player took the ladder apart. The
  * poller no longer condemns a rung for being quiet alone. It fails over only to a sibling it watched
  * make progress, and a broadcast that stops everywhere shows none, so a cascade has nothing to drive it.

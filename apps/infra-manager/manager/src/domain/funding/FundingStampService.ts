@@ -32,7 +32,7 @@ const logger = Logger.getInstance();
 
 /**
  * The least life a dilution may leave a batch with: seven days at today's price, the batch's time left halved for
- * every step. The owner's rule (`docs/architecture/funding.md`), well above the day the postage contract itself
+ * every step. The funding rule (`docs/architecture/funding.md`), well above the day the postage contract itself
  * refuses a dilution under.
  */
 export const FUNDING_DILUTE_MIN_SECONDS = 7 * 24 * 60 * 60;

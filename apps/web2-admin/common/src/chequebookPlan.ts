@@ -8,7 +8,7 @@ import type { FundingChequebook, FundingChequebookDirection, FundingNode } from 
  * string, worked in BigInt.
  */
 
-/** The least a chequebook may be brought to, in PLUR: 1 xBZZ, as the owner decided on 2026-10-08. */
+/** The least a chequebook may be brought to, in PLUR: 1 xBZZ. */
 export const CHEQUEBOOK_TARGET_MIN_PLUR = '10000000000000000';
 
 /** What brings one chequebook to a target: which way xBZZ moves, and how much, PLUR as a decimal string above 0. */

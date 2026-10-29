@@ -13,7 +13,7 @@ after(removeSandboxes);
  * one cannot start on top of the first.
  *
  * ⛔ Both faults happened within two minutes of each other on 2026-09-04 and between them they cost
- * a postage batch the owner had paid for and a stage arming. The local script was killed, the
+ * a postage batch that had been paid for and a stage arming. The local script was killed, the
  * container on the host kept running, passed its own preflight gates and broadcast for about a
  * minute on a stage armed for a different test. `docker ps` showed it under a name Docker had
  * invented, so stopping it meant guessing which of the running containers was ours. Then a second

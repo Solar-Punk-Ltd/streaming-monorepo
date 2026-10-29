@@ -12,7 +12,7 @@ export const SECONDS_PER_DAY = 86_400;
 /** The most steps one dilution takes; each doubles what a batch holds and halves its time left. */
 export const DILUTE_MAX_STEPS = 2;
 
-/** The time left a dilution must leave its batch: 7 days, as the owner decided on 2026-10-08. */
+/** The time left a dilution must leave its batch: 7 days. */
 export const DILUTE_MIN_SECONDS_AFTER = 7 * SECONDS_PER_DAY;
 
 /**

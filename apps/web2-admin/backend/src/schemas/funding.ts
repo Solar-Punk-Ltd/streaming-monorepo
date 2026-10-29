@@ -21,7 +21,7 @@ export const FUNDING_MAX_ITEMS = 200;
 
 /**
  * The most days one top-up buys: no cap a person meets, only the journal column's, a 32-bit integer's, about 5.9
- * million years. The owner set no cap on the days, only a floor of 1.
+ * million years. There is no cap on the days, only a floor of 1.
  */
 export const FUNDING_STAMP_MAX_DAYS = 2 ** 31 - 1;
 

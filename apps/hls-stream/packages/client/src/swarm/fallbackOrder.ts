@@ -1,5 +1,5 @@
 /**
- * The one order of fallbacks every part shares (decision 48). The deployment sets the default order,
+ * The one order of fallbacks every part shares. The deployment sets the default order,
  * the viewer may keep their own in the browser, and the event gateway, the deployment's default, is
  * always last, so whatever else fails the event's own gateway is still asked. Pure.
  */

@@ -414,7 +414,7 @@ for a in "$@"; do case "$a" in http*) echo "$a" >> '${log}' ;; esac; done
 });
 
 /**
- * ⭐⭐⭐ THE OTHER HALF OF THE OWNER'S RULE: DIFF THE ENTIRE THING, RANKED BY WHAT MOVED.
+ * ⭐⭐⭐ THE OTHER HALF OF THE RULE: DIFF THE ENTIRE THING, RANKED BY WHAT MOVED.
  *
  * Capturing the whole surface buys nothing on its own. `diff` renders a curated summary of the
  * metrics somebody thought to name, which is the same restriction the allowlist was, one step later.

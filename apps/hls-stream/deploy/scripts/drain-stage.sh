@@ -29,8 +29,8 @@
 #
 # ## Why there is no spend-ledger gate here
 #
-# `bench-on-host.sh` refuses to launch from a checkout without `.spend-ledger.env`, the owner's
-# written authorisation, because everything it starts publishes and every published segment is paid
+# `bench-on-host.sh` refuses to launch from a checkout without `.spend-ledger.env`, the
+# written spend authorisation, because everything it starts publishes and every published segment is paid
 # for out of a chequebook. Nothing in this script spends from a chequebook. `print-buy` prints,
 # `status` reads, and `arm` and `restore` rewrite one line of an env file and restart a container.
 # The one purchase in the whole sitting is the owner running the printed command from their own
