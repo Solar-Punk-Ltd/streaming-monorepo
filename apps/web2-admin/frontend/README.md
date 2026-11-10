@@ -165,6 +165,9 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
   `stream_not_started`, and on one already finalized as `stream_finished`. Each means the stream has
   moved on since the page read it, so the snackbar gives the sentence, the dialog closes, and the
   page reads the stream and its OBS details again. After any other failure the dialog stays open.
+- On a finished recording, published or not, **Download** in the row under the title opens the
+  Download panel, described below. Above the OBS panel, the file exported from this stream and kept
+  on the server, with Save file, or the export of it while it runs.
 - The OBS panel, with Rotate key, described below.
 
 ### Stages, `#/stages`
@@ -249,6 +252,32 @@ Who can sign in. An admin adds and removes users and signs anyone out. Everyone 
 Everyone can change their own password. `#/account` redirects here.
 
 ## How the console behaves
+
+### Downloading a recording
+
+One export runs at a time for the whole admin, and every signed-in user sees it
+([Exporting a recording](../backend/README.md#exporting-a-recording)).
+
+- **The panel.** Opened with Download on a stream's page, it shows the recording's day and length
+  and each quality with its resolution and estimated size, highest first, and Start export. When
+  the file kept on the server is this stream at the chosen quality, it offers Save file instead.
+  Starting another export replaces the kept file, and the panel says so. While an export holds the
+  slot, the panel follows that export, whichever stream it is, and says one runs at a time.
+- **Following an export.** Where it stands, with a progress bar, who started it, and the buttons
+  for what it allows now: Pause; after a pause, Resume, or Try them again when segments could not
+  be read, and Try again after another problem; Save what's read, or Save without them; Wait until
+  it finishes, when the stream went live again; and Cancel export, which asks first, since
+  everything read so far is deleted. Once it is done, Save file.
+- **The widget.** While the panel is closed, the export floats in the top right of every page for
+  every signed-in user, with its stream, quality and progress. Clicking it opens the panel. It says
+  "Paused: needs a decision" when a pause asks for one. A finished export shows Save file and a
+  close button, and each user closes it for themselves.
+- **Coming to front.** When an export pauses for a decision, the panel opens by itself for the user
+  who started it, if they are signed in, once per pause. Everyone else sees the widget say so.
+- **Saving.** Save file is a plain link to the file, which the browser saves under the name the API
+  gives it, such as `opening-keynote-2026-11-05-1080p.mp4`. Saving reads nothing from Swarm.
+
+The console reads the export every two seconds while one runs, and every ten seconds otherwise.
 
 ### The OBS panel
 

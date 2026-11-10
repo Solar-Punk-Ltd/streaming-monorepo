@@ -9,7 +9,7 @@ in [the backend's README](../../apps/web2-admin/backend/README.md).
 The admin is the brand console and the API behind it. A brand is a customer that streams under its
 own name. Its operators sign in to the admin to draft streams, publish them to the stream list that
 viewers read, called the catalogue, get the OBS details for each broadcast, watch the stages their
-streams run on, and fund the nodes behind those stages.
+streams run on, fund the nodes behind those stages, and download a recording as an MP4.
 
 The admin is the one place a brand changes anything. Anything that touches a host or a node's
 wallet belongs to the manager. If the admin is down, broadcasts that are running carry on, and
@@ -18,13 +18,13 @@ stream, or fund a node, until it is back.
 
 ## The parts
 
-| Part         | Role                                                                                                                                                                                                                                                                         |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The console  | The only surface an operator touches: streams and the stage each is on, the stages the manager pushed with their readiness, stamps and chequebooks, the catalogue's batch, funding, and the users who may sign in. It has two looks, and a host's default look is a setting. |
-| The API      | Every change an operator can make, in one place. It is the only writer of the catalogue, so who may do what is enforced in one place. It takes the manager's pushes and each stage uploader's reports on bearer tokens, and calls the manager's funding API.                 |
-| Postgres     | Users and sessions, streams and their stages, the records the manager pushed, every catalogue write with its exact bytes, the funding journals and the audit log.                                                                                                            |
-| Sign-in      | Usernames, passwords, an admin role and server-side sessions ([web2-admin-auth.md](web2-admin-auth.md)).                                                                                                                                                                     |
-| The contract | `@streaming-monorepo/web2-admin-common`, the types the API answers and the console reads.                                                                                                                                                                                    |
+| Part         | Role                                                                                                                                                                                                                                                                                                |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The console  | The only surface an operator touches: streams and the stage each is on, the stages the manager pushed with their readiness, stamps and chequebooks, the catalogue's batch, funding, exports of recordings, and the users who may sign in. It has two looks, and a host's default look is a setting. |
+| The API      | Every change an operator can make, in one place. It is the only writer of the catalogue, so who may do what is enforced in one place. It takes the manager's pushes and each stage uploader's reports on bearer tokens, calls the manager's funding API, and exports recordings.                    |
+| Postgres     | Users and sessions, streams and their stages, the records the manager pushed, every catalogue write with its exact bytes, the funding journals, the export on the server and the audit log.                                                                                                         |
+| Sign-in      | Usernames, passwords, an admin role and server-side sessions ([web2-admin-auth.md](web2-admin-auth.md)).                                                                                                                                                                                            |
+| The contract | `@streaming-monorepo/web2-admin-common`, the types the API answers and the console reads.                                                                                                                                                                                                           |
 
 ## How it relates to the manager and the stack
 
@@ -48,6 +48,9 @@ stream, or fund a node, until it is back.
   to read the node wallets, to relay transfers the brand wallet signed, and to ask a node to top up
   or dilute a batch or move its chequebook, which the node pays for itself.
   [funding.md](funding.md) describes it.
+- **Exports read through the catalogue node.** To export a recording, the admin reads its playlist
+  and segments through the node the manager designated for the catalogue, the one it already reads
+  the catalogue and thumbnails through. It reads; it never stamps, pays or moves anything.
 - **The stack's uploader** runs on each stage. When an encoder connects, it asks the admin which
   stream that is, checks the stream's key, and uploads the broadcast. It reports to the admin when
   the broadcast goes live and when it ends, and each rung of an adaptive bitrate ladder reports its
@@ -74,6 +77,32 @@ A stream is a row in Postgres first and a catalogue entry second. An operator dr
 publishing writes the entry. A write that fails leaves the row as it was, with the reason, to try
 again.
 
+## Exporting a recording
+
+A broadcaster wants their recording as a file, to cut it and post-process it. The admin exports one
+quality of a finished recording, published or not, into an MP4, and keeps it on its server so any
+user can save it, as often as they like, without reading Swarm again. The [backend's
+README](../../apps/web2-admin/backend/README.md#exporting-a-recording) has the routes, the states
+and the settings.
+
+- **The admin does it, through the catalogue node.** Everything an export needs is already the
+  admin's: each stream's owner, each rung's feed and the slot its recording is in, the lengths and
+  bitrates the estimates come from, and the users. It reads through the node the manager designated,
+  so it carries no Bee address of its own.
+- **One export at a time, for the whole admin.** One node reads it, and a second export would only
+  halve the speed of both. While one is reading, paused or waiting, nobody can start another, and
+  every signed-in user sees it in a widget in the top right of every page.
+- **The last file is kept.** The finished MP4 stays until the next export starts and replaces it,
+  so saving it again costs no Swarm read. Its stream's page shows it above the OBS details.
+- **It never fails, it pauses.** Segments that cannot be read, a stream that goes live again, a
+  full disk or any other problem pause the export with the reason, keeping everything read. The
+  panel comes to front for the user who started it, and a user decides: try again, save what was
+  read as a partial file, wait until the stream finishes, or cancel.
+- **Nothing is re-encoded.** ffmpeg copies the segments into the MP4 as the viewers got them. A seam
+  between sessions of one broadcast, or a missing stretch, becomes a cut.
+- **A playlist names references, not addresses.** Only the Swarm reference of each segment is read,
+  through the node, so a recording can never make the admin fetch an address of its choosing.
+
 ## What it does not do
 
 - It never holds a node's key and never touches a host. Postage, cheques, ssh and Docker all belong
@@ -83,7 +112,8 @@ again.
 - It carries no stage in its settings: no ingest address, port or passphrase, Bee address or batch
   id. It learns them from the manager's pushes, and refuses to publish, saying why, until the
   manager has designated a catalogue batch.
-- It does not serve media. Ingest, the bitrate ladder, packaging and upload live on a stage host.
+- It serves no live media. Ingest, the bitrate ladder, packaging and upload live on a stage host,
+  and viewers play from Swarm. The one file it serves is an exported recording, to a signed-in user.
 - It serves one installation. Every signed-in operator can act on every stream, and the audit log
   records who did.
 - It is not deployed by the manager. Its deploy script takes the manager's flags and is run by hand

@@ -11,7 +11,7 @@ drops the database again in `after`. Every API suite drives that instance over
 HTTP: the requests the console makes, cross-site header and all, or the
 uploader's and the manager's, on the bearer token. Several suites use its database
 directly instead, because Postgres is exactly what a fake cannot stand in for:
-the repository suites, `catalogueWrites.test.ts`, `catalogueMoves.test.ts`
+the repository suites (`exportRepository.test.ts` among them, the one export at a time and its moves), `catalogueWrites.test.ts`, `catalogueMoves.test.ts`
 (which also moves a history through the fake Bee of the unit tests), `auditLog.test.ts` and
 `authCredentialConcurrency.test.ts`. Two of the
 API suites read it as well, for what no response shows: `api.test.ts` reads

@@ -17,7 +17,9 @@ One machine can carry all three roles for a first try. Split them once you broad
 
 - **Control host**: small. Two cores, 4 GB of memory and 40 GB of disk run the manager, the
   admin, their databases and the edge. The first manager deploy builds the stack there, which is
-  the only time it is busy.
+  the only time it is busy. Exporting a recording from the admin needs disk beside that: twice the
+  longest recording's size at its highest quality while one runs, about 13 GB for three hours at
+  1080p.
 - **Stage host**: sized by the ingest. A single rendition needs little. A four-rung ABR ladder
   transcodes every rung on the CPU, so give it eight or more modern cores per concurrent ladder
   broadcast, and 50 GB or more of disk for Docker builds and the media volume.
@@ -527,7 +529,7 @@ each one has a setting that moves it. Once a host runs, keep that setting as it 
 
 | Piece                 | Host folder, and the setting that moves it                                                                                                                  | Compose project                                                | Volumes                       |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | ----------------------------- |
-| Admin                 | `/opt/streaming/streaming-monorepo`, `--remote-path`                                                                                                        | `web2-admin-<profile>`, `web2-admin-default` without a profile | `pg-data`                     |
+| Admin                 | `/opt/streaming/streaming-monorepo`, `--remote-path`                                                                                                        | `web2-admin-<profile>`, `web2-admin-default` without a profile | `pg-data`, `exports`          |
 | Edge                  | `deploy/edge/` under the admin's folder, `--remote-path`                                                                                                    | `edge`                                                         | `caddy-data`, `caddy-config`  |
 | Manager               | `/opt/streaming/streaming-infra-manager`, `MANAGER_ROOT` in `manager/.env`                                                                                  | `manager`                                                      | `manager-pg`                  |
 | The manager's stacks  | `/opt/streaming/streaming-infra-manager-versions` and `/opt/streaming/streaming-infra-manager-data/<deployment>`, `STACK_VERSIONS_ROOT` and `BEE_DATA_ROOT` |                                                                |                               |
