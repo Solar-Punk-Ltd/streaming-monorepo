@@ -39,7 +39,7 @@ async function stream(title: string): Promise<string> {
     topic: randomUUID(),
     owner: OWNER,
     title,
-    description: '',
+    description: 'An itest stream for the export repository.',
     tags: [],
     media_type: 'video',
     scheduled_start_time: null,
