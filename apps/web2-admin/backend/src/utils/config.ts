@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import os from 'node:os';
+import path from 'node:path';
 
 import { PrivateKey } from '@ethersphere/bee-js';
 import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
@@ -59,6 +61,9 @@ function requiredSecret(name: string, minLength: number): string {
   return value;
 }
 
+export const EXPORT_PARALLEL_READS_DEFAULT = 6;
+export const EXPORT_PARALLEL_READS_MAX = 32;
+
 const PRIVATE_KEY_RE = /^0x[0-9a-fA-F]{64}$/;
 
 export type FeedGatewayKind = 'bee' | 'fake';
@@ -107,6 +112,14 @@ export interface AppConfig {
    * key itself, so an old encoder profile cannot bring the stream back by mistake (StreamFinishService).
    */
   streamRestartWindowMinutes: number;
+  /**
+   * `EXPORT_DIR`: where exported recordings are kept, one folder per export, named by its id. Only folders named that
+   * way are ever deleted in it. Unset, a folder in the system's temporary directory, which suits development; the
+   * production compose file sets it to the volume it mounts.
+   */
+  exportDir: string;
+  /** `EXPORT_PARALLEL_READS`: how many segments an export reads from the node at once, 6 unless set, 1 to 32. */
+  exportParallelReads: number;
   /**
    * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
    * api image. Signed-in users read it at GET /api/version.
@@ -201,6 +214,17 @@ function streamRestartWindowMinutes(): number {
   return minutes;
 }
 
+/** EXPORT_PARALLEL_READS, or the start stops with a sentence that names it. Digits only, as the restart window. */
+function exportParallelReads(): number {
+  const name = 'EXPORT_PARALLEL_READS';
+  const raw = optional(name, String(EXPORT_PARALLEL_READS_DEFAULT)).trim();
+  const reads = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(reads >= 1 && reads <= EXPORT_PARALLEL_READS_MAX)) {
+    throw new Error(`Env var ${name} must be a whole number from 1 to ${EXPORT_PARALLEL_READS_MAX}, got: ${raw}`);
+  }
+  return reads;
+}
+
 export const config: AppConfig = {
   port: optionalNumber('WEB2_ADMIN_PORT', 9877),
   host: optional('WEB2_ADMIN_HOST', '0.0.0.0'),
@@ -214,5 +238,7 @@ export const config: AppConfig = {
   brandWalletSecret: brandWalletSecret(),
   managerFunding: managerFunding(),
   streamRestartWindowMinutes: streamRestartWindowMinutes(),
+  exportDir: optional('EXPORT_DIR', path.join(os.tmpdir(), 'web2-admin-exports')),
+  exportParallelReads: exportParallelReads(),
   version: versionFrom(process.env),
 };

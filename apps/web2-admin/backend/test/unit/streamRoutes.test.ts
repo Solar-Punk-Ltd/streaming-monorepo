@@ -35,6 +35,7 @@ import { StreamFinishService } from '../../src/domain/StreamFinishService.js';
 import { PublishService } from '../../src/domain/PublishService.js';
 import { splitStageRecord } from '../../src/domain/StageService.js';
 import { StreamService } from '../../src/domain/StreamService.js';
+import type { ExportService } from '../../src/domain/export/ExportService.js';
 
 import {
   InMemoryCredentialRepository,
@@ -123,6 +124,8 @@ before(async () => {
       publishService,
       ingestService: new IngestService(store, stages, audit),
       streamFinishService: new StreamFinishService(store, new IngestService(store, stages, audit), audit, 30),
+      // These suites do not export; exportRoutes.test.ts covers the export routes.
+      exportService: {} as ExportService,
       requireAuth,
     }),
   );

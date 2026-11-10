@@ -1,6 +1,6 @@
 import http from 'node:http';
 
-import { FUNDING_PATH, VERSION_PATH, type VersionInfo } from '@streaming-monorepo/web2-admin-common';
+import { EXPORT_PATH, FUNDING_PATH, VERSION_PATH, type VersionInfo } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
@@ -8,6 +8,7 @@ import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
 import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
 import type { ConsoleSettingsService } from '../domain/ConsoleSettingsService.js';
 import { Database } from '../domain/Database.js';
+import type { ExportService } from '../domain/export/ExportService.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import type { FundingService } from '../domain/funding/FundingService.js';
 import { IngestService } from '../domain/IngestService.js';
@@ -28,6 +29,7 @@ import { requireSameSite } from './middleware/requireSameSite.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createConfigRouter } from './routes/config.js';
+import { createExportRouter } from './routes/exports.js';
 import { createFeedRouter } from './routes/feed.js';
 import { createFundingRouter } from './routes/funding.js';
 import { createHealthRouter } from './routes/health.js';
@@ -54,6 +56,8 @@ export interface ApiDeps {
   catalogueBatch: CatalogueBatchService;
   /** Moving the catalogue's history onto another batch, started from the Stages page. */
   catalogueMove: CatalogueMoveService;
+  /** Exporting a recording into an MP4, one at a time, kept on the server until the next one starts. */
+  exportService: ExportService;
   /**
    * The Funding page: the brand wallet, the nodes' pins, and the sends, stamp operations and chequebook operations
    * relayed through the manager.
@@ -146,9 +150,11 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       publishService: deps.publishService,
       ingestService: deps.ingestService,
       streamFinishService: deps.streamFinishService,
+      exportService: deps.exportService,
       requireAuth,
     }),
   );
+  app.use(EXPORT_PATH, createExportRouter({ exportService: deps.exportService, requireAuth }));
   app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
   app.use(
     '/api/catalogue-stamp',

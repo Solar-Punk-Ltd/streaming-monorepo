@@ -9,6 +9,8 @@ export {
 } from '@streaming-monorepo/web-auth';
 export { CatalogueMoveRefusedError } from './CatalogueMoveRefusedError.js';
 export { CatalogueStampUnavailableError } from './CatalogueStampUnavailableError.js';
+export { ExportNotFoundError } from './ExportNotFoundError.js';
+export { ExportRefusedError } from './ExportRefusedError.js';
 export { FeedFormatError } from './FeedFormatError.js';
 export { FeedOwnerMismatchError } from './FeedOwnerMismatchError.js';
 export { FundingBulkNotFoundError } from './FundingBulkNotFoundError.js';

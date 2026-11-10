@@ -1,5 +1,6 @@
 import {
   STREAM_LIMITS,
+  type ExportStartRequest,
   type Stream,
   type StreamFinishAnswer,
   type StreamListResponse,
@@ -7,10 +8,12 @@ import {
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
+import type { ExportService } from '../../domain/export/ExportService.js';
 import { IngestService } from '../../domain/IngestService.js';
 import { PublishService } from '../../domain/PublishService.js';
 import { StreamFinishService } from '../../domain/StreamFinishService.js';
 import { normaliseThumbnailMime, StreamService } from '../../domain/StreamService.js';
+import { exportStartSchema } from '../../schemas/export.js';
 import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
 import { THUMBNAIL_MIME_TYPES } from '../../types/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -24,6 +27,8 @@ export interface StreamRoutesDeps {
   ingestService: IngestService;
   /** Finish: the key changes for good, allowed to whoever may rotate a key. */
   streamFinishService: StreamFinishService;
+  /** Exporting a recording: the panel's options, and the start. The export itself lives under `/api/export`. */
+  exportService: ExportService;
   requireAuth: RequestHandler;
 }
 
@@ -49,7 +54,7 @@ function streamId(req: Request): string {
 }
 
 export function createStreamsRouter(deps: StreamRoutesDeps): Router {
-  const { streamService, publishService, ingestService, streamFinishService, requireAuth } = deps;
+  const { streamService, publishService, ingestService, streamFinishService, exportService, requireAuth } = deps;
   const router = Router();
 
   router.use(requireAuth);
@@ -188,6 +193,28 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
       const { stream, ingest } = await streamFinishService.finish(actorOf(req), streamId(req));
       const answer: StreamFinishAnswer = { stream: toStream(stream), ingest };
       res.json(answer);
+    }),
+  );
+
+  // Exporting the recording into an MP4. GET answers what the panel offers: the qualities with their estimated sizes,
+  // why none can start now if so, and the export on the server. POST starts one, 409 with the sentence when it
+  // cannot (ExportRefusedError), and answers the export as it starts.
+  router.get(
+    '/:id/export',
+    validateParams(streamIdParamSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      res.set('Cache-Control', 'no-store');
+      res.json(await exportService.optionsFor(streamId(req), actorOf(req).userId));
+    }),
+  );
+
+  router.post(
+    '/:id/export',
+    validateParams(streamIdParamSchema),
+    validateBody(exportStartSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { rendition } = req.body as ExportStartRequest;
+      res.status(201).json(await exportService.start(actorOf(req), streamId(req), rendition));
     }),
   );
 
