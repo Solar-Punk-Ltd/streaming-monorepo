@@ -45,6 +45,13 @@ RUN pnpm deploy --legacy --filter=@streaming-monorepo/web2-admin-backend --prod 
 FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
 WORKDIR /app
 
+# ffmpeg joins an exported recording's segments into an MP4 (docs/architecture/web2-admin.md, "Exporting a
+# recording"), from the Alpine release this base image pins. The exports folder is made here, owned by the user the
+# API runs as, because a named volume mounted on it starts out with the folder's owner.
+RUN apk add --no-cache ffmpeg \
+ && mkdir -p /var/lib/web2-admin/exports \
+ && chown node:node /var/lib/web2-admin/exports
+
 COPY --from=build /out ./
 
 ENV NODE_ENV=production
@@ -52,7 +59,8 @@ ENV NODE_ENV=production
 # condition points every node process here, the CLI included, at the compiled copy.
 ENV NODE_OPTIONS=--conditions=compiled
 EXPOSE 9877
-# The server writes nothing to disk, so it needs none of root's rights. The node image ships this user.
+# The server writes nothing to disk but exports, in the folder above, so it needs none of root's rights. The node image
+# ships this user.
 USER node
 CMD ["node", "dist/index.js"]
 
