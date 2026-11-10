@@ -1735,9 +1735,10 @@ says why it is shaped this way.
   broadcast started in UTC, and the quality: `opening-keynote-2026-11-05-1080p.mp4`.
   A single-quality recording ends in its height as ffprobe reads it, and a file
   saved from part of the recording ends in `-partial`.
-- **The disk.** A start is refused (`disk`) when the free disk is less than
-  twice the estimated size, for the segments and the MP4, plus 512 MiB kept
-  free. Running short while it reads pauses it.
+- **The disk.** An export keeps 10% of the disk free. A start is refused
+  (`disk`) when the room beyond that is less than twice the estimated size, for
+  the segments and the MP4, and reading or joining pauses when the free disk
+  falls under it.
 
 An export never fails. Anything that stops it pauses it with a reason, and a
 user decides; the console brings the panel to front for the user who started

@@ -85,7 +85,7 @@ before(async () => {
     source,
     new FakeJoiner(),
     audit,
-    { dir, parallelReads: 2, retryDelaysMs: [], minFreeBytes: 0, disk: { freeBytes: async () => 1e12 } },
+    { dir, parallelReads: 2, retryDelaysMs: [], disk: { space: async () => ({ free: 1e12, total: 1e12 }) } },
   );
 
   const app = express();
