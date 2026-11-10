@@ -383,6 +383,26 @@ docker compose -p web2-admin-brand-a -f deploy/docker-compose.yml --env-file bac
 check and clean a profile with compose by hand. `down -v` deletes the profile's
 database.
 
+## Exported recordings
+
+Users export a recording from its stream's page into an MP4
+([Exporting a recording](../backend/README.md#exporting-a-recording)). The API
+image carries ffmpeg for it, and the files live in the volume `exports`
+(`web2-admin-<profile>_exports` on the host), which the compose file mounts at
+`/var/lib/web2-admin/exports` and names in `EXPORT_DIR`, whatever the env file
+says.
+
+- **Disk.** One export runs at a time, and its file is kept until the next one
+  starts. While one runs it needs twice the recording's size, for the segments
+  and the MP4: about 13 GB for three hours at 1080p. A start is refused when
+  the disk is shorter than that.
+- **The node.** Exports read through the catalogue node the manager designated,
+  so they need nothing in the env file. Without a designated node every start is
+  refused with the reason.
+- **The download.** The console's nginx passes the file on as it comes, without
+  buffering it, and the browser can resume a download that stopped.
+- `down -v` deletes the kept file with the database. A redeploy keeps both.
+
 ## Public HTTPS: the host's edge
 
 One Caddy per host serves the consoles that host publishes on its loopback,

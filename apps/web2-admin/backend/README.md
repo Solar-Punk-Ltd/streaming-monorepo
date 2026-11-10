@@ -120,6 +120,8 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it                                                                                                    |
 | `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Try it on a scratch node before turning it on                                                                                                       |
 | `STREAM_RESTART_WINDOW_MINUTES`       | `30`               | how long after a stream ends it can go live again on its key: a whole number of minutes from 0 to 10080, or the start stops. Then the admin changes the key. 0 changes it as soon as the stream ends: [Finalizing a stream](#finalizing-a-stream) |
+| `EXPORT_DIR`                          | a temporary folder | where exported recordings are kept, one folder per export named by its id; only such folders are ever deleted in it. The production compose file sets it to the `exports` volume: [Exporting a recording](#exporting-a-recording)                 |
+| `EXPORT_PARALLEL_READS`               | `6`                | how many segments an export reads from the catalogue node at once, a whole number from 1 to 32, or the start stops                                                                                                                                |
 | `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                          |
 | `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                   |
 | `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                                                                                                                    |
@@ -131,7 +133,9 @@ There is no ingest setting, no Bee node and no postage batch among these. Each
 stream's OBS details come from the stage it is broadcast on, as the manager
 pushed it ([A stream's stage](#a-streams-stage)), and the catalogue is written
 through the catalogue node and batch the manager pushes
-([Where the catalogue is written](#where-the-catalogue-is-written)).
+([Where the catalogue is written](#where-the-catalogue-is-written)). An export
+reads recordings through that same node
+([Exporting a recording](#exporting-a-recording)).
 
 ### Retired keys
 
@@ -269,6 +273,8 @@ reasons in `errors`.
 | POST   | `/api/streams/:id/unpublish`         | `PublishResult`, the stream back in `draft`                                                                                                                                                                                                                                                             |
 | GET    | `/api/streams/:id/ingest`            | `IngestDetails`: what goes in OBS ([A stream's stage](#a-streams-stage))                                                                                                                                                                                                                                |
 | POST   | `/api/streams/:id/ingest/rotate-key` | `IngestDetails` with a new publish key                                                                                                                                                                                                                                                                  |
+| GET    | `/api/streams/:id/export`            | `ExportOptionsResponse`: the qualities a recording can be exported in, highest first, with estimated sizes, why no export can start now, and the export on the server ([Exporting a recording](#exporting-a-recording))                                                                                 |
+| POST   | `/api/streams/:id/export`            | `ExportStartRequest` in (`rendition`: a rung's name, or `source`), `201` with the `ExportSummary`. `409 export_refused` with `problem` and the sentence when it cannot start                                                                                                                            |
 | POST   | `/api/feed/reconcile`                | `FeedReconcileResult` ([POST /api/feed/reconcile](#post-apifeedreconcile))                                                                                                                                                                                                                              |
 
 The stage, catalogue and funding routes are listed with what they do:
@@ -1694,6 +1700,79 @@ when the item first comes to that state, with its hash ([Audit log](#audit-log))
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the available balance the move was worked out from: of the page's and the one read for the request, the larger for a deposit and the smaller for a withdrawal), `state`, `tx_hash`, `error`, `mined` (migration 020: whether a submitted item's move is mined and its block not final yet, false by default), `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk. The move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
 
+## Exporting a recording
+
+A user exports a finished recording, published or not, from its stream's page:
+one quality of it, read from Swarm and joined into an MP4 on this server, then
+saved from the console. `src/domain/export/` is the code;
+[the admin's architecture page](../../../docs/architecture/web2-admin.md#exporting-a-recording)
+says why it is shaped this way.
+
+- **One at a time, for the whole admin.** While an export is reading, joining,
+  paused or waiting, no other can start, for any stream, by any user
+  (`409 export_refused`, problem `busy`). `stream_exports` (migration 023)
+  holds at most one row, and a unique column refuses a second.
+- **The kept file.** A finished export stays on the server, for every user to
+  save, until the next export starts and deletes it. Saving it reads nothing
+  from Swarm.
+- **Where it reads.** Through the catalogue node, the node the catalogue is
+  read through (`CatalogueBatchService.forRead`). With none designated, every
+  start is refused with problem `no_node`.
+- **What it reads.** The recording playlist of the chosen quality, from the
+  feed slot the admin recorded for it: the rung's `manifest_index` in
+  `stream_renditions`, or the stream's own for a recording with one quality.
+  Then every segment it names, `EXPORT_PARALLEL_READS` at a time, each retried
+  a few times. Gap entries are skipped. Only the Swarm reference of each
+  segment is read, through the node: a playlist that names any other address is
+  refused, and the host an old playlist names is never called.
+- **How it joins.** ffmpeg copies the segments into an MP4, with `+faststart`
+  and nothing re-encoded. The segments of one session go in as they are; a seam
+  between sessions, or a missing stretch, starts a new run, and the runs are
+  joined one after the other, so a missing stretch becomes a cut. ffmpeg reads
+  only local files. Without ffmpeg every start is refused with problem
+  `no_ffmpeg`.
+- **The name.** The stream's title in plain letters and digits, the day the
+  broadcast started in UTC, and the quality: `opening-keynote-2026-11-05-1080p.mp4`.
+  A single-quality recording ends in its height as ffprobe reads it, and a file
+  saved from part of the recording ends in `-partial`.
+- **The disk.** A start is refused (`disk`) when the free disk is less than
+  twice the estimated size, for the segments and the MP4, plus 512 MiB kept
+  free. Running short while it reads pauses it.
+
+An export never fails. Anything that stops it pauses it with a reason, and a
+user decides; the console brings the panel to front for the user who started
+it.
+
+| Pause reason | When                                                                                       | What a user can do                                   |
+| ------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `user`       | someone pressed Pause                                                                      | resume, save what's read, cancel                     |
+| `unreadable` | segments could not be read after retries; the message says how many                        | resume (tries them again), save without them, cancel |
+| `live`       | the stream went live again, so its recording is changing                                   | save what's read, wait, cancel                       |
+| `disk`       | the free disk ran short                                                                    | resume, cancel                                       |
+| `problem`    | anything else, in the message: no node, a playlist that cannot be read, a join that failed | resume (tries again), save what's read, cancel       |
+
+**Wait** leaves the export `waiting`; it carries on by itself once the stream is
+a recording again, from the new playlist, which carries the earlier sessions
+too. The segments are kept on disk by reference, so nothing already read is
+read again, after a pause, a wait or a restart. A restart carries on with an
+export left reading or joining. **Save what's read** joins what was read now,
+marked partial. **Cancel** deletes everything the export read.
+
+Each export has a folder in `EXPORT_DIR`, named by its id: `segments/`, the
+playlist as read, and at the end `export.mp4` alone. At boot, and when an
+export starts, folders no export names are deleted.
+
+| Method | Path                      | Answer                                                                                                                                                                                                                                                                                                                        |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/export`             | `ExportCurrentResponse`: the export on the server, as the user asking sees it (`startedByYou`, `dismissed`, and the `actions` it allows now), or null. Every signed-in user sees the same one                                                                                                                                 |
+| POST   | `/api/export/:id/actions` | `ExportActionRequest` in: `pause`, `resume`, `wait`, `save`, `cancel`, or `dismiss`, which closes a finished export's widget for the user who asks. `ExportCurrentResponse` out, null after a cancel. `409 export_refused` (`not_now`) for an action the export is not in a state for, `404 export_not_found` once it is gone |
+| GET    | `/api/export/:id/file`    | the finished MP4 as an attachment under its file name, with ranges, so a browser can resume a download. `X-Accel-Buffering: no` lets the console's nginx pass it on as it comes. `404 export_not_found` when there is no such file                                                                                            |
+
+The audit log records `export.start`, `export.pause`, `export.resume`,
+`export.wait`, `export.save`, `export.cancel` and `export.file` (a save of the
+file from its start) by the user, and `export.paused` and `export.done` by the
+system.
+
 ## Migrations
 
 The schema is the files in `src/migrations/`, named `NNN_name.sql`. They are
@@ -1727,6 +1806,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `020_funding_chequebook_mined.sql`      | that journal's `mined`, whether a submitted move is mined and waits for its block to be final                                                                                                     |
 | `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                              |
 | `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                 |
+| `023_stream_exports.sql`                | `stream_exports`, the one export on the server, and `stream_export_dismissals`, who closed a finished export's widget ([Exporting a recording](#exporting-a-recording))                           |
 
 ## Audit log
 
@@ -1840,7 +1920,9 @@ its `targetPlur`, and each item's request id, node, label, direction, amount
 and the available balance the move was worked out from), and
 `funding.chequebook.confirmed` and `funding.chequebook.failed`, each with the
 item's bulk, request id, node, label, direction, amount, target, that
-available balance, hash, state and error.
+available balance, hash, state and error. Exporting a recording adds the
+`export.*` actions ([Exporting a recording](#exporting-a-recording)), each with
+the export's id and rendition.
 
 The log can also hold `console.theme.set` rows, which older versions of the
 admin wrote for each change of the host's default look

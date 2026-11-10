@@ -73,6 +73,10 @@ the feed following and the ladder marker layout in its `src/shared/`. So a chang
 format, the playlist feeds or the marker layout must land in stream-event-client's `src/shared/`
 too.
 
+Inside this repository, the admin reads the recording playlists as well, to export a recording into
+an MP4 (`apps/web2-admin/backend/src/domain/export/playlist.ts`), so a change to the playlist format
+changes it in the same pull request.
+
 ## The three kinds of host
 
 A host is a Linux machine with Docker on it. One machine can carry every role, or each role can have
@@ -83,7 +87,7 @@ machines of its own.
   the viewer page and a gateway node.
 - **Bee host**: the Bee nodes of an ABR node pool, one per quality rung, which the uploaders on stage
   hosts publish through, and the brand's catalogue node, which the admin on the control host
-  writes the catalogue through.
+  writes the catalogue through and reads recordings through to export them.
 
 [The self-hosting guide](../self-hosting.md) says how to set up each one.
 
