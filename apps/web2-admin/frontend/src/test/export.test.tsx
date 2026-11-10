@@ -154,6 +154,9 @@ describe('exporting a recording', () => {
     });
     expect(await within(panel).findByRole('button', { name: 'Pause' })).toBeInTheDocument();
     expect(within(panel).getByText(/started by you/)).toBeInTheDocument();
+    // The widget shows the running export with the panel open too; the open dialog hides the page from
+    // assistive technology, as a modal does, so it is found among the hidden.
+    expect(screen.getByRole('status', { name: 'export', hidden: true })).toHaveTextContent('Opening keynote · 720p');
   });
 
   it('brings the panel to front for the user who started an export that paused on unreadable segments', async () => {

@@ -10,13 +10,14 @@ import { needsDecision, percentRead, widgetLine } from './exportText';
 import { useExport } from './ExportProvider';
 
 /**
- * The export on the server, floating in the top right of every page, for every signed-in user, while the panel is
- * closed. Clicking it opens the panel. It stays until the export is done and each user closes it for themselves.
+ * The export on the server, floating in the top right of every page for every signed-in user, from the moment it
+ * starts, the panel open or not. Clicking it opens the panel. Once the export is done it says so, with Save file, and
+ * stays until each user closes it for themselves.
  */
 export function ExportWidget() {
-  const { current, panel, openPanel, act } = useExport();
+  const { current, openPanel, act } = useExport();
   const snackbar = useSnackbar();
-  if (!current || panel.open) return null;
+  if (!current) return null;
   const active = EXPORT_ACTIVE_STATES.includes(current.state);
   if (!active && current.dismissed) return null;
   const decision = needsDecision(current);
