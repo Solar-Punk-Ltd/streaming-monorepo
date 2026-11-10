@@ -48,6 +48,14 @@
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
  *
+ * Exporting a recording works as the API holds it: one export at a time, read
+ * for 45 seconds and joined for 5, then kept until the next one starts. Every
+ * start seeds one, of the first seeded recording, MOCK_EXPORT deciding which: `running`, the default, is a 720p export another user started, so the
+ * widget shows it moving; `paused` is one the seeded user started, which pauses
+ * at once on segments it could not read, so the panel comes to front, and every
+ * export started from the panel pauses the same way part-way; `done` is a kept
+ * file; `off` seeds none. Save file answers a stand-in file, not a video.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -1123,6 +1131,214 @@ function stageUnavailable(res, stageId) {
   });
 }
 
+// --- exporting a recording ---------------------------------------------------
+
+/** How long the mock export reads, then joins: long enough to watch the widget move, short enough to wait for. */
+const EXPORT_READ_MS = 45_000;
+const EXPORT_JOIN_MS = 5_000;
+/** Segments a paused-as-unreadable export says it could not read. */
+const EXPORT_MISSING = 3;
+/** The qualities offered, with the bitrate each is estimated at, in bits a second. */
+const EXPORT_QUALITIES = [
+  { rendition: '1080p', width: 1920, height: 1080, bitrate: 4_500_000 },
+  { rendition: '720p', width: 1280, height: 720, bitrate: 2_800_000 },
+  { rendition: '480p', width: 854, height: 480, bitrate: 1_400_000 },
+  { rendition: '360p', width: 640, height: 360, bitrate: 800_000 },
+];
+const EXPORT_OTHER_USER = { id: randomUUID(), username: 'another-operator' };
+const MOCK_EXPORT = process.env.MOCK_EXPORT ?? 'running';
+
+/** The one export on the server, or null, as the API holds it. */
+let mockExport = null;
+
+function exportSlug(title) {
+  const slug = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'stream';
+}
+
+function newExport(row, rendition, startedBy, extra = {}) {
+  const quality = EXPORT_QUALITIES.find((q) => q.rendition === rendition) ?? EXPORT_QUALITIES[0];
+  const seconds = row.durationSeconds ?? 3600;
+  return {
+    id: randomUUID(),
+    streamId: row.id,
+    rendition: quality.rendition,
+    quality: quality.rendition,
+    state: 'reading',
+    pauseReason: null,
+    pauseMessage: null,
+    pausedAt: null,
+    segmentsTotal: Math.ceil(seconds / 2),
+    estimatedBytes: Math.round((quality.bitrate * seconds) / 8),
+    durationSeconds: seconds,
+    readMs: 0,
+    since: Date.now(),
+    failAt: null,
+    fileName: null,
+    sizeBytes: null,
+    partial: false,
+    finishedAt: null,
+    startedBy: startedBy.username,
+    startedByUserId: startedBy.id,
+    startedAt: new Date().toISOString(),
+    dismissedBy: new Set(),
+    ...extra,
+  };
+}
+
+function readFraction(e, now = Date.now()) {
+  return Math.min(1, (e.readMs + (e.state === 'reading' ? now - e.since : 0)) / EXPORT_READ_MS);
+}
+
+function pauseExport(e, reason, message, now = Date.now()) {
+  e.readMs = readFraction(e, now) * EXPORT_READ_MS;
+  Object.assign(e, {
+    state: 'paused',
+    pauseReason: reason,
+    pauseMessage: message,
+    pausedAt: new Date(now).toISOString(),
+  });
+}
+
+function finishExport(e, now = Date.now()) {
+  const row = streams.get(e.streamId);
+  const day = (row?.liveSince ?? row?.scheduledStartTime ?? new Date(now).toISOString()).slice(0, 10);
+  Object.assign(e, {
+    state: 'done',
+    fileName: `${exportSlug(row?.title ?? 'stream')}-${day}-${e.quality}${e.partial ? '-partial' : ''}.mp4`,
+    sizeBytes: Math.round(e.estimatedBytes * (e.partial ? readFraction(e, now) : 1)),
+    finishedAt: new Date(now).toISOString(),
+  });
+}
+
+/** Moves the export on by the clock: reading, then joining, then done; `failAt` pauses it there as unreadable. */
+function settleExport(now = Date.now()) {
+  const e = mockExport;
+  if (!e) return;
+  if (e.state === 'reading') {
+    const fraction = readFraction(e, now);
+    if (e.failAt !== null && fraction >= e.failAt) {
+      pauseExport(
+        e,
+        'unreadable',
+        `${EXPORT_MISSING} of ${e.segmentsTotal} segments could not be read from Swarm.`,
+        now,
+      );
+      return;
+    }
+    if (fraction >= 1) Object.assign(e, { readMs: EXPORT_READ_MS, state: 'joining', since: now });
+  }
+  if (e.state === 'joining' && now - e.since >= EXPORT_JOIN_MS) finishExport(e, now);
+}
+
+function exportActions(e, dismissed) {
+  const save = Math.floor(readFraction(e) * e.segmentsTotal) > 0 ? ['save'] : [];
+  switch (e.state) {
+    case 'reading':
+      return ['pause', 'cancel'];
+    case 'joining':
+      return ['cancel'];
+    case 'waiting':
+      return [...save, 'cancel'];
+    case 'paused':
+      if (e.pauseReason === 'live') return [...save, 'wait', 'cancel'];
+      if (e.pauseReason === 'disk') return ['resume', 'cancel'];
+      return ['resume', ...save, 'cancel'];
+    default:
+      return dismissed ? [] : ['dismiss'];
+  }
+}
+
+function exportSummary(e, user) {
+  const row = e ? streams.get(e.streamId) : null;
+  if (!e || !row) return null;
+  const fraction = readFraction(e);
+  const missing = e.pauseReason === 'unreadable' ? EXPORT_MISSING : 0;
+  const dismissed = e.dismissedBy.has(user.id);
+  return {
+    id: e.id,
+    streamId: e.streamId,
+    streamTitle: row.title,
+    rendition: e.rendition,
+    quality: e.quality,
+    state: e.state,
+    pauseReason: e.pauseReason,
+    pauseMessage: e.pauseMessage,
+    pausedAt: e.pausedAt,
+    segmentsTotal: e.segmentsTotal,
+    segmentsRead: Math.max(0, Math.floor(fraction * e.segmentsTotal) - missing),
+    segmentsMissing: missing,
+    bytesRead: Math.round(fraction * e.estimatedBytes),
+    estimatedBytes: e.estimatedBytes,
+    durationSeconds: e.durationSeconds,
+    fileName: e.fileName,
+    sizeBytes: e.sizeBytes,
+    partial: e.partial,
+    startedBy: e.startedBy,
+    startedByYou: user.id === e.startedByUserId,
+    startedAt: e.startedAt,
+    finishedAt: e.finishedAt,
+    dismissed,
+    actions: exportActions(e, dismissed),
+  };
+}
+
+function exportRefusal(row) {
+  if (!((row.status === 'vod' || row.status === 'draft') && row.manifestIndex !== null)) {
+    return {
+      problem: 'not_recording',
+      message: `Only a finished recording can be exported, and this stream is ${row.status}.`,
+    };
+  }
+  if (mockExport && mockExport.state !== 'done') {
+    const title = streams.get(mockExport.streamId)?.title ?? 'a stream';
+    return {
+      problem: 'busy',
+      message: `The export of "${title}" (${mockExport.quality}) is not finished, started by ${mockExport.startedBy}. One export runs at a time.`,
+    };
+  }
+  return null;
+}
+
+function exportOptions(row, user) {
+  const seconds = row.durationSeconds ?? null;
+  return {
+    streamId: row.id,
+    title: row.title,
+    date: (row.liveSince ?? row.scheduledStartTime ?? '').slice(0, 10) || null,
+    durationSeconds: seconds,
+    qualities: EXPORT_QUALITIES.map((q) => ({
+      rendition: q.rendition,
+      label: q.rendition,
+      width: q.width,
+      height: q.height,
+      durationSeconds: seconds,
+      estimatedBytes: seconds ? Math.round((q.bitrate * seconds) / 8) : null,
+      unavailable: null,
+    })),
+    refusal: exportRefusal(row),
+    current: exportSummary(mockExport, user),
+  };
+}
+
+{
+  const recording = [...streams.values()].find((r) => r.status === 'vod' && r.manifestIndex !== null);
+  const seeded = [...users.values()][0] ?? null;
+  if (recording && MOCK_EXPORT === 'paused' && seeded) {
+    mockExport = newExport(recording, '1080p', seeded, { failAt: 0.05 });
+  } else if (recording && MOCK_EXPORT === 'done') {
+    mockExport = newExport(recording, '1080p', EXPORT_OTHER_USER);
+    finishExport(mockExport);
+  } else if (recording && MOCK_EXPORT !== 'off') {
+    mockExport = newExport(recording, '720p', EXPORT_OTHER_USER);
+  }
+}
+
 const server = createServer((req, res) => {
   void handle(req, res).catch((e) => {
     send(res, 500, { error: 'internal_error', message: String(e) });
@@ -1209,6 +1425,50 @@ async function handle(req, res) {
 
   // Nothing deployed this, so it is what the API answers outside a deploy: a development build.
   if (path === '/api/version' && method === 'GET') return send(res, 200, { label: null, commit: null });
+
+  // Exporting a recording: the export on the server, what can be done to it, and its file.
+  if (path === '/api/export' || path.startsWith('/api/export/')) settleExport();
+  if (path === '/api/export' && method === 'GET') {
+    return send(res, 200, { export: exportSummary(mockExport, user) }, { 'cache-control': 'no-store' });
+  }
+  const exportRoute = /^\/api\/export\/([^/]+)\/(actions|file)$/.exec(path);
+  if (exportRoute) {
+    const e = mockExport;
+    if (!e || e.id !== exportRoute[1]) return send(res, 404, { error: 'export_not_found', id: exportRoute[1] });
+    if (exportRoute[2] === 'file' && method === 'GET') {
+      if (e.state !== 'done') return send(res, 404, { error: 'export_not_found', id: e.id });
+      const body = Buffer.from('The mock API exports no video: this file only stands in for the MP4.\n');
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-length': body.length,
+        'content-disposition': `attachment; filename="${e.fileName}"`,
+        'cache-control': 'no-store',
+      });
+      return res.end(body);
+    }
+    if (exportRoute[2] === 'actions' && method === 'POST') {
+      const { action } = await readJson(req);
+      if (!exportActions(e, e.dismissedBy.has(user.id)).includes(action)) {
+        return send(res, 409, {
+          error: 'export_refused',
+          problem: 'not_now',
+          message: `The export cannot ${action} now.`,
+        });
+      }
+      const now = Date.now();
+      const cleared = { pauseReason: null, pauseMessage: null, pausedAt: null };
+      if (action === 'pause') pauseExport(e, 'user', `Paused by ${user.username}.`, now);
+      if (action === 'resume') Object.assign(e, { state: 'reading', since: now, failAt: null, ...cleared });
+      if (action === 'wait') Object.assign(e, { state: 'waiting', ...cleared });
+      if (action === 'save') {
+        e.partial = readFraction(e, now) < 1 || e.pauseReason === 'unreadable';
+        Object.assign(e, { state: 'joining', since: now, ...cleared });
+      }
+      if (action === 'dismiss') e.dismissedBy.add(user.id);
+      if (action === 'cancel') mockExport = null;
+      return send(res, 200, { export: exportSummary(mockExport, user) });
+    }
+  }
 
   if (path === '/api/auth/users' && method === 'GET') {
     return send(res, 200, { users: [...users.values()].map(summarise) });
@@ -1499,6 +1759,27 @@ async function handle(req, res) {
 
   if (sub === '' && method === 'GET') return send(res, 200, publicStream(row));
 
+  if (sub === '/export' && method === 'GET') {
+    settleExport();
+    return send(res, 200, exportOptions(row, user), { 'cache-control': 'no-store' });
+  }
+
+  if (sub === '/export' && method === 'POST') {
+    settleExport();
+    const refusal = exportRefusal(row);
+    if (refusal) return send(res, 409, { error: 'export_refused', ...refusal });
+    const { rendition } = await readJson(req);
+    if (!EXPORT_QUALITIES.some((q) => q.rendition === rendition)) {
+      return send(res, 409, {
+        error: 'export_refused',
+        problem: 'quality_unavailable',
+        message: `This recording has no ${rendition}.`,
+      });
+    }
+    mockExport = newExport(row, rendition, user, { failAt: MOCK_EXPORT === 'paused' ? 0.6 : null });
+    return send(res, 201, exportSummary(mockExport, user));
+  }
+
   if (sub === '' && method === 'PUT') {
     if (row.status === 'publishing') return send(res, 409, { error: 'stream_busy' });
     const input = await readJson(req);
@@ -1530,6 +1811,8 @@ async function handle(req, res) {
       return send(res, 409, { error: 'stream_published' });
     }
     streams.delete(row.id);
+    // Its export goes with it, as the API's foreign key takes it.
+    if (mockExport?.streamId === row.id) mockExport = null;
     res.writeHead(204);
     return res.end();
   }
