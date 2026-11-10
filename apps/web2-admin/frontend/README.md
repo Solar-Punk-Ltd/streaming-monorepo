@@ -268,10 +268,11 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   be read, and Try again after another problem; Save what's read, or Save without them; Wait until
   it finishes, when the stream went live again; and Cancel export, which asks first, since
   everything read so far is deleted. Once it is done, Save file.
-- **The widget.** While the panel is closed, the export floats in the top right of every page for
-  every signed-in user, with its stream, quality and progress. Clicking it opens the panel. It says
-  "Paused: needs a decision" when a pause asks for one. A finished export shows Save file and a
-  close button, and each user closes it for themselves.
+- **The widget.** From the moment an export starts, it floats in the top right of every page for
+  every signed-in user, the panel open or not, with its stream, quality and progress. Clicking it
+  opens the panel. It says "Paused: needs a decision" when a pause asks for one. A finished export
+  shows that it is ready, with Save file and a close button, and each user closes it for
+  themselves.
 - **Coming to front.** When an export pauses for a decision, the panel opens by itself for the user
   who started it, if they are signed in, once per pause. Everyone else sees the widget say so.
 - **Saving.** Save file is a plain link to the file, which the browser saves under the name the API
