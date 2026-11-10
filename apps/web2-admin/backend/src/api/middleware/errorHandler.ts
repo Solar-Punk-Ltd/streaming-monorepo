@@ -8,6 +8,8 @@ import {
   CatalogueMoveRefusedError,
   CatalogueStampUnavailableError,
   CrossSiteRequestError,
+  ExportNotFoundError,
+  ExportRefusedError,
   FeedOwnerMismatchError,
   FundingBulkNotFoundError,
   FundingBusyError,
@@ -224,6 +226,14 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof CatalogueMoveRefusedError) {
     res.status(409).json({ error: 'catalogue_move_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof ExportRefusedError) {
+    res.status(409).json({ error: 'export_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof ExportNotFoundError) {
+    res.status(404).json({ error: 'export_not_found', id: err.exportId });
     return;
   }
   if (err instanceof CatalogueStampUnavailableError) {

@@ -12,6 +12,10 @@ import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
 import { CatalogueMoveService } from './domain/CatalogueMove.js';
 import { CatalogueMoveRepository } from './domain/CatalogueMoveRepository.js';
+import { ExportRepository } from './domain/export/ExportRepository.js';
+import { ExportService } from './domain/export/ExportService.js';
+import { FfmpegJoiner } from './domain/export/Joiner.js';
+import { BeeRecordingSource } from './domain/export/RecordingSource.js';
 import { ConsoleSettingsRepository } from './domain/ConsoleSettingsRepository.js';
 import { ConsoleSettingsService } from './domain/ConsoleSettingsService.js';
 import { Database } from './domain/Database.js';
@@ -93,6 +97,7 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   viewer: ${config.viewerBaseUrl || '(unset → no player links)'}`);
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(`[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off'}`);
+  logger.info(`[Boot]   exports: ${config.exportDir}, ${config.exportParallelReads} segment reads at once`);
   // Neither the secret nor the token is logged, not even in part.
   logger.info(
     `[Boot]   brand wallet secret: ${config.brandWalletSecret === null ? '(unset → no brand wallet)' : 'set'}`,
@@ -124,6 +129,7 @@ let database: Database | undefined;
 let sessionSweep: SessionSweep | undefined;
 let streamFinishSweep: StreamFinishSweep | undefined;
 let catalogueMove: CatalogueMoveService | undefined;
+let exportService: ExportService | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -151,6 +157,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
       // After the slot it is on, so the move stays running and the next start resumes it.
       await catalogueMove.shutdown();
       catalogueMove = undefined;
+    }
+    if (exportService) {
+      // The reads in flight are dropped and the export stays in its state, so the next start carries on with it.
+      await exportService.shutdown();
+      exportService = undefined;
     }
     if (database) {
       await database.close();
@@ -244,6 +255,19 @@ async function main(): Promise<void> {
   await feedBootCheck.run();
   // A move of the catalogue left running by the last process goes on where it stopped, in the background.
   await catalogueMove.resumeOnBoot();
+  // Exporting a recording: read through the node the catalogue is read through, joined by ffmpeg, one at a time. An
+  // export left reading or joining by the last process goes on where it stopped.
+  exportService = new ExportService(
+    new ExportRepository(database.pool),
+    streamRepository,
+    renditionRepository,
+    catalogueBatch,
+    new BeeRecordingSource(),
+    new FfmpegJoiner(),
+    auditLog,
+    { dir: config.exportDir, parallelReads: config.exportParallelReads },
+  );
+  await exportService.boot();
 
   const ingestService = new IngestService(streamRepository, stageRepository, auditLog);
   // A finished stream cannot be restarted by mistake: Finish, and the sweep that changes a stream's key once its
@@ -303,6 +327,7 @@ async function main(): Promise<void> {
       stageService,
       catalogueBatch,
       catalogueMove,
+      exportService,
       fundingService,
       consoleSettings,
       internalApiToken: config.internalApiToken,
