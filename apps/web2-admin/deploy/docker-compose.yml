@@ -72,6 +72,13 @@ services:
       DATABASE_URL: postgres://web2admin:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in the env file}@postgres:5432/web2admin
       WEB2_ADMIN_HOST: '0.0.0.0'
       WEB2_ADMIN_PORT: '9877'
+      # Where the exports volume below is mounted, so an env file cannot point exports at the container's own
+      # layer, which a redeploy throws away.
+      EXPORT_DIR: /var/lib/web2-admin/exports
+    # Exported recordings: one MP4 at a time, kept until the next export starts, and the segments of the one being
+    # read. As large as the longest recording at its highest quality, twice over while one is read.
+    volumes:
+      - exports:/var/lib/web2-admin/exports
     labels:
       # What this container was built from, per project, since several
       # profiles share one checkout and deploy/.deployed-commit only says what
@@ -120,3 +127,4 @@ services:
 
 volumes:
   pg-data:
+  exports:
