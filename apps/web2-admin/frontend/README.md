@@ -43,6 +43,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                |
 | `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
 | `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
+| `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done` or `off`                                      |
 | `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
 
@@ -100,6 +101,21 @@ With `MOCK_FUNDING=refuse`, every transfer fails at the relay with no block and 
 anyway six seconds later, and every stamp and chequebook operation is refused. With
 `MOCK_FUNDING=lost`, every operation is first not known, as when the manager loses the chain's
 answer, then sent three seconds later and confirmed.
+
+#### The mock export
+
+The mock exports as the API does, one export at a time: it reads for 45 seconds, joins for 5, and
+keeps the file until the next export starts. Every quality is offered, 1080p to 360p, with sizes
+estimated from the recording's length. `MOCK_EXPORT` decides the export seeded at start, of the first
+seeded recording:
+
+- `running`, unset: a 720p export another user started, so the widget shows one moving at once.
+- `paused`: one the seeded user started, which pauses on segments it could not read, so the panel
+  comes to front. Every export started from the panel then pauses the same way part-way.
+- `done`: a kept file, above the OBS panel of its stream and in the widget.
+- `off`: none.
+
+Save file answers a stand-in file under the export's name, not a video.
 
 ## Pages
 
