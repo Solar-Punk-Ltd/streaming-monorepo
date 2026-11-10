@@ -21,7 +21,18 @@ import type {
   UserSummary,
   VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
-import { VERSION_PATH } from '@streaming-monorepo/web2-admin-common';
+import {
+  EXPORT_PATH,
+  exportActionPath,
+  streamExportPath,
+  VERSION_PATH,
+  type ExportAction,
+  type ExportActionRequest,
+  type ExportCurrentResponse,
+  type ExportOptionsResponse,
+  type ExportStartRequest,
+  type ExportSummary,
+} from '@streaming-monorepo/web2-admin-common';
 
 import {
   FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
@@ -457,4 +468,28 @@ export function fetchPublicConfig(): Promise<PublicConfig> {
 /** The build the API runs, as its deploy built it in. Behind the session, so a 401 here signs out like any other. */
 export function fetchVersion(): Promise<VersionInfo> {
   return getJson<VersionInfo>(VERSION_PATH);
+}
+
+// --- exporting a recording -------------------------------------------------------
+
+/** What the Download panel offers for one stream: its qualities with estimated sizes, and why none can start now. */
+export function fetchExportOptions(streamId: string): Promise<ExportOptionsResponse> {
+  return getJson<ExportOptionsResponse>(streamExportPath(streamId));
+}
+
+/** Starts exporting one quality of the stream's recording; the answer is the export as it starts. */
+export function startExport(streamId: string, rendition: string): Promise<ExportSummary> {
+  const body: ExportStartRequest = { rendition };
+  return sendJson<ExportSummary>('POST', streamExportPath(streamId), body);
+}
+
+/** The export on the server, which every signed-in user sees, or null. */
+export async function fetchCurrentExport(): Promise<ExportSummary | null> {
+  return (await getJson<ExportCurrentResponse>(EXPORT_PATH)).export;
+}
+
+/** Pause, resume, wait, save what was read, cancel, or close the widget; null once the export is gone. */
+export async function actOnExport(exportId: string, action: ExportAction): Promise<ExportSummary | null> {
+  const body: ExportActionRequest = { action };
+  return (await sendJson<ExportCurrentResponse>('POST', exportActionPath(exportId), body)).export;
 }

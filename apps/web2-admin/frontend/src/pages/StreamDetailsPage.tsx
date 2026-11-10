@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
+import DownloadIcon from '@mui/icons-material/Download';
 import EditIcon from '@mui/icons-material/Edit';
 import FlagIcon from '@mui/icons-material/Flag';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -30,6 +31,8 @@ import type {
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
+import { holdsFinishedRecording } from '@streaming-monorepo/web2-admin-common';
+
 import * as api from '../api';
 import { errorMessage, FINALIZE_WHILE_LIVE } from '../errors';
 import { ApiError } from '../http';
@@ -37,6 +40,8 @@ import { formatDateTime } from '../dateUtil';
 import { formatDuration, shortHex } from '../format';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { IngestPanel } from '../components/IngestPanel';
+import { useExport } from '../components/export/ExportProvider';
+import { KeptExportCard } from '../components/export/KeptExportCard';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
@@ -182,6 +187,7 @@ export function StreamDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const snackbar = useSnackbar();
+  const { openPanel } = useExport();
 
   const [stream, setStream] = useState<Stream | null>(null);
   const [ingest, setIngest] = useState<IngestDetails | null>(null);
@@ -386,6 +392,12 @@ export function StreamDetailsPage() {
         <Button size="small" startIcon={<EditIcon />} component={RouterLink} to={`/edit/${stream.id}`}>
           Edit
         </Button>
+        {/* A finished recording, published or not, can be exported into an MP4 and saved. */}
+        {holdsFinishedRecording(stream) ? (
+          <Button size="small" startIcon={<DownloadIcon />} onClick={() => openPanel(stream.id)}>
+            Download
+          </Button>
+        ) : null}
         <Button size="small" onClick={() => navigate('/')}>
           Back to Streams
         </Button>
@@ -645,6 +657,9 @@ export function StreamDetailsPage() {
           </Alert>
         ) : null}
       </Paper>
+
+      {/* The file exported from this stream and kept on the server, above the OBS details. */}
+      <KeptExportCard streamId={stream.id} />
 
       {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
 

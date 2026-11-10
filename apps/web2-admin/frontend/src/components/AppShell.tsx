@@ -7,6 +7,9 @@ import type { ReactNode } from 'react';
 import { useAuth } from '../auth';
 import { useThemeMenuItems } from '../theme/themeMenuItems';
 import { BuildVersion } from './BuildVersion';
+import { ExportPanel } from './export/ExportPanel';
+import { ExportProvider } from './export/ExportProvider';
+import { ExportWidget } from './export/ExportWidget';
 import { useSnackbar } from './Snackbar';
 
 export const APP_NAME = 'Stream Admin';
@@ -37,40 +40,49 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar position="static" color="default" enableColorOnDark>
-        <Toolbar>
-          <Typography
-            variant="h6"
-            component={RouterLink}
-            to="/"
-            sx={{ flexGrow: 1, color: 'inherit', textDecoration: 'none' }}
-          >
-            {APP_NAME}
-          </Typography>
-          {user ? (
-            <>
-              <BuildVersion />
-              <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
-                {user.username}
-              </Button>
-              <Menu anchorEl={anchor} open={anchor !== null} onClose={close} variant="menu">
-                <MenuItem onClick={() => go('/')}>Streams</MenuItem>
-                <MenuItem onClick={() => go('/stages')}>Stages</MenuItem>
-                <MenuItem onClick={() => go('/funding')}>Funding</MenuItem>
-                <MenuItem onClick={() => go('/access')}>Access</MenuItem>
-                <Divider />
-                {themeItems}
-                <Divider />
-                <MenuItem onClick={() => void handleLogOut()}>Log out</MenuItem>
-              </Menu>
-            </>
-          ) : null}
-        </Toolbar>
-      </AppBar>
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        {children}
-      </Container>
-    </Box>
+    // The export on the server, its widget and its panel belong to every page, for every signed-in user.
+    <ExportProvider>
+      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+        <AppBar position="static" color="default" enableColorOnDark>
+          <Toolbar>
+            <Typography
+              variant="h6"
+              component={RouterLink}
+              to="/"
+              sx={{ flexGrow: 1, color: 'inherit', textDecoration: 'none' }}
+            >
+              {APP_NAME}
+            </Typography>
+            {user ? (
+              <>
+                <BuildVersion />
+                <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
+                  {user.username}
+                </Button>
+                <Menu anchorEl={anchor} open={anchor !== null} onClose={close} variant="menu">
+                  <MenuItem onClick={() => go('/')}>Streams</MenuItem>
+                  <MenuItem onClick={() => go('/stages')}>Stages</MenuItem>
+                  <MenuItem onClick={() => go('/funding')}>Funding</MenuItem>
+                  <MenuItem onClick={() => go('/access')}>Access</MenuItem>
+                  <Divider />
+                  {themeItems}
+                  <Divider />
+                  <MenuItem onClick={() => void handleLogOut()}>Log out</MenuItem>
+                </Menu>
+              </>
+            ) : null}
+          </Toolbar>
+        </AppBar>
+        <Container maxWidth="lg" sx={{ py: 4 }}>
+          {children}
+        </Container>
+        {user ? (
+          <>
+            <ExportWidget />
+            <ExportPanel />
+          </>
+        ) : null}
+      </Box>
+    </ExportProvider>
   );
 }
