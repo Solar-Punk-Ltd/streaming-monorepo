@@ -394,8 +394,9 @@ says.
 
 - **Disk.** One export runs at a time, and its file is kept until the next one
   starts. While one runs it needs twice the recording's size, for the segments
-  and the MP4: about 13 GB for three hours at 1080p. A start is refused when
-  the disk is shorter than that.
+  and the MP4: about 13 GB for three hours at 1080p, and it keeps 10% of the
+  disk free on top. A start is refused when there is not that much room beyond
+  the 10%, and an export pauses when the free disk falls under it.
 - **The node.** Exports read through the catalogue node the manager designated,
   so they need nothing in the env file. Without a designated node every start is
   refused with the reason.

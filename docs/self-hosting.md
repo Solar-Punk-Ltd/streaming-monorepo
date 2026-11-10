@@ -19,7 +19,7 @@ One machine can carry all three roles for a first try. Split them once you broad
   admin, their databases and the edge. The first manager deploy builds the stack there, which is
   the only time it is busy. Exporting a recording from the admin needs disk beside that: twice the
   longest recording's size at its highest quality while one runs, about 13 GB for three hours at
-  1080p.
+  1080p, with 10% of the disk kept free on top.
 - **Stage host**: sized by the ingest. A single rendition needs little. A four-rung ABR ladder
   transcodes every rung on the CPU, so give it eight or more modern cores per concurrent ladder
   broadcast, and 50 GB or more of disk for Docker builds and the media volume.

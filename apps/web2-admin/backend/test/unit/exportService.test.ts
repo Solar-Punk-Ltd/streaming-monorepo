@@ -37,6 +37,7 @@ let source: FakeSource;
 let joiner: FakeJoiner;
 let audit: InMemoryAuditLog;
 let free: number;
+let total: number;
 let target: CatalogueTarget | null;
 let service: ExportService;
 
@@ -47,8 +48,8 @@ function makeService(over: Partial<ExportServiceOptions> = {}): ExportService {
     retryDelaysMs: [1],
     statusCheckMs: 0,
     progressSaveMs: 0,
-    minFreeBytes: 0,
-    disk: { freeBytes: async () => free },
+    keepFreeFraction: 0,
+    disk: { space: async () => ({ free, total }) },
     ...over,
   });
 }
@@ -95,6 +96,7 @@ beforeEach(async () => {
   joiner = new FakeJoiner();
   audit = new InMemoryAuditLog();
   free = 100e9;
+  total = 1e12;
   target = NODE;
   service = makeService();
 });
@@ -301,15 +303,47 @@ describe('ExportService', () => {
     await assert.rejects(service.file(first.id), { name: 'ExportNotFoundError' });
   });
 
-  it('refuses to start with too little free disk for the segments and the MP4', async () => {
+  it('keeps a tenth of the disk free, and refuses a start that would need it', async () => {
     const stream = recordedLadder();
-    free = 6_000_000;
+    // The default share: 2 MB of a 20 MB disk stays free, so 11 MB free leaves 9 MB for an export of about 10 MB.
+    service = makeService({ keepFreeFraction: undefined });
+    total = 20_000_000;
+    free = 11_000_000;
 
     await assert.rejects(service.start(TEST_OPERATOR, stream.id, '1080p'), {
       problem: 'disk',
-      message: 'The server has 6 MB free, and this export needs about 10 MB while it runs: the segments and the MP4.',
+      message:
+        'The server has 11 MB free and keeps 2 MB of it free, 10% of its disk. This export needs about 10 MB while it runs: the segments and the MP4.',
     });
     assert.equal(await service.current(null), null);
+
+    free = 12_000_000;
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
+  });
+
+  it('pauses when the free disk falls under the share it keeps, and resumes once there is room', async () => {
+    const stream = recordedLadder();
+    total = 100_000_000;
+    free = 50_000_000;
+    service = makeService({ keepFreeFraction: 0.1, parallelReads: 1 });
+    source.afterRead = (count) => {
+      if (count === 2) free = 5_000_000;
+    };
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    const paused = await service.current(null);
+    assert.equal(paused?.pauseReason, 'disk');
+    assert.match(paused?.pauseMessage ?? '', /keeps 10 MB free, 10% of its disk/);
+    assert.deepEqual(paused?.actions, ['resume', 'cancel']);
+
+    source.afterRead = null;
+    free = 50_000_000;
+    await service.act(TEST_OPERATOR, paused!.id, 'resume');
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
   });
 
   it('names a single-quality recording by the height of its video, estimated from its first segment', async () => {

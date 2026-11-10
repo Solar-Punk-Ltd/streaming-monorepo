@@ -38,8 +38,8 @@ const DEFAULT_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
 const DEFAULT_WATCH_INTERVAL_MS = 10_000;
 const DEFAULT_STATUS_CHECK_MS = 3_000;
 const DEFAULT_PROGRESS_SAVE_MS = 1_000;
-/** Kept free beside the export, so a full disk never takes the database or the logs down with it. */
-const DEFAULT_MIN_FREE_BYTES = 512 * 1024 * 1024;
+/** The share of the disk kept free beside an export, so a full disk never takes the database or the logs down with it. */
+const DEFAULT_KEEP_FREE_FRACTION = 0.1;
 /** How long the estimate of a single-quality recording may take: one playlist and one segment. */
 const ESTIMATE_TIMEOUT_MS = 20_000;
 /** ffmpeg is looked for again after this long, so installing it needs no restart. */
@@ -62,8 +62,9 @@ export interface ExportNodes {
   forRead(): Promise<{ target: CatalogueTarget | null } | { skipped: string }>;
 }
 
+/** The free and total bytes of the file system a folder is on. */
 export interface DiskSpace {
-  freeBytes(dir: string): Promise<number>;
+  space(dir: string): Promise<{ free: number; total: number }>;
 }
 
 export interface ExportServiceOptions {
@@ -75,7 +76,8 @@ export interface ExportServiceOptions {
   watchIntervalMs?: number;
   statusCheckMs?: number;
   progressSaveMs?: number;
-  minFreeBytes?: number;
+  /** The share of the disk an export keeps free, a tenth unless set. */
+  keepFreeFraction?: number;
   disk?: DiskSpace;
   now?: () => Date;
 }
@@ -90,9 +92,9 @@ interface RunningJob {
 }
 
 const statfsSpace: DiskSpace = {
-  async freeBytes(dir: string): Promise<number> {
+  async space(dir: string): Promise<{ free: number; total: number }> {
     const stats = await statfs(dir);
-    return Number(stats.bavail) * Number(stats.bsize);
+    return { free: Number(stats.bavail) * Number(stats.bsize), total: Number(stats.blocks) * Number(stats.bsize) };
   },
 };
 
@@ -186,7 +188,7 @@ export class ExportService {
   private readonly watchIntervalMs: number;
   private readonly statusCheckMs: number;
   private readonly progressSaveMs: number;
-  private readonly minFreeBytes: number;
+  private readonly keepFreeFraction: number;
   private readonly disk: DiskSpace;
   private readonly now: () => Date;
 
@@ -204,7 +206,7 @@ export class ExportService {
     this.watchIntervalMs = options.watchIntervalMs ?? DEFAULT_WATCH_INTERVAL_MS;
     this.statusCheckMs = options.statusCheckMs ?? DEFAULT_STATUS_CHECK_MS;
     this.progressSaveMs = options.progressSaveMs ?? DEFAULT_PROGRESS_SAVE_MS;
-    this.minFreeBytes = options.minFreeBytes ?? DEFAULT_MIN_FREE_BYTES;
+    this.keepFreeFraction = options.keepFreeFraction ?? DEFAULT_KEEP_FREE_FRACTION;
     this.disk = options.disk ?? statfsSpace;
     this.now = options.now ?? (() => new Date());
   }
@@ -279,19 +281,19 @@ export class ExportService {
 
     const estimate =
       chosen.option.estimatedBytes ?? (rendition === SOURCE_RENDITION ? await this.estimateSource(chosen.feed) : null);
-    let free: number;
+    let room: { free: number; keep: number };
     try {
       await mkdir(this.options.dir, { recursive: true });
-      free = await this.disk.freeBytes(this.options.dir);
+      room = await this.room();
     } catch (error) {
       throw new ExportRefusedError('disk', `The folder exports are kept in cannot be used: ${getErrorMessage(error)}`);
     }
     // The kept export is deleted before this one starts, so its space is free for it.
-    const kept = view?.state === 'done' ? (view.size_bytes ?? 0) : 0;
-    if (estimate !== null && free + kept < estimate * 2 + this.minFreeBytes) {
+    const free = room.free + (view?.state === 'done' ? (view.size_bytes ?? 0) : 0);
+    if (estimate !== null && free - room.keep < estimate * 2) {
       throw new ExportRefusedError(
         'disk',
-        `The server has ${formatBytes(free + kept)} free, and this export needs about ${formatBytes(estimate * 2)} while it runs: the segments and the MP4.`,
+        `The server has ${formatBytes(free)} free and keeps ${formatBytes(room.keep)} of it free, ${this.keepFreeShare()} of its disk. This export needs about ${formatBytes(estimate * 2)} while it runs: the segments and the MP4.`,
       );
     }
 
@@ -645,7 +647,10 @@ export class ExportService {
           const now = await this.streams.findById(stream.id);
           if (!now) halt('gone');
           else if (now.status === 'live') halt('live');
-          else if ((await this.disk.freeBytes(this.options.dir)) < this.minFreeBytes) halt('disk');
+          else {
+            const room = await this.room();
+            if (room.free < room.keep) halt('disk');
+          }
         }
       } finally {
         pass.looking = false;
@@ -680,12 +685,12 @@ export class ExportService {
       return 'stopped';
     }
     if (pass.halted === 'disk') {
-      const free = await this.disk.freeBytes(this.options.dir);
+      const room = await this.room();
       await this.pause(
         id,
         ['reading'],
         'disk',
-        `The server has ${formatBytes(free)} free, too little to go on reading. Free some disk, then resume.`,
+        `The server has ${formatBytes(room.free)} free, and keeps ${formatBytes(room.keep)} free, ${this.keepFreeShare()} of its disk, so reading stopped. Free some disk, then resume.`,
       );
       return 'stopped';
     }
@@ -717,14 +722,14 @@ export class ExportService {
       return;
     }
     const { read, bytes } = countPresent(playlist, present);
-    const free = await this.disk.freeBytes(this.options.dir);
+    const room = await this.room();
     const needed = bytes * (runs.length > 1 ? 2 : 1);
-    if (free < needed + this.minFreeBytes) {
+    if (room.free - room.keep < needed) {
       await this.pause(
         id,
         ['joining'],
         'disk',
-        `The server has ${formatBytes(free)} free, and joining needs about ${formatBytes(needed)}. Free some disk, then resume.`,
+        `The server has ${formatBytes(room.free)} free and keeps ${formatBytes(room.keep)} of it free, ${this.keepFreeShare()} of its disk. Joining needs about ${formatBytes(needed)}. Free some disk, then resume.`,
       );
       return;
     }
@@ -1021,6 +1026,16 @@ export class ExportService {
         }),
     );
     return present;
+  }
+
+  /** The free bytes where exports are kept, and how many of them stay free: a share of the whole disk. */
+  private async room(): Promise<{ free: number; keep: number }> {
+    const { free, total } = await this.disk.space(this.options.dir);
+    return { free, keep: Math.round(total * this.keepFreeFraction) };
+  }
+
+  private keepFreeShare(): string {
+    return `${Math.round(this.keepFreeFraction * 100)}%`;
   }
 
   // --- files ---------------------------------------------------------------------
