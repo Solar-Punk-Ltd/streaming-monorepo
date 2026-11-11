@@ -33,8 +33,8 @@ target. Never point them at a manager whose deployments hold funds.
    ```
 
    Against a manager started with `pnpm dev`, run the same CLI from `manager/` as
-   `pnpm exec tsx --conditions=development src/cli.ts user:add itest --password-stdin`. The
-   Docker-backed workflow signs in with the password in the repository secret `ITEST_PASSWORD`.
+   `pnpm user:add itest --password-stdin`. The Docker-backed workflow signs in with the password
+   in the repository secret `ITEST_PASSWORD`.
 
 3. These variables in the shell that runs the suite. Put the sign-in pair there from wherever you
    keep it, so it is never written to a file:

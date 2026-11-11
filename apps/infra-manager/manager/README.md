@@ -45,9 +45,10 @@ answers on `localhost:9876` directly, which the examples below assume. Read `808
 the manager runs under Compose.
 
 For development without Docker deployments, `pnpm database:start` in `manager/` starts Postgres
-alone and `pnpm dev` runs the API with a watch. `pnpm --filter @streaming-infra-manager/frontend-prototype dev:mock`
-runs the console against an offline mock manager that needs no database, no Docker and no Bee
-node.
+alone and `pnpm dev` runs the API with a watch. `pnpm user:add <username>` there adds a user to
+that database: it is the same command, run from the source instead of the image.
+`pnpm --filter @streaming-infra-manager/frontend-prototype dev:mock` runs the console against an
+offline mock manager that needs no database, no Docker and no Bee node.
 
 ## Authentication
 
