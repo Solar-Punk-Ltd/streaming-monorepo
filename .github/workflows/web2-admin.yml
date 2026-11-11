@@ -83,8 +83,17 @@ jobs:
         run: pnpm format:check
 
       # The export joiner's tests run the real ffmpeg, and skip where it is missing.
+      # The install gets five minutes. When Ubuntu's package servers can't be
+      # reached, apt retries every download until the job runs out of time, so
+      # the checks go on without ffmpeg instead, and a warning says the joiner's
+      # tests were skipped.
       - name: ffmpeg, for the export joiner's tests
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+        run: |
+          if sudo timeout -k 10 300 sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg'; then
+            ffmpeg -hide_banner -version | head -n 1
+          else
+            echo "::warning title=ffmpeg not installed::Ubuntu's package servers could not be reached, so the export joiner's tests were skipped."
+          fi
 
       - name: Unit tests, every package
         run: pnpm run test
