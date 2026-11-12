@@ -18,6 +18,23 @@ export function formatLength(seconds: number | null | undefined): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 }
 
+/**
+ * How long a finished export took, from its start to its finish, pauses included: `45 s`, `1 min 7 s`, `1 h 4 min`.
+ * Null without both moments.
+ */
+export function formatTook(startedAt: string | null | undefined, finishedAt: string | null | undefined): string | null {
+  const start = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const end = finishedAt ? Date.parse(finishedAt) : Number.NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
+  const total = Math.round((end - start) / 1000);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return minutes > 0 ? `${hours} h ${minutes} min` : `${hours} h`;
+  if (minutes > 0) return seconds > 0 ? `${minutes} min ${seconds} s` : `${minutes} min`;
+  return `${seconds} s`;
+}
+
 /** A moment in UTC, to the second, as the export's start and finish are shown: `2026-11-12 09:51:10 UTC`. */
 export function formatUtc(iso: string | null | undefined): string {
   const date = iso ? new Date(iso) : null;
@@ -49,8 +66,10 @@ export function statusLine(current: ExportSummary): string {
       return current.pauseMessage ?? 'Paused.';
     case 'waiting':
       return 'Waiting for the stream to finish. The export carries on by itself once it is a recording again.';
-    case 'done':
-      return `Ready: ${current.fileName ?? 'the file'}, ${formatBytes(current.sizeBytes)}.`;
+    case 'done': {
+      const took = formatTook(current.startedAt, current.finishedAt);
+      return `Ready: ${current.fileName ?? 'the file'}, ${formatBytes(current.sizeBytes)}.${took ? ` It took ${took}.` : ''}`;
+    }
   }
 }
 

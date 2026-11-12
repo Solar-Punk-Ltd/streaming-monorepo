@@ -11,7 +11,7 @@ import {
 
 import { ExportPanel } from '../components/export/ExportPanel';
 import { EXPORT_POLL_IDLE_MS, ExportProvider } from '../components/export/ExportProvider';
-import { formatUtc } from '../components/export/exportText';
+import { formatTook, formatUtc } from '../components/export/exportText';
 import { ExportWidget } from '../components/export/ExportWidget';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import { jsonOk, makeIngest, makeStream, mockFetch, renderWithProviders, type Route as MockRoute } from './helpers';
@@ -120,6 +120,18 @@ describe('formatUtc', () => {
     expect(formatUtc('2026-11-12T10:51:10+01:00')).toBe('2026-11-12 09:51:10 UTC');
     expect(formatUtc(null)).toBe('an unknown time');
     expect(formatUtc('not a date')).toBe('an unknown time');
+  });
+});
+
+describe('formatTook', () => {
+  it('says how long an export took, start to finish, in the largest two units, and nothing without both moments', () => {
+    expect(formatTook('2026-11-12T12:33:50.789Z', '2026-11-12T12:34:35.100Z')).toBe('44 s');
+    expect(formatTook('2026-11-12T12:33:50.789Z', '2026-11-12T12:34:58.034Z')).toBe('1 min 7 s');
+    expect(formatTook('2026-11-10T10:00:00.000Z', '2026-11-10T10:20:00.000Z')).toBe('20 min');
+    expect(formatTook('2026-11-10T10:00:00.000Z', '2026-11-10T11:04:14.000Z')).toBe('1 h 4 min');
+    expect(formatTook('2026-11-10T10:00:00.000Z', '2026-11-10T11:00:20.000Z')).toBe('1 h');
+    expect(formatTook('2026-11-10T10:00:00.000Z', null)).toBeNull();
+    expect(formatTook('not a date', '2026-11-10T10:20:00.000Z')).toBeNull();
   });
 });
 
@@ -269,6 +281,28 @@ describe('exporting a recording', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('says in the panel how long a finished export took', async () => {
+    mockFetch(
+      pageRoutes(
+        recorded(),
+        makeExport({
+          state: 'done',
+          fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+          sizeBytes: 2_100_000_000,
+          finishedAt: '2026-11-10T10:20:00.000Z',
+          actions: ['dismiss', 'clear'],
+        }),
+      ),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open the export' }));
+    const panel = await screen.findByRole('dialog');
+    expect(
+      within(panel).getByText('Ready: opening-keynote-2026-11-05-1080p.mp4, 2.1 GB. It took 20 min.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the kept file above the OBS details and in the widget, to save, and closes the widget on request', async () => {
     const done = makeExport({
       state: 'done',
@@ -291,7 +325,7 @@ describe('exporting a recording', () => {
     const card = await screen.findByRole('region', { name: 'downloaded file' });
     expect(within(card).getByText('opening-keynote-2026-11-05-1080p.mp4')).toBeInTheDocument();
     expect(
-      within(card).getByText('Started 2026-11-10 10:00:00 UTC, finished 2026-11-10 10:20:00 UTC'),
+      within(card).getByText('Started 2026-11-10 10:00:00 UTC, finished 2026-11-10 10:20:00 UTC, took 20 min'),
     ).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: /Save file/ })).toHaveAttribute(
       'href',

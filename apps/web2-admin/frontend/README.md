@@ -183,8 +183,9 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
   page reads the stream and its OBS details again. After any other failure the dialog stays open.
 - On a finished recording, published or not, **Download** in the row under the title opens the
   Download panel, described below. Above the OBS panel, the file exported from this stream and kept
-  on the server, with Save file and when its export started and finished, or the export of it while
-  it runs, with when it started. Both times are in UTC, to the second.
+  on the server, with Save file, when its export started and finished, and how long it took, pauses
+  included; or the export of it while it runs, with when it started. Both times are in UTC, to the
+  second.
 - The OBS panel, with Rotate key, described below.
 
 ### Stages, `#/stages`
@@ -287,7 +288,8 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   for what it allows now: Pause; after a pause, Resume, or Try them again when segments could not
   be read, and Try again after another problem; Save what's read, or Save without them; Wait until
   it finishes, when the stream went live again; and Cancel export, which asks first, since
-  everything read so far is deleted. Once it is done, Save file and Clear.
+  everything read so far is deleted. Once it is done, how long it took from start to finish, pauses
+  included, with Save file and Clear.
 - **The widget.** From the moment an export starts, it floats in the top right of every page for
   every signed-in user, the panel open or not, with its stream, quality and progress. Clicking it
   opens the panel, and so does its open button, which a keyboard reaches. It says "Paused: needs a
