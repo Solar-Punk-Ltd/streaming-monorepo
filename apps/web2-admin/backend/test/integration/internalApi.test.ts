@@ -389,6 +389,43 @@ describe('internal state reports', () => {
     assert.match(details.publishKey, /^[0-9a-f]{32}$/);
   });
 
+  it('takes links while live, and they reach the entry at the republish', async () => {
+    const links = [
+      { label: 'Watch on X', href: 'https://x.com/i/broadcasts/itest' },
+      { label: 'Watch on YouTube', href: 'https://youtube.com/live/itest' },
+    ];
+    const current = await api<Stream>('GET', `/api/streams/${stream.id}`);
+    const body = { ...draft, title: current.title };
+    assert.ok(!('links' in (await catalogueEntry(stream.topic))), 'an entry without links carries no field for them');
+
+    const linked = await api<Stream>('PUT', `/api/streams/${stream.id}`, { body: { ...body, links } });
+    assert.equal(linked.status, 'live', 'editing does not end the broadcast');
+    assert.deepEqual(linked.links, links);
+    assert.equal(linked.hasUnpublishedEdits, true, 'the entry on the catalogue has no links yet');
+
+    const republished = await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
+    assert.equal(republished.stream.status, 'live');
+    assert.equal(republished.stream.hasUnpublishedEdits, false);
+    const entry = await catalogueEntry(stream.topic);
+    assert.deepEqual(entry.links, links);
+    assert.equal(entry.state, 'live', 'the republish keeps the state');
+
+    const untouched = await api<Stream>('PUT', `/api/streams/${stream.id}`, { body });
+    assert.deepEqual(untouched.links, links, 'a body without links leaves them as they are');
+    assert.equal(untouched.hasUnpublishedEdits, false);
+
+    const refused = await raw('PUT', `/api/streams/${stream.id}`, {
+      body: { ...body, links: [{ label: 'Plain', href: 'http://example.com' }] },
+    });
+    assert.equal(refused.status, 400);
+    assert.deepEqual((refused.body as { errors: string[] }).errors, ['each link address must start with https://']);
+
+    const cleared = await api<Stream>('PUT', `/api/streams/${stream.id}`, { body: { ...body, links: [] } });
+    assert.deepEqual(cleared.links, []);
+    await api<PublishResult>('POST', `/api/streams/${stream.id}/publish`);
+    assert.ok(!('links' in (await catalogueEntry(stream.topic))), 'and the entry is as it was before it had any');
+  });
+
   it('keeps the title editable but locks the schedule once live', async () => {
     const edited = await api<Stream>('PUT', `/api/streams/${stream.id}`, {
       body: { ...draft, title: 'itest internal live, edited' },

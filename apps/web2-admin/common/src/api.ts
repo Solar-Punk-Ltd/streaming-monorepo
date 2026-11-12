@@ -32,6 +32,9 @@ export const STREAM_LIMITS = {
   DESCRIPTION_MAX: 500,
   TAGS_MAX: 10,
   TAG_MAX_LENGTH: 20,
+  LINKS_MAX: 4,
+  LINK_LABEL_MAX: 40,
+  LINK_HREF_MAX: 500,
   THUMBNAIL_MAX_BYTES: 5 * 1024 * 1024,
 } as const;
 
@@ -83,6 +86,15 @@ export interface MeResponse {
   user: User;
 }
 
+/**
+ * Another place a stream can be watched, such as its X or YouTube page, or a page that goes with it. The viewer
+ * shows `label` as the link's text and opens `href`, which is always an https address.
+ */
+export interface StreamLink {
+  label: string;
+  href: string;
+}
+
 export interface Stream {
   id: string;
   /** Stream id inside the stream list feed; a UUID minted by the backend. */
@@ -95,6 +107,8 @@ export interface Stream {
   title: string;
   description: string;
   tags: string[];
+  /** In the order the operator gave them. Empty when the stream has none. */
+  links: StreamLink[];
   mediaType: MediaType;
   /** Null only on a row created before a schedule was required. */
   scheduledStartTime: string | null;
@@ -167,6 +181,11 @@ export interface StreamInput {
   title: string;
   description: string;
   tags?: string[];
+  /**
+   * At most `STREAM_LIMITS.LINKS_MAX`, each with a label and an https address. An empty list clears them. Absent
+   * leaves the stream's links as they are, and a new stream without any.
+   */
+  links?: StreamLink[];
   mediaType: MediaType;
   /** Required: a stream is a promise to viewers about when it starts. */
   scheduledStartTime: string;
@@ -219,6 +238,8 @@ export interface FeedStreamEntry {
   title: string;
   description: string;
   tags: string[];
+  /** Present only on a stream that has links, so an entry without any is what it was before links existed. */
+  links?: StreamLink[];
   state: CatalogState;
   mediatype: MediaType;
   /** Swarm reference hex of the thumbnail, or '' when there is none. */

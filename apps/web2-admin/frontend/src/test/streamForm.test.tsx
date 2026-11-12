@@ -910,3 +910,60 @@ describe('StreamFormPage error clearing', () => {
     expect(screen.getByText(ERROR_MESSAGES.NAME_REQUIRED)).toBeInTheDocument();
   });
 });
+
+describe('StreamFormPage links', () => {
+  it('sends the rows that were filled in, trimmed, and leaves out a blank one', async () => {
+    let sent: unknown;
+    mockFetch([
+      {
+        method: 'POST',
+        path: '/api/streams',
+        respond: (init) => {
+          sent = (JSON.parse(String(init?.body)) as Record<string, unknown>).links;
+          return jsonOk(makeStream({ id: 'new-id' }), 201);
+        },
+      },
+    ]);
+    renderCreateForm();
+
+    typeIn('Stream Name *', 'Community call');
+    typeIn('Description *', 'The monthly call');
+    fireEvent.click(screen.getByRole('button', { name: '+ X' }));
+    expect(screen.getByLabelText('Link 1 label')).toHaveValue('X');
+    typeIn('Link 1 address', ' https://x.com/i/broadcasts/abc ');
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    expect(screen.getByText(`2/${STREAM_LIMITS.LINKS_MAX} links`)).toBeInTheDocument();
+
+    submit();
+
+    await waitFor(() => expect(sent).toEqual([{ label: 'X', href: 'https://x.com/i/broadcasts/abc' }]));
+  });
+
+  it('refuses a row with a label and no https address, and says what a link needs', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    typeIn('Stream Name *', 'Community call');
+    typeIn('Description *', 'The monthly call');
+    fireEvent.click(screen.getByRole('button', { name: '+ YouTube' }));
+    typeIn('Link 1 address', 'youtube.com/live/abc');
+
+    submit();
+
+    expect(screen.getByText(ERROR_MESSAGES.LINK_INCOMPLETE)).toBeInTheDocument();
+    expect(screen.getByLabelText('Link 1 address')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('offers no more rows once a stream has as many links as it may carry', () => {
+    mockFetch([]);
+    renderCreateForm();
+
+    for (let i = 0; i < STREAM_LIMITS.LINKS_MAX; i += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
+    }
+
+    expect(screen.queryByRole('button', { name: 'Add link' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove link 1' }));
+    expect(screen.getByRole('button', { name: 'Add link' })).toBeInTheDocument();
+  });
+});

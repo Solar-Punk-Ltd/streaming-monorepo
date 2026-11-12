@@ -44,6 +44,7 @@ const UNCHANGED: StreamInputValues = {
   title: 'Opening keynote',
   description: 'The opening talk.',
   tags: ['swarm'],
+  links: [],
   mediaType: 'video',
   scheduledStartTime: '2026-10-01T09:00:00.000Z',
 };
@@ -277,6 +278,16 @@ describe('changedFields', () => {
     assert.deepEqual(changedFields(base, { ...base, scheduled_start_time: new Date('2026-10-02T09:00:00.000Z') }), [
       'scheduledStartTime',
     ]);
+  });
+
+  it('names the links when one is added, removed, renamed or pointed elsewhere, and not when they are the same', () => {
+    const link = { label: 'Watch on X', href: 'https://x.com/i/broadcasts/abc' };
+    const linked = { ...base, links: [link] };
+    assert.deepEqual(changedFields(base, linked), ['links']);
+    assert.deepEqual(changedFields(linked, base), ['links']);
+    assert.deepEqual(changedFields(linked, { ...base, links: [{ ...link }] }), []);
+    assert.deepEqual(changedFields(linked, { ...base, links: [{ ...link, label: 'X' }] }), ['links']);
+    assert.deepEqual(changedFields(linked, { ...base, links: [{ ...link, href: 'https://x.com/other' }] }), ['links']);
   });
 
   it('compares scheduled starts by instant, and sees null to a date and back', () => {

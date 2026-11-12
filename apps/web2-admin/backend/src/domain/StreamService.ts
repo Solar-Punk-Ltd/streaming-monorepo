@@ -1,7 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { sameFeedOwner } from '@streaming-monorepo/contracts';
-import { sniffThumbnailMime, type MediaType, type StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import {
+  sniffThumbnailMime,
+  type MediaType,
+  type StreamLink,
+  type StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 
 import {
   EDITABLE_STATUSES,
@@ -68,6 +73,8 @@ export interface StreamInputValues {
   title: string;
   description: string;
   tags: string[];
+  /** The stream's links, an empty list for none, or absent to leave the stream's as they are. */
+  links?: StreamLink[];
   mediaType: MediaType;
   scheduledStartTime: string;
   /** The stage to broadcast on, null for none, or absent to leave the stream's as it is. */
@@ -134,7 +141,7 @@ export function isMediaTypeLocked(stream: StreamRow, mediaType: MediaType): bool
 }
 
 /** The console's names for the fields an edit can change, as the form has them. */
-export type EditableField = 'title' | 'description' | 'tags' | 'mediaType' | 'scheduledStartTime';
+export type EditableField = 'title' | 'description' | 'tags' | 'links' | 'mediaType' | 'scheduledStartTime';
 
 /**
  * Which of the form's fields differ between two versions of a row: what an
@@ -147,6 +154,12 @@ export function changedFields(before: StreamRow, after: StreamRow): EditableFiel
   if (before.description !== after.description) changed.push('description');
   if (before.tags.length !== after.tags.length || before.tags.some((tag, i) => tag !== after.tags[i])) {
     changed.push('tags');
+  }
+  if (
+    before.links.length !== after.links.length ||
+    before.links.some((link, i) => link.label !== after.links[i]!.label || link.href !== after.links[i]!.href)
+  ) {
+    changed.push('links');
   }
   if (before.media_type !== after.media_type) changed.push('mediaType');
   if ((before.scheduled_start_time?.getTime() ?? null) !== (after.scheduled_start_time?.getTime() ?? null)) {
@@ -197,6 +210,7 @@ export class StreamService {
       title: input.title,
       description: input.description,
       tags: input.tags,
+      links: input.links ?? [],
       media_type: input.mediaType,
       scheduled_start_time: input.scheduledStartTime,
       publish_key: newPublishKey(),
@@ -257,6 +271,7 @@ export class StreamService {
         title: input.title,
         description: input.description,
         tags: input.tags,
+        links: input.links ?? existing.links,
         media_type: input.mediaType,
         scheduled_start_time: input.scheduledStartTime,
         ...(movesStage ? { stage_id: stageId } : {}),

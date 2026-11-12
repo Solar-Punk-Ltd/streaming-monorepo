@@ -1,4 +1,4 @@
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type { MediaType, StreamLink, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
@@ -6,6 +6,14 @@ import type { StreamRow, ThumbnailRow } from '../types/index.js';
 import { SUPPORTED_STAGE_ENGINES } from './StageService.js';
 import type { PublishedStatus } from './streamState.js';
 import { CONTENT_EDITED_NOW, FEED_OWNER_SQL, SAME_OWNER_SQL, STREAM_COLUMNS } from './streamSql.js';
+
+/**
+ * A stream's links as the text of the JSONB parameter. node-postgres writes a
+ * JavaScript array as a Postgres array, which is not what the column holds.
+ */
+function linksJson(links: readonly StreamLink[]): string {
+  return JSON.stringify(links.map(({ label, href }) => ({ label, href })));
+}
 
 export interface StreamInsertData {
   /**
@@ -20,6 +28,7 @@ export interface StreamInsertData {
   title: string;
   description: string;
   tags: string[];
+  links: StreamLink[];
   media_type: MediaType;
   /** ISO 8601, or null. Postgres casts it to TIMESTAMPTZ. */
   scheduled_start_time: string | null;
@@ -32,6 +41,7 @@ export interface StreamUpdateData {
   title: string;
   description: string;
   tags: string[];
+  links: StreamLink[];
   media_type: MediaType;
   scheduled_start_time: string | null;
   /**
@@ -112,9 +122,9 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `INSERT INTO streams (
          user_id, topic, owner, title, description, tags, media_type,
-         scheduled_start_time, publish_key, stage_id
+         scheduled_start_time, publish_key, stage_id, links
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
        RETURNING ${STREAM_COLUMNS}`,
       [
         data.user_id,
@@ -127,6 +137,7 @@ export class StreamRepository {
         data.scheduled_start_time,
         data.publish_key,
         data.stage_id,
+        linksJson(data.links),
       ],
     );
     return result.rows[0]!;
@@ -161,12 +172,14 @@ export class StreamRepository {
               tags = $5,
               media_type = $6,
               scheduled_start_time = $7,
+              links = $12::jsonb,
               content_edited_at = CASE
                 WHEN title IS DISTINCT FROM $3
                   OR description IS DISTINCT FROM $4
                   OR tags IS DISTINCT FROM $5
                   OR media_type IS DISTINCT FROM $6
                   OR scheduled_start_time IS DISTINCT FROM $7
+                  OR links IS DISTINCT FROM $12::jsonb
                 THEN ${CONTENT_EDITED_NOW}
                 ELSE content_edited_at
               END,
@@ -211,6 +224,7 @@ export class StreamRepository {
         data.stage_id !== undefined,
         SUPPORTED_STAGE_ENGINES,
         data.owner ?? null,
+        linksJson(data.links),
       ],
     );
     return this.one(result.rows, result.rowCount);

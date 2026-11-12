@@ -360,6 +360,7 @@ describe('a thumbnail by its reference', () => {
       title: 'itest thumbnail',
       description: 'a stream whose image the catalogue names',
       tags: [],
+      links: [],
       media_type: 'video',
       scheduled_start_time: null,
       publish_key: newPublishKey(),

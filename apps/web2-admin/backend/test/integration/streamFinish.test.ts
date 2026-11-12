@@ -53,6 +53,7 @@ async function streamIn(status: StreamRow['status'], endedAgo: string | null = n
     title: 'itest finish',
     description: 'a broadcast that ended, for the restart window',
     tags: [],
+    links: [],
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),

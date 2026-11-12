@@ -123,6 +123,10 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
 
 - Stream Name (up to 100 characters), Description (up to 500), Tags (Enter or Add, at most 10 of up
   to 20 characters), and a thumbnail of up to 5 MB with a preview.
+- Links are the other places the stream can be watched: up to 4 rows of a label and an https address,
+  with shortcuts that add a row labelled "X", "YouTube" or "Twitch". The viewer sets them side by side in
+  one row, so a label is best kept to the site's name. A row left blank is not
+  saved. The viewer shows them under the stream, and the stream page lists them.
 - Scheduled Start Time takes any day and time, past ones included. It is only shown to viewers and
   starts nothing. It is locked once the stream has gone live.
 - Stage lists the stages that are not retired and are supported, and preselects the only one on a

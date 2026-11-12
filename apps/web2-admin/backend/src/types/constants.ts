@@ -28,7 +28,7 @@ export const ON_FEED_STATUSES: readonly StreamStatus[] = ['published', 'live', '
 
 /**
  * Statuses in which the metadata is still editable. A live or recorded stream
- * keeps its title, description, tags and thumbnail editable — only the media
+ * keeps its title, description, tags, links and thumbnail editable — only the media
  * type and the schedule are locked, and those are refused by their own rules
  * with a sentence saying why. Only `publishing` is excluded, because a feed
  * write is in flight over exactly this data.

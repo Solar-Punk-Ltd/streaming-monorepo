@@ -24,6 +24,53 @@ const tagsField = () =>
     .max(STREAM_LIMITS.TAGS_MAX, `at most ${STREAM_LIMITS.TAGS_MAX} tags`)
     .default([]);
 
+const isHttpsAddress = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * The stream's links, each a label and an https address, both trimmed. Only
+ * https is taken because a viewer renders the address as a link: `http` would
+ * be mixed content on a page served over https, and any other scheme is not a
+ * page at all.
+ *
+ * Absent leaves the stream's links as they are, as an absent stage does, so a
+ * client that does not know about links cannot clear them. An empty list
+ * clears them.
+ */
+const linksField = () =>
+  array()
+    .of(
+      object({
+        label: string()
+          .required('each link needs a label')
+          .trim()
+          .max(
+            STREAM_LIMITS.LINK_LABEL_MAX,
+            `each link label must be at most ${STREAM_LIMITS.LINK_LABEL_MAX} characters`,
+          ),
+        href: string()
+          .required('each link needs an address')
+          .trim()
+          .max(
+            STREAM_LIMITS.LINK_HREF_MAX,
+            `each link address must be at most ${STREAM_LIMITS.LINK_HREF_MAX} characters`,
+          )
+          .test(
+            'https-address',
+            'each link address must start with https://',
+            // An empty address is the required rule's to refuse, once.
+            (value) => !value || isHttpsAddress(value),
+          ),
+      }).noUnknown(true),
+    )
+    .max(STREAM_LIMITS.LINKS_MAX, `at most ${STREAM_LIMITS.LINKS_MAX} links`)
+    .optional();
+
 /**
  * Every stream carries a scheduled start: it is the promise the catalogue
  * entry makes to viewers, and a row without one cannot be edited through the
@@ -64,6 +111,7 @@ export const streamInputSchema = object({
     .min(1)
     .max(STREAM_LIMITS.DESCRIPTION_MAX, `description must be at most ${STREAM_LIMITS.DESCRIPTION_MAX} characters`),
   tags: tagsField(),
+  links: linksField(),
   mediaType: string<MediaType>()
     .required()
     .oneOf([...MEDIA_TYPES], `mediaType must be one of ${MEDIA_TYPES.join(', ')}`),

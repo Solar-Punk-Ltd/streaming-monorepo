@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { Alert, Box, Button, Chip, FormLabel, Stack, TextField, Typography } from '@mui/material';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES } from '@streaming-monorepo/web2-admin-common';
+import { STREAM_LIMITS, THUMBNAIL_MIME_TYPES, type StreamLink } from '@streaming-monorepo/web2-admin-common';
 
 /**
  * The fields, labels and limits are msrs-client's, reproduced in MUI so the
@@ -134,6 +134,118 @@ export function TagsField({
           ))}
         </Stack>
       ) : null}
+    </Stack>
+  );
+}
+
+/** A link row with nothing typed in it, which a save leaves out. */
+export function isBlankLink(link: StreamLink): boolean {
+  return !link.label.trim() && !link.href.trim();
+}
+
+/** Whether a row can be saved as it stands: a label, and an address the API takes. */
+export function isCompleteLink(link: StreamLink): boolean {
+  if (!link.label.trim()) return false;
+  try {
+    return new URL(link.href.trim()).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The labels offered as shortcuts: the places a broadcast is usually streamed to beside Swarm. Short, a
+ * site's name alone, because the viewer sets a stream's links side by side in one row.
+ */
+const LINK_SHORTCUTS = ['X', 'YouTube', 'Twitch'];
+
+/**
+ * The other places a stream can be watched, a label and an address each. The
+ * viewer shows them as links under the stream, in this order.
+ */
+export function LinksField({
+  value,
+  onChange,
+  error = false,
+  disabled = false,
+}: {
+  value: StreamLink[];
+  onChange: (value: StreamLink[]) => void;
+  /** True when a save was refused over a row, which marks the rows that caused it. */
+  error?: boolean;
+  disabled?: boolean;
+}) {
+  const full = value.length >= STREAM_LIMITS.LINKS_MAX;
+  const setRow = (index: number, change: Partial<StreamLink>) =>
+    onChange(value.map((link, i) => (i === index ? { ...link, ...change } : link)));
+  const addRow = (label = '') => {
+    if (!full) onChange([...value, { label, href: '' }]);
+  };
+  const shortcuts = LINK_SHORTCUTS.filter((label) => !value.some((link) => link.label.trim() === label));
+
+  return (
+    <Stack spacing={1.5}>
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', justifyContent: 'space-between' }}>
+        <FormLabel>Links</FormLabel>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          {value.length}/{STREAM_LIMITS.LINKS_MAX} links
+        </Typography>
+      </Stack>
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        Other places this stream can be watched, such as X or YouTube. Viewers see them in one row under the stream, so
+        keep each label short: the site’s name is enough.
+      </Typography>
+      {value.map((link, index) => {
+        const refused = error && !isBlankLink(link) && !isCompleteLink(link);
+        return (
+          <Stack key={index} direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: 'flex-start' }}>
+            <TextField
+              label={`Link ${index + 1} label`}
+              placeholder="X"
+              value={link.label}
+              onChange={(e) => setRow(index, { label: e.target.value })}
+              error={refused && !link.label.trim()}
+              disabled={disabled}
+              size="small"
+              sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}
+              slotProps={{ htmlInput: { maxLength: STREAM_LIMITS.LINK_LABEL_MAX } }}
+            />
+            <TextField
+              label={`Link ${index + 1} address`}
+              placeholder="https://"
+              value={link.href}
+              onChange={(e) => setRow(index, { href: e.target.value })}
+              error={refused && Boolean(link.label.trim())}
+              disabled={disabled}
+              size="small"
+              fullWidth
+              slotProps={{ htmlInput: { maxLength: STREAM_LIMITS.LINK_HREF_MAX, inputMode: 'url' } }}
+            />
+            <Button
+              size="small"
+              color="error"
+              onClick={() => onChange(value.filter((_, i) => i !== index))}
+              disabled={disabled}
+              aria-label={`Remove link ${index + 1}`}
+              sx={{ mt: { sm: 0.5 }, flexShrink: 0 }}
+            >
+              Remove
+            </Button>
+          </Stack>
+        );
+      })}
+      {full ? null : (
+        <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <Button size="small" variant="outlined" onClick={() => addRow()} disabled={disabled}>
+            Add link
+          </Button>
+          {shortcuts.map((label) => (
+            <Button key={label} size="small" onClick={() => addRow(label)} disabled={disabled}>
+              + {label}
+            </Button>
+          ))}
+        </Stack>
+      )}
     </Stack>
   );
 }

@@ -251,8 +251,14 @@ a daily sweep.
 `src/api/routes/streams.ts`. A stream's id and topic are UUIDs. Bodies are
 checked against `STREAM_LIMITS` of web2-admin-common: a title of 1 to 100
 characters, a description of up to 500, at most 10 tags of up to 20
-characters each, trimmed and deduplicated, and a scheduled start that is an
-ISO date or null. A body that fails is `400 validation_error` with the
+characters each, trimmed and deduplicated, at most 4 links, and a scheduled
+start that is an ISO date or null. A link is `{ label, href }`: a label of 1
+to 40 characters and an https address of up to 500, both trimmed. Links are
+the other places a stream can be watched, such as its X and YouTube pages.
+A body without `links` leaves a stream's links as they are, and an empty
+list clears them. The catalogue entry carries `links` only for a stream that has some, so an
+entry without any is what it was before links existed, and the viewer shows
+them under the stream. A body that fails is `400 validation_error` with the
 reasons in `errors`.
 
 | Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                  |
@@ -835,8 +841,8 @@ the stream takes them with it through the foreign key.
 
 ### What that changes for the console
 
-- A stream that is `live` or `vod` is still editable (title, description, tags
-  and thumbnail), and `GET /streams/:id/ingest` still answers, so an encoder
+- A stream that is `live` or `vod` is still editable (title, description, tags,
+  links and thumbnail), and `GET /streams/:id/ingest` still answers, so an encoder
   that dropped can reconnect within the restart window
   ([Finalizing a stream](#finalizing-a-stream)). The media type stays refused with
   `409 media_type_locked`, and the schedule joins it with `409 stream_locked`:
@@ -1727,6 +1733,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `020_funding_chequebook_mined.sql`      | that journal's `mined`, whether a submitted move is mined and waits for its block to be final                                                                                                     |
 | `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                              |
 | `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                 |
+| `023_stream_links.sql`                  | `streams.links`, the other places a stream can be watched, a JSON array of `{ label, href }` that starts empty on every row                                                                       |
 
 ## Audit log
 
