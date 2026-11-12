@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import { hashSessionToken } from '@streaming-monorepo/web-auth';
+import { BACKGROUND_READ_HEADER, BACKGROUND_READ_VALUE } from '@streaming-monorepo/web2-admin-common';
 
 import { actorFor, TEST_SETUP } from './support/authFixtures.js';
 import { AuthTestApp, call, sessionCookieFrom, signIn, startAuthTestApp } from './support/authTestApp.js';
@@ -112,6 +113,23 @@ describe('requireAuth', () => {
       (await lastSeenAt(token)).getTime() > Date.now() - 5000,
       'a request after the minute must slide the window forward',
     );
+  });
+
+  it('lets a background read through without sliding the idle window, and still ends an idle session', async () => {
+    const { cookie, token } = await signIn(app, USERNAME, PASSWORD);
+    const headers = { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE };
+
+    await lastSeen(token, 2 * MINUTE_MS);
+    const before = await lastSeenAt(token);
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie, headers })).status, 200);
+    assert.deepEqual(await lastSeenAt(token), before, 'a background read must not count as the operator being there');
+
+    // Honoured on GET only: a write is the operator's doing, whatever it carries.
+    assert.equal((await call(app, 'POST', '/api/streams', { cookie, headers, body: {} })).status, 201);
+    assert.ok((await lastSeenAt(token)).getTime() > before.getTime(), 'a write must slide the window');
+
+    await lastSeen(token, 12 * HOUR_MS + MINUTE_MS);
+    assert.equal((await call(app, 'GET', '/api/streams', { cookie, headers })).status, 401);
   });
 
   it('drops every session of a user whose account is removed', async () => {

@@ -34,7 +34,9 @@ on path `/`. The database stores only the sha256 of the cookie value.
 The session row is the only clock. A session ends twelve hours after it was last used or fourteen
 days after it began, whichever comes first (`packages/web-auth/src/sessionLifetime.ts`).
 `last_seen_at` is written at most once a minute, or an open console would cost a database write per
-request. The cookie has no `Max-Age` or `Expires`, because a cookie with a deadline of its own would
+request. A background read, a GET with `x-background-read: 1`, is checked like any request but never
+writes `last_seen_at`. The console's export widget sends its timed reads that way, so an open console
+still signs out once it has been idle too long. The cookie has no `Max-Age` or `Expires`, because a cookie with a deadline of its own would
 be a second clock to keep in step.
 
 `Secure` is decided per request, from the first `X-Forwarded-Proto` hop or from the connection
@@ -160,7 +162,8 @@ or a removed user. While someone is signed in, it asks `GET /api/auth/me` again 
 operator comes back to the tab, on window focus and when the tab becomes visible, at most once every
 five seconds. A 401 signs the tab out with "Your session ended. Log in again." There is no timer,
 because every request refreshes `last_seen_at`, so polling would keep an unattended console signed
-in past the twelve-hour idle limit. Other tabs of the same browser hear about it at once over a
+in past the twelve-hour idle limit. The export widget's look at the export is the console's one
+timer, and its reads are background reads, which leave `last_seen_at` alone. Other tabs of the same browser hear about it at once over a
 `BroadcastChannel`.
 
 A reload after a revoke says the same thing. The cookie is httpOnly, so the console keeps a one-bit

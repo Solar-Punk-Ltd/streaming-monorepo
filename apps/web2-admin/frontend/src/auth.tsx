@@ -67,7 +67,10 @@ function wasSignedIn(): boolean {
  * while the tab sits idle or between two clicks, and the screen must not go on
  * showing a shell whose every request is being refused. There is no timer:
  * every gated request refreshes the session's idle clock, so polling would
- * keep an unattended console signed in past its idle limit.
+ * keep an unattended console signed in past its idle limit. The export
+ * widget's look at the export is the one timer in the console, and it sends
+ * its reads as background reads, which the gate checks without refreshing
+ * the idle clock.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

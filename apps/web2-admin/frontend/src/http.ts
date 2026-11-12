@@ -155,8 +155,8 @@ async function request(path: string, init: RequestInit, options: RequestOptions 
   return res;
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  const res = await request(path, { method: 'GET' });
+export async function getJson<T>(path: string, headers?: Record<string, string>): Promise<T> {
+  const res = await request(path, { method: 'GET', headers });
   return (await res.json()) as T;
 }
 

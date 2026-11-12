@@ -189,8 +189,12 @@ export class AuthService {
     await this.sessions.deleteByTokenHash(hashSessionToken(token));
   }
 
-  /** The session behind a cookie value, or null when it is unknown or over. */
-  async sessionFor(token: string): Promise<SessionInfo | null> {
+  /**
+   * The session behind a cookie value, or null when it is unknown or over. A use slides the idle window forward, at
+   * most once a minute. With `touch` false, as on a background read, the session is checked the same way but its idle
+   * clock is left where it was.
+   */
+  async sessionFor(token: string, options: { touch?: boolean } = {}): Promise<SessionInfo | null> {
     const tokenHash = hashSessionToken(token);
     const session = await this.sessions.findByTokenHash(tokenHash);
     if (!session) return null;
@@ -201,7 +205,7 @@ export class AuthService {
       return null;
     }
 
-    const touch = needsTouch(session, now);
+    const touch = options.touch !== false && needsTouch(session, now);
     if (touch) await this.sessions.touch(tokenHash, now);
 
     return {

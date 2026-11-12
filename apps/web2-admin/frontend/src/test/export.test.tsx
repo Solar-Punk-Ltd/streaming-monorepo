@@ -1,10 +1,16 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
-import { describe, expect, it } from 'vitest';
-import type { ExportOptionsResponse, ExportSummary, Stream } from '@streaming-monorepo/web2-admin-common';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  BACKGROUND_READ_HEADER,
+  BACKGROUND_READ_VALUE,
+  type ExportOptionsResponse,
+  type ExportSummary,
+  type Stream,
+} from '@streaming-monorepo/web2-admin-common';
 
 import { ExportPanel } from '../components/export/ExportPanel';
-import { ExportProvider } from '../components/export/ExportProvider';
+import { EXPORT_POLL_IDLE_MS, ExportProvider } from '../components/export/ExportProvider';
 import { formatUtc } from '../components/export/exportText';
 import { ExportWidget } from '../components/export/ExportWidget';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
@@ -257,5 +263,30 @@ describe('exporting a recording', () => {
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'dismiss' });
     // The file stays on the page to save again.
     expect(screen.getByRole('region', { name: 'downloaded file' })).toBeInTheDocument();
+  });
+});
+
+describe('the timer that looks at the export', () => {
+  it('reads in the background, so an open console does not keep its session awake', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const fetchMock = mockFetch(pageRoutes(recorded(), null));
+      renderPage();
+      await screen.findByRole('button', { name: 'Download' });
+      const exportReads = () =>
+        fetchMock.mock.calls
+          .filter(([input, init]) => String(input) === '/api/export' && (init?.method ?? 'GET') === 'GET')
+          .map(([, init]) => (init?.headers ?? {}) as Record<string, string>);
+
+      // The first look comes with the operator opening the console, so it is theirs.
+      expect(exportReads()[0]?.[BACKGROUND_READ_HEADER]).toBeUndefined();
+      const before = exportReads().length;
+      await vi.advanceTimersByTimeAsync(EXPORT_POLL_IDLE_MS + 100);
+      const timed = exportReads().slice(before);
+      expect(timed.length).toBeGreaterThan(0);
+      for (const headers of timed) expect(headers[BACKGROUND_READ_HEADER]).toBe(BACKGROUND_READ_VALUE);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
