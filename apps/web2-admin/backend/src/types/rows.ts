@@ -12,7 +12,7 @@ import type {
   StageKind,
   StageRecord,
 } from '@streaming-monorepo/contracts';
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type { MediaType, StreamLink, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 export interface UserRow {
   id: string;
@@ -44,6 +44,8 @@ export interface StreamRow {
   title: string;
   description: string;
   tags: string[];
+  /** JSONB, read back as the array it was stored as. Empty when the stream has none. */
+  links: StreamLink[];
   media_type: MediaType;
   scheduled_start_time: Date | null;
   has_thumbnail: boolean;
@@ -70,7 +72,7 @@ export interface StreamRow {
   finished_at: Date | null;
   /**
    * When the console last changed something the catalogue entry carries:
-   * title, description, tags, media type, scheduled start or thumbnail. Null
+   * title, description, tags, links, media type, scheduled start or thumbnail. Null
    * when nothing has changed since migration 006. Nothing else moves it.
    */
   content_edited_at: Date | null;

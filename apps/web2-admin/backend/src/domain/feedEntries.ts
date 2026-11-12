@@ -126,6 +126,10 @@ export function feedEntryState(status: StreamStatus): FeedStreamEntry['state'] {
  * Both are written only when the uploader has reported at least one rung, so a
  * single-rendition stream's entry is byte-identical to what it was before the
  * ladder existed.
+ *
+ * `links` follows the same rule: written only for a stream that has some, so
+ * an entry without any is what it was before links existed and a reconcile
+ * does not rewrite it.
  */
 export function buildFeedEntry(
   stream: StreamRow,
@@ -146,6 +150,7 @@ export function buildFeedEntry(
     scheduledStartTime: stream.scheduled_start_time ? stream.scheduled_start_time.toISOString() : null,
     timestamp,
   };
+  if (stream.links.length > 0) entry.links = stream.links;
   if (state === 'vod') {
     if (stream.manifest_index !== null) entry.index = stream.manifest_index;
     if (stream.duration_seconds !== null) {

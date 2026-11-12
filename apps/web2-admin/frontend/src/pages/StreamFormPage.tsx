@@ -6,13 +6,22 @@ import {
   type StageSummary,
   type Stream,
   type StreamInput,
+  type StreamLink,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage, SCHEDULE_LOCKED, STAGE_LOCKED } from '../errors';
 import { thumbnailRefusal } from '../thumbnailCheck';
 import { dateTimeLocalValueToIso, isoToDateTimeLocalValue } from '../dateUtil';
-import { DescriptionField, NameField, TagsField, ThumbnailField } from '../components/StreamFormFields';
+import {
+  DescriptionField,
+  isBlankLink,
+  isCompleteLink,
+  LinksField,
+  NameField,
+  TagsField,
+  ThumbnailField,
+} from '../components/StreamFormFields';
 import { ScheduleField } from '../components/schedule/ScheduleField';
 import { assignableStages, StageField, StageReadinessWarning } from '../components/stages/StageField';
 import { nextFullHourValue } from '../components/schedule/scheduleTime';
@@ -24,6 +33,7 @@ export const ERROR_MESSAGES = {
   NAME_REQUIRED: 'Stream name is required',
   DESCRIPTION_REQUIRED: 'Description is required',
   SCHEDULED_TIME_REQUIRED: 'Scheduled start time is required',
+  LINK_INCOMPLETE: 'Each link needs a label and an address that starts with https://',
 };
 
 /**
@@ -44,6 +54,11 @@ const REQUIRED: { message: string; filled: (form: FormState) => boolean }[] = [
     message: ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED,
     filled: (form) => Boolean(form.scheduledStartTime),
   },
+  {
+    // A row left blank is not a link and is dropped on save, so only a row somebody started can fail.
+    message: ERROR_MESSAGES.LINK_INCOMPLETE,
+    filled: (form) => form.links.every((link) => isBlankLink(link) || isCompleteLink(link)),
+  },
 ];
 
 function firstMissing(form: FormState): string | null {
@@ -54,6 +69,8 @@ interface FormState {
   title: string;
   description: string;
   tags: string[];
+  /** The rows as typed. Blank rows are left out when the form is saved. */
+  links: StreamLink[];
   mediaType: MediaType;
   /** A `datetime-local` value, i.e. local wall-clock time, or ''. */
   scheduledStartTime: string;
@@ -65,6 +82,7 @@ const EMPTY: FormState = {
   title: '',
   description: '',
   tags: [],
+  links: [],
   mediaType: 'video',
   scheduledStartTime: '',
   stageId: '',
@@ -100,6 +118,9 @@ function toInput(form: FormState): StreamInput | null {
     title: form.title.trim(),
     description: form.description.trim(),
     tags: form.tags,
+    links: form.links
+      .filter((link) => !isBlankLink(link))
+      .map((link) => ({ label: link.label.trim(), href: link.href.trim() })),
     mediaType: form.mediaType,
     scheduledStartTime,
     stageId: form.stageId || null,
@@ -192,6 +213,7 @@ export function StreamFormPage() {
           title: stream.title,
           description: stream.description,
           tags: stream.tags,
+          links: stream.links,
           mediaType: mediaTypeToSave(stream),
           scheduledStartTime: isoToDateTimeLocalValue(stream.scheduledStartTime),
           stageId: stream.stageId ?? '',
@@ -399,6 +421,12 @@ export function StreamFormPage() {
                 />
               </Grid>
             </Grid>
+            <LinksField
+              value={form.links}
+              onChange={(v) => set('links', v)}
+              error={error === ERROR_MESSAGES.LINK_INCOMPLETE}
+              disabled={saving}
+            />
             {/*
               Where the encoder sends the stream, and which stage's details the
               OBS panel shows. The API refuses a move once the stream is

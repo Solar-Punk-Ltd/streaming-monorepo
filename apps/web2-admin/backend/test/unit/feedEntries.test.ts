@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import { viewerCatalogEntrySchema } from '@streaming-monorepo/contracts';
 import type { StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
-import { buildFeedEntry, carriesEntry, feedEntryState } from '../../src/domain/feedEntries.js';
+import { buildFeedEntry, carriesEntry, feedEntryState, planReconcile } from '../../src/domain/feedEntries.js';
 
 import { streamRow, TEST_OWNER } from './support/fakes.js';
 
@@ -227,5 +227,39 @@ describe('what the viewer reads of an entry the admin writes', () => {
         }
       }
     }
+  });
+});
+
+describe('the links of an entry', () => {
+  const links = [
+    { label: 'Watch on X', href: 'https://x.com/i/broadcasts/abc' },
+    { label: 'Watch on YouTube', href: 'https://youtube.com/live/abc' },
+  ];
+
+  it('are written for a stream that has some, in the order it has them', () => {
+    const entry = buildFeedEntry(streamRow({ status: 'published', links }), null, 1_700_000_000_000);
+    assert.deepEqual(entry.links, links);
+    assert.ok(viewerCatalogEntrySchema.safeParse(entry).success);
+  });
+
+  it('are left off the entry of a stream that has none, so it is what it was before links existed', () => {
+    const entry = buildFeedEntry(streamRow({ status: 'published' }), null, 1_700_000_000_000);
+    assert.equal('links' in entry, false);
+  });
+
+  it('leave an entry written before links existed alone at a reconcile', () => {
+    const row = streamRow({ status: 'published' });
+    const { links: _none, ...before } = { links: undefined, ...buildFeedEntry(row, row.thumbnail_ref, 1) };
+    const plan = planReconcile([before], [row], [row.owner], 2);
+    assert.equal(plan.changed, false);
+    assert.deepEqual(plan.entries, [before]);
+  });
+
+  it('are a change the list does not carry until the entry is written again', () => {
+    const row = streamRow({ status: 'published' });
+    const onList = buildFeedEntry(row, null, 1);
+    assert.equal(carriesEntry([onList], buildFeedEntry({ ...row, links }, null, 2)), false);
+    const plan = planReconcile([onList], [{ ...row, links }], [row.owner], 2);
+    assert.deepEqual(plan.updated, [row.topic]);
   });
 });

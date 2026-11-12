@@ -483,6 +483,20 @@ export function StreamDetailsPage() {
                   </Typography>
                 )}
               </Field>
+              {stream.links.length ? (
+                <Field label="Links">
+                  <Stack spacing={0.25}>
+                    {stream.links.map((link) => (
+                      <Typography key={`${link.label} ${link.href}`} variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                        {link.label}:{' '}
+                        <Link href={link.href} target="_blank" rel="noreferrer">
+                          {link.href}
+                        </Link>
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Field>
+              ) : null}
               {/*
                 The Grid before MUI 7 sat here with its item padding, and the
                 Stack's margin reset cancelled the negative margins that

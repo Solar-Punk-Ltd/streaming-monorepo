@@ -463,3 +463,43 @@ describe('renditionReportSchema', () => {
     assert.equal(errors.length, 6, errors.join('; '));
   });
 });
+
+describe('streamInputSchema links', () => {
+  const withLinks = (links: unknown) => ({ ...goodStream, links });
+
+  it('leaves links absent when the body has none, and trims the label and the address of each one given', async () => {
+    assert.equal((await validate(streamInputSchema, goodStream)).links, undefined);
+    assert.deepEqual((await validate(streamInputSchema, withLinks([]))).links, []);
+
+    const value = await validate(
+      streamInputSchema,
+      withLinks([{ label: ' Watch on X ', href: ' https://x.com/i/broadcasts/abc ', extra: 'dropped' }]),
+    );
+    assert.deepEqual(value.links, [{ label: 'Watch on X', href: 'https://x.com/i/broadcasts/abc' }]);
+  });
+
+  it('refuses a link without a label, and an address that is not https', async () => {
+    assert.deepEqual(await errorsFor(streamInputSchema, withLinks([{ label: '  ', href: 'https://example.com' }])), [
+      'each link needs a label',
+    ]);
+    for (const href of ['http://example.com', 'javascript:alert(1)', 'example.com', '']) {
+      const errors = await errorsFor(streamInputSchema, withLinks([{ label: 'Watch', href }]));
+      assert.equal(errors?.length, 1, href);
+      assert.match(errors![0]!, /each link (address must start with https:\/\/|needs an address)/, href);
+    }
+  });
+
+  it('refuses more links than a stream may carry, and a label or an address over its length', async () => {
+    const link = { label: 'Watch', href: 'https://example.com' };
+    assert.deepEqual(await errorsFor(streamInputSchema, withLinks([link, link, link, link, link])), [
+      'at most 4 links',
+    ]);
+    assert.deepEqual(await errorsFor(streamInputSchema, withLinks([{ ...link, label: 'x'.repeat(41) }])), [
+      'each link label must be at most 40 characters',
+    ]);
+    assert.deepEqual(
+      await errorsFor(streamInputSchema, withLinks([{ ...link, href: `https://example.com/${'x'.repeat(500)}` }])),
+      ['each link address must be at most 500 characters'],
+    );
+  });
+});

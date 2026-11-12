@@ -2,7 +2,7 @@ import { ON_FEED_STATUSES, type StreamRow } from '../types/index.js';
 
 /**
  * Whether the console holds an edit this stream's catalogue entry does not
- * carry: the title, description, tags, media type, scheduled start or
+ * carry: the title, description, tags, links, media type, scheduled start or
  * thumbnail changed after the last write that rebuilt the entry from the row.
  * That is what the console's "Edited since it was published" notice means,
  * and a republish is what clears it.

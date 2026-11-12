@@ -82,6 +82,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     title: 'Opening keynote',
     description: 'The opening talk.',
     tags: ['swarm'],
+    links: [],
     media_type: 'video',
     scheduled_start_time: new Date('2026-10-01T09:00:00.000Z'),
     has_thumbnail: false,
@@ -227,12 +228,14 @@ export class FakeStreamStore
       row.title !== data.title ||
       row.description !== data.description ||
       row.tags.join('\n') !== data.tags.join('\n') ||
+      JSON.stringify(row.links) !== JSON.stringify(data.links) ||
       row.media_type !== data.media_type ||
       (row.scheduled_start_time?.getTime() ?? null) !== (scheduled?.getTime() ?? null);
     return this.patch(id, {
       title: data.title,
       description: data.description,
       tags: [...data.tags],
+      links: data.links.map((link) => ({ ...link })),
       media_type: data.media_type,
       scheduled_start_time: scheduled,
       ...(changed ? { content_edited_at: new Date('2026-09-11T11:00:00.000Z') } : {}),

@@ -146,6 +146,7 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
     title: `Stream ${counter}`,
     description: 'A description',
     tags: [],
+    links: [],
     mediaType: 'video',
     scheduledStartTime: '2026-10-01T18:00:00.000Z',
     hasThumbnail: false,

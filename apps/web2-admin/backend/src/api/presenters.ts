@@ -51,6 +51,7 @@ export function toStream(row: StreamRow): Stream {
     title: row.title,
     description: row.description,
     tags: row.tags,
+    links: row.links,
     mediaType: row.media_type,
     scheduledStartTime: iso(row.scheduled_start_time),
     hasThumbnail: row.has_thumbnail,

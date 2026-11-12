@@ -87,6 +87,7 @@ async function claimedStream(publishedFeedIndex: number | null): Promise<string>
     title: 'itest orphan',
     description: 'left claimed by a process that died mid-publish',
     tags: [],
+    links: [],
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
@@ -157,6 +158,7 @@ async function recordedLadder(): Promise<string> {
     title: 'itest ladder',
     description: 'a recording that is about to go live again',
     tags: [],
+    links: [],
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
@@ -324,6 +326,7 @@ async function publishedStream(scheduledStartTime: string | null = null): Promis
     title: 'itest notice',
     description: 'published, and not edited since',
     tags: ['itest'],
+    links: [],
     media_type: 'video',
     scheduled_start_time: scheduledStartTime,
     publish_key: newPublishKey(),
@@ -340,6 +343,7 @@ function sameValues(row: StreamRow): StreamUpdateData {
     title: row.title,
     description: row.description,
     tags: row.tags,
+    links: row.links,
     media_type: row.media_type,
     scheduled_start_time: row.scheduled_start_time?.toISOString() ?? null,
   };
@@ -395,6 +399,38 @@ describe('which writes count as a console edit (migration 006)', () => {
       [row.id],
     );
     assert.equal(stamp.rows[0]?.whole, true, 'nothing finer than a Date holds');
+  });
+
+  it('keeps the links as given, and counts a changed link as an edit and the same links as none', async () => {
+    const row = await publishedStream();
+    assert.deepEqual(row.links, []);
+    const links = [
+      { label: 'Watch on X', href: 'https://x.com/i/broadcasts/abc' },
+      { label: 'Watch on YouTube', href: 'https://youtube.com/live/abc' },
+    ];
+
+    const linked = await streams.update(row.id, { ...sameValues(row), links }, EDITABLE_STATUSES);
+    assert.ok(linked);
+    assert.deepEqual(linked.links, links, 'read back in the order they were given');
+    assert.ok(linked.content_edited_at, 'a first link is an edit');
+    assert.equal(hasUnpublishedEdits(linked), true);
+    assert.deepEqual((await streams.findById(row.id))?.links, links);
+
+    await setEditStamp(row.id, '2000-01-01T00:00:00.000Z');
+    const resaved = await streams.update(row.id, sameValues(linked), EDITABLE_STATUSES);
+    assert.ok(resaved);
+    assert.equal(resaved.content_edited_at?.toISOString(), '2000-01-01T00:00:00.000Z', 'the same links are no edit');
+
+    const reordered = await streams.update(
+      row.id,
+      { ...sameValues(linked), links: [links[1]!, links[0]!] },
+      EDITABLE_STATUSES,
+    );
+    assert.ok(reordered?.content_edited_at);
+    assert.ok(reordered.content_edited_at.getTime() > Date.parse('2000-01-01T00:00:00.000Z'), 'their order is shown');
+
+    const cleared = await streams.update(row.id, { ...sameValues(linked), links: [] }, EDITABLE_STATUSES);
+    assert.deepEqual(cleared?.links, []);
   });
 
   it('counts a new image always, and a removal only when there was an image', async () => {
@@ -545,6 +581,7 @@ async function draftedBy(user: string): Promise<StreamRow> {
     title: 'itest shared',
     description: 'drafted by one operator, managed by every one of them',
     tags: [],
+    links: [],
     media_type: 'video',
     scheduled_start_time: null,
     publish_key: newPublishKey(),
@@ -592,6 +629,7 @@ describe('a stream belongs to the installation, not to who drafted it', () => {
         title: 'itest shared',
         description: 'drafted by one operator, managed by every one of them',
         tags: [],
+        links: [],
         mediaType: 'video',
         scheduledStartTime: '2026-10-01T09:00:00.000Z',
       },

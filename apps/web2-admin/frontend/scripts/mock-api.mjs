@@ -948,7 +948,7 @@ function ingestDetails(row) {
 
 /** What the catalogue entry carries of a stream's own fields. */
 function entryContent(row) {
-  return JSON.stringify([row.title, row.description, row.tags, row.mediaType, row.scheduledStartTime]);
+  return JSON.stringify([row.title, row.description, row.tags, row.links, row.mediaType, row.scheduledStartTime]);
 }
 
 /**
@@ -960,6 +960,9 @@ function applyInput(row, input) {
   row.title = String(input.title ?? '');
   row.description = String(input.description ?? '');
   row.tags = Array.isArray(input.tags) ? input.tags.map(String) : [];
+  row.links = Array.isArray(input.links)
+    ? input.links.map((link) => ({ label: String(link?.label ?? ''), href: String(link?.href ?? '') }))
+    : [];
   row.mediaType = input.mediaType === 'audio' ? 'audio' : 'video';
   row.scheduledStartTime = input.scheduledStartTime ?? null;
   if (input.stageId !== undefined) row.stageId = input.stageId;
@@ -976,6 +979,7 @@ function newStream(input) {
     title: '',
     description: '',
     tags: [],
+    links: [],
     mediaType: 'video',
     scheduledStartTime: null,
     thumbnail: null,
