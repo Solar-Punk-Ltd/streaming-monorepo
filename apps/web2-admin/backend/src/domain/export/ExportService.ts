@@ -185,6 +185,8 @@ export class ExportService {
   private watcher: NodeJS.Timeout | null = null;
   private stopping = false;
   private ticking: Promise<void> | null = null;
+  /** Starts and the watcher's clear-up take turns, so a clear-up never deletes the folder of an export just started. */
+  private turn: Promise<unknown> = Promise.resolve();
   private ffmpegChecked: { at: number; problem: string | null } | null = null;
   private readonly estimates = new Map<string, number | null>();
   private readonly retryDelaysMs: readonly number[];
@@ -284,68 +286,78 @@ export class ExportService {
 
     const estimate =
       chosen.option.estimatedBytes ?? (rendition === SOURCE_RENDITION ? await this.estimateSource(chosen.feed) : null);
-    let room: { free: number; keep: number };
-    try {
-      await mkdir(this.options.dir, { recursive: true });
-      room = await this.room();
-    } catch (error) {
-      throw new ExportRefusedError('disk', `The folder exports are kept in cannot be used: ${getErrorMessage(error)}`);
-    }
-    // The kept export is deleted before this one starts, so its space is free for it.
-    const free = room.free + (view?.state === 'done' ? (view.size_bytes ?? 0) : 0);
-    if (estimate !== null && free - room.keep < estimate * 2) {
-      throw new ExportRefusedError(
-        'disk',
-        `The server has ${formatBytes(free)} free and keeps ${formatBytes(room.keep)} of it free, ${this.keepFreeShare()} of its disk. This export needs about ${formatBytes(estimate * 2)} while it runs: the segments and the MP4.`,
-      );
-    }
+    const feed = chosen.feed;
+    // Takes its turn with the watcher's clear-up, so neither deletes a folder the other is about to use.
+    return this.inTurn(async () => {
+      let room: { free: number; keep: number };
+      try {
+        await mkdir(this.options.dir, { recursive: true });
+        room = await this.room();
+      } catch (error) {
+        throw new ExportRefusedError(
+          'disk',
+          `The folder exports are kept in cannot be used: ${getErrorMessage(error)}`,
+        );
+      }
+      // Every export folder is deleted once this export is created: the kept export's, and any an export left behind
+      // when its stream was deleted before the watcher cleared it away. So their space is free for this one.
+      const free = room.free + (await this.foldersBytes());
+      if (estimate !== null && free - room.keep < estimate * 2) {
+        throw new ExportRefusedError(
+          'disk',
+          `The server has ${formatBytes(free)} free and keeps ${formatBytes(room.keep)} of it free, ${this.keepFreeShare()} of its disk. This export needs about ${formatBytes(estimate * 2)} while it runs: the segments and the MP4.`,
+        );
+      }
 
-    const created = await this.store.create({
-      id: randomUUID(),
-      streamId: stream.id,
-      rendition: chosen.option.rendition,
-      quality: chosen.option.rendition,
-      feedOwner: chosen.feed.owner,
-      feedTopic: chosen.feed.topic,
-      manifestIndex: chosen.feed.index,
-      estimatedBytes: estimate,
-      durationSeconds: chosen.option.durationSeconds,
-      startedByUserId: actor.userId,
-      startedBy: describeActor(actor),
-    });
-    if (!created) {
-      const now = await this.store.view(actor.userId);
-      throw new ExportRefusedError(
-        'busy',
-        now ? busyMessage(now) : 'Another export started first. One export runs at a time.',
-      );
-    }
-    // The replaced export's folder, and any an export left behind when its stream was deleted under it.
-    await this.sweep(created.row.id);
-
-    logger.info(
-      `[Export] ${describeActor(actor)} started exporting "${stream.title}" at ${chosen.option.label}${
-        estimate !== null ? `, about ${formatBytes(estimate)}` : ''
-      }${created.replaced.length > 0 ? ', replacing the kept export' : ''}`,
-    );
-    await recordAudit(this.audit, {
-      actor,
-      action: 'export.start',
-      streamId: stream.id,
-      topic: stream.topic,
-      details: {
-        exportId: created.row.id,
+      const created = await this.store.create({
+        id: randomUUID(),
+        streamId: stream.id,
         rendition: chosen.option.rendition,
-        manifestIndex: chosen.feed.index,
+        quality: chosen.option.rendition,
+        feedOwner: feed.owner,
+        feedTopic: feed.topic,
+        manifestIndex: feed.index,
         estimatedBytes: estimate,
-        replaced: created.replaced,
-      },
+        durationSeconds: chosen.option.durationSeconds,
+        startedByUserId: actor.userId,
+        startedBy: describeActor(actor),
+      });
+      if (!created) {
+        const now = await this.store.view(actor.userId);
+        throw new ExportRefusedError(
+          'busy',
+          now ? busyMessage(now) : 'Another export started first. One export runs at a time.',
+        );
+      }
+      // A job still running for an export deleted with its stream stops before its folder goes.
+      if (this.job && this.job.id !== created.row.id) await this.stopJob(this.job.id);
+      // The replaced export's folder, and any an export left behind when its stream was deleted under it.
+      await this.sweep(created.row.id);
+
+      logger.info(
+        `[Export] ${describeActor(actor)} started exporting "${stream.title}" at ${chosen.option.label}${
+          estimate !== null ? `, about ${formatBytes(estimate)}` : ''
+        }${created.replaced.length > 0 ? ', replacing the kept export' : ''}`,
+      );
+      await recordAudit(this.audit, {
+        actor,
+        action: 'export.start',
+        streamId: stream.id,
+        topic: stream.topic,
+        details: {
+          exportId: created.row.id,
+          rendition: chosen.option.rendition,
+          manifestIndex: feed.index,
+          estimatedBytes: estimate,
+          replaced: created.replaced,
+        },
+      });
+      this.launch(created.row.id, 'read');
+      return (await this.current(actor.userId))!;
     });
-    this.launch(created.row.id, 'read');
-    return (await this.current(actor.userId))!;
   }
 
-  /** Pause, resume, wait, save what was read, cancel, or close the widget. Answers the export as it now stands. */
+  /** Pause, resume, wait, save what was read, cancel, clear, or close the widget. Answers the export as it now stands. */
   async act(actor: OperatorActor, exportId: string, action: ExportAction): Promise<ExportSummary | null> {
     const view = await this.store.view(actor.userId);
     if (!view || view.id !== exportId) throw new ExportNotFoundError(exportId);
@@ -496,7 +508,11 @@ export class ExportService {
     this.ticking = (async () => {
       try {
         const row = await this.store.get();
-        if (!row || this.stopping) return;
+        if (this.stopping) return;
+        if (!row) {
+          await this.clearAway();
+          return;
+        }
         if (row.state === 'waiting') {
           const stream = await this.streams.findById(row.stream_id);
           if (!stream || !holdsRecording(stream)) return;
@@ -521,6 +537,27 @@ export class ExportService {
       }
     })();
     return this.ticking;
+  }
+
+  /**
+   * With no export on the server, nothing of one may stay: the database deletes an export's row with its stream, so
+   * the job it may have left running is stopped and every export folder removed. Takes its turn with starts, and looks
+   * again once it has it, so a start that got in first keeps its folder.
+   */
+  private async clearAway(): Promise<void> {
+    await this.inTurn(async () => {
+      if (await this.store.get()) return;
+      if (this.job) await this.stopJob(this.job.id);
+      const removed = await this.sweep(null);
+      if (removed > 0) logger.info(`[Export] removed the files of an export whose stream was deleted`);
+    });
+  }
+
+  /** Runs `work` once everything that took its turn before it is over, starts and clear-ups alike. */
+  private inTurn<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.turn.then(work, work);
+    this.turn = result.catch(() => undefined);
+    return result;
   }
 
   // --- the job -------------------------------------------------------------------
@@ -771,21 +808,24 @@ export class ExportService {
     const onAbort = () => inner.abort();
     if (signal.aborted) inner.abort();
     signal.addEventListener('abort', onAbort, { once: true });
-    const watch = setInterval(() => {
-      if (join.looking || join.halted) return;
-      join.looking = true;
-      look()
-        .then((why) => {
-          if (why && !join.halted) {
-            join.halted = why;
-            inner.abort();
-          }
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          join.looking = false;
-        });
-    }, Math.max(this.statusCheckMs, JOIN_CHECK_MIN_MS));
+    const watch = setInterval(
+      () => {
+        if (join.looking || join.halted) return;
+        join.looking = true;
+        look()
+          .then((why) => {
+            if (why && !join.halted) {
+              join.halted = why;
+              inner.abort();
+            }
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            join.looking = false;
+          });
+      },
+      Math.max(this.statusCheckMs, JOIN_CHECK_MIN_MS),
+    );
     try {
       await this.joiner.join(
         runs.map((run) => ({
@@ -1160,12 +1200,21 @@ export class ExportService {
     await rm(this.folder(id), { recursive: true, force: true });
   }
 
-  /** Deletes the folders of exports that are gone. Only names an export could have are touched. */
-  private async sweep(keep: string | null): Promise<void> {
+  /** Deletes the folders of exports that are gone, and answers how many. Only names an export could have are touched. */
+  private async sweep(keep: string | null): Promise<number> {
     const names = await readdir(this.options.dir).catch(() => [] as string[]);
-    await Promise.all(
-      names.filter((name) => UUID_NAME.test(name) && name !== keep).map((name) => this.removeFolder(name)),
+    const gone = names.filter((name) => UUID_NAME.test(name) && name !== keep);
+    await Promise.all(gone.map((name) => this.removeFolder(name)));
+    return gone.length;
+  }
+
+  /** The bytes in every export folder, all of which a start deletes once its own export is created. */
+  private async foldersBytes(): Promise<number> {
+    const names = await readdir(this.options.dir).catch(() => [] as string[]);
+    const sizes = await Promise.all(
+      names.filter((name) => UUID_NAME.test(name)).map((name) => treeBytes(this.folder(name))),
     );
+    return sizes.reduce((sum, size) => sum + size, 0);
   }
 }
 
@@ -1217,10 +1266,23 @@ function countPresent(
   return { read, bytes };
 }
 
+/** The bytes of every file under a folder; nothing for one that is gone. */
+async function treeBytes(dir: string): Promise<number> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  let total = 0;
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) total += await treeBytes(full);
+    else if (entry.isFile()) total += (await stat(full).catch(() => ({ size: 0 }))).size;
+  }
+  return total;
+}
+
 /** ffmpeg, or the file system under it, ran out of room. ffmpeg's error carries the last lines it wrote. */
 function isOutOfSpace(error: unknown): boolean {
   return (
-    (error as NodeJS.ErrnoException | null)?.code === 'ENOSPC' || /no space left on device/i.test(getErrorMessage(error))
+    (error as NodeJS.ErrnoException | null)?.code === 'ENOSPC' ||
+    /no space left on device/i.test(getErrorMessage(error))
   );
 }
 

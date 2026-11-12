@@ -1772,7 +1772,10 @@ export read.
 
 Each export has a folder in `EXPORT_DIR`, named by its id: `segments/`, the
 playlist as read, and at the end `export.mp4` alone. At boot, and when an
-export starts, folders no export names are deleted.
+export starts, folders no export names are deleted. Deleting a stream deletes
+its export's row with it, so the watcher looks too: with no export on the
+server, it stops any job one left running and deletes every export folder,
+within ten seconds. A start counts every folder it deletes as free room.
 
 | Method | Path                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                      |
 | ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
