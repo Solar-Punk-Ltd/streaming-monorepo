@@ -1,6 +1,7 @@
 import { EXPORT_ACTIVE_STATES } from '@streaming-monorepo/web2-admin-common';
 import CloseIcon from '@mui/icons-material/Close';
 import DownloadIcon from '@mui/icons-material/Download';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import { IconButton, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 
 import { errorMessage } from '../../errors';
@@ -11,8 +12,9 @@ import { useExport } from './ExportProvider';
 
 /**
  * The export on the server, floating in the top right of every page for every signed-in user, from the moment it
- * starts, the panel open or not. Clicking it opens the panel. Once the export is done it says so, with Save file, and
- * stays until each user closes it for themselves.
+ * starts, the panel open or not. Clicking it opens the panel, and so does its open button, which a keyboard reaches:
+ * the widget itself is a status line, not a button, since Save file and Close live inside it. Once the export is done
+ * it says so, with Save file, and stays until each user closes it for themselves.
  */
 export function ExportWidget() {
   const { current, openPanel, act } = useExport();
@@ -47,6 +49,16 @@ export function ExportWidget() {
         <Typography variant="subtitle2" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
           {current.streamTitle} · {current.quality}
         </Typography>
+        <IconButton
+          size="small"
+          aria-label="open the export"
+          onClick={(event) => {
+            event.stopPropagation();
+            openPanel(null);
+          }}
+        >
+          <OpenInFullIcon fontSize="small" />
+        </IconButton>
         {current.state === 'done' ? (
           <IconButton
             size="small"
