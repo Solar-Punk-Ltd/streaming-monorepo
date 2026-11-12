@@ -408,6 +408,48 @@ describe('ExportService', () => {
     assert.equal((await service.current(null))?.state, 'done');
   });
 
+  it('stops the join when the free disk falls under the share it keeps, and joins once there is room', async () => {
+    const stream = recordedLadder();
+    total = 100_000_000;
+    free = 50_000_000;
+    service = makeService({ keepFreeFraction: 0.1 });
+    // Another workload takes the room while ffmpeg runs, which runs until something stops it.
+    joiner.during = async (signal) => {
+      free = 5_000_000;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+    };
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    const paused = await service.current(null);
+    assert.equal(paused?.pauseReason, 'disk');
+    assert.match(paused?.pauseMessage ?? '', /so joining stopped/);
+    assert.equal(joiner.stopped, 1);
+    assert.equal((await readdir(path.join(dir, paused!.id, 'segments'))).length, 5);
+
+    joiner.during = null;
+    free = 50_000_000;
+    await service.act(TEST_OPERATOR, paused!.id, 'resume');
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
+  });
+
+  it('pauses on the disk, not as a problem, when ffmpeg runs out of room', async () => {
+    const stream = recordedLadder();
+    joiner.during = async () => {
+      throw new Error('ffmpeg exited with code 1: av_interleaved_write_frame(): No space left on device');
+    };
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    const paused = await service.current(null);
+    assert.equal(paused?.pauseReason, 'disk');
+    assert.deepEqual(paused?.actions, ['resume', 'cancel']);
+  });
+
   it('names a single-quality recording by the height of its video, estimated from its first segment', async () => {
     const stream = streamRow({
       status: 'vod',

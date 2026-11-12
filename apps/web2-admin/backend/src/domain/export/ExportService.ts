@@ -760,8 +760,13 @@ export class ExportService {
 
     const partial = read < playlist.segments.length;
     const temporary = path.join(this.folder(id), 'export.tmp.mp4');
-    // While ffmpeg runs, the stream is looked at now and then, and the join stopped if it went live.
-    const join = { halted: null as 'live' | null, looking: false };
+    // While ffmpeg runs, the stream and the disk are looked at now and then: the join stops if the stream went live, or
+    // if the free disk fell under the share kept free, which a long join could otherwise fill.
+    const join = { halted: null as 'live' | 'disk' | null, looking: false };
+    const look = async (): Promise<'live' | 'disk' | null> => {
+      if (await wentLive()) return 'live';
+      return (await this.shortOfRoom()) ? 'disk' : null;
+    };
     const inner = new AbortController();
     const onAbort = () => inner.abort();
     if (signal.aborted) inner.abort();
@@ -769,10 +774,10 @@ export class ExportService {
     const watch = setInterval(() => {
       if (join.looking || join.halted) return;
       join.looking = true;
-      wentLive()
-        .then((live) => {
-          if (live && !join.halted) {
-            join.halted = 'live';
+      look()
+        .then((why) => {
+          if (why && !join.halted) {
+            join.halted = why;
             inner.abort();
           }
         })
@@ -796,6 +801,18 @@ export class ExportService {
       if (signal.aborted) return;
       if (join.halted === 'live') {
         await this.pause(id, ['joining'], 'live', liveMessage());
+        return;
+      }
+      // Out of room, as the watcher saw, as ffmpeg said, or as the disk says now: a disk pause, so a user frees some
+      // and resumes, rather than a problem that a retry would only repeat.
+      if (join.halted === 'disk' || isOutOfSpace(error) || (await this.shortOfRoom())) {
+        const room = await this.room();
+        await this.pause(
+          id,
+          ['joining'],
+          'disk',
+          `The server has ${formatBytes(room.free)} free, and keeps ${formatBytes(room.keep)} free, ${this.keepFreeShare()} of its disk, so joining stopped. Free some disk, then resume.`,
+        );
         return;
       }
       await this.pause(
@@ -1092,6 +1109,16 @@ export class ExportService {
     return { free, keep: Math.round(total * this.keepFreeFraction) };
   }
 
+  /** Whether the free disk is under the share kept free; false when the disk cannot be read. */
+  private async shortOfRoom(): Promise<boolean> {
+    try {
+      const room = await this.room();
+      return room.free < room.keep;
+    } catch {
+      return false;
+    }
+  }
+
   private keepFreeShare(): string {
     return `${Math.round(this.keepFreeFraction * 100)}%`;
   }
@@ -1188,6 +1215,13 @@ function countPresent(
     }
   }
   return { read, bytes };
+}
+
+/** ffmpeg, or the file system under it, ran out of room. ffmpeg's error carries the last lines it wrote. */
+function isOutOfSpace(error: unknown): boolean {
+  return (
+    (error as NodeJS.ErrnoException | null)?.code === 'ENOSPC' || /no space left on device/i.test(getErrorMessage(error))
+  );
 }
 
 function liveMessage(): string {

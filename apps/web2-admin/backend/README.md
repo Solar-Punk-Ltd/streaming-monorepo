@@ -1733,7 +1733,9 @@ says why it is shaped this way.
   between sessions, a gap entry, or a missing stretch starts a new run, and the
   runs are joined one after the other, so each of them becomes a cut. A gap
   needs it too: the uploader keeps the clock running across a hole, so copying
-  over it would freeze the picture for the missing seconds. ffmpeg reads
+  over it would freeze the picture for the missing seconds. While ffmpeg runs,
+  the free disk is watched: a join that the rest of the server leaves short of
+  the share kept free stops and pauses as `disk`, keeping the segments. ffmpeg reads
   only local files. Without ffmpeg every start is refused with problem
   `no_ffmpeg`.
 - **The name.** The stream's title in plain letters and digits, the day the
@@ -1754,7 +1756,7 @@ it.
 | `user`       | someone pressed Pause                                                                      | resume, save what's read, cancel                     |
 | `unreadable` | segments could not be read after retries; the message says how many                        | resume (tries them again), save without them, cancel |
 | `live`       | the stream went live again while the export read or joined, so its recording is changing   | save what's read, wait, cancel                       |
-| `disk`       | the free disk ran short                                                                    | resume, cancel                                       |
+| `disk`       | the free disk ran short while it read or joined, or ffmpeg ran out of room                 | resume, cancel                                       |
 | `problem`    | anything else, in the message: no node, a playlist that cannot be read, a join that failed | resume (tries again), save what's read, cancel       |
 
 **Wait** leaves the export `waiting`; it carries on by itself once the stream is
