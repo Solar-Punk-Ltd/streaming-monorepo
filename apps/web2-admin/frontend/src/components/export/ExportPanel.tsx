@@ -28,7 +28,15 @@ import { fetchExportOptions } from '../../api';
 import { errorMessage } from '../../errors';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { useSnackbar } from '../Snackbar';
-import { actionLabel, formatBytes, formatLength, needsDecision, percentRead, statusLine } from './exportText';
+import {
+  actionLabel,
+  formatBytes,
+  formatLength,
+  formatUtc,
+  needsDecision,
+  percentRead,
+  statusLine,
+} from './exportText';
 import { useExport } from './ExportProvider';
 
 export const CANCEL_EXPORT_PROMPT =
@@ -209,7 +217,8 @@ export function ExportPanel() {
               {current ? (
                 <Stack spacing={2}>
                   <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                    {current.quality} · started by {current.startedByYou ? 'you' : current.startedBy}
+                    {current.quality} · started by {current.startedByYou ? 'you' : current.startedBy} at{' '}
+                    {formatUtc(current.startedAt)}
                   </Typography>
                   {panel.streamId !== null && panel.streamId !== current.streamId && active ? (
                     <Alert severity="info">

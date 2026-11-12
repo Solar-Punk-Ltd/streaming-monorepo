@@ -5,6 +5,7 @@ import type { ExportOptionsResponse, ExportSummary, Stream } from '@streaming-mo
 
 import { ExportPanel } from '../components/export/ExportPanel';
 import { ExportProvider } from '../components/export/ExportProvider';
+import { formatUtc } from '../components/export/exportText';
 import { ExportWidget } from '../components/export/ExportWidget';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import { jsonOk, makeIngest, makeStream, mockFetch, renderWithProviders, type Route as MockRoute } from './helpers';
@@ -107,6 +108,15 @@ function renderPage() {
 
 const recorded = () => makeStream({ id: ID, status: 'vod', manifestIndex: 12, durationSeconds: 3854 });
 
+describe('formatUtc', () => {
+  it('gives the moment in UTC to the second, whatever zone it was written in, and says so when there is none', () => {
+    expect(formatUtc('2026-11-12T09:51:10.123Z')).toBe('2026-11-12 09:51:10 UTC');
+    expect(formatUtc('2026-11-12T10:51:10+01:00')).toBe('2026-11-12 09:51:10 UTC');
+    expect(formatUtc(null)).toBe('an unknown time');
+    expect(formatUtc('not a date')).toBe('an unknown time');
+  });
+});
+
 describe('exporting a recording', () => {
   it('offers Download on a recording, published or not, and not on a stream that is live', async () => {
     mockFetch(pageRoutes(recorded(), null));
@@ -153,7 +163,10 @@ describe('exporting a recording', () => {
       expect(JSON.parse(String(post?.[1]?.body))).toEqual({ rendition: '720p' });
     });
     expect(await within(panel).findByRole('button', { name: 'Pause' })).toBeInTheDocument();
-    expect(within(panel).getByText(/started by you/)).toBeInTheDocument();
+    expect(within(panel).getByText('720p · started by you at 2026-11-10 10:00:00 UTC')).toBeInTheDocument();
+    // The stream's page says when the running export started as well, behind the open dialog.
+    const card = screen.getByRole('region', { name: 'downloaded file', hidden: true });
+    expect(within(card).getByText('Started by you at 2026-11-10 10:00:00 UTC')).toBeInTheDocument();
     // The widget shows the running export with the panel open too; the open dialog hides the page from
     // assistive technology, as a modal does, so it is found among the hidden.
     expect(screen.getByRole('status', { name: 'export', hidden: true })).toHaveTextContent('Opening keynote · 720p');
@@ -228,6 +241,9 @@ describe('exporting a recording', () => {
 
     const card = await screen.findByRole('region', { name: 'downloaded file' });
     expect(within(card).getByText('opening-keynote-2026-11-05-1080p.mp4')).toBeInTheDocument();
+    expect(
+      within(card).getByText('Started 2026-11-10 10:00:00 UTC, finished 2026-11-10 10:20:00 UTC'),
+    ).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: /Save file/ })).toHaveAttribute(
       'href',
       `/api/export/${EXPORT_ID}/file`,
