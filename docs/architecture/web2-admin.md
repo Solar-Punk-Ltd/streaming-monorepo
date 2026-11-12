@@ -99,7 +99,8 @@ and the settings.
   panel comes to front for the user who started it, and a user decides: try again, save what was
   read as a partial file, wait until the stream finishes, or cancel.
 - **Nothing is re-encoded.** ffmpeg copies the segments into the MP4 as the viewers got them. A seam
-  between sessions of one broadcast, or a missing stretch, becomes a cut.
+  between sessions of one broadcast, a gap the uploader left, or a stretch that could not be read
+  becomes a cut.
 - **A playlist names references, not addresses.** Only the Swarm reference of each segment is read,
   through the node, so a recording can never make the admin fetch an address of its choosing.
 
