@@ -2,7 +2,7 @@ import { EXPORT_ACTIVE_STATES } from '@streaming-monorepo/web2-admin-common';
 import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 
 import { SaveFileButton } from './ExportPanel';
-import { formatBytes, formatUtc, percentRead, statusLine } from './exportText';
+import { formatBytes, formatTook, formatUtc, percentRead, statusLine } from './exportText';
 import { useExport } from './ExportProvider';
 
 /**
@@ -15,6 +15,7 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
   if (!current || current.streamId !== streamId) return null;
   const active = EXPORT_ACTIVE_STATES.includes(current.state);
   const percent = percentRead(current);
+  const took = formatTook(current.startedAt, current.finishedAt);
 
   return (
     <Paper sx={{ p: 3 }} component="section" aria-label="downloaded file">
@@ -47,6 +48,7 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               Started {formatUtc(current.startedAt)}
               {current.finishedAt ? `, finished ${formatUtc(current.finishedAt)}` : ''}
+              {took ? `, took ${took}` : ''}
             </Typography>
           </Box>
           {current.partial ? <Chip size="small" color="warning" label="Part of the recording" /> : null}
