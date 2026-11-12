@@ -49,4 +49,9 @@ describe('the admin sign-in values', () => {
     assert.equal(auth.REQUESTED_WITH_HEADER, 'x-requested-with');
     assert.equal(auth.REQUESTED_WITH_VALUE, 'web2-admin');
   });
+
+  it('names the header that marks a background read', () => {
+    assert.equal(auth.BACKGROUND_READ_HEADER, 'x-background-read');
+    assert.equal(auth.BACKGROUND_READ_VALUE, '1');
+  });
 });

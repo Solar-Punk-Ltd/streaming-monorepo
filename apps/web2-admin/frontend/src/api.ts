@@ -22,6 +22,8 @@ import type {
   VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
 import {
+  BACKGROUND_READ_HEADER,
+  BACKGROUND_READ_VALUE,
   EXPORT_PATH,
   exportActionPath,
   streamExportPath,
@@ -483,9 +485,13 @@ export function startExport(streamId: string, rendition: string): Promise<Export
   return sendJson<ExportSummary>('POST', streamExportPath(streamId), body);
 }
 
-/** The export on the server, which every signed-in user sees, or null. */
-export async function fetchCurrentExport(): Promise<ExportSummary | null> {
-  return (await getJson<ExportCurrentResponse>(EXPORT_PATH)).export;
+/**
+ * The export on the server, which every signed-in user sees, or null. A `background` look, the widget's timer, says
+ * so in a header, and the gate leaves the session's idle clock alone for it.
+ */
+export async function fetchCurrentExport(options: { background?: boolean } = {}): Promise<ExportSummary | null> {
+  const headers = options.background ? { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE } : undefined;
+  return (await getJson<ExportCurrentResponse>(EXPORT_PATH, headers)).export;
 }
 
 /** Pause, resume, wait, save what was read, cancel, or close the widget; null once the export is gone. */

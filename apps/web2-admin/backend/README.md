@@ -219,7 +219,9 @@ A weak password or a bad username is `400 validation_error` with the reason in
 - A session is 32 random bytes in an httpOnly SameSite=Lax cookie with no
   expiry of its own. The database row is the clock: twelve hours of
   inactivity, fourteen days at most, `last_seen_at` written at most once a
-  minute. Only the sha256 of the cookie value is stored. `Secure` is decided
+  minute. A GET with `x-background-read: 1` is checked the same way but never
+  writes `last_seen_at`: the console's export widget sends its timed reads
+  that way. Only the sha256 of the cookie value is stored. `Secure` is decided
   per request from `X-Forwarded-Proto`, never from a setting.
 - Four free sign-in attempts per username at one client address, and four per
   address whatever the username, then a minute that doubles up to an hour. A

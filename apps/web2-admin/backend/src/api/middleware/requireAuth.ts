@@ -1,3 +1,4 @@
+import { BACKGROUND_READ_HEADER, BACKGROUND_READ_VALUE } from '@streaming-monorepo/web2-admin-common';
 import { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import { operatorActor, type OperatorActor } from '../../domain/actor.js';
@@ -12,12 +13,17 @@ import { clearSessionCookie, readSessionToken } from '../cookies.js';
  *
  * A cookie that no longer opens anything is cleared on the way out, so a
  * browser that has been away for a fortnight stops sending a dead token.
+ *
+ * A background read, a GET with the header the console's own timer sends,
+ * passes the same checks but leaves the session's idle clock alone, so a
+ * console left open still signs out once it has been idle too long.
  */
 export function createRequireAuth(authService: AuthService): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const token = readSessionToken(req);
-      const session = token ? await authService.sessionFor(token) : null;
+      const background = req.method === 'GET' && req.get(BACKGROUND_READ_HEADER) === BACKGROUND_READ_VALUE;
+      const session = token ? await authService.sessionFor(token, { touch: !background }) : null;
       if (!session) {
         if (token) clearSessionCookie(req, res);
         throw new UnauthenticatedError();

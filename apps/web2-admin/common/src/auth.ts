@@ -35,3 +35,11 @@ export const SESSION_COOKIE_NAME = 'web2_admin_session';
  * API never answers. The console's fetch wrapper puts it on every write.
  */
 export const REQUESTED_WITH_VALUE = 'web2-admin';
+
+/**
+ * Marks a read the console makes on its own timer rather than for something the operator did: the export widget's
+ * look at the export. The gate checks the session as on any request, but leaves its idle clock where it was, so a
+ * console left open still signs out once it has been idle too long. Honoured on GET only.
+ */
+export const BACKGROUND_READ_HEADER = 'x-background-read';
+export const BACKGROUND_READ_VALUE = '1';

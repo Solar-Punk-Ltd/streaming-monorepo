@@ -52,7 +52,8 @@ export function useExport(): ExportContextValue {
 
 /**
  * The export on the server, read every few seconds for as long as a user is signed in, and the panel's state. One
- * export exists at a time for the whole admin, so every user's console shows the same one.
+ * export exists at a time for the whole admin, so every user's console shows the same one. The reads on the timer
+ * are background reads, which leave the session's idle clock alone, so an open console still signs out when idle.
  *
  * When the export pauses for a decision, on segments that cannot be read, a stream that went live again, a full
  * disk or another problem, the panel comes to front for the user who started it, once per pause. Everyone else sees
@@ -63,13 +64,15 @@ export function ExportProvider({ children }: { children: ReactNode }) {
   const [panel, setPanel] = useState<ExportPanelState>({ open: false, streamId: null });
   const surfaced = useRef<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  // A look on the timer is a background read: the operator did nothing, so it must not keep their session awake.
+  const look = useCallback(async (background: boolean) => {
     try {
-      setCurrent(await fetchCurrentExport());
+      setCurrent(await fetchCurrentExport({ background }));
     } catch {
       // The next read tries again; a session that ended is the auth provider's to handle.
     }
   }, []);
+  const refresh = useCallback(() => look(false), [look]);
 
   useEffect(() => {
     void refresh();
@@ -77,9 +80,9 @@ export function ExportProvider({ children }: { children: ReactNode }) {
 
   const active = current !== null && EXPORT_ACTIVE_STATES.includes(current.state);
   useEffect(() => {
-    const timer = setInterval(() => void refresh(), active ? EXPORT_POLL_ACTIVE_MS : EXPORT_POLL_IDLE_MS);
+    const timer = setInterval(() => void look(true), active ? EXPORT_POLL_ACTIVE_MS : EXPORT_POLL_IDLE_MS);
     return () => clearInterval(timer);
-  }, [active, refresh]);
+  }, [active, look]);
 
   useEffect(() => {
     if (!current || current.state !== 'paused' || !current.startedByYou || !pauseNeedsDecision(current.pauseReason)) {

@@ -330,7 +330,9 @@ clears the user, and the route guard sends the operator to `#/login`.
 An idle tab finds out too. While someone is signed in, the console asks `GET /api/auth/me` again on
 window focus and when the tab becomes visible, at most once every five seconds, so a session revoked
 from another browser shows "Your session ended. Log in again." the next time the operator looks at
-the tab. There is no timer, because every request keeps the session's idle clock running. Other tabs
+the tab. There is no timer, because every request keeps the session's idle clock running. The export
+widget's look at the export is the one timer, and it sends its reads with `x-background-read: 1`,
+which the API checks without moving the idle clock. Other tabs
 of the same browser are told at once over a `BroadcastChannel`, and a reload after a revoke shows
 the same notice. On the change-password form, a 401 `unauthenticated` signs out too, and only
 `invalid_credentials` means the current password was wrong.
