@@ -1,7 +1,7 @@
 import type { ExportPauseReason, ExportState } from '@streaming-monorepo/web2-admin-common';
 import type { Pool, PoolClient } from 'pg';
 
-/** A row of `stream_exports` (migration 023). There is at most one. */
+/** A row of `stream_exports` (migrations 023 and 024). There is at most one. */
 export interface ExportRow {
   id: string;
   /** Always true: the unique column that holds the table to one row. */
@@ -25,6 +25,8 @@ export interface ExportRow {
   file_name: string | null;
   size_bytes: number | null;
   partial: boolean;
+  /** A user chose Save what was read: the join finishes even while the stream is live. */
+  save_chosen: boolean;
   started_by_user_id: string | null;
   started_by: string;
   started_at: Date;
@@ -70,6 +72,7 @@ export interface ExportChange {
   fileName?: string;
   sizeBytes?: number;
   partial?: boolean;
+  saveChosen?: boolean;
 }
 
 export interface ExportProgress {
@@ -199,6 +202,7 @@ export class ExportRepository implements ExportStore {
     if (change.fileName !== undefined) set('file_name', change.fileName);
     if (change.sizeBytes !== undefined) set('size_bytes', change.sizeBytes);
     if (change.partial !== undefined) set('partial', change.partial);
+    if (change.saveChosen !== undefined) set('save_chosen', change.saveChosen);
     if (change.state === 'done') sets.push('finished_at = NOW()');
     const result = await this.pool.query<ExportRow>(
       `UPDATE stream_exports SET ${sets.join(', ')}

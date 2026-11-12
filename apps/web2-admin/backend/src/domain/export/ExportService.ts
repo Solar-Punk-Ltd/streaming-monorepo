@@ -38,6 +38,8 @@ const DEFAULT_RETRY_DELAYS_MS = [1_000, 2_000, 4_000];
 const DEFAULT_WATCH_INTERVAL_MS = 10_000;
 const DEFAULT_STATUS_CHECK_MS = 3_000;
 const DEFAULT_PROGRESS_SAVE_MS = 1_000;
+/** While ffmpeg joins, the stream is looked at every status check, but never more often than this. */
+const JOIN_CHECK_MIN_MS = 20;
 /** The share of the disk kept free beside an export, so a full disk never takes the database or the logs down with it. */
 const DEFAULT_KEEP_FREE_FRACTION = 0.1;
 /** How long the estimate of a single-quality recording may take: one playlist and one segment. */
@@ -375,7 +377,7 @@ export class ExportService {
         break;
       }
       case 'resume': {
-        const resumed = await this.store.transition(exportId, ['paused'], { state: 'reading' });
+        const resumed = await this.store.transition(exportId, ['paused'], { state: 'reading', saveChosen: false });
         if (!resumed) throw notNow();
         logger.info(`[Export] ${describeActor(actor)} resumed the export of "${view.stream_title}"`);
         await audit('export.resume', { after: view.pause_reason });
@@ -394,7 +396,11 @@ export class ExportService {
         break;
       }
       case 'save': {
-        const joining = await this.store.transition(exportId, ['paused', 'waiting'], { state: 'joining' });
+        // The user's own answer to a stream that went live again: this join finishes whatever the stream does.
+        const joining = await this.store.transition(exportId, ['paused', 'waiting'], {
+          state: 'joining',
+          saveChosen: true,
+        });
         if (!joining) throw notNow();
         logger.info(`[Export] ${describeActor(actor)} saved what was read of "${view.stream_title}"`);
         await audit('export.save', { segmentsRead: joining.segments_read, segmentsTotal: joining.segments_total });
@@ -535,7 +541,7 @@ export class ExportService {
     try {
       if (mode === 'read') {
         if ((await this.readPass(id, signal)) !== 'complete' || signal.aborted) return;
-        if (!(await this.store.transition(id, ['reading'], { state: 'joining' }))) return;
+        if (!(await this.store.transition(id, ['reading'], { state: 'joining', saveChosen: false }))) return;
       }
       await this.joinPass(id, signal);
     } catch (error) {
@@ -708,12 +714,21 @@ export class ExportService {
     return 'complete';
   }
 
-  /** Joins every segment read into the MP4, keeps it, and deletes the segments. A missing stretch becomes a cut. */
+  /**
+   * Joins every segment read into the MP4, keeps it, and deletes the segments. A missing stretch becomes a cut. A join
+   * the job started itself pauses as `live` when the stream goes live again, as reading does: before ffmpeg starts,
+   * while it runs, and before the file is kept. One a user chose with Save what was read finishes regardless.
+   */
   private async joinPass(id: string, signal: AbortSignal): Promise<void> {
     const row = await this.store.get();
     if (!row || row.id !== id || row.state !== 'joining') return;
     const stream = await this.streams.findById(row.stream_id);
     if (!stream) return;
+    const wentLive = async () => !row.save_chosen && (await this.streams.findById(stream.id))?.status === 'live';
+    if (!row.save_chosen && stream.status === 'live') {
+      await this.pause(id, ['joining'], 'live', liveMessage());
+      return;
+    }
     const playlist = await this.cachedPlaylist(id, row.manifest_index);
     const present = await this.presentSegments(id);
     const runs = playlist ? runsOf(playlist.segments, new Set(present.keys())) : [];
@@ -736,6 +751,27 @@ export class ExportService {
 
     const partial = read < playlist.segments.length;
     const temporary = path.join(this.folder(id), 'export.tmp.mp4');
+    // While ffmpeg runs, the stream is looked at now and then, and the join stopped if it went live.
+    const join = { halted: null as 'live' | null, looking: false };
+    const inner = new AbortController();
+    const onAbort = () => inner.abort();
+    if (signal.aborted) inner.abort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    const watch = setInterval(() => {
+      if (join.looking || join.halted) return;
+      join.looking = true;
+      wentLive()
+        .then((live) => {
+          if (live && !join.halted) {
+            join.halted = 'live';
+            inner.abort();
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          join.looking = false;
+        });
+    }, Math.max(this.statusCheckMs, JOIN_CHECK_MIN_MS));
     try {
       await this.joiner.join(
         runs.map((run) => ({
@@ -744,17 +780,30 @@ export class ExportService {
         })),
         temporary,
         this.folder(id),
-        signal,
+        inner.signal,
       );
     } catch (error) {
       await rm(temporary, { force: true });
       if (signal.aborted) return;
+      if (join.halted === 'live') {
+        await this.pause(id, ['joining'], 'live', liveMessage());
+        return;
+      }
       await this.pause(
         id,
         ['joining'],
         'problem',
         `Joining the segments into an MP4 failed: ${getErrorMessage(error)}. Try again, or cancel.`,
       );
+      return;
+    } finally {
+      clearInterval(watch);
+      signal.removeEventListener('abort', onAbort);
+    }
+    // The stream may have gone live since the last look, and the file must not be kept as if it had not.
+    if (await wentLive()) {
+      await rm(temporary, { force: true });
+      await this.pause(id, ['joining'], 'live', liveMessage());
       return;
     }
 

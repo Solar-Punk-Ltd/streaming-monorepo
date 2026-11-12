@@ -256,6 +256,68 @@ describe('ExportService', () => {
     assert.equal(joiner.joins.at(-1)!.length, 2);
   });
 
+  it('stops its own join when the stream goes live, and finishes the one a user chose to save', async () => {
+    const stream = recordedLadder();
+    // The stream goes live while ffmpeg runs, which runs until something stops it.
+    joiner.during = async (signal) => {
+      streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'live' });
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+    };
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    const paused = await service.current(TEST_OPERATOR.userId);
+    assert.equal(paused?.state, 'paused');
+    assert.equal(paused?.pauseReason, 'live');
+    assert.equal(paused?.segmentsRead, 5);
+    assert.equal(joiner.stopped, 1);
+    // No file is kept as if the recording had finished, and every segment read stays for later.
+    const kept = await readdir(path.join(dir, paused!.id));
+    assert.ok(!kept.includes('export.mp4') && !kept.includes('export.tmp.mp4'));
+    assert.equal((await readdir(path.join(dir, paused!.id, 'segments'))).length, 5);
+
+    // Save what was read is the user's answer to exactly that, so it finishes while the stream is still live.
+    joiner.during = null;
+    await service.act(TEST_OPERATOR, paused!.id, 'save');
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
+  });
+
+  it('keeps no file when the stream went live just as ffmpeg finished', async () => {
+    const stream = recordedLadder();
+    joiner.during = async () => {
+      streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'live' });
+    };
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    const paused = await service.current(null);
+    assert.equal(paused?.pauseReason, 'live');
+    assert.equal(joiner.stopped, 0);
+    const kept = await readdir(path.join(dir, paused!.id));
+    assert.ok(!kept.includes('export.mp4') && !kept.includes('export.tmp.mp4'));
+  });
+
+  it('pauses at boot a join the last process left, when the stream has gone live since', async () => {
+    const stream = recordedLadder();
+    joiner.during = (signal) =>
+      new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    while ((await store.get())?.state !== 'joining') await new Promise((resolve) => setTimeout(resolve, 5));
+    await service.shutdown();
+    assert.equal((await store.get())?.state, 'joining');
+
+    joiner.during = null;
+    streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'live' });
+    service = makeService();
+    await service.boot();
+    await service.settled();
+    assert.equal((await service.current(null))?.pauseReason, 'live');
+  });
+
   it('stops reading on Pause, and carries on where it stopped on Resume', async () => {
     const stream = recordedLadder();
     let open!: () => void;
