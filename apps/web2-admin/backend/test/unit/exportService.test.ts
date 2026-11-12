@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -529,6 +529,52 @@ describe('ExportService', () => {
     await service.boot();
 
     assert.deepEqual(await folderNames(), ['not-an-export']);
+  });
+
+  it('clears away, at its next look, the files of an export deleted with its stream', async () => {
+    const stream = recordedLadder();
+    const started = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    assert.deepEqual(await folderNames(), [started.id]);
+
+    // Deleting the stream deletes the export's row in the database; its file stays until the watcher looks.
+    streams.rows.delete(stream.id);
+    await store.remove(started.id);
+    await service.tick();
+    assert.deepEqual(await folderNames(), []);
+  });
+
+  it('stops the job of an export deleted with its stream while it reads, then clears its files away', async () => {
+    const stream = recordedLadder();
+    let open!: () => void;
+    source.gate = new Promise((resolve) => (open = resolve));
+    const started = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    while ((await folderNames()).length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+
+    streams.rows.delete(stream.id);
+    await store.remove(started.id);
+    const looked = service.tick();
+    open();
+    await looked;
+    await service.settled();
+    assert.deepEqual(await folderNames(), []);
+  });
+
+  it('counts the folders a start deletes as free room, a deleted export’s leftovers included', async () => {
+    const stream = recordedLadder();
+    // As in the test above: 2 MB of a 20 MB disk stay free, and the export needs about 10 MB.
+    service = makeService({ keepFreeFraction: undefined });
+    total = 20_000_000;
+    free = 11_000_000;
+    // 2 MB left by an export whose stream was deleted before the watcher looked: the start deletes them, so they count.
+    const leftover = path.join(dir, '11111111-2222-4333-8444-555555555555');
+    await mkdir(leftover);
+    await writeFile(path.join(leftover, 'export.mp4'), Buffer.alloc(2_000_000));
+
+    const started = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
+    assert.deepEqual(await folderNames(), [started.id]);
   });
 
   it('carries on at boot with an export the last process left reading', async () => {
