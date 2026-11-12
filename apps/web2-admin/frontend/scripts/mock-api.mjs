@@ -1250,7 +1250,7 @@ function exportActions(e, dismissed) {
       if (e.pauseReason === 'disk') return ['resume', 'cancel'];
       return ['resume', ...save, 'cancel'];
     default:
-      return dismissed ? [] : ['dismiss'];
+      return dismissed ? ['clear'] : ['dismiss', 'clear'];
   }
 }
 
@@ -1465,7 +1465,7 @@ async function handle(req, res) {
         Object.assign(e, { state: 'joining', since: now, ...cleared });
       }
       if (action === 'dismiss') e.dismissedBy.add(user.id);
-      if (action === 'cancel') mockExport = null;
+      if (action === 'cancel' || action === 'clear') mockExport = null;
       return send(res, 200, { export: exportSummary(mockExport, user) });
     }
   }

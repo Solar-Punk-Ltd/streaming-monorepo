@@ -277,15 +277,17 @@ One export runs at a time for the whole admin, and every signed-in user sees it
 
 - **The panel.** Opened with Download on a stream's page, it shows the recording's day and length
   and each quality with its resolution and estimated size, highest first, and Start export. When
-  the file kept on the server is this stream at the chosen quality, it offers Save file instead.
-  Starting another export replaces the kept file, and the panel says so. While an export holds the
+  the file kept on the server is this stream at the chosen quality, it offers Save file instead,
+  and Clear, which asks first and deletes the kept file for everyone, so that quality can be
+  exported again, a partial file included. Starting another export replaces the kept file, and the
+  panel says so. While an export holds the
   slot, the panel follows that export, whichever stream it is, and says one runs at a time.
 - **Following an export.** Where it stands, with a progress bar, who started it and when, in UTC to
   the second, and the buttons
   for what it allows now: Pause; after a pause, Resume, or Try them again when segments could not
   be read, and Try again after another problem; Save what's read, or Save without them; Wait until
   it finishes, when the stream went live again; and Cancel export, which asks first, since
-  everything read so far is deleted. Once it is done, Save file.
+  everything read so far is deleted. Once it is done, Save file and Clear.
 - **The widget.** From the moment an export starts, it floats in the top right of every page for
   every signed-in user, the panel open or not, with its stream, quality and progress. Clicking it
   opens the panel, and so does its open button, which a keyboard reaches. It says "Paused: needs a

@@ -125,7 +125,8 @@ export function actionsFor(row: ExportRow, dismissed: boolean): ExportAction[] {
       if (row.pause_reason === 'disk') return ['resume', 'cancel'];
       return ['resume', ...save, 'cancel'];
     case 'done':
-      return dismissed ? [] : ['dismiss'];
+      // Clear stays on offer after a user closed the widget: the kept file is still on the server, and on the panel.
+      return dismissed ? ['clear'] : ['dismiss', 'clear'];
   }
 }
 
@@ -418,6 +419,14 @@ export class ExportService {
       case 'dismiss': {
         if (!(await this.store.dismiss(exportId, actor.userId))) throw notNow();
         break;
+      }
+      case 'clear': {
+        // The kept file goes for everyone, so the same quality can be exported again from the panel.
+        if (!(await this.store.remove(exportId))) throw new ExportNotFoundError(exportId);
+        await this.removeFolder(exportId);
+        logger.info(`[Export] ${describeActor(actor)} cleared the kept file of "${view.stream_title}"`);
+        await audit('export.clear', { fileName: view.file_name, sizeBytes: view.size_bytes });
+        return null;
       }
     }
     return this.current(actor.userId);
@@ -1199,6 +1208,8 @@ function actionWords(action: ExportAction): string {
       return 'be cancelled';
     case 'dismiss':
       return 'be closed';
+    case 'clear':
+      return 'be cleared';
   }
 }
 
