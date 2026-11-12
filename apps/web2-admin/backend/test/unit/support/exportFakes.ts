@@ -94,6 +94,7 @@ export class InMemoryExportStore implements ExportStore {
       file_name: null,
       size_bytes: null,
       partial: false,
+      save_chosen: false,
       started_by_user_id: input.startedByUserId,
       started_by: input.startedBy,
       started_at: now,
@@ -126,6 +127,7 @@ export class InMemoryExportStore implements ExportStore {
     if (change.fileName !== undefined) row.file_name = change.fileName;
     if (change.sizeBytes !== undefined) row.size_bytes = change.sizeBytes;
     if (change.partial !== undefined) row.partial = change.partial;
+    if (change.saveChosen !== undefined) row.save_chosen = change.saveChosen;
     if (change.state === 'done') row.finished_at = new Date();
     row.updated_at = new Date();
     return { ...row };
@@ -199,13 +201,22 @@ export class FakeJoiner implements Joiner {
   problem: string | null = null;
   height: number | null = 720;
   readonly joins: JoinRun[][] = [];
+  /** Runs inside each join before the file is written: a test's way to change the world while ffmpeg runs. */
+  during: ((signal?: AbortSignal) => Promise<void>) | null = null;
+  /** Joins stopped by their signal before they wrote anything. */
+  stopped = 0;
 
   async check(): Promise<string | null> {
     return this.problem;
   }
 
-  async join(runs: JoinRun[], output: string, workDir: string): Promise<void> {
+  async join(runs: JoinRun[], output: string, workDir: string, signal?: AbortSignal): Promise<void> {
     this.joins.push(runs);
+    if (this.during) await this.during(signal);
+    if (signal?.aborted) {
+      this.stopped += 1;
+      throw new Error('the join was stopped');
+    }
     const parts: Buffer[] = [];
     for (const run of runs) for (const file of run.files) parts.push(await readFile(path.join(workDir, file)));
     await writeFile(output, Buffer.concat(parts));

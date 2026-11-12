@@ -94,10 +94,12 @@ and the settings.
   every signed-in user sees it in a widget in the top right of every page.
 - **The last file is kept.** The finished MP4 stays until the next export starts and replaces it,
   so saving it again costs no Swarm read. Its stream's page shows it above the OBS details.
-- **It never fails, it pauses.** Segments that cannot be read, a stream that goes live again, a
-  full disk or any other problem pause the export with the reason, keeping everything read. The
-  panel comes to front for the user who started it, and a user decides: try again, save what was
-  read as a partial file, wait until the stream finishes, or cancel.
+- **It never fails, it pauses.** Segments that cannot be read, a stream that goes live again while
+  the export reads or joins, a full disk or any other problem pause the export with the reason,
+  keeping everything read. The panel comes to front for the user who started it, and a user
+  decides: try again, save what was read as a partial file, wait until the stream finishes, or
+  cancel. Saving what was read is the answer to a stream that went live, so it finishes even while
+  the stream is live.
 - **Nothing is re-encoded.** ffmpeg copies the segments into the MP4 as the viewers got them. A seam
   between sessions of one broadcast, a gap the uploader left, or a stretch that could not be read
   becomes a cut.

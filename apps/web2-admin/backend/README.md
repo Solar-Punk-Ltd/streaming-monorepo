@@ -1712,8 +1712,8 @@ says why it is shaped this way.
 
 - **One at a time, for the whole admin.** While an export is reading, joining,
   paused or waiting, no other can start, for any stream, by any user
-  (`409 export_refused`, problem `busy`). `stream_exports` (migration 023)
-  holds at most one row, and a unique column refuses a second.
+  (`409 export_refused`, problem `busy`). `stream_exports` (migrations 023
+  and 024) holds at most one row, and a unique column refuses a second.
 - **The kept file.** A finished export stays on the server, for every user to
   save, until the next export starts and deletes it. Saving it reads nothing
   from Swarm.
@@ -1753,7 +1753,7 @@ it.
 | ------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
 | `user`       | someone pressed Pause                                                                      | resume, save what's read, cancel                     |
 | `unreadable` | segments could not be read after retries; the message says how many                        | resume (tries them again), save without them, cancel |
-| `live`       | the stream went live again, so its recording is changing                                   | save what's read, wait, cancel                       |
+| `live`       | the stream went live again while the export read or joined, so its recording is changing   | save what's read, wait, cancel                       |
 | `disk`       | the free disk ran short                                                                    | resume, cancel                                       |
 | `problem`    | anything else, in the message: no node, a playlist that cannot be read, a join that failed | resume (tries again), save what's read, cancel       |
 
@@ -1762,7 +1762,11 @@ a recording again, from the new playlist, which carries the earlier sessions
 too. The segments are kept on disk by reference, so nothing already read is
 read again, after a pause, a wait or a restart. A restart carries on with an
 export left reading or joining. **Save what's read** joins what was read now,
-marked partial. **Cancel** deletes everything the export read.
+marked partial, and finishes even while the stream is live, because it is the
+answer to that pause (`save_chosen`, migration 024). A join the export starts by
+itself looks at the stream before ffmpeg starts, while it runs and before the
+file is kept, and pauses as `live` instead. **Cancel** deletes everything the
+export read.
 
 Each export has a folder in `EXPORT_DIR`, named by its id: `segments/`, the
 playlist as read, and at the end `export.mp4` alone. At boot, and when an
@@ -1813,6 +1817,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                              |
 | `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                 |
 | `023_stream_exports.sql`                | `stream_exports`, the one export on the server, and `stream_export_dismissals`, who closed a finished export's widget ([Exporting a recording](#exporting-a-recording))                           |
+| `024_stream_exports_save_chosen.sql`    | `stream_exports.save_chosen`, whether a user chose Save what's read, whose join finishes even while the stream is live ([Exporting a recording](#exporting-a-recording))                          |
 
 ## Audit log
 

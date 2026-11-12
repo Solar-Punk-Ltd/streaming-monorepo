@@ -161,6 +161,21 @@ describe('ExportRepository', () => {
     );
   });
 
+  it('keeps a save chosen on the row until the export reads again', async () => {
+    const streamId = await stream('itest save chosen');
+    const { row } = (await exportsStore.create(newExport(streamId)))!;
+    assert.equal(row.save_chosen, false);
+
+    await exportsStore.transition(row.id, ['reading'], { state: 'paused', pauseReason: 'live' });
+    const saving = await exportsStore.transition(row.id, ['paused'], { state: 'joining', saveChosen: true });
+    assert.equal(saving?.save_chosen, true);
+    // A move that does not name it leaves it as it was.
+    const failed = await exportsStore.transition(row.id, ['joining'], { state: 'paused', pauseReason: 'problem' });
+    assert.equal(failed?.save_chosen, true);
+    const reading = await exportsStore.transition(row.id, ['paused'], { state: 'reading', saveChosen: false });
+    assert.equal(reading?.save_chosen, false);
+  });
+
   it('shows each user their own dismissal, and only a done export can be dismissed', async () => {
     const streamId = await stream('itest views');
     const { row } = (await exportsStore.create(newExport(streamId)))!;
