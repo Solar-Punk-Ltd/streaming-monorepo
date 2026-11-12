@@ -10,8 +10,8 @@
  * Only the reference is taken. A playlist that names anything else is refused, so a playlist can never make the
  * export fetch an address of its choosing.
  *
- * `#EXT-X-GAP` entries, which mark a stretch the uploader never received, are skipped and counted. Their URI is
- * `gap-<sequence>`. `#EXT-X-DISCONTINUITY` marks a seam between two sessions of one broadcast, and is kept on the
+ * `#EXT-X-GAP` entries, which mark a stretch the uploader never received, are skipped and counted, and the segment
+ * after one carries a break, so the file cuts across the hole. Their URI is `gap-<sequence>`. `#EXT-X-DISCONTINUITY` marks a seam between two sessions of one broadcast, and is kept on the
  * segment after it.
  */
 
@@ -19,7 +19,10 @@
 export interface PlaylistSegment {
   reference: string;
   durationSeconds: number;
-  /** A seam comes before this segment: another session of the broadcast starts here. */
+  /**
+   * A break comes before this segment, so the file cuts here: a seam where another session of the broadcast starts,
+   * whose clock differs, or a gap entry, a stretch the uploader never received, across which the clock ran on.
+   */
   discontinuity: boolean;
 }
 
@@ -89,6 +92,9 @@ export function parseRecordingPlaylist(text: string): RecordingPlaylist {
     // A URI line ends the segment its tags described.
     if (gap || GAP_URI.test(line)) {
       gaps += 1;
+      // The uploader keeps the clock running across a hole, so the segments either side of it cannot be copied as one
+      // stretch: the picture would freeze for the missing seconds. The next segment starts a new run, and the file cuts.
+      discontinuity = true;
     } else {
       const reference = segmentReference(line);
       if (reference === null) {
@@ -110,8 +116,8 @@ export function parseRecordingPlaylist(text: string): RecordingPlaylist {
 
 /**
  * The segments as runs the joiner can copy without touching their timestamps: a run breaks at a seam between
- * sessions, whose clocks differ, and at a segment that was not read, so a missing stretch becomes a cut. Segments are
- * named by reference, so `present` holds the references read.
+ * sessions, whose clocks differ, after a gap entry, and at a segment that was not read, so a missing stretch becomes a
+ * cut. Segments are named by reference, so `present` holds the references read.
  */
 export function runsOf(segments: readonly PlaylistSegment[], present: ReadonlySet<string>): PlaylistSegment[][] {
   const runs: PlaylistSegment[][] = [];

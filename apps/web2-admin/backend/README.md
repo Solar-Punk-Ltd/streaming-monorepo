@@ -1724,13 +1724,16 @@ says why it is shaped this way.
   feed slot the admin recorded for it: the rung's `manifest_index` in
   `stream_renditions`, or the stream's own for a recording with one quality.
   Then every segment it names, `EXPORT_PARALLEL_READS` at a time, each retried
-  a few times. Gap entries are skipped. Only the Swarm reference of each
+  a few times. Gap entries are skipped, and the segment after one starts a new
+  run. Only the Swarm reference of each
   segment is read, through the node: a playlist that names any other address is
   refused, and the host an old playlist names is never called.
 - **How it joins.** ffmpeg copies the segments into an MP4, with `+faststart`
   and nothing re-encoded. The segments of one session go in as they are; a seam
-  between sessions, or a missing stretch, starts a new run, and the runs are
-  joined one after the other, so a missing stretch becomes a cut. ffmpeg reads
+  between sessions, a gap entry, or a missing stretch starts a new run, and the
+  runs are joined one after the other, so each of them becomes a cut. A gap
+  needs it too: the uploader keeps the clock running across a hole, so copying
+  over it would freeze the picture for the missing seconds. ffmpeg reads
   only local files. Without ffmpeg every start is refused with problem
   `no_ffmpeg`.
 - **The name.** The stream's title in plain letters and digits, the day the

@@ -18,7 +18,7 @@ describe('reading a recording playlist', () => {
     assert.equal(segmentReference('https://example.test/video.ts'), null);
   });
 
-  it('skips gap entries, keeps seams on the segment after them, and adds up the length', () => {
+  it('skips gap entries, breaks the run after each of them and at a seam, and adds up the length', () => {
     const playlist = parseRecordingPlaylist(
       [
         '#EXTM3U',
@@ -40,11 +40,17 @@ describe('reading a recording playlist', () => {
     );
     assert.deepEqual(playlist.segments, [
       { reference: A, durationSeconds: 2, discontinuity: false },
-      { reference: B, durationSeconds: 1.5, discontinuity: false },
+      // The uploader's clock ran on across the hole, so B cannot be copied as A's continuation.
+      { reference: B, durationSeconds: 1.5, discontinuity: true },
       { reference: C, durationSeconds: 2, discontinuity: true },
     ]);
     assert.equal(playlist.gaps, 1);
     assert.equal(playlist.durationSeconds, 5.5);
+    // Every segment read, and still three runs: the file cuts across the gap as it does at the seam.
+    assert.deepEqual(
+      runsOf(playlist.segments, new Set([A, B, C])).map((run) => run.map((segment) => segment.reference)),
+      [[A], [B], [C]],
+    );
   });
 
   it('refuses a playlist that is not a finished recording, or names something that is not a reference', () => {
