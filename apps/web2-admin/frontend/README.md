@@ -288,7 +288,8 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   everything read so far is deleted. Once it is done, Save file.
 - **The widget.** From the moment an export starts, it floats in the top right of every page for
   every signed-in user, the panel open or not, with its stream, quality and progress. Clicking it
-  opens the panel. It says "Paused: needs a decision" when a pause asks for one. A finished export
+  opens the panel, and so does its open button, which a keyboard reaches. It says "Paused: needs a
+  decision" when a pause asks for one. A finished export
   shows that it is ready, with Save file and a close button, and each user closes it for
   themselves.
 - **Coming to front.** When an export pauses for a decision, the panel opens by itself for the user

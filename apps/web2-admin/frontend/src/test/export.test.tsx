@@ -226,6 +226,18 @@ describe('exporting a recording', () => {
     expect(within(panel).getByText(/started by other-operator/)).toBeInTheDocument();
   });
 
+  it('opens the panel from the widget with a button a keyboard reaches, while an export runs', async () => {
+    mockFetch(pageRoutes(recorded(), makeExport()));
+    renderPage();
+
+    const widget = await screen.findByRole('status', { name: 'export' });
+    const open = within(widget).getByRole('button', { name: 'open the export' });
+    open.focus();
+    expect(open).toHaveFocus();
+    fireEvent.click(open);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+
   it('shows the kept file above the OBS details and in the widget, to save, and closes the widget on request', async () => {
     const done = makeExport({
       state: 'done',
