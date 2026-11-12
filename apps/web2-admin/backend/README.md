@@ -1772,16 +1772,16 @@ Each export has a folder in `EXPORT_DIR`, named by its id: `segments/`, the
 playlist as read, and at the end `export.mp4` alone. At boot, and when an
 export starts, folders no export names are deleted.
 
-| Method | Path                      | Answer                                                                                                                                                                                                                                                                                                                        |
-| ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/export`             | `ExportCurrentResponse`: the export on the server, as the user asking sees it (`startedByYou`, `dismissed`, and the `actions` it allows now), or null. Every signed-in user sees the same one                                                                                                                                 |
-| POST   | `/api/export/:id/actions` | `ExportActionRequest` in: `pause`, `resume`, `wait`, `save`, `cancel`, or `dismiss`, which closes a finished export's widget for the user who asks. `ExportCurrentResponse` out, null after a cancel. `409 export_refused` (`not_now`) for an action the export is not in a state for, `404 export_not_found` once it is gone |
-| GET    | `/api/export/:id/file`    | the finished MP4 as an attachment under its file name, with ranges, so a browser can resume a download. `X-Accel-Buffering: no` lets the console's nginx pass it on as it comes. `404 export_not_found` when there is no such file                                                                                            |
+| Method | Path                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/export`             | `ExportCurrentResponse`: the export on the server, as the user asking sees it (`startedByYou`, `dismissed`, and the `actions` it allows now), or null. Every signed-in user sees the same one                                                                                                                                                                                                               |
+| POST   | `/api/export/:id/actions` | `ExportActionRequest` in: `pause`, `resume`, `wait`, `save`, `cancel`, `dismiss`, which closes a finished export's widget for the user who asks, or `clear`, which deletes a finished export's kept file for everyone. `ExportCurrentResponse` out, null after a cancel or a clear. `409 export_refused` (`not_now`) for an action the export is not in a state for, `404 export_not_found` once it is gone |
+| GET    | `/api/export/:id/file`    | the finished MP4 as an attachment under its file name, with ranges, so a browser can resume a download. `X-Accel-Buffering: no` lets the console's nginx pass it on as it comes. `404 export_not_found` when there is no such file                                                                                                                                                                          |
 
 The audit log records `export.start`, `export.pause`, `export.resume`,
-`export.wait`, `export.save`, `export.cancel` and `export.file` (a save of the
-file from its start) by the user, and `export.paused` and `export.done` by the
-system.
+`export.wait`, `export.save`, `export.cancel`, `export.clear` and `export.file`
+(a save of the file from its start) by the user, and `export.paused` and
+`export.done` by the system.
 
 ## Migrations
 

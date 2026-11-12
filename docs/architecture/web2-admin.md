@@ -93,7 +93,8 @@ and the settings.
   halve the speed of both. While one is reading, paused or waiting, nobody can start another, and
   every signed-in user sees it in a widget in the top right of every page.
 - **The last file is kept.** The finished MP4 stays until the next export starts and replaces it,
-  so saving it again costs no Swarm read. Its stream's page shows it above the OBS details.
+  so saving it again costs no Swarm read. Its stream's page shows it above the OBS details. A user
+  can clear it from the panel, which deletes it for everyone, and then export that quality again.
 - **It never fails, it pauses.** Segments that cannot be read, a stream that goes live again while
   the export reads or joins, a full disk or any other problem pause the export with the reason,
   keeping everything read. The panel comes to front for the user who started it, and a user

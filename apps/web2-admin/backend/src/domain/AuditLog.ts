@@ -51,6 +51,7 @@ export type AuditAction =
   | 'export.wait'
   | 'export.save'
   | 'export.cancel'
+  | 'export.clear'
   | 'export.paused'
   | 'export.done'
   | 'export.file'

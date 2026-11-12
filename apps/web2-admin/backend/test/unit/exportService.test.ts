@@ -120,7 +120,7 @@ describe('ExportService', () => {
     assert.equal(done?.fileName, 'opening-keynote-2026-11-05-1080p.mp4');
     assert.equal(done?.partial, false);
     assert.equal(done?.segmentsRead, 5);
-    assert.deepEqual(done?.actions, ['dismiss']);
+    assert.deepEqual(done?.actions, ['dismiss', 'clear']);
     // One run, in the playlist's order, and nothing left but the MP4.
     assert.equal(joiner.joins.length, 1);
     assert.deepEqual(
@@ -440,10 +440,32 @@ describe('ExportService', () => {
 
     const closed = await service.act(TEST_OPERATOR, started.id, 'dismiss');
     assert.equal(closed?.dismissed, true);
-    assert.deepEqual(closed?.actions, []);
+    // Closing the widget keeps the file, so it can still be cleared.
+    assert.deepEqual(closed?.actions, ['clear']);
     const other = await service.current(OTHER_OPERATOR.userId);
     assert.equal(other?.dismissed, false);
-    assert.deepEqual(other?.actions, ['dismiss']);
+    assert.deepEqual(other?.actions, ['dismiss', 'clear']);
+  });
+
+  it('clears the kept file for everyone, so the same quality can be exported again, and never a running one', async () => {
+    const stream = recordedLadder();
+    const first = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+
+    assert.equal(await service.act(TEST_OPERATOR, first.id, 'clear'), null);
+    assert.equal(await service.current(OTHER_OPERATOR.userId), null);
+    assert.deepEqual(await folderNames(), []);
+    assert.ok(audit.entries.some((entry) => entry.action === 'export.clear'));
+
+    // The same quality starts again, and while it runs it can be cancelled but not cleared.
+    let open!: () => void;
+    source.gate = new Promise((resolve) => (open = resolve));
+    const again = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await assert.rejects(service.act(TEST_OPERATOR, again.id, 'clear'), { problem: 'not_now' });
+    open();
+    source.gate = null;
+    await service.settled();
+    assert.equal((await service.current(null))?.state, 'done');
   });
 
   it('refuses an action the export is not in a state for', async () => {

@@ -89,5 +89,7 @@ export function actionLabel(action: ExportAction, current: ExportSummary): strin
       return 'Cancel export';
     case 'dismiss':
       return 'Close';
+    case 'clear':
+      return 'Clear';
   }
 }

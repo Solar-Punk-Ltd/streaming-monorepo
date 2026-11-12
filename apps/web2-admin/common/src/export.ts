@@ -60,10 +60,19 @@ export function pauseNeedsDecision(reason: ExportPauseReason | null): boolean {
  * - `save`: join what was read into an MP4 now. A missing stretch becomes a cut, and the file is marked partial.
  * - `cancel`: stop, and delete everything the export read.
  * - `dismiss`: close the widget of a finished export, for the user who asks only.
+ * - `clear`: delete the kept file of a finished export, for everyone, so its quality can be exported again.
  */
-export type ExportAction = 'pause' | 'resume' | 'wait' | 'save' | 'cancel' | 'dismiss';
+export type ExportAction = 'pause' | 'resume' | 'wait' | 'save' | 'cancel' | 'dismiss' | 'clear';
 
-export const EXPORT_ACTIONS: readonly ExportAction[] = ['pause', 'resume', 'wait', 'save', 'cancel', 'dismiss'];
+export const EXPORT_ACTIONS: readonly ExportAction[] = [
+  'pause',
+  'resume',
+  'wait',
+  'save',
+  'cancel',
+  'dismiss',
+  'clear',
+];
 
 /** The export on the server, as every user sees it. */
 export interface ExportSummary {

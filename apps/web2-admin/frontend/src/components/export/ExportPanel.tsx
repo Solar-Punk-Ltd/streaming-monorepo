@@ -42,6 +42,9 @@ import { useExport } from './ExportProvider';
 export const CANCEL_EXPORT_PROMPT =
   'Everything read from Swarm so far is deleted, and another export would start again from the beginning.';
 
+export const CLEAR_EXPORT_PROMPT =
+  'The file is deleted from the server for everyone, and exporting the recording again reads it from Swarm.';
+
 /** Save file: the finished MP4, saved by the browser under the name the API gives it. */
 export function SaveFileButton({
   current,
@@ -79,6 +82,7 @@ export function ExportPanel() {
   const [choice, setChoice] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const active = current !== null && EXPORT_ACTIVE_STATES.includes(current.state);
   // Read when the panel opens: only an opening decides the view, and an export that starts meanwhile is followed.
   const activeNow = useRef(active);
@@ -186,7 +190,7 @@ export function ExportPanel() {
                   {keptHere ? (
                     <Alert severity="success">
                       This quality is on the server already: {keptHere.fileName}, {formatBytes(keptHere.sizeBytes)}.
-                      Saving it reads nothing from Swarm.
+                      Saving it reads nothing from Swarm. To export it again, clear it first.
                     </Alert>
                   ) : null}
                   {replacing ? (
@@ -197,6 +201,11 @@ export function ExportPanel() {
             </DialogContent>
             <DialogActions>
               <Button onClick={closePanel}>Close</Button>
+              {keptHere?.actions.includes('clear') ? (
+                <Button color="error" disabled={busy} onClick={() => setConfirmClear(true)}>
+                  Clear
+                </Button>
+              ) : null}
               {keptHere ? (
                 <SaveFileButton current={keptHere} />
               ) : (
@@ -255,7 +264,7 @@ export function ExportPanel() {
             </DialogContent>
             <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
               {current?.actions
-                .filter((action) => action !== 'cancel' && action !== 'dismiss')
+                .filter((action) => action !== 'cancel' && action !== 'dismiss' && action !== 'clear')
                 .map((action) => (
                   <Button key={action} disabled={busy} onClick={() => void doAction(action)}>
                     {actionLabel(action, current)}
@@ -264,6 +273,11 @@ export function ExportPanel() {
               {current?.actions.includes('cancel') ? (
                 <Button color="error" disabled={busy} onClick={() => setConfirmCancel(true)}>
                   Cancel export
+                </Button>
+              ) : null}
+              {current?.actions.includes('clear') ? (
+                <Button color="error" disabled={busy} onClick={() => setConfirmClear(true)}>
+                  Clear
                 </Button>
               ) : null}
               {current?.state === 'done' ? <SaveFileButton current={current} /> : null}
@@ -286,6 +300,21 @@ export function ExportPanel() {
           }, 'The export could not be cancelled.')
         }
         onCancel={() => setConfirmCancel(false)}
+      />
+      <ConfirmDialog
+        open={confirmClear}
+        title="Clear the kept file?"
+        message={CLEAR_EXPORT_PROMPT}
+        confirmText="Clear"
+        cancelText="Keep it"
+        busy={busy}
+        onConfirm={() =>
+          void run(async () => {
+            await act('clear');
+            setConfirmClear(false);
+          }, 'The file could not be cleared.')
+        }
+        onCancel={() => setConfirmClear(false)}
       />
     </>
   );

@@ -226,6 +226,37 @@ describe('exporting a recording', () => {
     expect(within(panel).getByText(/started by other-operator/)).toBeInTheDocument();
   });
 
+  it('clears the kept file from the panel, after which the quality can be exported again', async () => {
+    const done = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      partial: true,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+    const fetchMock = mockFetch(
+      pageRoutes(recorded(), done, [
+        { path: `/api/streams/${ID}/export`, respond: () => jsonOk(OPTIONS) },
+        { path: `/api/export/${EXPORT_ID}/actions`, method: 'POST', respond: () => jsonOk({ export: null }) },
+      ]),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Download' }));
+    const panel = await screen.findByRole('dialog');
+    // The chosen quality is the kept file, here a partial one: Save file, and Clear to export it again.
+    expect(await within(panel).findByText(/This quality is on the server already/)).toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: 'Start export' })).not.toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Clear' }));
+
+    expect(await screen.findByText('Clear the kept file?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(await within(panel).findByRole('button', { name: 'Start export' })).toBeInTheDocument();
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'clear' });
+  });
+
   it('opens the panel from the widget with a button a keyboard reaches, while an export runs', async () => {
     mockFetch(pageRoutes(recorded(), makeExport()));
     renderPage();
@@ -244,7 +275,7 @@ describe('exporting a recording', () => {
       fileName: 'opening-keynote-2026-11-05-1080p.mp4',
       sizeBytes: 2_100_000_000,
       finishedAt: '2026-11-10T10:20:00.000Z',
-      actions: ['dismiss'],
+      actions: ['dismiss', 'clear'],
     });
     const fetchMock = mockFetch(
       pageRoutes(recorded(), done, [
