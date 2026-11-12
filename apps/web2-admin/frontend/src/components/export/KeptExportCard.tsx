@@ -1,9 +1,8 @@
 import { EXPORT_ACTIVE_STATES } from '@streaming-monorepo/web2-admin-common';
 import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 
-import { formatDateTime } from '../../dateUtil';
 import { SaveFileButton } from './ExportPanel';
-import { formatBytes, percentRead, statusLine } from './exportText';
+import { formatBytes, formatUtc, percentRead, statusLine } from './exportText';
 import { useExport } from './ExportProvider';
 
 /**
@@ -27,6 +26,9 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
           <Typography variant="body2">
             {current.quality}: {statusLine(current)}
           </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            Started by {current.startedByYou ? 'you' : current.startedBy} at {formatUtc(current.startedAt)}
+          </Typography>
           <LinearProgress variant={percent === null ? 'indeterminate' : 'determinate'} value={percent ?? 0} />
           <Box>
             <Button size="small" onClick={() => openPanel(null)}>
@@ -41,7 +43,10 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
               {current.quality} · {formatBytes(current.sizeBytes)} · exported by{' '}
               {current.startedByYou ? 'you' : current.startedBy}
-              {current.finishedAt ? ` on ${formatDateTime(current.finishedAt)}` : ''}
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              Started {formatUtc(current.startedAt)}
+              {current.finishedAt ? `, finished ${formatUtc(current.finishedAt)}` : ''}
             </Typography>
           </Box>
           {current.partial ? <Chip size="small" color="warning" label="Part of the recording" /> : null}

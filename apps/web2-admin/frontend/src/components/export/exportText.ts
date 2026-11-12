@@ -18,6 +18,13 @@ export function formatLength(seconds: number | null | undefined): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${rest}` : `${minutes}:${rest}`;
 }
 
+/** A moment in UTC, to the second, as the export's start and finish are shown: `2026-11-12 09:51:10 UTC`. */
+export function formatUtc(iso: string | null | undefined): string {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'an unknown time';
+  return `${date.toISOString().slice(0, 19).replace('T', ' ')} UTC`;
+}
+
 /** How far the reading is, 0 to 100, or null before the playlist was read and while joining. */
 export function percentRead(current: ExportSummary): number | null {
   if (current.state === 'joining' || !current.segmentsTotal) return null;
