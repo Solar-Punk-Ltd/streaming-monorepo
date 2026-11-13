@@ -262,6 +262,9 @@ pnpm install
    batch bought on the catalogue node. Then, on **Manager settings**, designate that node and its
    batch as the brand's catalogue node. The manager pushes it to the admin, whose Stages page then
    shows the catalogue batch. The Bee host's firewall admits the control host to that node's API.
+   Recordings are archived onto archive stamps, further immutable batches on this node, which the
+   admin buys on its Funding page from the node's own wallet. Fund that wallet and the node's
+   chequebook there before the first archive.
 
 10. **The stage**, by the stage host recipe below: an **ABR uploader** deployment with the pool's
     string and a stream key of its own, which the wizard generates. Its Web2 admin group starts on,
