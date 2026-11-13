@@ -176,6 +176,23 @@ describe('ExportService', () => {
     await service.settled();
   });
 
+  it('refuses to start while an archive holds the place the two share', async () => {
+    const stream = recordedLadder();
+    const holding =
+      'The archive of "Alps" is copying, started by other-operator. One archive or export runs at a time.';
+    let archive: string | null = holding;
+    service = makeService({ archives: { archiveHoldingPlace: async () => archive } });
+    await assert.rejects(service.start(TEST_OPERATOR, stream.id, '1080p'), { problem: 'busy', message: holding });
+    assert.equal((await service.optionsFor(stream.id, null)).refusal?.message, holding);
+    assert.equal(await service.exportHoldingPlace(), null, 'no export holds it');
+    archive = null;
+    const started = await service.start(TEST_OPERATOR, stream.id, '1080p');
+    assert.match((await service.exportHoldingPlace())!, /The export of ".+" \(1080p\) is running/);
+    assert.equal(started.state, 'reading');
+    await service.settled();
+    assert.equal(await service.exportHoldingPlace(), null, 'a kept export file holds no place');
+  });
+
   it('pauses with the count when segments cannot be read, and tries only those again on resume', async () => {
     const stream = recordedLadder();
     source.failing.add(ref(3));

@@ -22,6 +22,7 @@ import { recordAudit, type AuditAction, type AuditLog } from '../AuditLog.js';
 import { withoutCatalogueNode } from '../catalogueNodeText.js';
 import { ExportNotFoundError, ExportRefusedError, StreamNotFoundError } from '../errors/index.js';
 import type { CatalogueTarget } from '../FeedGateway.js';
+import type { ArchivePlace } from '../jobPlace.js';
 import { Logger } from '../Logger.js';
 import type { ExportRow, ExportStore, ExportView } from './ExportRepository.js';
 import type { Joiner } from './Joiner.js';
@@ -82,6 +83,11 @@ export interface ExportServiceOptions {
   keepFreeFraction?: number;
   disk?: DiskSpace;
   now?: () => Date;
+  /**
+   * The archive, which shares the one place a job has: while it holds the place, no export starts, and the refusal
+   * says which archive holds it. None in the tests that are not about it.
+   */
+  archives?: ArchivePlace;
 }
 
 /** `complete` when every segment was read; otherwise the export has been paused with the reason, or moved on. */
@@ -224,6 +230,15 @@ export class ExportService {
     return view ? summaryOf(view, userId) : null;
   }
 
+  /**
+   * For the archive: whether an export holds the place the two share, in the sentence that says which. A kept export
+   * file holds none.
+   */
+  async exportHoldingPlace(): Promise<string | null> {
+    const view = await this.store.view(null);
+    return view && EXPORT_ACTIVE_STATES.includes(view.state) ? busyMessage(view) : null;
+  }
+
   /** What the panel offers for one stream: its qualities with estimates, and why none can start now, if so. */
   async optionsFor(streamId: string, userId: string | null): Promise<ExportOptionsResponse> {
     const stream = await this.streams.findById(streamId);
@@ -324,9 +339,12 @@ export class ExportService {
       });
       if (!created) {
         const now = await this.store.view(actor.userId);
+        const archive = await this.options.archives?.archiveHoldingPlace();
         throw new ExportRefusedError(
           'busy',
-          now ? busyMessage(now) : 'Another export started first. One export runs at a time.',
+          now && EXPORT_ACTIVE_STATES.includes(now.state)
+            ? busyMessage(now)
+            : (archive ?? 'Another export started first. One export runs at a time.'),
         );
       }
       // A job still running for an export deleted with its stream stops before its folder goes.
@@ -1069,6 +1087,8 @@ export class ExportService {
       };
     }
     if (view && EXPORT_ACTIVE_STATES.includes(view.state)) return { problem: 'busy', message: busyMessage(view) };
+    const archive = await this.options.archives?.archiveHoldingPlace();
+    if (archive) return { problem: 'busy', message: archive };
     const ffmpeg = await this.ffmpegProblem();
     if (ffmpeg) return { problem: 'no_ffmpeg', message: ffmpeg };
     const node = await this.readNode();

@@ -86,6 +86,11 @@ export interface StreamRow {
    * a row that holds a recording and a stage.
    */
   stage_id: string | null;
+  /**
+   * "List only archived qualities" (migration 026): the stream's catalogue entry names only the qualities that play
+   * from an archive stamp. False unless a user turned it on.
+   */
+  archived_only: boolean;
   created_at: Date;
   updated_at: Date;
 }

@@ -1,6 +1,8 @@
 import type { ExportPauseReason, ExportState } from '@streaming-monorepo/web2-admin-common';
 import type { Pool, PoolClient } from 'pg';
 
+import { ARCHIVE_HOLDS_PLACE_SQL, TAKE_JOB_PLACE_LOCK_SQL } from '../jobPlace.js';
+
 /** A row of `stream_exports` (migrations 023 and 024). There is at most one. */
 export interface ExportRow {
   id: string;
@@ -88,7 +90,8 @@ export interface ExportStore {
   view(userId: string | null): Promise<ExportView | null>;
   /**
    * Inserts a new export, deleting a done one first, and answers the ids it replaced. Null while another export holds
-   * the slot, including one a concurrent start inserted first.
+   * the slot, including one a concurrent start inserted first, or an archive holds the place the two share
+   * (`jobPlace.ts`).
    */
   create(input: NewExport): Promise<{ row: ExportRow; replaced: string[] } | null>;
   /** Moves the export from one of `from`; null when it is gone or in another state, and nothing changed. */
@@ -143,6 +146,9 @@ export class ExportRepository implements ExportStore {
   async create(input: NewExport): Promise<{ row: ExportRow; replaced: string[] } | null> {
     try {
       return await inTransaction(this.pool, async (client) => {
+        // The place an export shares with the archive: under the same lock, an archive that holds it refuses this.
+        await client.query(TAKE_JOB_PLACE_LOCK_SQL);
+        if ((await client.query(ARCHIVE_HOLDS_PLACE_SQL)).rowCount) return null;
         const held = await client.query<{ id: string; state: ExportState }>(
           'SELECT id, state FROM stream_exports FOR UPDATE',
         );
