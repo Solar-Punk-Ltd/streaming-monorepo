@@ -104,6 +104,7 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     // On the stage `stageFakes` pushes, as every stream picked in the form now
     // is. A test about a stream without one says so.
     stage_id: STAGE_ID,
+    archived_only: false,
     created_at: at,
     updated_at: at,
     ...over,

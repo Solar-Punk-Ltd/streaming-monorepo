@@ -1,0 +1,311 @@
+/**
+ * ArchiveRepository against the real database (migrations 025 to 028), with the place it shares with the export: one
+ * archive at a time, an archive and an export never both holding the place, a user's pause and a purchase confirm
+ * giving it up, moves that apply only from the state they name, the resume ledger, a quality's copy replaced when it
+ * is made again, one purchase under way at a time, and the listing switch.
+ *
+ * It creates its own users and streams on the suite's throwaway database and removes them in `after`.
+ */
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { after, before, beforeEach, describe, it } from 'node:test';
+
+import { ArchiveRepository, type NewArchiveJob } from '../../src/domain/archive/ArchiveRepository.js';
+import { Database } from '../../src/domain/Database.js';
+import { ExportRepository } from '../../src/domain/export/ExportRepository.js';
+import { newPublishKey } from '../../src/domain/StreamService.js';
+import { StreamRepository } from '../../src/domain/StreamRepository.js';
+
+import { releaseStack, requireStack, stack } from './helpers.js';
+
+const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
+const BATCH = 'a'.repeat(64);
+
+let database: Database;
+let archives: ArchiveRepository;
+let exportsStore: ExportRepository;
+let streams: StreamRepository;
+let userId: string;
+
+async function stream(title: string): Promise<string> {
+  const row = await streams.insert({
+    user_id: userId,
+    topic: randomUUID(),
+    owner: OWNER,
+    title,
+    description: 'An itest stream for the archive repository.',
+    tags: [],
+    media_type: 'video',
+    scheduled_start_time: null,
+    publish_key: newPublishKey(),
+    stage_id: null,
+  });
+  return row.id;
+}
+
+function newJob(streamId: string, over: Partial<NewArchiveJob> = {}): NewArchiveJob {
+  return {
+    id: randomUUID(),
+    streamId,
+    batchId: BATCH,
+    buyNew: false,
+    startedByUserId: userId,
+    startedBy: 'itest',
+    items: [
+      { rendition: '720p', feedOwner: OWNER, feedTopic: randomUUID(), manifestIndex: 5 },
+      { rendition: '360p', feedOwner: OWNER, feedTopic: randomUUID(), manifestIndex: 5 },
+    ],
+    ...over,
+  };
+}
+
+async function startExport(streamId: string): Promise<string | null> {
+  const created = await exportsStore.create({
+    id: randomUUID(),
+    streamId,
+    rendition: '720p',
+    quality: '720p',
+    feedOwner: OWNER,
+    feedTopic: randomUUID(),
+    manifestIndex: 5,
+    estimatedBytes: null,
+    durationSeconds: null,
+    startedByUserId: userId,
+    startedBy: 'itest',
+  });
+  return created?.row.id ?? null;
+}
+
+async function clear(): Promise<void> {
+  await database.pool.query('DELETE FROM archive_jobs');
+  await database.pool.query('DELETE FROM archive_stamp_purchases');
+  await database.pool.query('DELETE FROM stream_archives');
+  await database.pool.query('DELETE FROM archive_rate');
+  await database.pool.query('DELETE FROM stream_exports');
+}
+
+before(async () => {
+  await requireStack();
+  database = new Database(stack().databaseUrl);
+  archives = new ArchiveRepository(database.pool);
+  exportsStore = new ExportRepository(database.pool);
+  streams = new StreamRepository(database.pool);
+  const row = await database.pool.query<{ id: string }>(
+    `INSERT INTO users (username, password_hash) VALUES ($1, 'scrypt$16384$8$1$aaaa$bbbb') RETURNING id`,
+    [`itest-${randomUUID().slice(0, 8)}`],
+  );
+  userId = row.rows[0]!.id;
+});
+
+beforeEach(clear);
+
+after(async () => {
+  if (database) {
+    await clear();
+    await database.pool.query('DELETE FROM streams WHERE user_id = $1', [userId]);
+    await database.pool.query('DELETE FROM users WHERE id = $1', [userId]);
+    await database.close();
+  }
+  await releaseStack();
+});
+
+describe('ArchiveRepository', () => {
+  it('holds one archive at a time, two starts at once leaving one, and replaces a done one', async () => {
+    const streamId = await stream('itest archive');
+    const [first, second] = await Promise.all([
+      archives.createJob(newJob(streamId)),
+      archives.createJob(newJob(streamId)),
+    ]);
+    const made = [first, second].filter((created) => 'row' in created);
+    assert.equal(made.length, 1);
+    assert.deepEqual(
+      [first, second].find((created) => 'refused' in created),
+      { refused: 'archive' },
+    );
+    const job = (made[0] as { row: { id: string } }).row;
+    assert.equal((await archives.items(job.id)).length, 2);
+
+    await archives.transition(job.id, ['measuring'], { state: 'copying' });
+    await archives.transition(job.id, ['copying'], { state: 'verifying' });
+    const done = await archives.transition(job.id, ['verifying'], { state: 'done' });
+    assert.ok(done?.finished_at);
+    const next = await archives.createJob(newJob(streamId));
+    assert.ok('row' in next, 'a done archive gives way to the next');
+    assert.equal((await database.pool.query('SELECT 1 FROM archive_jobs')).rowCount, 1);
+  });
+
+  it('never lets an archive and an export hold the place together', async () => {
+    const streamId = await stream('itest place');
+    assert.ok(await startExport(streamId));
+    assert.deepEqual(await archives.createJob(newJob(streamId)), { refused: 'export' });
+
+    await database.pool.query(
+      `UPDATE stream_exports SET state = 'done', finished_at = NOW(), file_name = 'x.mp4', size_bytes = 1`,
+    );
+    const created = await archives.createJob(newJob(streamId));
+    assert.ok('row' in created, 'a kept export file holds no place');
+    assert.equal(await startExport(streamId), null, 'an archive measuring holds the place');
+
+    await archives.transition(created.row.id, ['measuring'], { state: 'copying' });
+    assert.equal(await startExport(streamId), null, 'an archive copying holds the place');
+    await archives.transition(created.row.id, ['copying'], {
+      state: 'paused',
+      pauseReason: 'batch',
+      pauseMessage: 'The archive stamp is full.',
+    });
+    assert.equal(await startExport(streamId), null, 'a pause that needs a decision keeps the place');
+  });
+
+  it('gives the place up while a purchase waits and on a user pause, and takes it again only when it is free', async () => {
+    const streamId = await stream('itest give up');
+    const created = await archives.createJob(newJob(streamId, { batchId: null, buyNew: true }));
+    assert.ok('row' in created);
+    const id = created.row.id;
+    await archives.transition(id, ['measuring'], { state: 'awaiting_purchase', chunksTotal: 1000 });
+    assert.ok(await startExport(streamId), 'an archive waiting for a purchase confirm gives the place up');
+    assert.deepEqual(await archives.transitionTakingPlace(id, ['awaiting_purchase'], { state: 'buying' }), {
+      refused: 'export',
+    });
+    await database.pool.query('DELETE FROM stream_exports');
+    const buying = await archives.transitionTakingPlace(id, ['awaiting_purchase'], { state: 'buying' });
+    assert.ok(buying && !('refused' in buying) && buying.state === 'buying');
+
+    await archives.transition(id, ['buying'], { state: 'copying', batchId: BATCH, buyNew: false });
+    await archives.transition(id, ['copying'], { state: 'paused', pauseReason: 'user', pauseMessage: 'Paused.' });
+    assert.ok(await startExport(streamId), 'a user pause gives the place up');
+    assert.deepEqual(await archives.transitionTakingPlace(id, ['paused'], { state: 'copying' }), {
+      refused: 'export',
+    });
+  });
+
+  it('moves only from the states named, with a reason while paused and only then', async () => {
+    const streamId = await stream('itest moves');
+    const created = await archives.createJob(newJob(streamId));
+    assert.ok('row' in created);
+    const id = created.row.id;
+    assert.equal(await archives.transition(id, ['copying'], { state: 'verifying' }), null);
+    const paused = await archives.transition(id, ['measuring'], {
+      state: 'paused',
+      pauseReason: 'unreadable',
+      pauseMessage: 'Two segments could not be read.',
+    });
+    assert.equal(paused?.pause_reason, 'unreadable');
+    assert.ok(paused?.paused_at);
+    const resumed = await archives.transition(id, ['paused'], { state: 'copying' });
+    assert.equal(resumed?.pause_reason, null);
+    assert.equal(resumed?.pause_message, null);
+    await assert.rejects(
+      () => archives.transition(id, ['copying'], { state: 'copying', batchId: null }),
+      /archive_jobs_target|archive_jobs_copy_needs_stamp/,
+      'a job copies onto a stamp',
+    );
+  });
+
+  it('keeps the resume ledger with the counters, and forgets it when a quality starts over', async () => {
+    const streamId = await stream('itest ledger');
+    const created = await archives.createJob(newJob(streamId));
+    assert.ok('row' in created);
+    const id = created.row.id;
+    const reference = 'c'.repeat(64);
+    await archives.updateItem(id, '720p', { state: 'copying', tagUid: 17, chunksTotal: 900 });
+    await archives.recordSegment(
+      id,
+      '720p',
+      { reference, chunks: 300, bytes: 1_200_000, parityMissing: 1 },
+      { segmentsDone: 1, chunksCopied: 300, postsUnderTag: 302, parityMissing: 1 },
+    );
+    await archives.recordSegment(
+      id,
+      '720p',
+      { reference, chunks: 300, bytes: 1_200_000, parityMissing: 0 },
+      { segmentsDone: 1, chunksCopied: 300, postsUnderTag: 604, parityMissing: 0 },
+    );
+    assert.deepEqual([...(await archives.segmentsDone(id, '720p'))], [reference]);
+    const item = (await archives.items(id)).find((row) => row.rendition === '720p')!;
+    assert.equal(item.posts_under_tag, 604, 'a segment copied again counts its posts again');
+    await archives.updateItem(id, '720p', { chunksSynced: 590, chunksSeen: 14 });
+    const read = (await archives.items(id)).find((row) => row.rendition === '720p')!;
+    assert.deepEqual([read.chunks_synced, read.chunks_seen], [590, 14]);
+    assert.equal(item.tag_uid, 17);
+    assert.equal(item.chunks_total, 900);
+    await archives.clearSegments(id, '720p');
+    assert.equal((await archives.segmentsDone(id, '720p')).size, 0);
+  });
+
+  it("writes a quality's copy as partial, completes it, and replaces it when it is made again", async () => {
+    const streamId = await stream('itest copies');
+    const copy = {
+      stream_id: streamId,
+      rendition: '720p',
+      batch_id: BATCH,
+      feed_owner: OWNER,
+      feed_topic: randomUUID(),
+      manifest_index: 5,
+      parity_missing: 0,
+      segments: 0,
+      chunks: 0,
+      bytes: 0,
+      chunks_rebuilt: 0,
+      bucket_sum_before: 10,
+      bucket_sum_after: null,
+      bzz_spent_estimate_plur: null,
+    };
+    await archives.startArchive(copy);
+    await archives.saveArchive(streamId, '720p', { chunks: 900, bytes: 3_600_000, bucket_sum_after: 910 });
+    await archives.completeArchive(streamId, '720p', userId, 'itest');
+    let [row] = await archives.archivesOf([streamId]);
+    assert.equal(row?.state, 'complete');
+    assert.equal(row?.chunks, 900);
+    assert.equal(row?.completed_by, 'itest');
+
+    await archives.startArchive({ ...copy, manifest_index: 9, batch_id: 'b'.repeat(64) });
+    [row] = await archives.archivesOf([streamId]);
+    assert.equal(row?.state, 'partial');
+    assert.equal(row?.manifest_index, 9);
+    assert.equal(row?.completed_at, null);
+    assert.equal(row?.chunks, 0);
+  });
+
+  it('keeps one purchase under way at a time, and marks one sent or never received', async () => {
+    const purchase = {
+      depth: 20,
+      days: 30,
+      amountPerChunkPlur: '12441600000',
+      costPlur: '13045726248960000',
+      label: 'archive one',
+      startedByUserId: userId,
+      startedBy: 'itest',
+    };
+    const first = await archives.createPurchase({ id: randomUUID(), ...purchase });
+    assert.ok(first);
+    assert.equal(await archives.createPurchase({ id: randomUUID(), ...purchase }), null);
+    const sent = await archives.updatePurchase(first.id, { relayed: true });
+    assert.ok(sent?.relayed_at);
+    const again = await archives.updatePurchase(first.id, { relayed: true });
+    assert.equal(again?.relayed_at?.getTime(), sent.relayed_at.getTime(), 'the first moment is kept');
+    assert.equal((await archives.updatePurchase(first.id, { relayed: false }))?.relayed_at, null);
+    const usable = await archives.updatePurchase(first.id, { state: 'usable', batchId: 'd'.repeat(64) });
+    assert.equal(usable?.state, 'usable');
+    assert.ok(await archives.createPurchase({ id: randomUUID(), ...purchase }), 'the next once it is settled');
+    assert.equal((await archives.listPurchases(10))[0]?.state, 'buying', 'the one under way first');
+  });
+
+  it('turns the listing switch, keeps the last rate, and closes a finished widget for one user', async () => {
+    const streamId = await stream('itest switch');
+    assert.equal(await archives.setArchivedOnly(streamId, true), true);
+    assert.equal((await streams.findById(streamId))?.archived_only, true);
+    await archives.saveRate(150.5);
+    await archives.saveRate(140);
+    assert.equal(await archives.lastRate(), 140);
+
+    const created = await archives.createJob(newJob(streamId));
+    assert.ok('row' in created);
+    assert.equal(await archives.dismiss(created.row.id, userId), false, 'only a finished archive');
+    await archives.transition(created.row.id, ['measuring'], { state: 'copying' });
+    await archives.transition(created.row.id, ['copying'], { state: 'verifying' });
+    await archives.transition(created.row.id, ['verifying'], { state: 'done' });
+    assert.equal(await archives.dismiss(created.row.id, userId), true);
+    assert.equal((await archives.viewJob(userId))?.dismissed, true);
+    assert.equal((await archives.viewJob(null))?.dismissed, false);
+  });
+});

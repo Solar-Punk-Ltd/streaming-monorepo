@@ -11,6 +11,7 @@ import {
   STREAM_RESTART_WINDOW_MAX_MINUTES,
 } from '../domain/StreamFinishService.js';
 
+import { archiveSettingsFrom, type ArchiveSettings } from './archiveSettings.js';
 import { versionFrom } from './buildVersion.js';
 import { getErrorMessage } from './errorUtils.js';
 import {
@@ -120,6 +121,8 @@ export interface AppConfig {
   exportDir: string;
   /** `EXPORT_PARALLEL_READS`: how many segments an export reads from the node at once, 6 unless set, 1 to 32. */
   exportParallelReads: number;
+  /** The `ARCHIVE_*` settings of archiving a recording (`archiveSettings.ts`). */
+  archive: ArchiveSettings;
   /**
    * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
    * api image. Signed-in users read it at GET /api/version.
@@ -240,5 +243,6 @@ export const config: AppConfig = {
   streamRestartWindowMinutes: streamRestartWindowMinutes(),
   exportDir: optional('EXPORT_DIR', path.join(os.tmpdir(), 'web2-admin-exports')),
   exportParallelReads: exportParallelReads(),
+  archive: archiveSettingsFrom(process.env),
   version: versionFrom(process.env),
 };

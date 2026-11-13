@@ -2,6 +2,7 @@ import {
   FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_INVENTORY_PATH,
   FUNDING_STAMP_OPERATIONS_PATH,
+  FUNDING_STAMP_PURCHASES_PATH,
   FUNDING_TRANSFERS_PATH,
   type FundingAccountAnswer,
   fundingAccountAnswerSchema,
@@ -22,6 +23,12 @@ import {
   type FundingStampOperationRequest,
   type FundingStampOperationStatus,
   fundingStampOperationStatusSchema,
+  type FundingStampPurchaseAnswer,
+  fundingStampPurchaseAnswerSchema,
+  fundingStampPurchasePath,
+  type FundingStampPurchaseRequest,
+  type FundingStampPurchaseStatus,
+  fundingStampPurchaseStatusSchema,
   type FundingTransferAnswer,
   fundingTransferAnswerSchema,
   fundingTransferPath,
@@ -308,6 +315,34 @@ export class ManagerFundingClient {
    */
   async stampOperationStatus(requestId: string): Promise<FundingStampOperationStatus> {
     return this.#call('GET', fundingStampOperationPath(requestId), fundingStampOperationStatusSchema);
+  }
+
+  /**
+   * `POST /api/admin-funding/stamp-purchases`: one archive stamp bought on the catalogue node, which the manager
+   * checks, journals and asks the node for. Only the contract's fields go. Bee answers a purchase once its transaction
+   * is mined, so the call has the stamp operations' deadline ({@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}). The same
+   * request id sent again answers the purchase's state and never buys twice, so a call that ended in `unreachable` or
+   * `timeout` is read on {@link stampPurchaseStatus}, and made again as it was once that says the manager never
+   * received it.
+   */
+  async stampPurchase(purchase: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
+    const { requestId, nodeId, depth, amountPerChunkPlur, label } = purchase;
+    return this.#call(
+      'POST',
+      FUNDING_STAMP_PURCHASES_PATH,
+      fundingStampPurchaseAnswerSchema,
+      { requestId, nodeId, depth, amountPerChunkPlur, label },
+      this.#stampTimeoutMs,
+    );
+  }
+
+  /**
+   * `GET /api/admin-funding/stamp-purchases/:requestId`: where a purchase stands, and whether its batch can stamp yet.
+   * `unknown_request` (404) when the manager journalled no purchase under the id. Throws, asking nothing, for what is
+   * not a UUID.
+   */
+  async stampPurchaseStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
+    return this.#call('GET', fundingStampPurchasePath(requestId), fundingStampPurchaseStatusSchema);
   }
 
   /**
