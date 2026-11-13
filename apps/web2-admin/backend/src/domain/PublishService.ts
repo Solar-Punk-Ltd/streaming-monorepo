@@ -962,14 +962,19 @@ export class PublishService {
    * The network is asked only when this feed has no recorded write — a fresh
    * install, or a database whose rows all predate migration 003 — and that is
    * logged, because it is the one moment the old failure mode can still bite.
+   * The network's head is taken only once it is confirmed as the latest
+   * (`readConfirmedLatest`): with no peers, a later slot held past it, or a
+   * node that cannot say, the write is refused with
+   * CatalogueHeadUnconfirmedError before anything is written, rather than
+   * aimed at an index that may be taken.
    */
   private async baseSnapshot(target: CatalogueTarget | null): Promise<FeedSnapshot> {
     const last = await this.feedWrites.lastWrite(this.feed.owner, this.feed.topicHex);
     if (last) return { index: last.index, entries: last.entries };
 
-    const snapshot = await this.gateway.readLatest(target);
+    const snapshot = await this.gateway.readConfirmedLatest(target);
     logger.info(
-      `[Publish] no recorded write for feed ${this.feed.owner}/${this.feed.topicHex}; falling back to the network head (${snapshot.index ?? 'none'})`,
+      `[Publish] no recorded write for feed ${this.feed.owner}/${this.feed.topicHex}; falling back to the network head (${snapshot.index ?? 'none'}), confirmed as the latest`,
     );
     return snapshot;
   }

@@ -3,7 +3,7 @@ import { Bee, BeeResponseError, Bytes, FeedIndex, Identifier, PrivateKey, Refere
 import { getErrorMessage } from '../utils/errorUtils.js';
 
 import { withoutCatalogueNode } from './catalogueNodeText.js';
-import { FeedFormatError, ThumbnailCheckError } from './errors/index.js';
+import { CatalogueHeadUnconfirmedError, FeedFormatError, ThumbnailCheckError } from './errors/index.js';
 import type {
   CatalogueRestamper,
   CatalogueTarget,
@@ -31,6 +31,19 @@ const REFERENCE_CHECK_TIMEOUT_MS = 30_000;
  */
 const RESTAMP_CALL_TIMEOUT_MS = 60_000;
 
+/**
+ * How many slots past the head the feed lookup found are read directly before a write that has no recorded write to go
+ * on: a lost slot shorter than this is seen. A longer run of lost slots is not, as it is not by the node's own lookup.
+ */
+export const HEAD_CONFIRM_WINDOW = 8;
+
+/**
+ * The most one of those reads, or the read of the node's peers, may take. A connected node answered 404 for a chunk the
+ * network does not have in 1.4 to 1.5 s, eight at once; the bound is ten times that, so a new feed's first write is not
+ * refused for a slow answer, and a node that cannot say is refused in seconds rather than minutes.
+ */
+export const HEAD_CONFIRM_READ_TIMEOUT_MS = 15_000;
+
 /** The largest payload a chunk holds; a feed payload above it is a wrapped chunk, as bee-js writes one. */
 const CHUNK_PAYLOAD_SIZE = 4096;
 
@@ -40,6 +53,8 @@ const SOC_HEADER_SIZE = 32 + 65;
 export interface BeeFeedGatewayOptions {
   feedPrivateKey: string;
   feedTopic: string;
+  /** The bound on each read that confirms the head; {@link HEAD_CONFIRM_READ_TIMEOUT_MS} unless a test sets it. */
+  headConfirmReadTimeoutMs?: number;
 }
 
 /**
@@ -70,10 +85,12 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
   private readonly topic: Topic;
   /** The client of the last node called, kept while the targets name the same one. */
   private client: { url: string; bee: Bee } | null = null;
+  private readonly headConfirmReadTimeoutMs: number;
 
   constructor(options: BeeFeedGatewayOptions) {
     this.signer = new PrivateKey(options.feedPrivateKey);
     this.topic = Topic.fromString(options.feedTopic);
+    this.headConfirmReadTimeoutMs = options.headConfirmReadTimeoutMs ?? HEAD_CONFIRM_READ_TIMEOUT_MS;
   }
 
   async readLatest(target: CatalogueTarget | null): Promise<FeedSnapshot> {
@@ -95,6 +112,24 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
       }
       throw error;
     }
+  }
+
+  async readConfirmedLatest(target: CatalogueTarget | null): Promise<FeedSnapshot> {
+    const node = withoutTrailingSlash(required(target).beeApiUrl);
+    // First, so a node with no peers is refused at once rather than after its lookup has walked and timed out.
+    if ((await this.connectedPeers(node)) === 0) throw new CatalogueHeadUnconfirmedError('no_peers');
+    const latest = await this.readLatest(target);
+    const first = latest.index === null ? 0 : latest.index + 1;
+    const slots = Array.from({ length: HEAD_CONFIRM_WINDOW }, (_, at) => first + at);
+    const held = await Promise.all(slots.map((index) => this.slotHeld(node, index)));
+    if (held.includes('held')) {
+      logger.warn(
+        `[BeeFeedGateway] the feed lookup answered ${latest.index ?? 'nothing'}, but slot ${slots[held.indexOf('held')]} is held after it`,
+      );
+      throw new CatalogueHeadUnconfirmedError('gap');
+    }
+    if (held.includes('unanswered')) throw new CatalogueHeadUnconfirmedError('unanswered');
+    return latest;
   }
 
   async write(payloadText: string, index: number, target: CatalogueTarget | null): Promise<string> {
@@ -183,7 +218,7 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
     const bee = this.bee(target);
     const identifier = this.slotIdentifier(slot.index);
     const owner = this.signer.publicKey().address();
-    const address = new Reference(Bytes.keccak256(Bytes.concat(identifier.toUint8Array(), owner.toUint8Array())));
+    const address = this.slotAddress(slot.index);
     if (slot.reference !== null && slot.reference.toLowerCase() !== address.toHex()) {
       throw new Error(
         `slot ${slot.index} was recorded at chunk ${slot.reference}, not at the address this feed key and topic give it`,
@@ -252,6 +287,50 @@ export class BeeFeedGateway implements FeedGateway, CatalogueRestamper {
       filename: read.name ?? `${reference}.bin`,
       contentType: read.contentType ?? 'application/octet-stream',
     };
+  }
+
+  /** keccak256(identifier, owner): the address of a slot's single-owner chunk, the same whatever batch stamped it. */
+  private slotAddress(index: number): Reference {
+    const owner = this.signer.publicKey().address();
+    return new Reference(
+      Bytes.keccak256(Bytes.concat(this.slotIdentifier(index).toUint8Array(), owner.toUint8Array())),
+    );
+  }
+
+  /** How many peers the node says it is connected to. A node that does not say is a head that cannot be confirmed. */
+  private async connectedPeers(node: string): Promise<number> {
+    let answer: unknown;
+    try {
+      const response = await fetch(`${node}/topology`, { signal: AbortSignal.timeout(this.headConfirmReadTimeoutMs) });
+      if (!response.ok) throw new Error(`the node answered ${response.status} to /topology`);
+      answer = await response.json();
+    } catch (error) {
+      logger.warn(
+        `[BeeFeedGateway] the catalogue node's peers could not be read: ${withoutCatalogueNode(getErrorMessage(error))}`,
+      );
+      throw new CatalogueHeadUnconfirmedError('unanswered');
+    }
+    const connected = (answer as { connected?: unknown } | null)?.connected;
+    if (typeof connected !== 'number') throw new CatalogueHeadUnconfirmedError('unanswered');
+    return connected;
+  }
+
+  /**
+   * Whether the node can fetch slot `index`'s chunk: `held` for a 200, `missing` for the 404 Bee answers once the
+   * network has no such chunk, and `unanswered` for anything else, a timeout included. Read directly, by the slot's
+   * address, rather than through the feed lookup, which stops at the first slot it cannot fetch.
+   */
+  private async slotHeld(node: string, index: number): Promise<'held' | 'missing' | 'unanswered'> {
+    try {
+      const response = await fetch(`${node}/chunks/${this.slotAddress(index).toHex()}`, {
+        signal: AbortSignal.timeout(this.headConfirmReadTimeoutMs),
+      });
+      await response.body?.cancel();
+      if (response.status === 200) return 'held';
+      return response.status === 404 ? 'missing' : 'unanswered';
+    } catch {
+      return 'unanswered';
+    }
   }
 
   /** keccak256(topic, index): a slot's identifier, as bee-js's `makeFeedIdentifier` makes it. */

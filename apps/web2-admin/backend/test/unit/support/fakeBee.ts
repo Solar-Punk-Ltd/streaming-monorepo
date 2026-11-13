@@ -12,9 +12,15 @@
  * - `POST /bzz?name=`, `GET` and `HEAD /bzz/{ref}/`: a file, whose reference is a hash of its name, type and bytes,
  *   so the same file gives the same reference as Bee's manifest does.
  *
+ * - `GET /topology`: the node's connected peers, `peers`, as the only field read of it.
+ * - `GET /feeds/{owner}/{topic}`: what the node's feed lookup answers, `feedHead`: the slot and payload it found, or a
+ *   404 while it is null, whatever the chunks hold. A real lookup can stop short of the latest slot, which this lets a
+ *   test say.
+ *
  * `beforeAnswer` runs before a single-owner chunk or a file upload is answered, never a `POST /bytes`, so a test can
  * write the catalogue while a move is on its way or hold a call for ever, as a process that died would. `failNext`
- * answers the next matching upload with an error.
+ * answers the next matching upload with an error. `holdChunkReads` leaves every `GET /chunks` unanswered, as a node
+ * that cannot tell whether the network has a chunk, and `chunkReads` records the address of every one asked.
  */
 import http from 'node:http';
 
@@ -56,6 +62,13 @@ export class FakeBee {
   readonly files = new Map<string, { bytes: Uint8Array; name: string; contentType: string }>();
   beforeAnswer: ((upload: FakeUpload) => Promise<void> | void) | null = null;
   failNext: { kind: FakeUpload['kind']; status: number; batch?: string } | null = null;
+  /** The peers the node says it is connected to. */
+  peers = 1;
+  /** What the node's feed lookup finds: a slot and its payload, or nothing. */
+  feedHead: { index: number; payload: Uint8Array } | null = null;
+  holdChunkReads = false;
+  /** The address of every chunk read, in order. */
+  readonly chunkReads: string[] = [];
   private server: http.Server | null = null;
 
   async start(): Promise<this> {
@@ -194,7 +207,27 @@ export class FakeBee {
       return json(201, { reference: this.split(data, batch) });
     }
 
+    if (req.method === 'GET' && url.pathname === '/topology') {
+      return json(200, { connected: this.peers });
+    }
+
+    if (req.method === 'GET' && parts[0] === 'feeds' && parts.length === 3) {
+      const head = this.feedHead;
+      if (!head) return json(404, { message: 'Not Found', code: 404 });
+      const index = (at: number) => at.toString(16).padStart(16, '0');
+      res.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'swarm-feed-index': index(head.index),
+        'swarm-feed-index-next': index(head.index + 1),
+      });
+      res.end(Buffer.from(head.payload));
+      return;
+    }
+
     if (req.method === 'GET' && parts[0] === 'chunks' && parts.length === 2) {
+      this.chunkReads.push(parts[1]!.toLowerCase());
+      // Never answered: the connection is closed when the fake stops.
+      if (this.holdChunkReads) return;
       const chunk = this.chunks.get(parts[1]!.toLowerCase());
       if (!chunk) return json(404, { message: 'Not Found', code: 404 });
       res.writeHead(200, { 'content-type': 'application/octet-stream' });

@@ -621,9 +621,22 @@ mutex, by the process holding the key. `feed_writes` carries `feed_owner`,
 instead of overwriting a chunk. The gateway's `readLatest()` is used for two
 things only:
 
-- **Fallback.** A feed with no recorded write (a fresh install) takes its
-  first base from the network, and says so in the log. From the write after
-  that, the database leads.
+- **Fallback.** A feed with no recorded write (a fresh install, or a topic this
+  database never wrote) takes its first base from the network, and says so in
+  the log. From the write after that, the database leads. The network's head
+  is taken only once it is confirmed as the latest
+  (`readConfirmedLatest()`), because a node's lookup walks the feed from
+  index 0 and stops at the first slot it cannot fetch: a node with no peers
+  finds nothing and would aim the write at index 0, and a feed with a lost
+  slot answers an earlier head. So the catalogue node must have peers, and the
+  8 slots after the head the lookup found (slots 0 to 7 when it found none)
+  are read directly by their chunk addresses, at once, each within 15 seconds,
+  and must all be missing. Otherwise the write is refused before anything is
+  written, with `CatalogueHeadUnconfirmedError`: no peers, a slot held past the
+  head, or a node that did not say. A publish, unpublish or republish records
+  its sentence as the stream's publish error, which the console shows; a
+  reconcile answers it as a 503, `catalogue_head_unconfirmed`. A run of more
+  than 8 lost slots goes unseen, as it does for the node's own lookup.
 - **Boot check.** Startup compares the network head against the last recorded
   write. Behind is normal (the node lagging itself) and is an info line. Ahead
   is a WARN (another writer under this key, or the wrong database), and the

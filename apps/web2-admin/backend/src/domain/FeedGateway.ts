@@ -99,6 +99,15 @@ export interface CatalogueRestamper {
 export interface FeedGateway {
   readLatest(target: CatalogueTarget | null): Promise<FeedSnapshot>;
   /**
+   * The latest entry, as `readLatest` reads it, once it is confirmed to be the latest: what the next write is based on
+   * when no write of this backend's own is recorded for the feed. The node's feed lookup walks the feed from index 0 and
+   * stops at the first slot it cannot fetch, so a node with no peers finds nothing, and a feed with a lost slot answers
+   * an earlier head. So the node must have peers, and every one of the `HEAD_CONFIRM_WINDOW` slots after the head the
+   * lookup found (from slot 0 when it found none) must be read directly and answer that no such chunk exists. Throws
+   * CatalogueHeadUnconfirmedError otherwise, before anything is written.
+   */
+  readConfirmedLatest(target: CatalogueTarget | null): Promise<FeedSnapshot>;
+  /**
    * Writes `payloadText`, the whole list as `encodeFeedPayload` made it, at
    * `index`, stamped with the target's batch. Returns the new chunk's
    * reference hex.

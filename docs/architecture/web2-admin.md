@@ -64,7 +64,10 @@ same next index. So the writing is split:
 
 - **The admin is the only writer of the catalogue.** It signs it with the brand key, a key that
   never leaves the admin. It takes the next index from its own record of every write, never from a
-  Bee node, because a node's view of a feed can lag a write it just made.
+  Bee node, because a node's view of a feed can lag a write it just made. With no record of its own
+  yet, it takes the network's head only once the catalogue node has peers and the 8 slots after that
+  head read back as empty, and otherwise refuses the write, so it never aims at an index that may be
+  taken. A run of more than 8 lost slots goes unseen, as it does for Bee's own lookup.
 - **The uploader is the only writer of each stream's feeds.** Each stage signs with a key of its own,
   and a stream takes its stage's address as its owner, so the owner on the catalogue entry is the
   owner of the feeds the viewer plays. The admin holds no stage's key.

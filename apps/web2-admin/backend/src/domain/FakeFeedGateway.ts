@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { CatalogueHeadUnconfirmedError } from './errors/index.js';
+
 import type {
   CatalogueRestamper,
   CatalogueTarget,
@@ -65,6 +67,12 @@ export class FakeFeedGateway implements FeedGateway, CatalogueRestamper {
   readonly reads: (CatalogueTarget | null)[] = [];
   /** The references uploadThumbnail handed out, for the life of the process. */
   private readonly references = new Set<string>();
+  /** The peers the catalogue node says it has: 0 refuses `readConfirmedLatest` at once. */
+  connectedPeers = 1;
+  /** Set to make `readConfirmedLatest` refuse as a node that does not answer whether a slot is held. */
+  unansweredSlots = false;
+  /** The target of every `readConfirmedLatest`, in order: what a test asserts it was or was not asked. */
+  readonly confirmedReads: (CatalogueTarget | null)[] = [];
   /** Set to make the next call fail, as a network or postage error would. */
   failNextWrite: Error | null = null;
   failNextRead: Error | null = null;
@@ -92,6 +100,22 @@ export class FakeFeedGateway implements FeedGateway, CatalogueRestamper {
       entries: [...seen.entries],
       ...(seen.payloadText === undefined ? {} : { payloadText: seen.payloadText }),
     };
+  }
+
+  /**
+   * As the real gateway confirms the head: no peers refuses first, then the lookup answers as `readLatest` does, lag
+   * and all, and a slot written past the head it answers is a gap, since this gateway knows every slot it holds.
+   */
+  async readConfirmedLatest(target: CatalogueTarget | null = null): Promise<FeedSnapshot> {
+    this.confirmedReads.push(target);
+    if (this.connectedPeers === 0) throw new CatalogueHeadUnconfirmedError('no_peers');
+    const latest = await this.readLatest(target);
+    const held = this.snapshot.index;
+    if (held !== null && (latest.index === null || held > latest.index)) {
+      throw new CatalogueHeadUnconfirmedError('gap');
+    }
+    if (this.unansweredSlots) throw new CatalogueHeadUnconfirmedError('unanswered');
+    return latest;
   }
 
   async write(payloadText: string, index: number, target: CatalogueTarget | null = null): Promise<string> {

@@ -7,6 +7,7 @@ export {
   UserExistsError,
   WeakPasswordError,
 } from '@streaming-monorepo/web-auth';
+export { CatalogueHeadUnconfirmedError, type CatalogueHeadProblem } from './CatalogueHeadUnconfirmedError.js';
 export { CatalogueMoveRefusedError } from './CatalogueMoveRefusedError.js';
 export { CatalogueStampUnavailableError } from './CatalogueStampUnavailableError.js';
 export { ExportNotFoundError } from './ExportNotFoundError.js';

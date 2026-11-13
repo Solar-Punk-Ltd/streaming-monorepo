@@ -5,6 +5,7 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminRequiredError,
   CannotRemoveUserError,
+  CatalogueHeadUnconfirmedError,
   CatalogueMoveRefusedError,
   CatalogueStampUnavailableError,
   CrossSiteRequestError,
@@ -240,6 +241,12 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     // 503: the admin cannot write the catalogue until the manager designates a usable batch, which is a state that
     // ends, not a request that was wrong. The uploader retries a 5xx, and a state report refused here must be retried.
     res.status(503).json({ error: 'catalogue_stamp_unavailable', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof CatalogueHeadUnconfirmedError) {
+    // 503, as for a catalogue with no batch: a state the node's connection or a later retry ends, not a request that
+    // was wrong. Only a reconcile answers it this way; a publish records it as its publish error.
+    res.status(503).json({ error: 'catalogue_head_unconfirmed', problem: err.problem, message: err.message });
     return;
   }
   if (err instanceof FundingBusyError) {

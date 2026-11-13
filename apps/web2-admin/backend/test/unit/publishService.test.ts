@@ -22,6 +22,7 @@ import { describe, it } from 'node:test';
 import type { FeedStreamEntry } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  CatalogueHeadUnconfirmedError,
   PublishFailedError,
   StreamBusyError,
   StreamLiveError,
@@ -1161,6 +1162,85 @@ describe('PublishService against a feed lookup that lags its own writes', () => 
       writes.records.map((r) => r.feedIndex),
       [8, 9],
     );
+  });
+});
+
+describe('a write with no recorded write of its own to go on', () => {
+  /** The sentence a refusal for `problem` says, as the console shows it. */
+  const sentence = (problem: 'no_peers' | 'gap' | 'unanswered') => new CatalogueHeadUnconfirmedError(problem).message;
+
+  it('is refused at once when the catalogue node has no peers, and writes nothing at index 0', async () => {
+    // A node with no peers finds nothing on its lookup, so the network head reads as an empty feed: written as it
+    // is, the first publish would go at index 0, which the feed may already hold.
+    const gateway = new FakeFeedGateway();
+    gateway.connectedPeers = 0;
+    const { store, writes, service } = setup(gateway);
+    const row = store.add(streamRow());
+
+    await assert.rejects(
+      () => service.publish(TEST_OPERATOR, row.id),
+      (err: unknown) => err instanceof PublishFailedError && err.reason === sentence('no_peers'),
+    );
+    assert.equal(gateway.writes.length, 0, 'nothing written');
+    assert.equal(writes.records.length, 0);
+    const after = store.get(row.id);
+    assert.equal(after.status, 'draft', 'its status is put back');
+    assert.equal(after.publish_error, sentence('no_peers'));
+  });
+
+  it('is refused when the feed holds a slot past the head the lookup answered', async () => {
+    // The lookup answers 0; the feed holds slots 0 and 1. Writing at 1 would overwrite an entry.
+    const gateway = new FakeFeedGateway(undefined, { readLagWrites: 1 });
+    await gateway.write('[]', 0);
+    await gateway.write('[]', 1);
+    const { store, service } = setup(gateway);
+    const row = store.add(streamRow());
+
+    await assert.rejects(
+      () => service.publish(TEST_OPERATOR, row.id),
+      (err: unknown) => err instanceof PublishFailedError && err.reason === sentence('gap'),
+    );
+    assert.equal(gateway.writes.length, 2, 'only the two slots it held');
+  });
+
+  it('is refused when the node cannot say whether a later slot is held', async () => {
+    const gateway = new FakeFeedGateway();
+    gateway.unansweredSlots = true;
+    const { store, service } = setup(gateway);
+    const row = store.add(streamRow());
+
+    await assert.rejects(
+      () => service.publish(TEST_OPERATOR, row.id),
+      (err: unknown) => err instanceof PublishFailedError && err.reason === sentence('unanswered'),
+    );
+    assert.equal(gateway.writes.length, 0);
+  });
+
+  it('refuses a reconcile with the refusal itself', async () => {
+    const gateway = new FakeFeedGateway();
+    gateway.connectedPeers = 0;
+    const { store, service } = setup(gateway);
+    store.add(streamRow({ status: 'published' }));
+
+    await assert.rejects(
+      () => service.reconcile(TEST_OPERATOR),
+      (err: unknown) => err instanceof CatalogueHeadUnconfirmedError && err.problem === 'no_peers',
+    );
+    assert.equal(gateway.writes.length, 0);
+  });
+
+  it('writes after a confirmed head, and from then on goes by its own record without asking again', async () => {
+    const gateway = new FakeFeedGateway({ index: 4, entries: [] });
+    const { store, service } = setup(gateway);
+    const first = store.add(streamRow());
+    const second = store.add(streamRow());
+
+    assert.equal((await service.publish(TEST_OPERATOR, first.id)).feed.index, 5);
+    assert.equal(gateway.confirmedReads.length, 1, 'confirmed once, for the first write');
+    // Its record now leads, whatever the node would say.
+    gateway.connectedPeers = 0;
+    assert.equal((await service.publish(TEST_OPERATOR, second.id)).feed.index, 6);
+    assert.equal(gateway.confirmedReads.length, 1, 'not asked again');
   });
 });
 
