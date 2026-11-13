@@ -29,6 +29,7 @@ import type { CatalogueWriteStatus, StageSummary, Stream } from '@streaming-mono
 import * as api from '../api';
 import { errorMessage } from '../errors';
 import { formatDateTime } from '../dateUtil';
+import { ArchiveBadge } from '../components/archive/ArchiveBadge';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MediaTypeChip, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
@@ -290,7 +291,10 @@ export function StreamsPage() {
                     <MediaTypeChip mediaType={stream.mediaType} />
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    <StatusChip status={stream.status} publishError={stream.publishError} />
+                    <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+                      <StatusChip status={stream.status} publishError={stream.publishError} />
+                      <ArchiveBadge archive={stream.archive} />
+                    </Stack>
                   </TableCell>
                   <TableCell>{formatDateTime(stream.scheduledStartTime)}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>

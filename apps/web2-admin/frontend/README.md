@@ -130,10 +130,25 @@ page says so and shows the command that makes the first one.
 
 Every stream of the installation, whoever drafted it: thumbnail, title with up to two lines of
 description (all of it on hover), stage (retired ones marked, No stage for none), media type,
-status (VOD reads "Video On Demand" on hover, here and on the stream's page), scheduled start, and
+status (VOD reads "Video On Demand" on hover, here and on the stream's page) with the archive badge
+under it, scheduled start, and
 Edit, Details and Delete. A Stage filter narrows the list to one stage
 or to the streams with none. A banner says when the catalogue cannot be written, when a move of the
 catalogue to another batch is waiting, and when its batch is under 48 hours from expiry or 90% full.
+
+The archive badge (`components/archive/ArchiveBadge.tsx`) says the stream's archive in the words of
+`ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive incomplete, Archive outdated or
+Archive expired, and nothing for a stream with nothing copied. On hover it names the archived
+qualities, and says when the catalogue lists only those.
+
+### Archive, `#/archive`
+
+Only the streams that have an archive, newest copy first, from `GET /api/archive/streams`: the
+title, linked to the stream's page, with its badge, the date, each copied quality with its state,
+the size archived, the stamp each copy is on with its time left, in amber under
+`ARCHIVE_TTL_WARNING_DAYS`, and when and by whom the newest copy was completed. Archive more
+qualities opens the archive panel on the stream, and Archive again opens it with the outdated
+qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
 
 ### Create and edit, `#/create` and `#/edit/:id`
 
