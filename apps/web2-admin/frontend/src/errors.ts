@@ -83,6 +83,9 @@ const FRIENDLY: Record<string, string> = {
   thumbnail_not_an_image: THUMBNAIL_NOT_AN_IMAGE,
   unsupported_media_type: UNSUPPORTED_IMAGE_TYPE,
   not_found: 'Not found.',
+  // An export action on an export that is no longer the one on the server: another user cleared it, or a new export
+  // replaced it. The export's timed read brings in what is there now.
+  export_not_found: 'This export is no longer on the server. The page shows what is there now.',
   internal_error: 'The server hit an unexpected error.',
 };
 
