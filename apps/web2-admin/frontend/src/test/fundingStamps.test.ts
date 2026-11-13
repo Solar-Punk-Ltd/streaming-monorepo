@@ -21,8 +21,10 @@ import {
   type StampSelection,
 } from '../components/funding/stamps';
 import {
+  ARCHIVE,
   BATCH,
   DAY,
+  makeArchiveStamp,
   makeBatch,
   makeNode,
   makeStampView,
@@ -47,21 +49,49 @@ const THIRTY_DAYS_DEPTH_22 = (BigInt(THIRTY_DAYS_DEPTH_20) * 4n).toString();
 const FIVE_XBZZ = 50_000_000_000_000_000n;
 
 describe('the batches, grouped', () => {
-  it('puts the catalogue batch on top, then each stage, with a row for each node that has a batch', () => {
+  it('puts the catalogue batch on top, then the archive stamps, then each stage, with a row for each node that has a batch', () => {
     const groups = batchGroups(makeStampView());
     expect(
       groups.map((group) => [group.title, group.nodes.catalogue, group.rows.map((row) => row.node.label)]),
     ).toEqual([
       ['Catalogue batch', true, ['catalogue-node']],
+      ['Archive stamps', false, []],
       ['Main stage', false, ['stage-1-uploader', 'rung-720p', 'rung-1080p']],
       ['Second stage', false, ['pool-360p']],
     ]);
+  });
+
+  it('lists each archive stamp as a batch of the node that holds it, with its id as the stamp operations take it', () => {
+    const groups = batchGroups({
+      ...makeStampView(),
+      archiveStamps: [
+        makeArchiveStamp(),
+        makeArchiveStamp({ batchId: ARCHIVE.old.slice(2), state: 'pending', nodeId: null, nodeLabel: null }),
+      ],
+    });
+    const [talks, pending] = groups.find((group) => group.kind === 'archive')?.rows ?? [];
+    expect(talks?.node.nodeId).toBe('catalogue:bee');
+    expect(talks?.batch).toEqual({
+      batchId: ARCHIVE.talks,
+      depth: 22,
+      immutable: true,
+      usable: true,
+      ttlSeconds: 200 * DAY,
+      fillRatio: 0.1,
+      readError: null,
+    });
+    expect(talks && hasTickBox(talks, 'dilute')).toBe(true);
+    // A stamp whose node the manager did not name has no wallet to pay for it, and a pending one is not usable yet.
+    expect(pending?.node.label).toBe('Unknown node');
+    expect(pending?.batch.usable).toBe(false);
+    expect(pending && whyNoTickBox(pending)).toBe(NOT_USABLE_TEXT);
   });
 
   it('keeps a stage with no batch, and a catalogue node without one, as a group with no rows', () => {
     const groups = batchGroups(makeView());
     expect(groups.map((group) => [group.title, group.rows.length])).toEqual([
       ['Catalogue batch', 0],
+      ['Archive stamps', 0],
       ['Main stage', 0],
       ['Second stage', 0],
     ]);
@@ -169,7 +199,12 @@ describe('which batches can be ticked', () => {
     const view = makeStampView();
     const [rung] = view.stages[1]?.nodes ?? [];
     if (view.stages[1] && rung) view.stages[1].nodes = [{ ...rung, xdaiWei: null, xbzzPlur: null }];
-    expect(batchGroups(view).map((group) => tickableBatches(group))).toEqual([[BATCH.catalogue], [BATCH.stage], []]);
+    expect(batchGroups(view).map((group) => tickableBatches(group))).toEqual([
+      [BATCH.catalogue],
+      [],
+      [BATCH.stage],
+      [],
+    ]);
 
     // A batch a pool shares, listed first by a stage whose reading of the node's wallet failed.
     const pooled = `0x${'ff'.repeat(32)}`;

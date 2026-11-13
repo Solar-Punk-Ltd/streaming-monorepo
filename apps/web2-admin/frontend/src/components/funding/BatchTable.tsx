@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   Checkbox,
   Chip,
@@ -12,14 +13,17 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  operableBatch,
   STAMP_EXPIRY_WARNING_SECONDS,
   XBZZ_DECIMALS,
   type AdminFundingNode,
+  type ArchiveStamp,
   type FundingBatch,
   type FundingStampOperationKind,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { formatPercent, formatTimeLeft, shortHex } from '../../format';
+import { CHUNK_BYTES, formatCapacity } from '../archive/archiveText';
 import { CopyButton } from '../CopyButton';
 import { formatShort, formatUnits } from './amounts';
 import { NodeCard } from './NodeTable';
@@ -232,6 +236,53 @@ function AfterCells({
   );
 }
 
+/** `1 quality`, `3 qualities`. */
+function qualityCount(count: number): string {
+  return `${count} ${count === 1 ? 'quality' : 'qualities'}`;
+}
+
+/**
+ * Under an archive stamp's id, in place of a node's card: its label, whether it is topped up only, the node that holds
+ * it, its room and the qualities on it as the admin read them, and a warning when its time left is under the warning
+ * threshold.
+ */
+function ArchiveLines({
+  stamp,
+  holder,
+  operable,
+  warningDays,
+}: {
+  stamp: ArchiveStamp;
+  holder: AdminFundingNode;
+  /** Whether the stamp can take an operation at all, so "Top-ups only" is worth saying. */
+  operable: boolean;
+  warningDays: number | null;
+}) {
+  const facts = [
+    `On ${holder.label}`,
+    stamp.roomChunks !== null ? `Room for ${formatCapacity(stamp.roomChunks * CHUNK_BYTES)}` : null,
+    `${qualityCount(stamp.qualitiesArchived)} on it`,
+  ].filter((fact): fact is string => fact !== null);
+  return (
+    <Stack spacing={0.25} sx={{ minWidth: 0 }}>
+      <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', minWidth: 0 }}>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+          {stamp.label ?? 'No label'}
+        </Typography>
+        {!stamp.writable && operable ? <Chip size="small" variant="outlined" label="Top-ups only" /> : null}
+      </Stack>
+      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+        {facts.join(' · ')}
+      </Typography>
+      {stamp.expiresSoon ? (
+        <Typography variant="caption" sx={{ color: 'warning.main' }}>
+          {warningDays === null ? 'Its time left is running low.' : `Under ${warningDays} days left.`}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
 function BatchRowView({
   row,
   group,
@@ -239,6 +290,7 @@ function BatchRowView({
   ticked,
   check,
   onTick,
+  warningDays,
 }: {
   row: BatchRow;
   group: BatchGroup;
@@ -246,9 +298,10 @@ function BatchRowView({
   ticked: boolean;
   check: StampCheck | null;
   onTick: (batchId: string) => void;
+  warningDays: number | null;
 }) {
   const { node, batch } = row;
-  const why = whyNoTickBox(row);
+  const why = whyNoTickBox(row, operation);
   const verb = operation === 'topup' ? 'Top up' : 'Dilute';
   const line = why === null && ticked ? check?.lineOf.get(batch.batchId) : undefined;
   return (
@@ -258,14 +311,24 @@ function BatchRowView({
           <Checkbox
             checked={ticked}
             onChange={() => onTick(batch.batchId)}
-            slotProps={{ input: { 'aria-label': `${verb} the batch of ${node.label}` } }}
+            slotProps={{
+              input: {
+                'aria-label': row.archive
+                  ? `${verb} the archive stamp ${row.archive.label ?? shortHex(batch.batchId)}`
+                  : `${verb} the batch of ${node.label}`,
+              },
+            }}
           />
         ) : null}
       </TableCell>
       <TableCell>
         <Stack spacing={0.5} sx={{ minWidth: 0 }}>
           <BatchLine batch={batch} />
-          <NodeCard node={node} group={group.nodes} />
+          {row.archive ? (
+            <ArchiveLines stamp={row.archive} holder={node} operable={operableBatch(batch)} warningDays={warningDays} />
+          ) : (
+            <NodeCard node={node} group={group.nodes} />
+          )}
         </Stack>
       </TableCell>
       <TableCell align="right">
@@ -302,12 +365,35 @@ function BatchRowView({
   );
 }
 
+/** Said in the archive group while the catalogue node has no archive stamp. */
+export const NO_ARCHIVE_STAMPS = 'No archive stamps yet.';
+
+const NO_ROWS: Readonly<Record<BatchGroup['kind'], string>> = {
+  catalogue: 'The manager reports no catalogue batch.',
+  archive: NO_ARCHIVE_STAMPS,
+  stage: 'The manager reports no batch for this stage.',
+};
+
+function groupTickLabel(group: BatchGroup, verb: string): string {
+  if (group.kind === 'catalogue') return `${verb} the catalogue batch`;
+  if (group.kind === 'archive') return `${verb} every archive stamp`;
+  return `${verb} every batch of ${group.title}`;
+}
+
+function tableLabel(group: BatchGroup): string {
+  if (group.kind === 'catalogue') return 'Catalogue batch';
+  if (group.kind === 'archive') return 'Archive stamps';
+  return `Batches of ${group.title}`;
+}
+
 /**
- * One group of batches, the catalogue's or one stage's, a row each: the tick box, the batch with its node's card under
- * it, its depth, time left and fill, then, once it is ticked, what the operation leaves and costs. A batch that cannot
- * be ticked says why in place of those. The columns keep fixed widths, and no row changes its size when it is ticked.
- * The group's name has a tick box in front of it, in line with the rows' tick boxes, which ticks or clears every batch
- * of the group that has one; a batch two stages list is ticked by its id, so it shows ticked under both.
+ * One group of batches, the catalogue's, the archive stamps or one stage's, a row each: the tick box, the batch with
+ * its node's card under it, or an archive stamp's label, room and qualities, its depth, time left and fill, then, once
+ * it is ticked, what the operation leaves and costs. A batch that cannot be ticked says why in place of those. The
+ * columns keep fixed widths, and no row changes its size when it is ticked. The group's name has a tick box in front
+ * of it, in line with the rows' tick boxes, which ticks or clears every batch of the group that has one; a batch two
+ * stages list is ticked by its id, so it shows ticked under both. `footer`, under the rows, is the archive group's
+ * purchases and its Buy button.
  */
 export function BatchTable({
   group,
@@ -316,6 +402,8 @@ export function BatchTable({
   check,
   onTick,
   onTicks,
+  warningDays = null,
+  footer = null,
 }: {
   group: BatchGroup;
   operation: FundingStampOperationKind;
@@ -324,29 +412,27 @@ export function BatchTable({
   onTick: (batchId: string) => void;
   /** Ticks every one of `batchIds`, or clears them: what the group's tick box asks for. */
   onTicks: (batchIds: readonly string[], tick: boolean) => void;
+  /** The days under which an archive stamp's time left is warned about, or null when they were not read. */
+  warningDays?: number | null;
+  footer?: ReactNode;
 }) {
-  const catalogue = group.nodes.catalogue;
   const verb = operation === 'topup' ? 'Top up' : 'Dilute';
   return (
     <Stack spacing={1}>
       <GroupTitle
         title={group.title}
-        label={catalogue ? `${verb} the catalogue batch` : `${verb} every batch of ${group.title}`}
-        keys={tickableBatches(group)}
+        label={groupTickLabel(group, verb)}
+        keys={tickableBatches(group, operation)}
         ticked={ticked}
         onTicks={onTicks}
       />
       {group.rows.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {catalogue ? 'The manager reports no catalogue batch.' : 'The manager reports no batch for this stage.'}
+          {NO_ROWS[group.kind]}
         </Typography>
       ) : (
         <TableContainer component={Paper} variant="outlined">
-          <Table
-            size="small"
-            aria-label={catalogue ? 'Catalogue batch' : `Batches of ${group.title}`}
-            sx={{ tableLayout: 'fixed', minWidth: TABLE_MIN_WIDTH }}
-          >
+          <Table size="small" aria-label={tableLabel(group)} sx={{ tableLayout: 'fixed', minWidth: TABLE_MIN_WIDTH }}>
             <TableHead>
               <TableRow>
                 <TableCell sx={{ ...HEADER, width: CHECKBOX_WIDTH }} />
@@ -368,12 +454,14 @@ export function BatchTable({
                   ticked={ticked.has(row.batch.batchId)}
                   check={check}
                   onTick={onTick}
+                  warningDays={warningDays}
                 />
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+      {footer}
     </Stack>
   );
 }

@@ -21,6 +21,7 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import { formatShort, formatUnits } from './amounts';
+import { ArchiveStampsFooter, useArchiveStamps } from './ArchiveStamps';
 import { fundNeeds, type FundNeed } from './balance';
 import { BatchTable } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
@@ -266,7 +267,10 @@ function StampBar({
 
 /**
  * The Stamps tab: top up or dilute the batches the nodes upload with, each node paying from its own wallet. The
- * catalogue batch comes on top, then each stage's batches. Tick batches, choose the days or the steps, which apply to
+ * catalogue batch comes on top, then the archive stamps from `GET /api/archive/stamps`, with their room and the
+ * qualities on them and "Buy archive stamp" under them, then each stage's batches. Each archive stamp is paid for by
+ * the node that holds it, the catalogue node for every stamp bought here, so that node's one wallet pays for them and
+ * for the catalogue batch, and its rows' wallet after counts them all. Tick batches, choose the days or the steps, which apply to
  * every ticked one, and confirm, in a dialog that reads the view again as it opens and asks for what that reading
  * shows; each operation is then followed until it comes to its end, and the view is read again once they have
  * settled. A ticked batch shows what it costs and leaves, and its node's xBZZ after, or in red what it lacks for its
@@ -302,9 +306,19 @@ export function StampsTab({
   const read = useFundingView(onRead);
   const { view, load } = read;
 
-  const groups = useMemo(() => (view ? batchGroups(view) : []), [view]);
-  const tickable = useMemo(() => [...new Set(groups.flatMap((group) => tickableBatches(group)))], [groups]);
-  const check = useMemo(() => (view ? checkStamps(view, selection) : null), [view, selection]);
+  // Read with the view, so a purchase that has turned into a batch is listed with what the admin knows of it.
+  const archive = useArchiveStamps(view, load);
+  // The view's batches and the archive stamps, each stamp with the node that holds it, which pays for it.
+  const inventory = useMemo(
+    () => (view ? { ...view, archiveStamps: archive.stamps?.stamps ?? [] } : null),
+    [view, archive.stamps],
+  );
+  const groups = useMemo(() => (inventory ? batchGroups(inventory) : []), [inventory]);
+  const tickable = useMemo(
+    () => [...new Set(groups.flatMap((group) => tickableBatches(group, operation)))],
+    [groups, operation],
+  );
+  const check = useMemo(() => (inventory ? checkStamps(inventory, selection) : null), [inventory, selection]);
 
   const onSettled = useCallback(() => {
     setFollowed((current) => current && { ...current, settled: true });
@@ -381,6 +395,12 @@ export function StampsTab({
               check={check}
               onTick={tick}
               onTicks={setTicks}
+              {...(group.kind === 'archive'
+                ? {
+                    warningDays: archive.stamps?.ttlWarningDays ?? null,
+                    footer: <ArchiveStampsFooter read={archive} onBought={load} />,
+                  }
+                : {})}
             />
           ))}
           {check ? (

@@ -49,10 +49,10 @@ operation runs, because each node pays from its own wallet and nothing leaves th
 - The catalogue batch can be topped up and diluted like any other. A move of the catalogue to
   another batch is not handled here: the tab lists only the designated catalogue batch.
 - **Archive stamps** are the immutable batches on the catalogue node that recordings are archived
-  onto ([web2-admin.md](web2-admin.md#archiving-a-recording)). The group lists each with its label,
-  depth, time left, room and the qualities on it, and tops them up and dilutes them like any other,
-  through the node that holds it. The catalogue node's stamps sit in its group beside the catalogue
-  batch.
+  onto ([web2-admin.md](web2-admin.md#archiving-a-recording)). They have a group of their own,
+  "Archive stamps", under the catalogue batch and above the stages. The group lists each with its
+  label, the node that holds it, depth, time left, room and the qualities on it, and tops them up
+  and dilutes them like any other, through the node that holds it, whose wallet pays.
   **Buy archive stamp** opens the buy dialog: a depth with what it holds, the days it lasts and
   what it costs, then a confirm without the password, since the catalogue node pays. A stamp being
   bought shows in the group until it is usable. With a manager that offers no purchases the dialog

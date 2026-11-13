@@ -5,6 +5,7 @@ import {
   sumBaseUnits,
   XBZZ_DECIMALS,
   type AdminFundingNode,
+  type ArchiveStamp,
   type FundingBatch,
   type FundingDiluteSteps,
   type FundingPostage,
@@ -16,7 +17,7 @@ import {
 
 import { shortHex } from '../../format';
 import { formatShort, roundUpUnits } from './amounts';
-import { nodeGroups, type NodeGroup } from './balance';
+import { allNodes, nodeGroups, type NodeGroup } from './balance';
 
 /**
  * The Stamps tab's arithmetic and checks: the batches the page lists, which of them can be ticked, and what the ticked
@@ -51,6 +52,12 @@ export const NOT_READ_IN_FULL_TEXT = 'The node did not say enough about it to to
  */
 export const WALLET_UNREAD_TEXT = "Its node's wallet could not be read, so it cannot be topped up or diluted.";
 
+/**
+ * Said in place of the tick box of an archive stamp, on a dilution, that is not written any more, such as one left on a
+ * node that is the catalogue node no longer: nothing is copied onto it again, so it is kept alive and never made bigger.
+ */
+export const TOP_UP_ONLY_TEXT = 'Not written any more, so it is topped up only.';
+
 /** Why the days field cannot be read. */
 export const DAYS_PROBLEM = 'The days are a whole number, 1 or more.';
 
@@ -58,12 +65,61 @@ export const DAYS_PROBLEM = 'The days are a whole number, 1 or more.';
 export const NO_PRICE_PROBLEM =
   'The manager could not read what postage costs, so a top-up cannot be priced. Refresh to read it again.';
 
-type Inventory = Pick<FundingView, 'stages' | 'catalogue'>;
+/**
+ * What the tab lists: the Funding view's nodes and their batches, and the archive stamps as `GET /api/archive/stamps`
+ * answers them, each naming the node that holds it. Absent or empty, there is no archive stamp to list.
+ */
+type Inventory = Pick<FundingView, 'stages' | 'catalogue'> & { archiveStamps?: readonly ArchiveStamp[] | null };
 
-/** One batch as a row lists it: the node that holds it and pays for it, and the batch as that node reported it. */
+/**
+ * One batch as a row lists it: the node that holds it and pays for it, and the batch as that node reported it. An
+ * archive stamp's row has the stamp as the admin answers it, `archive`, with its label, room and whether it is still
+ * written.
+ */
 export interface BatchRow {
   node: AdminFundingNode;
   batch: FundingBatch;
+  archive?: ArchiveStamp;
+}
+
+/** Said in an archive stamp's row when the manager did not read it, so it is not known what it is worth now. */
+export const ARCHIVE_STAMP_UNREAD_TEXT = 'The manager could not read this stamp.';
+
+/**
+ * An archive stamp as a batch of the Funding view: its id with `0x`, as the stamp operations take it, and its
+ * readings. `usable` is the manager's word for it: active or full. A stamp the manager could not read says so.
+ */
+function archiveBatchOf(stamp: ArchiveStamp): FundingBatch {
+  return {
+    batchId: `0x${stamp.batchId.replace(/^0x/i, '').toLowerCase()}`,
+    depth: stamp.depth,
+    immutable: stamp.immutable,
+    usable: stamp.state === 'active' || stamp.state === 'full',
+    ttlSeconds: stamp.ttlSeconds,
+    fillRatio: stamp.fillRatio,
+    readError: stamp.state === 'unknown' ? ARCHIVE_STAMP_UNREAD_TEXT : null,
+  };
+}
+
+/**
+ * The node an archive stamp names as its holder, as the Funding view lists it, or, for one the view lists nowhere, such
+ * as a node that is the catalogue node no longer and no stage's, the node with its name and no wallet read: its stamp
+ * then says why it has no tick box.
+ */
+function holderOf(stamp: ArchiveStamp, nodes: readonly AdminFundingNode[]): AdminFundingNode {
+  const listed = stamp.nodeId === null ? undefined : nodes.find((node) => node.nodeId === stamp.nodeId);
+  if (listed) return listed;
+  return {
+    nodeId: stamp.nodeId ?? `archive:${stamp.batchId}`,
+    label: stamp.nodeLabel ?? 'Unknown node',
+    role: 'uploader',
+    walletAddress: null,
+    xdaiWei: null,
+    xbzzPlur: null,
+    readError: null,
+    pin: 'new',
+    pinnedAddress: null,
+  };
 }
 
 /** A row that has a tick box: its batch can take an operation, and its node's wallet was read. */
@@ -77,34 +133,65 @@ function walletRead(node: AdminFundingNode): boolean {
   return node.walletAddress !== null && node.xdaiWei !== null && node.xbzzPlur !== null;
 }
 
-/**
- * Whether a row has a tick box: its batch read whole, usable and not expired, the common `operableBatch` the backend
- * checks too, and its node's wallet read. Select all, the group's tick box and the operation follow the same rule, so
- * a tick left on a row that has lost its tick box since is neither counted nor asked for.
- */
-export function hasTickBox(row: BatchRow): row is TickableRow {
-  return operableBatch(row.batch) && walletRead(row.node);
+/** Whether a row takes this operation at all: an archive stamp that is not written any more takes top-ups only. */
+function takesOperation(row: BatchRow, operation: FundingStampOperationKind): boolean {
+  return operation === 'topup' || row.archive?.writable !== false;
 }
 
-/** The catalogue batch, or one stage's batches, with the node group they come from, which the node cards need. */
+/**
+ * Whether a row has a tick box for `operation`: its batch read whole, usable and not expired, the common
+ * `operableBatch` the backend checks too, its node's wallet read, and, on a dilution, not an archive stamp that is
+ * written no more. Select all, the group's tick box and the operation follow the same rule, so a tick left on a row
+ * that has lost its tick box since is neither counted nor asked for.
+ */
+export function hasTickBox(row: BatchRow, operation: FundingStampOperationKind = 'topup'): row is TickableRow {
+  return operableBatch(row.batch) && walletRead(row.node) && takesOperation(row, operation);
+}
+
+/**
+ * The catalogue batch, the archive stamps, or one stage's batches, with the node group they come from, which the node
+ * cards need. `kind` tells the three apart.
+ */
 export interface BatchGroup {
   key: string;
+  kind: 'catalogue' | 'archive' | 'stage';
   title: string;
   nodes: NodeGroup;
   rows: BatchRow[];
 }
 
+/** The title of the group of archive stamps, under the catalogue batch. */
+export const ARCHIVE_GROUP_TITLE = 'Archive stamps';
+
 /**
- * The catalogue batch in a group of its own on top, then each stage's batches under its name, in the admin's order.
- * A node with no batch, a gateway among them, has no row.
+ * The catalogue batch in a group of its own on top, then the archive stamps, then each stage's batches under its name,
+ * in the admin's order. Each archive stamp is paid for by the node that holds it, the catalogue node for every stamp
+ * bought here, so that node's one wallet pays for them and for the catalogue batch alike. The archive group is there
+ * whenever the catalogue node or an archive stamp is, with no rows while there is no stamp. A node with no batch, a
+ * gateway among them, has no row.
  */
 export function batchGroups(view: Inventory): BatchGroup[] {
-  return nodeGroups(view).map((nodes) => ({
-    key: nodes.key,
-    title: nodes.catalogue ? 'Catalogue batch' : nodes.title,
-    nodes,
-    rows: nodes.nodes.flatMap((node) => (node.batch ? [{ node, batch: node.batch }] : [])),
+  const stamps = view.archiveStamps ?? [];
+  const nodes = allNodes(view);
+  const archiveRows: BatchRow[] = stamps.map((stamp) => ({
+    node: holderOf(stamp, nodes),
+    batch: archiveBatchOf(stamp),
+    archive: stamp,
   }));
+  const archiveGroup: BatchGroup = {
+    key: 'archive',
+    kind: 'archive',
+    title: ARCHIVE_GROUP_TITLE,
+    nodes: { key: 'archive', title: ARCHIVE_GROUP_TITLE, catalogue: false, nodes: archiveRows.map((row) => row.node) },
+    rows: archiveRows,
+  };
+  const groups = nodeGroups(view).flatMap((group): BatchGroup[] => {
+    const rows = group.nodes.flatMap((node) => (node.batch ? [{ node, batch: node.batch }] : []));
+    if (!group.catalogue) return [{ key: group.key, kind: 'stage', title: group.title, nodes: group, rows }];
+    return [{ key: group.key, kind: 'catalogue', title: 'Catalogue batch', nodes: group, rows }, archiveGroup];
+  });
+  // With no catalogue node designated, stamps left on other nodes still need their top-ups: their group comes first.
+  return view.catalogue || stamps.length === 0 ? groups : [archiveGroup, ...groups];
 }
 
 /**
@@ -113,12 +200,12 @@ export function batchGroups(view: Inventory): BatchGroup[] {
  * none has: a listing whose node could not be read about the batch, or about its wallet, never hides one whose node
  * could.
  */
-export function allBatchRows(view: Inventory): BatchRow[] {
+export function allBatchRows(view: Inventory, operation: FundingStampOperationKind = 'topup'): BatchRow[] {
   const byId = new Map<string, BatchRow>();
   for (const row of batchGroups(view).flatMap((group) => group.rows)) {
     const kept = byId.get(row.batch.batchId);
     // A batch keeps the place it is first listed in, whichever listing it is kept for.
-    if (!kept || (!hasTickBox(kept) && hasTickBox(row))) byId.set(row.batch.batchId, row);
+    if (!kept || (!hasTickBox(kept, operation) && hasTickBox(row, operation))) byId.set(row.batch.batchId, row);
   }
   return [...byId.values()];
 }
@@ -127,8 +214,8 @@ export function allBatchRows(view: Inventory): BatchRow[] {
  * The batches of a group that have a tick box, by id, each once: what the group's own tick box ticks and clears, and,
  * from every group, what Select all ticks.
  */
-export function tickableBatches(group: BatchGroup): string[] {
-  return [...new Set(group.rows.flatMap((row) => (hasTickBox(row) ? [row.batch.batchId] : [])))];
+export function tickableBatches(group: BatchGroup, operation: FundingStampOperationKind = 'topup'): string[] {
+  return [...new Set(group.rows.flatMap((row) => (hasTickBox(row, operation) ? [row.batch.batchId] : [])))];
 }
 
 /** Whether the manager names any node's batch: one older than the Stamps tab answers its nodes without them. */
@@ -149,11 +236,14 @@ export function whyNotOperable(batch: FundingBatch): string | null {
 }
 
 /**
- * Why a row has no tick box, said in its row instead, or null when it has one: what is wrong with its batch first,
- * then that its node's wallet was not read.
+ * Why a row has no tick box for `operation`, said in its row instead, or null when it has one: what is wrong with its
+ * batch first, then that its node's wallet was not read, then that an archive stamp written no more takes top-ups only.
  */
-export function whyNoTickBox(row: BatchRow): string | null {
-  return whyNotOperable(row.batch) ?? (hasTickBox(row) ? null : WALLET_UNREAD_TEXT);
+export function whyNoTickBox(row: BatchRow, operation: FundingStampOperationKind = 'topup'): string | null {
+  const why = whyNotOperable(row.batch);
+  if (why !== null) return why;
+  if (!walletRead(row.node)) return WALLET_UNREAD_TEXT;
+  return takesOperation(row, operation) ? null : TOP_UP_ONLY_TEXT;
 }
 
 export type ReadDays = { kind: 'ok'; days: number } | { kind: 'invalid'; problem: string };
@@ -347,8 +437,8 @@ export function checkStamps(view: Inventory & Pick<FundingView, 'postage'>, sele
   const topUp = selection.operation === 'topup';
   const days = readDays(selection.days);
   const lines: StampLine[] = [];
-  for (const row of allBatchRows(view)) {
-    if (!selection.ticked.has(row.batch.batchId) || !hasTickBox(row)) continue;
+  for (const row of allBatchRows(view, selection.operation)) {
+    if (!selection.ticked.has(row.batch.batchId) || !hasTickBox(row, selection.operation)) continue;
     const { node, batch } = row;
     lines.push(topUp ? topUpLine(node, batch, days, view.postage) : diluteLine(node, batch, selection.steps));
   }

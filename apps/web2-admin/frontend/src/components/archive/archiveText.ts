@@ -8,6 +8,17 @@ export function purchaseRefusal(e: unknown): string {
   return errorMessage(e, 'The purchase could not be started.');
 }
 
+/**
+ * A batch id as the archive's answers carry it, 64 hex digits in lower case without `0x`, from one as the funding view
+ * carries it, with `0x`: the key both are matched by.
+ */
+export function bareBatchId(batchId: string): string {
+  return batchId.replace(/^0x/i, '').toLowerCase();
+}
+
+/** The bytes one chunk carries, `ARCHIVE_CHUNK_BYTES` of `packages/contracts`, which the console does not import. */
+export const CHUNK_BYTES = 4096;
+
 const UNITS: ReadonlyArray<readonly [number, string]> = [
   [1e15, 'PB'],
   [1e12, 'TB'],
