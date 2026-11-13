@@ -11,11 +11,13 @@ import {
   FUNDING_NODE_ROLES,
   FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_STAMP_OPERATIONS_PATH,
+  FUNDING_STAMP_PURCHASES_PATH,
   FUNDING_TRANSFER_KINDS,
   FUNDING_TRANSFER_STATES,
   FUNDING_TRANSFERS_PATH,
   fundingAccountAnswerSchema,
   fundingAccountPath,
+  fundingArchiveBatchSchema,
   fundingBatchSchema,
   fundingChainSchema,
   fundingChequebookOperationAnswerSchema,
@@ -31,6 +33,10 @@ import {
   fundingStampOperationPath,
   fundingStampOperationRequestSchema,
   fundingStampOperationStatusSchema,
+  fundingStampPurchaseAnswerSchema,
+  fundingStampPurchasePath,
+  fundingStampPurchaseRequestSchema,
+  fundingStampPurchaseStatusSchema,
   fundingTransferAnswerSchema,
   fundingTransferPath,
   fundingTransferRequestSchema,
@@ -158,6 +164,17 @@ describe('the paths under /api/admin-funding', () => {
     );
     for (const bad of ['', 'self', '../transfers', `${REQUEST_ID}/x`]) {
       assert.throws(() => fundingStampOperationPath(bad), /UUID/);
+    }
+  });
+
+  it('builds a stamp purchase path from a UUID in lower case, and refuses anything else', () => {
+    assert.equal(FUNDING_STAMP_PURCHASES_PATH, '/api/admin-funding/stamp-purchases');
+    assert.equal(
+      fundingStampPurchasePath(REQUEST_ID.toUpperCase()),
+      `/api/admin-funding/stamp-purchases/${REQUEST_ID}`,
+    );
+    for (const bad of ['', 'self', '../stamp-operations', `${REQUEST_ID}/x`]) {
+      assert.throws(() => fundingStampPurchasePath(bad), /UUID/);
     }
   });
 
@@ -687,5 +704,163 @@ describe('an error answer', () => {
       'unknown_node',
     );
     assert.equal(fundingErrorAnswerSchema.safeParse({ error: 'teapot', message: 'no' }).success, false);
+  });
+});
+
+const CATALOGUE_NODE_ID = 'catalogue:bee-uploader';
+
+const archiveBatch = () => ({ ...batch(), batchId: `0x${'e5'.repeat(32)}`, label: 'Autumn event', writable: true });
+
+const purchaseRequest = () => ({
+  requestId: REQUEST_ID,
+  nodeId: CATALOGUE_NODE_ID,
+  depth: 22,
+  amountPerChunkPlur: '12441600000',
+  label: 'Autumn event',
+});
+
+describe("the catalogue node's archive batches, in the inventory", () => {
+  it('are absent from the answer of a manager that keeps none, which still parses', () => {
+    assert.equal('archiveBatches' in fundingInventorySchema.parse(inventory()).catalogue!, false);
+  });
+
+  it('carry each batch with its readings, its label and whether it can be written', () => {
+    const left = { ...archiveBatch(), batchId: `0x${'F6'.repeat(32)}`, label: null, writable: false };
+    const answer = { ...inventory(), catalogue: { ...inventory().catalogue, archiveBatches: [archiveBatch(), left] } };
+    assert.deepEqual(fundingInventorySchema.parse(answer).catalogue!.archiveBatches, [
+      archiveBatch(),
+      { ...left, batchId: left.batchId.toLowerCase() },
+    ]);
+  });
+
+  it('read an empty list as no archive batches', () => {
+    assert.deepEqual(fundingNodeSchema.parse({ ...node(), archiveBatches: [] }).archiveBatches, []);
+  });
+
+  it('hold each to the rules of a batch, with a said writability and a label of a length', () => {
+    for (const over of [
+      { batchId: 'e5'.repeat(32) },
+      { writable: null },
+      { label: '' },
+      { label: 'x'.repeat(65) },
+      { depth: 256 },
+      { fillRatio: 1.5 },
+    ]) {
+      assert.equal(
+        fundingArchiveBatchSchema.safeParse({ ...archiveBatch(), ...over }).success,
+        false,
+        JSON.stringify(over),
+      );
+    }
+    assert.equal(fundingNodeSchema.safeParse({ ...node(), archiveBatches: null }).success, false);
+  });
+
+  it('drop what a newer manager adds to one, a Bee API address among them', () => {
+    const parsed = fundingArchiveBatchSchema.parse({ ...archiveBatch(), beeApiUrl: 'http://bee.example.org:1633' });
+    assert.deepEqual(parsed, archiveBatch());
+  });
+});
+
+describe('POST /api/admin-funding/stamp-purchases', () => {
+  it('takes the catalogue node, a depth, an amount for each chunk and a label, the request id in lower case', () => {
+    const parsed = fundingStampPurchaseRequestSchema.parse({
+      ...purchaseRequest(),
+      requestId: REQUEST_ID.toUpperCase(),
+    });
+    assert.deepEqual(parsed, purchaseRequest());
+  });
+
+  it('takes no label, and trims one', () => {
+    assert.equal(fundingStampPurchaseRequestSchema.parse({ ...purchaseRequest(), label: null }).label, null);
+    assert.equal(fundingStampPurchaseRequestSchema.parse({ ...purchaseRequest(), label: '  Day 2 ' }).label, 'Day 2');
+  });
+
+  it('takes every depth the capacity table names, and no other', () => {
+    for (const depth of [17, 19, 30, 41]) {
+      assert.equal(
+        fundingStampPurchaseRequestSchema.safeParse({ ...purchaseRequest(), depth }).success,
+        true,
+        `${depth}`,
+      );
+    }
+    for (const depth of [0, 16, 42, 22.5, '22']) {
+      assert.equal(
+        fundingStampPurchaseRequestSchema.safeParse({ ...purchaseRequest(), depth }).success,
+        false,
+        `${depth}`,
+      );
+    }
+  });
+
+  it('refuses a request that names no node, no amount, or a label that is empty or too long', () => {
+    for (const over of [
+      { requestId: 'not-a-uuid' },
+      { nodeId: '' },
+      { nodeId: 'catalogue/../x' },
+      { amountPerChunkPlur: '0' },
+      { amountPerChunkPlur: '1.5' },
+      { amountPerChunkPlur: 12441600000 },
+      { label: '   ' },
+      { label: 'x'.repeat(65) },
+      { label: undefined },
+    ]) {
+      const request = { ...purchaseRequest(), ...over };
+      assert.equal(fundingStampPurchaseRequestSchema.safeParse(request).success, false, JSON.stringify(over));
+    }
+  });
+
+  it('has no field for mutability, since an archive stamp is always immutable', () => {
+    const parsed = fundingStampPurchaseRequestSchema.parse({ ...purchaseRequest(), immutable: false });
+    assert.equal('immutable' in parsed, false);
+  });
+
+  it('answers the state, and the batch and its transaction once the node has answered', () => {
+    const waiting = { requestId: REQUEST_ID, state: 'unknown', batchId: null, txHash: null };
+    assert.deepEqual(fundingStampPurchaseAnswerSchema.parse(waiting), waiting);
+    const bought = { requestId: REQUEST_ID, state: 'confirmed', batchId: BATCH_ID, txHash: TX_HASH };
+    assert.deepEqual(
+      fundingStampPurchaseAnswerSchema.parse({ ...bought, batchId: BATCH_ID.toUpperCase().replace('0X', '0x') }),
+      bought,
+    );
+    assert.equal(fundingStampPurchaseAnswerSchema.safeParse({ ...bought, state: 'bought' }).success, false);
+    assert.equal(fundingStampPurchaseAnswerSchema.safeParse({ ...bought, batchId: 'c3'.repeat(32) }).success, false);
+  });
+});
+
+describe('GET /api/admin-funding/stamp-purchases/:requestId', () => {
+  const status = () => ({
+    requestId: REQUEST_ID,
+    state: 'confirmed',
+    batchId: BATCH_ID,
+    txHash: TX_HASH,
+    usable: false,
+    error: null,
+  });
+
+  it('says where the purchase stands and whether the batch can stamp yet', () => {
+    assert.deepEqual(fundingStampPurchaseStatusSchema.parse(status()), status());
+    assert.equal(fundingStampPurchaseStatusSchema.parse({ ...status(), usable: true }).usable, true);
+  });
+
+  it('has no batch, hash or word about it before the node answered, and an error when it failed', () => {
+    const unknown = { ...status(), state: 'unknown', batchId: null, txHash: null, usable: null };
+    assert.deepEqual(fundingStampPurchaseStatusSchema.parse(unknown), unknown);
+    const failed = { ...unknown, state: 'failed', error: 'The node did not answer.' };
+    assert.deepEqual(fundingStampPurchaseStatusSchema.parse(failed), failed);
+  });
+
+  it('refuses an answer without a said usability or error, and drops what a newer manager adds', () => {
+    const { usable: _usable, ...withoutUsable } = status();
+    assert.equal(fundingStampPurchaseStatusSchema.safeParse(withoutUsable).success, false);
+    const { error: _error, ...withoutError } = status();
+    assert.equal(fundingStampPurchaseStatusSchema.safeParse(withoutError).success, false);
+    assert.deepEqual(fundingStampPurchaseStatusSchema.parse({ ...status(), beeApiUrl: 'http://bee:1633' }), status());
+  });
+});
+
+describe('a chequebook operation on the catalogue node', () => {
+  it('is a request as any other, which the manager takes for the catalogue node since it copies recordings', () => {
+    const request = { ...depositRequest(), nodeId: CATALOGUE_NODE_ID };
+    assert.deepEqual(fundingChequebookOperationRequestSchema.parse(request), request);
   });
 });

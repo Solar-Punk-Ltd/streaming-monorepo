@@ -87,12 +87,13 @@ its block is in and Confirmed once that block is final, about 3 minutes later on
 
 ## Who does what
 
-| Action            | Who signs                      | Paid from             | Carried out by                                    |
-| ----------------- | ------------------------------ | --------------------- | ------------------------------------------------- |
-| Fund node wallets | the brand wallet, in the admin | the brand wallet      | the manager sends the admin's signed transfer out |
-| Top up batches    | the node                       | the node's wallet     | the manager, through each node's Bee API          |
-| Dilute a batch    | the node                       | the node's xDAI (gas) | the manager, through each node's Bee API          |
-| Move chequebooks  | the node                       | the node's wallet     | the manager, through each node's Bee API          |
+| Action               | Who signs                      | Paid from                   | Carried out by                                    |
+| -------------------- | ------------------------------ | --------------------------- | ------------------------------------------------- |
+| Fund node wallets    | the brand wallet, in the admin | the brand wallet            | the manager sends the admin's signed transfer out |
+| Top up batches       | the node                       | the node's wallet           | the manager, through each node's Bee API          |
+| Dilute a batch       | the node                       | the node's xDAI (gas)       | the manager, through each node's Bee API          |
+| Buy an archive stamp | the catalogue node             | the catalogue node's wallet | the manager, through the catalogue node's Bee API |
+| Move chequebooks     | the node                       | the node's wallet           | the manager, through each node's Bee API          |
 
 The brand wallet's key never leaves the admin. For a transfer the admin builds and signs the
 transaction itself, and the manager supplies the nonce and the fee, sends it and reports the
@@ -110,7 +111,7 @@ It answers:
 
 - every stage's nodes, with their wallet balances, batches (depth, time left, fill) and
   chequebook balances,
-- the catalogue node and its batch,
+- the catalogue node, its batch and its archive batches,
 - the brand wallet's balances,
 - the price of a top-up.
 
@@ -118,6 +119,7 @@ It does:
 
 - send a signed transfer and report its receipt,
 - top up and dilute batches,
+- buy an archive stamp on the catalogue node,
 - deposit into and withdraw from chequebooks.
 
 Each operation is a list, run item by item with each item's result reported, under a request id, so
@@ -132,6 +134,9 @@ host.
   a changed one needs an operator's confirmation before the admin sends to it.
 - A dilution takes at most two steps, leaves at least 7 days, and is refused if the batch's depth
   moved since it was read.
+- A purchase buys an immutable batch on the catalogue node and nowhere else, of depth 17 to 41, with
+  the postage contract's floor of life or more. Its cost is within the node's wallet, which only a
+  transfer from the brand wallet fills. One purchase runs on the node at a time.
 - A chequebook is brought to no target under 1 xBZZ, and a withdrawal goes to its node's own
   wallet, the one place Bee sends one.
 - Every operator may fund. The password is asked again before every send from the brand wallet.

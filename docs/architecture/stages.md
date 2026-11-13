@@ -9,15 +9,15 @@ how keys are split, and how the catalogue gets a batch of its own.
 
 ## The shape in one table
 
-| Topic           | How it works                                                                                                                                                                                   |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Direction       | The manager pushes a record per stage into the admin. The admin keeps what it was told in its own database. The admin's one call to the manager is the funding API ([funding.md](funding.md)). |
-| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand reads it.                                                                                     |
-| Binding         | A stream goes live only on its own stage. Every uploader presents a token of its own, and the admin answers a token only about its own stage's streams.                                        |
-| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                              |
-| Catalogue stamp | The catalogue is written with a batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. It never shares a batch a rung stamps segments with.       |
-| Funding         | The admin reads stages, funds the node wallets, tops up and dilutes batches and moves chequebooks, every operation through the manager's funding API. Buying batches stays in the manager.     |
-| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                               |
+| Topic           | How it works                                                                                                                                                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direction       | The manager pushes a record per stage into the admin. The admin keeps what it was told in its own database. The admin's one call to the manager is the funding API ([funding.md](funding.md)).                                                                              |
+| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand reads it.                                                                                                                                                                  |
+| Binding         | A stream goes live only on its own stage. Every uploader presents a token of its own, and the admin answers a token only about its own stage's streams.                                                                                                                     |
+| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                                                                                                           |
+| Catalogue stamp | The catalogue is written with a batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. It never shares a batch a rung stamps segments with.                                                                                    |
+| Funding         | The admin reads stages, funds the node wallets, tops up and dilutes batches and moves chequebooks, every operation through the manager's funding API. Buying a stage's batch and the catalogue's stays in the manager. The admin buys archive stamps, through the same API. |
+| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                                                                                                            |
 
 ## Why it is shaped this way
 
@@ -68,7 +68,10 @@ Bee API address as the admin dials it (the address a pool string carries), the p
 whether the batch is `immutable`, its `depth`, its stamp `state`, `ttlSeconds` and `fillRatio`, when
 it was designated, and `observedAt`. While a move is pending in the manager, `previous` carries the
 batch moved from, its node's name and Bee API and the same readings
-(`catalogueStampPreviousSchema`). It is null or absent otherwise.
+(`catalogueStampPreviousSchema`). It is null or absent otherwise. `archiveBatches` carries the
+brand's archive batches, the immutable batches on the catalogue node that finished recordings are
+copied onto: each batch's id, label, readings, when it was designated and whether the node the
+record names holds it (`catalogueArchiveBatchSchema`). The admin replaces its whole list with it.
 
 Neither record ever carries a signing key, a wallet key, an RPC endpoint, a token or a rung's
 node address.

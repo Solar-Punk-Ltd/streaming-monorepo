@@ -4,7 +4,10 @@ import { describe, it } from 'node:test';
 import { sameFeedOwner } from './adminAnswers.js';
 import {
   ADMIN_TOKEN_KINDS,
+  ARCHIVE_BATCH_LABEL_MAX_LENGTH,
+  CATALOGUE_ARCHIVE_BATCHES_MAX,
   CATALOGUE_STAMP_PATH,
+  catalogueArchiveBatchSchema,
   catalogueStampClearAnswerSchema,
   catalogueStampClearRequestSchema,
   catalogueStampRecordSchema,
@@ -417,6 +420,81 @@ describe('the batch a catalogue stamp record says the catalogue is moving from',
       previous: { ...previous(), walletKey: `0x${'a'.repeat(64)}`, observedAt: '2026-09-28T10:00:00Z' },
     });
     assert.deepEqual(parsed.previous, { ...previous(), batchId: OLD_BATCH.toLowerCase() });
+  });
+});
+
+describe('the archive batches a catalogue stamp record carries', () => {
+  const ARCHIVE_BATCH = 'EF'.repeat(32);
+  const archiveBatch = () => ({
+    batchId: ARCHIVE_BATCH,
+    label: 'Autumn event',
+    immutable: true,
+    depth: 23,
+    state: 'active',
+    ttlSeconds: 2_592_000,
+    fillRatio: 0.4,
+    writable: true,
+    designatedAt: '2026-11-13T09:00:00.000Z',
+  });
+
+  it('are absent from a record of a manager older than the field, and read as it was sent', () => {
+    assert.equal('archiveBatches' in catalogueStampRecordSchema.parse(catalogueStamp()), false);
+  });
+
+  it('read as an empty list when the manager keeps none', () => {
+    assert.deepEqual(catalogueStampRecordSchema.parse({ ...catalogueStamp(), archiveBatches: [] }).archiveBatches, []);
+  });
+
+  it('carry each batch with its label, readings and whether it can be written, the id in lower case', () => {
+    const second = { ...archiveBatch(), batchId: '12'.repeat(32), label: null, writable: false, ttlSeconds: null };
+    const parsed = catalogueStampRecordSchema.parse({ ...catalogueStamp(), archiveBatches: [archiveBatch(), second] });
+    assert.deepEqual(parsed.archiveBatches, [{ ...archiveBatch(), batchId: ARCHIVE_BATCH.toLowerCase() }, second]);
+  });
+
+  it('take any depth a batch can have, since an archive batch has no minimum of its own', () => {
+    for (const depth of [17, 19, 41, 64]) {
+      assert.equal(catalogueArchiveBatchSchema.safeParse({ ...archiveBatch(), depth }).success, true, `depth ${depth}`);
+    }
+  });
+
+  it('hold each to the rules of the record: an id, a depth, a said mutability, a known state and a moment', () => {
+    for (const over of [
+      { batchId: '0x' + 'ef'.repeat(32) },
+      { depth: 16 },
+      { depth: 65 },
+      { immutable: null },
+      { state: 'fine' },
+      { writable: 'yes' },
+      { designatedAt: '2026-11-13' },
+      { label: '' },
+      { label: 'x'.repeat(ARCHIVE_BATCH_LABEL_MAX_LENGTH + 1) },
+    ]) {
+      const record = { ...catalogueStamp(), archiveBatches: [{ ...archiveBatch(), ...over }] };
+      assert.equal(catalogueStampRecordSchema.safeParse(record).success, false, JSON.stringify(over));
+    }
+  });
+
+  it('refuse a list that is no list, and one longer than a record carries', () => {
+    assert.equal(catalogueStampRecordSchema.safeParse({ ...catalogueStamp(), archiveBatches: null }).success, false);
+    const many = Array.from({ length: CATALOGUE_ARCHIVE_BATCHES_MAX + 1 }, (_, at) => ({
+      ...archiveBatch(),
+      batchId: at.toString(16).padStart(64, '0'),
+    }));
+    assert.equal(catalogueStampRecordSchema.safeParse({ ...catalogueStamp(), archiveBatches: many }).success, false);
+    assert.equal(
+      catalogueStampRecordSchema.safeParse({ ...catalogueStamp(), archiveBatches: many.slice(1) }).success,
+      true,
+    );
+  });
+
+  it('drop what a newer sender adds to a batch, a Bee API address and a wallet key among them', () => {
+    const parsed = catalogueStampRecordSchema.parse({
+      ...catalogueStamp(),
+      archiveBatches: [
+        { ...archiveBatch(), beeApiUrl: 'http://bee.example.org:1633', walletKey: `0x${'a'.repeat(64)}` },
+      ],
+    });
+    assert.deepEqual(parsed.archiveBatches, [{ ...archiveBatch(), batchId: ARCHIVE_BATCH.toLowerCase() }]);
   });
 });
 

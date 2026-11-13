@@ -648,6 +648,11 @@ now from the node's `GET /stamps/{id}` within five seconds: the stage's `stamp_i
 own node, the rung's batch for a rung, and the designated batch for the catalogue node. It is null
 for a gateway and for a node with no batch set.
 
+The catalogue node also carries `archiveBatches`, its archive batches in the order they were
+designated, each a batch with a `label`, null for none, and `writable`, true while the catalogue
+node holds it. No other node carries the field, and a catalogue node with none carries an empty
+list.
+
 - A batch is `{ batchId, depth, immutable, usable, ttlSeconds, fillRatio, readError }`: `0x` and
   64 hex digits, Bee's depth, `immutableFlag` and `usable`, the seconds left (0 once it has
   expired, null when Bee cannot work them out), and how full its fullest bucket is, from 0 to 1,
@@ -684,8 +689,8 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
 | GET    | `/api/admin-funding/stamp-operations/:requestId` | `{ requestId, kind, state, txHash, error }`, `no-store`. 404 `unknown_request` for an id never recorded                                                                                                                                                                                                                                     |
 
 - **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded. Against the
-  inventory read now: `batchId` is the batch `nodeId` uploads with (404 `unknown_node` for a node
-  this manager does not run), the batch was read, has time left, is usable and is at
+  inventory read now: `batchId` is the batch `nodeId` uploads with, or for the catalogue node any
+  of its archive batches (404 `unknown_node` for a node this manager does not run), the batch was read, has time left, is usable and is at
   `expectedDepth`. A top-up's cost, `amountPerChunkPlur × 2^depth`, is within the node's xBZZ. A
   dilution goes to depth 40 at most and leaves seven days or more, the time left halving for every
   step. The node's wallet holds some xDAI. Then against the postage contract, `batches(id)` on
@@ -702,6 +707,39 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
   normalised balance has grown by `amountPerChunkPlur`, and a dilution once the batch is at
   `newDepth` or deeper. With no sign of either thirty minutes after it was recorded, it is
   `failed`. The contract is read at most once every five seconds per request id.
+
+### Stamp purchases
+
+The admin buys archive stamps, one purchase per request: a new immutable batch on the catalogue
+node, which that node buys through its own Bee API and pays for from its own wallet, xBZZ for the
+batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive-batches)).
+
+| Method | Path                                            | Answer                                                                                                             |
+| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/admin-funding/stamp-purchases`            | 202 `{ requestId, state, batchId, txHash }`. Takes `{ requestId, nodeId, depth, amountPerChunkPlur, label }`       |
+| GET    | `/api/admin-funding/stamp-purchases/:requestId` | `{ requestId, state, batchId, txHash, usable, error }`, `no-store`. 404 `unknown_request` for an id never recorded |
+
+- **A request id already recorded** answers that purchase's state when it is the same purchase
+  (the same node, depth, amount and label), and 409 `conflict` otherwise.
+- **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded. Against the
+  inventory read now: `nodeId` is the catalogue node (404 `unknown_node` for a node this manager
+  does not run), `depth` is 17 to 41, the cost, `amountPerChunkPlur × 2^depth`, is within the
+  node's xBZZ, and the node's wallet holds some xDAI. `amountPerChunkPlur` buys the postage
+  contract's floor of life or more at the price read now. No other purchase is open on the node.
+- **The record**: the purchase is written to `funding_stamp_purchases` as `unknown`, with the label
+  the batch will carry on its node, `archive-` and the request id, before the node's
+  `POST /stamps/{amount}/{depth}` is sent with that label and `immutable: true`, within Bee's
+  on-chain budget of 180 seconds. Bee answers once the transaction is mined, so an answer with a
+  batch is `confirmed`. A refusal (a 4xx, 501 or 503) is `failed` with Bee's words. A node the
+  manager could not connect to is `failed` and answered 502 `node_unreachable`. A 500, and an
+  answer that never came, stay `unknown`.
+- **On `confirmed`** the manager writes the batch into `archive_batches` with the request's
+  `label`, and pushes the catalogue stamp record.
+- **The `GET`** settles an `unknown` purchase from the node's own list of batches: one that carries
+  the purchase's label makes it `confirmed`, with the same write and push, and none thirty minutes
+  after the request makes it `failed`. `usable` is the node's word about the batch now, false for
+  the minutes after a purchase and true once the batch can stamp, and null while there is no batch
+  or the node did not answer.
 
 ### Chequebook operations
 
@@ -723,9 +761,10 @@ own wallet.
   gone.
 - **A request still under way** answers `submitted` with no hash on the `GET` until its call has
   answered, because the chequebook path records a move only once it has prepared it.
-- **The checks**, each refused before anything is recorded: `nodeId` is a stage's own Bee node or a
-  rung (404 `unknown_node` otherwise, 422 `chequebook_refused` for a gateway or a catalogue node no
-  stage lists). The node's wallet and chequebook were read, a deposit is at most the wallet's xBZZ,
+- **The checks**, each refused before anything is recorded: `nodeId` is a stage's own Bee node, a
+  rung or the catalogue node (404 `unknown_node` otherwise, 422 `chequebook_refused` for a
+  gateway). The catalogue node pays its peers from its chequebook for every recording the admin
+  copies onto an archive batch. The node's wallet and chequebook were read, a deposit is at most the wallet's xBZZ,
   a withdrawal at most what the chequebook has available, and the wallet holds some xDAI.
 - **Preparation** refusals are 422 `chequebook_refused` with the manager's sentence for the cause
   (see [Funding a chequebook on a new host](#funding-a-chequebook-on-a-new-host)), and another move

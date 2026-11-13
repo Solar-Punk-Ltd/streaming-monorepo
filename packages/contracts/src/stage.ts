@@ -238,11 +238,41 @@ export const catalogueStampPreviousSchema = z.object({
 });
 export type CatalogueStampPrevious = z.infer<typeof catalogueStampPreviousSchema>;
 
+/** The most archive batches one record carries, far above what a brand keeps. */
+export const CATALOGUE_ARCHIVE_BATCHES_MAX = 200;
+
+/** The longest label an archive batch carries, in characters. */
+export const ARCHIVE_BATCH_LABEL_MAX_LENGTH = 64;
+
+/**
+ * One archive batch: an immutable batch on the catalogue node that finished recordings are copied onto, as the manager
+ * read it at the record's `observedAt`. `label` is the name its buyer gave it, null when it has none. `writable` is
+ * true while the node the record names holds the batch, so the admin can stamp with it; a batch left on a node that is
+ * the catalogue node no longer stays listed with false, to be topped up and never written. The readings are null when
+ * the manager could not read them.
+ */
+export const catalogueArchiveBatchSchema = z.object({
+  batchId,
+  label: z.string().min(1).max(ARCHIVE_BATCH_LABEL_MAX_LENGTH).nullable(),
+  immutable: z.boolean(),
+  depth: z.number().int().min(17).max(64),
+  state: z.enum(STAGE_STAMP_STATES),
+  ttlSeconds: z.number().nullable(),
+  fillRatio: z.number().nullable(),
+  writable: z.boolean(),
+  designatedAt: isoMoment,
+});
+export type CatalogueArchiveBatch = z.infer<typeof catalogueArchiveBatchSchema>;
+
 /**
  * `PUT /api/internal/catalogue-stamp`: the brand's catalogue batch on its dedicated node, as the manager read it at
  * `observedAt`. The Bee API address is the one the admin dials to write the catalogue. `previous` is the batch the
  * catalogue is moving from, null or absent when no move is pending or the manager could not read it; a manager older
  * than the field sends none.
+ *
+ * `archiveBatches` is every archive batch the manager keeps, in the order they were designated, and the admin replaces
+ * its whole list with it. The admin copies recordings through the same Bee API address. A manager older than the field
+ * sends none, which the admin reads as no archive batches, and an admin older than the field drops it.
  */
 export const catalogueStampRecordSchema = z.object({
   schemaVersion: z.literal(STAGE_RECORD_SCHEMA_VERSION),
@@ -258,6 +288,7 @@ export const catalogueStampRecordSchema = z.object({
   designatedAt: isoMoment,
   observedAt: isoMoment,
   previous: catalogueStampPreviousSchema.nullish(),
+  archiveBatches: z.array(catalogueArchiveBatchSchema).max(CATALOGUE_ARCHIVE_BATCHES_MAX).optional(),
 });
 export type CatalogueStampRecord = z.infer<typeof catalogueStampRecordSchema>;
 

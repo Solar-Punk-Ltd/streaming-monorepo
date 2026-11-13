@@ -303,16 +303,19 @@ deployment on the manager's host. The record uses `PUBLIC_HOST`.
 All behind the session. The full reference is
 [the API reference](../../manager/README.md).
 
-| Method | Path                                       | Body                                                | Answer                                                                                                                                                                  |
-| ------ | ------------------------------------------ | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/stages`                                  |                                                     | every record the manager would push now, built afresh, each with its last push. The SRT passphrase is answered only as `hasSrtPassphrase`, the token only by its `kind` |
-| GET    | `/stages/:name/registration`               |                                                     | `{ registration }`, the deployment's last push from memory, or null                                                                                                     |
-| PATCH  | `/profiles/:name/ingest-host`              | `{ ingest_host }`                                   | the deployment. Null or empty clears the setting                                                                                                                        |
-| POST   | `/profiles/:name/admin-token/rotate`       |                                                     | `{ message }`, the sentence the card shows ([web2-admin-link.md](web2-admin-link.md#rotating-an-uploaders-token))                                                       |
-| GET    | `/manager-settings/catalogue-node`         |                                                     | the designation, the pinned batch, a pending move, the last release, the revision, the last reading and the last push                                                   |
-| PUT    | `/manager-settings/catalogue-node`         | `{ expectedRevision, profileName, batchId, move? }` | the same answer after the save                                                                                                                                          |
-| DELETE | `/manager-settings/catalogue-node`         | `{ expectedRevision }`                              | the same answer after the clear                                                                                                                                         |
-| POST   | `/manager-settings/catalogue-node/release` | `{ expectedRevision }`                              | the same answer after the release                                                                                                                                       |
+| Method | Path                                         | Body                                                | Answer                                                                                                                                                                  |
+| ------ | -------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/stages`                                    |                                                     | every record the manager would push now, built afresh, each with its last push. The SRT passphrase is answered only as `hasSrtPassphrase`, the token only by its `kind` |
+| GET    | `/stages/:name/registration`                 |                                                     | `{ registration }`, the deployment's last push from memory, or null                                                                                                     |
+| PATCH  | `/profiles/:name/ingest-host`                | `{ ingest_host }`                                   | the deployment. Null or empty clears the setting                                                                                                                        |
+| POST   | `/profiles/:name/admin-token/rotate`         |                                                     | `{ message }`, the sentence the card shows ([web2-admin-link.md](web2-admin-link.md#rotating-an-uploaders-token))                                                       |
+| GET    | `/manager-settings/catalogue-node`           |                                                     | the designation, the pinned batch, a pending move, the last release, the revision, the last reading and the last push                                                   |
+| PUT    | `/manager-settings/catalogue-node`           | `{ expectedRevision, profileName, batchId, move? }` | the same answer after the save                                                                                                                                          |
+| DELETE | `/manager-settings/catalogue-node`           | `{ expectedRevision }`                              | the same answer after the clear                                                                                                                                         |
+| POST   | `/manager-settings/catalogue-node/release`   | `{ expectedRevision }`                              | the same answer after the release                                                                                                                                       |
+| GET    | `/manager-settings/archive-batches`          |                                                     | the archive batches with their last readings, the other batches the catalogue node holds with why each cannot be adopted, the revision and the last push                |
+| PUT    | `/manager-settings/archive-batches/:batchId` | `{ expectedRevision, label }`                       | the same answer after the adopt. 422 with the sentence when the batch cannot be one, 409 when the revision is behind                                                    |
+| DELETE | `/manager-settings/archive-batches/:batchId` | `{ expectedRevision }`                              | the same answer after the removal                                                                                                                                       |
 
 ## The catalogue node
 
@@ -426,6 +429,7 @@ before it leaves:
 | `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                                                                                                                                                                               |
 | `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                                                                                                                                                                                         |
 | `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it. Null otherwise                                                                                                                                                                                   |
+| `archiveBatches`                                | every row of `archive_batches`, in the order they were designated: the batch, its label, the same readings of it, when it was designated, and `writable`, true while its deployment is the designated catalogue node ([Archive batches](#archive-batches))                                                |
 
 `previous` is there because the admin keeps writing with the batch moved from
 until its own move runs. Without it the admin would hold readings of that batch
@@ -513,6 +517,51 @@ batch, and that moving it is its own action. Top up stays offered on it
 `pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with two
 immutable batches and a mutable one, so a designation, a move and a release can
 be tried.
+
+### Archive batches
+
+An archive batch is an immutable batch on the catalogue node that the web2 admin
+copies finished recordings onto, so a recording outlives the mutable batches of
+the stage that made it (`docs/architecture/web2-admin.md`, "Archiving a
+recording"). There can be any number, and they have no minimum depth.
+
+A batch becomes an archive batch in one of two ways:
+
+- **The admin buys it** through the funding API
+  ([the API reference](../../manager/README.md#stamp-purchases)). The manager
+  writes the row once the node answers with the new batch.
+- **You adopt it** on the **Manager settings** page, in the **Archive batches**
+  list under the Catalogue node card, for a batch bought another way. The list
+  names the other batches the catalogue node holds, each with why it cannot be
+  adopted when it cannot.
+
+`archive_batches` holds one row per batch: the batch id (64 hex digits, lower
+case, no `0x`), the deployment whose node holds it, its label, whether it was
+bought or adopted, the purchase's request id, and when and by whom it was
+designated. `archive_batches_revision` is the one row an adopt and a removal
+check and raise, so a save made against a list another operator changed is
+refused.
+
+An adopt is refused, with the manager's own sentence (`archiveBatchProblem` in
+`common/src/archiveBatches.ts`), for a mutable batch, one whose kind the node
+does not report, an expired one, one the node does not hold, the catalogue's own
+batch (the pinned one and the one a move left), and one that is an archive batch
+already. With no catalogue node designated nothing is adopted.
+
+**Remove** takes a batch off the list, after a confirm. The batch stays on its
+node and on Swarm until it expires. The manager then no longer lists it, pushes
+it or tops it up through the funding API, so it is for a batch that expired.
+
+A batch stays with the node that bought it. When the catalogue node is
+designated anew on another deployment, the archive batches of the old one stay
+listed and can be topped up, and the record carries them as not `writable`, so
+the admin copies nothing onto them.
+
+Every adopt, removal and purchase pushes the catalogue stamp record, and the
+manager's reading schedule of the catalogue batch reads the archive batches with
+it. A deployment that holds an archive batch is not removed: its removal, from
+the page or the Clean action, answers 409 `archive_batches_held` with a sentence
+naming the batches, until they are taken off the list.
 
 ## Settings
 
