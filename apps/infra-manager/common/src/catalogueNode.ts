@@ -70,6 +70,11 @@ export const CATALOGUE_PUSH_OUTCOMES = [
   'skipped-no-node',
   /** The record could not be put together, for the reason the log gives. */
   'skipped-no-record',
+  /**
+   * The node's Bee API address reaches the manager's own machine alone, so the web2 admin cannot dial it. For a node on
+   * the manager's own host, `BEE_LOCAL_HOST` sets that address.
+   */
+  'skipped-loopback-address',
 ] as const;
 export type CataloguePushOutcome = (typeof CATALOGUE_PUSH_OUTCOMES)[number];
 
@@ -88,6 +93,8 @@ export const CATALOGUE_PUSH_OUTCOME_TEXT: Readonly<Record<CataloguePushOutcome, 
   'refused-plain-http': 'not sent (the admin link is plain http to another host)',
   'skipped-no-node': 'not sent (the designated deployment is gone)',
   'skipped-no-record': 'not sent (the record is incomplete)',
+  'skipped-loopback-address':
+    'not sent (the node’s Bee API address works only on the manager’s own machine; set BEE_LOCAL_HOST to an address the web2 admin can reach)',
 };
 
 /** The last call of either kind, as the manager keeps it in memory. */

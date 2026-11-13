@@ -199,6 +199,14 @@ describe('what the card says of the pinned batch', () => {
     );
   });
 
+  it('says a record was not sent because the node’s address works only on the manager’s own machine', () => {
+    const at = Date.parse('2026-09-28T10:00:00.000Z');
+    assert.equal(
+      cataloguePushLine({ kind: 'store', outcome: 'skipped-loopback-address', at: new Date(at).toISOString() }, at),
+      'Web2 admin: not sent (the node’s Bee API address works only on the manager’s own machine; set BEE_LOCAL_HOST to an address the web2 admin can reach) 0 s ago',
+    );
+  });
+
   it('tells the node’s page that Buy and Use leave the catalogue on the pinned batch, and Top up keeps it alive', () => {
     const note = pinnedBatchNote(BATCH);
     assert.match(note, /catalogue node/);

@@ -436,7 +436,9 @@ no depth or has a loopback Bee API. The admin then keeps the last reading it had
 
 A node whose Bee API reaches the dialling host alone (`localhost`, `127.0.0.0/8`,
 `0.0.0.0`, `[::1]`) is no address for the admin. The record is not sent, the
-outcome is `skipped-no-record`, and the log says why once.
+outcome is `skipped-loopback-address`, and the log says why once. The card says
+that the node's Bee API address works only on the manager's own machine and names
+`BEE_LOCAL_HOST`, which sets that address for a node on the manager's own host.
 
 `immutable` is what the node says, and `true` while it says nothing, since the
 designation refused a batch whose kind was not reported and a batch's kind never
@@ -471,11 +473,12 @@ more after it, so a clear never overtakes the push before it.
 
 Each call comes to one of `CATALOGUE_PUSH_OUTCOMES`: the codes of the stage
 outcomes above, with `cleared` and `not-cleared` in place of `retired` and
-`not-retired`, `skipped-no-node` (the designated deployment does not exist), and no
-`skipped-not-linked` or `skipped-other-origin`. `skipped-no-record` here means a
-record the contract refuses, no depth known, or a loopback Bee API address. The
-card shows the last one, as in "Web2 admin: stored 12 s ago", and the log says it
-when it changes.
+`not-retired`, `skipped-no-node` (the designated deployment does not exist) and
+`skipped-loopback-address` (the node's Bee API address reaches the manager's own
+machine alone), and no `skipped-not-linked` or `skipped-other-origin`.
+`skipped-no-record` here means a record the contract refuses or no depth known.
+The card shows the last one, as in "Web2 admin: stored 12 s ago", and the log
+says it when it changes.
 
 ### The card and the node's page
 
