@@ -122,6 +122,11 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `STREAM_RESTART_WINDOW_MINUTES`       | `30`               | how long after a stream ends it can go live again on its key: a whole number of minutes from 0 to 10080, or the start stops. Then the admin changes the key. 0 changes it as soon as the stream ends: [Finalizing a stream](#finalizing-a-stream) |
 | `EXPORT_DIR`                          | a temporary folder | where exported recordings are kept, one folder per export named by its id; only such folders are ever deleted in it. The production compose file sets it to the `exports` volume: [Exporting a recording](#exporting-a-recording)                 |
 | `EXPORT_PARALLEL_READS`               | `6`                | how many segments an export reads from the catalogue node at once, a whole number from 1 to 32, or the start stops                                                                                                                                |
+| `ARCHIVE_PARALLEL_CHUNKS`             | `16`               | chunks an archive reads and posts at once, 1 to 64: [Archiving a recording](#archiving-a-recording)                                                                                                                                               |
+| `ARCHIVE_PUSH_WINDOW_CHUNKS`          | `2000`             | how far a quality's posts may run ahead of what Bee has pushed, 100 to 100000                                                                                                                                                                     |
+| `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`        | `0.1`              | under what the catalogue node's chequebook can pay, in BZZ, an archive pauses for `funds`; `0` never pauses                                                                                                                                       |
+| `ARCHIVE_TTL_WARNING_DAYS`            | `30`               | under what time left an archive stamp is shown with a warning, 1 to 365 days                                                                                                                                                                      |
+| `ARCHIVE_BUY_DEFAULT_DAYS`            | `30`               | how long a new archive stamp lasts unless the user says otherwise, 2 to 3650 days                                                                                                                                                                 |
 | `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                          |
 | `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                   |
 | `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                                                                                                                    |
@@ -1713,7 +1718,9 @@ says why it is shaped this way.
 - **One at a time, for the whole admin.** While an export is reading, joining,
   paused or waiting, no other can start, for any stream, by any user
   (`409 export_refused`, problem `busy`). `stream_exports` (migrations 023
-  and 024) holds at most one row, and a unique column refuses a second.
+  and 024) holds at most one row, and a unique column refuses a second. An
+  archive takes the same place, so neither starts while the other holds it
+  ([The one place](#the-one-place)).
 - **The kept file.** A finished export stays on the server, for every user to
   save, until the next export starts and deletes it. Saving it reads nothing
   from Swarm.
@@ -1788,6 +1795,164 @@ The audit log records `export.start`, `export.pause`, `export.resume`,
 (a save of the file from its start) by the user, and `export.paused` and
 `export.done` by the system.
 
+## Archiving a recording
+
+A user archives a finished recording from its stream's page, the Archive page
+or a finished export's panel: the qualities they pick are copied, chunk by
+chunk, onto an archive stamp, an immutable batch on the catalogue node, so the
+recording outlives the stage's mutable batches. `src/domain/archive/` is the
+code, `apps/web2-admin/common/src/archive.ts` the shapes and the routes, and
+[the admin's architecture page](../../../docs/architecture/web2-admin.md#archiving-a-recording)
+the design.
+
+- **Where it reads and writes.** Through the catalogue node, at the Bee API
+  address of the catalogue stamp record (`catalogue_stamp.record`), which also
+  carries the archive stamps as its `archiveBatches`. With none designated, every
+  start is refused with problem `no_node`.
+- **What it copies.** For each quality: the playlist slot, posted with
+  `POST /soc` and the signature it carries; the root a playlist above 4096 bytes
+  is wrapped in, rebuilt from the slot and posted with `POST /chunks`; the tree
+  under it; and every segment the playlist names, its root, intermediates, data
+  and parity chunks. With the first quality, the master playlist's slot. Every
+  post must answer the address the chunk was read at.
+- **Measuring.** Before any postage is spent, each segment's root is read: its
+  span gives the bytes and its erasure level the chunks, by Bee's parity tables
+  (`treeShape` in `chunkTree.ts`). That is an upper bound, and it finds a root no
+  longer on Swarm. A playlist of encrypted references is refused.
+- **Tags and the push window.** Each quality gets a Bee tag, sent as
+  `swarm-tag` on every post, slots included, with no `swarm-deferred-upload`.
+  Posting holds while the tag's posts run `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of
+  what Bee pushed, and a tag that pushes nothing for ten minutes pauses the job.
+- **Lost chunks.** A data or intermediate chunk that cannot be read, after
+  retries, is rebuilt by reading its segment whole through `/bytes`, which makes
+  Bee restore it from parity. One that still cannot be read pauses the job as
+  `unreadable`. A parity chunk that cannot be read is counted and left out.
+- **Complete.** A quality is complete when no data or intermediate chunk failed,
+  the tag's `split` equals the posts the job made under it, and `synced` plus
+  `seen` equals `split`; the item keeps both counts as last read
+  (`chunks_synced`, `chunks_seen`). A re-post Bee finds still queued from an earlier post of
+  the same chunk counts as `seen`, and syncs with that one. Its row in
+  `stream_archives` then turns `complete`, or completes with reduced protection
+  when parity chunks were left out.
+- **The ledger.** Each segment whose chunks were all posted is recorded in
+  `archive_job_segments` with the quality's counters, so a pause, a restart or a
+  stream that recorded again loses at most the segment in flight, which is copied
+  whole again at no room. A tag the node forgot, or one that counts fewer posts
+  than the job made, means a new tag and the quality copied again; a tag that
+  counts more is the posts a stopped process made before saving them.
+- **Room.** Room on a stamp is its capacity from the table of
+  `packages/contracts/src/archiveCapacity.ts` less the sum of
+  `GET /stamps/{id}/buckets`. A copy fits when that room holds what is left to
+  copy with the sizing margin (`archiveStampFits`); one that does not pauses as
+  `batch` before it posts. A chunk already on the stamp takes no room. Each
+  stamp is shown with the node that holds it, as the manager's inventory names
+  it in its `archiveBatches`.
+- **Estimates.** Before any copy, each quality's chunks come from its bitrate
+  and length with the parity a segment adds, the cost range from them, and the
+  time from the rate the last archive measured (`archive_rate`).
+- **Funds.** The catalogue node's chequebook, as the manager's inventory reads
+  it, is checked before copying and every minute while it copies. Under
+  `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ` the job pauses as `funds`. A finished job
+  records what the chequebook went down by, which the catalogue's own writes
+  share.
+
+### The one place
+
+An export and an archive never run together. Each takes one advisory lock when
+it starts, or takes the place again, and looks at the other's table under it
+(`src/domain/jobPlace.ts`). An export holds the place in every state but done;
+an archive in every state but done, `awaiting_purchase`, or paused by a user.
+A user's pause gives the place up, so an export can run meanwhile, and Resume
+takes it again once it is free (`409 archive_refused`, problem `busy`, while an
+export holds it).
+
+### States and pauses
+
+| State               | What happens                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `measuring`         | every chosen quality's playlist and segment roots are read                           |
+| `awaiting_purchase` | a new stamp was asked for: the job waits for a user to confirm one, holding no place |
+| `buying`            | the manager was asked for the stamp                                                  |
+| `waiting_usable`    | the stamp is bought, and the job waits until it is usable and the manager lists it   |
+| `copying`           | each quality is copied in turn, under its own tag                                    |
+| `verifying`         | every chunk was posted, and the job waits for Bee to push them                       |
+| `paused`            | stopped with a reason, until a user decides                                          |
+| `waiting`           | the stream went live again; the job carries on once it is a recording again          |
+| `done`              | every chosen quality is complete, or complete with reduced protection                |
+
+| Pause reason | When                                                                             | What a user can do                               |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `user`       | someone pressed Pause                                                            | resume, cancel                                   |
+| `unreadable` | a playlist, a segment root, or a data or intermediate chunk could not be read    | resume (tries again), cancel                     |
+| `live`       | the stream went live again                                                       | wait, cancel                                     |
+| `batch`      | the stamp is full, expired, not listed or lacks room                             | resume, use another stamp, buy a new one, cancel |
+| `node`       | the catalogue node did not answer, or another node was designated                | resume, cancel                                   |
+| `funds`      | the catalogue node's chequebook is under the floor                               | resume, cancel                                   |
+| `problem`    | anything else, in the message: a tag that stopped moving, a purchase that failed | resume, cancel                                   |
+
+**Cancel** deletes the job; what was copied stays on Swarm, and its qualities
+show as partial. **Use another stamp** starts every quality not done over on
+it. A restart carries on with a job left measuring, buying, copying or
+verifying.
+
+### Buying a stamp
+
+A buy choice is the depth, the days, a label and the cost the dialog showed.
+The admin prices it again at the price the manager's inventory reads now, and a
+cost that differs is refused as `price_moved`, with the new cost, so what is
+spent is what a user confirmed. `archiveBuyProblem` checks the rest, the
+catalogue node's wallet included. The purchase is then written to
+`archive_stamp_purchases`, one under way at a time, before the manager is asked,
+under the id the manager knows it by, so asking again never buys twice
+(`POST /api/admin-funding/stamp-purchases`). The route waits a moment for the
+manager's first answer: a manager with no purchase route is answered as
+`purchases_not_offered`, another operation under way on the catalogue node as
+`not_now`, and a check of the manager's as `purchase_refused`, each leaving the
+purchase failed and nothing bought. A purchase the manager takes is followed in
+the background: its status is read until the batch is usable, and a status read
+that answers `unknown_request` says the manager never received it, so the next
+look asks again under the same id.
+
+An archive that waits in `awaiting_purchase` proposes a stamp in its summary:
+the measured chunks, the smallest depth that holds them with the margin, the
+default days, the cost now and what the wallet lacks of it. A user confirms
+one at `POST /api/archive/current/confirm-purchase`, which takes the place and
+asks the manager; a refusal in that moment leaves the archive waiting for a
+confirm. The job copies onto its new stamp once the stamp is usable and the
+manager lists it, and pauses as `batch` after thirty minutes without.
+
+### List only archived qualities
+
+`streams.archived_only` (migration 026). On, the stream's catalogue entry lists
+the qualities that play from an archive stamp alone, and every entry written
+for it after keeps to that (`PublishService.listArchivedOnlyWith`). It is
+offered for a recording with several qualities once one is archived. Turning it
+rewrites a listed stream's entry.
+
+### Routes
+
+| Method | Path                                    | Answer                                                                                                                                                                                                                                  |
+| ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/archive`                          | `ArchiveCurrentResponse`: the archive on the server, as the user asking sees it, or null                                                                                                                                                |
+| POST   | `/api/archive/:id/actions`              | `ArchiveActionRequest` in (`pause`, `resume`, `wait`, `use_stamp`, `buy_new`, `cancel`, `dismiss`), `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, `busy`, `stamp_unusable`) when it does not apply now, 404 when gone |
+| POST   | `/api/archive/current/confirm-purchase` | `ArchiveBuyChoice` in, `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, `busy`, `price_moved`, `purchase_refused`, `purchases_not_offered`)                                                                              |
+| GET    | `/api/archive/stamps`                   | `ArchiveStampsResponse`: the archive stamps with their room, the purchases, and what a buy needs                                                                                                                                        |
+| POST   | `/api/archive/stamp-purchases`          | `ArchiveBuyChoice` in, 202 `ArchiveStampPurchase` out; `409 archive_refused` (`not_now`, `price_moved`, `purchase_refused`, `purchases_not_offered`) when it cannot start                                                               |
+| GET    | `/api/archive/stamp-purchases/:id`      | `ArchiveStampPurchase`                                                                                                                                                                                                                  |
+| GET    | `/api/archive/streams`                  | `ArchiveStreamsResponse`: the streams with an archive, for the Archive page                                                                                                                                                             |
+| GET    | `/api/streams/:id/archive`              | `ArchiveOptionsResponse`: the qualities with their state and estimates, the stamps that fit, why none can start now, and the archive on the server                                                                                      |
+| POST   | `/api/streams/:id/archive`              | `ArchiveStartRequest` in, 202 `{ archive }` out; `409 archive_refused` (`busy`, `not_finished`, `no_node`, `no_stamp`, `stamp_unusable`, `nothing_to_archive`, `purchase_refused`)                                                      |
+| PUT    | `/api/streams/:id/archive/listing`      | `ArchiveListingRequest` in, `ArchiveOptionsResponse` out                                                                                                                                                                                |
+
+The stream list and a stream's own answer carry `archive`, a
+`StreamArchiveSummary`, for a stream with anything copied.
+
+The audit log records `archive.start`, `archive.pause`, `archive.resume`,
+`archive.wait`, `archive.use_stamp`, `archive.buy_new`, `archive.cancel`,
+`archive.purchase.request` and `archive.listing` by the user, and
+`archive.paused`, `archive.quality.done`, `archive.done`,
+`archive.purchase.usable` and `archive.purchase.failed` by the system.
+
 ## Migrations
 
 The schema is the files in `src/migrations/`, named `NNN_name.sql`. They are
@@ -1823,6 +1988,10 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                 |
 | `023_stream_exports.sql`                | `stream_exports`, the one export on the server, and `stream_export_dismissals`, who closed a finished export's widget ([Exporting a recording](#exporting-a-recording))                           |
 | `024_stream_exports_save_chosen.sql`    | `stream_exports.save_chosen`, whether a user chose Save what's read, whose join finishes even while the stream is live ([Exporting a recording](#exporting-a-recording))                          |
+| `025_stream_archives.sql`               | `stream_archives`, one row per stream and quality: that quality's copy on an archive stamp ([Archiving a recording](#archiving-a-recording))                                                      |
+| `026_streams_archived_only.sql`         | `streams.archived_only`, the "List only archived qualities" switch                                                                                                                                |
+| `027_archive_stamp_purchases.sql`       | `archive_stamp_purchases`, each archive stamp asked of the manager, written before it is asked, one under way at a time                                                                           |
+| `028_archive_jobs.sql`                  | `archive_jobs`, the one archive on the server, with `archive_job_items`, `archive_job_segments` (the resume ledger), `archive_job_dismissals` and `archive_rate`, the last rate a job measured    |
 
 ## Audit log
 
@@ -1938,7 +2107,9 @@ and the available balance the move was worked out from), and
 item's bulk, request id, node, label, direction, amount, target, that
 available balance, hash, state and error. Exporting a recording adds the
 `export.*` actions ([Exporting a recording](#exporting-a-recording)), each with
-the export's id and rendition.
+the export's id and rendition, and archiving one the `archive.*` actions
+([Archiving a recording](#archiving-a-recording)), each with the archive's or
+the purchase's id.
 
 The log can also hold `console.theme.set` rows, which older versions of the
 admin wrote for each change of the host's default look
