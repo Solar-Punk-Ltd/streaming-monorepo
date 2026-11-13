@@ -23,6 +23,7 @@ import {
   movableChequebooks,
   moveText,
   NO_BREAK,
+  NO_CATALOGUE_CHEQUEBOOK,
   NO_CHEQUEBOOK_IN_STAGE,
   whyNotMovable,
   type ChequebookCheck,
@@ -236,14 +237,18 @@ export function ChequebookTable({
     <Stack spacing={1}>
       <GroupTitle
         title={group.title}
-        label={`Bring every chequebook of ${group.title} to the target`}
+        label={
+          group.nodes.catalogue
+            ? "Bring the catalogue node's chequebook to the target"
+            : `Bring every chequebook of ${group.title} to the target`
+        }
         keys={movableChequebooks(group)}
         ticked={ticked}
         onTicks={onTicks}
       />
       {group.rows.length === 0 ? (
         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {NO_CHEQUEBOOK_IN_STAGE}
+          {group.nodes.catalogue ? NO_CATALOGUE_CHEQUEBOOK : NO_CHEQUEBOOK_IN_STAGE}
         </Typography>
       ) : (
         <TableContainer component={Paper} variant="outlined">

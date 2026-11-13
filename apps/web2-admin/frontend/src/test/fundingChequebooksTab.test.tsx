@@ -22,6 +22,7 @@ import {
   CHEQUEBOOK_UNREAD_TEXT,
   GATEWAY_TEXT,
   MINUS,
+  NO_CATALOGUE_CHEQUEBOOK,
   NO_CHEQUEBOOK_IN_STAGE,
   NO_CHEQUEBOOKS_REPORTED,
   NOTHING_TICKED_PROBLEM,
@@ -108,17 +109,25 @@ afterEach(() => {
 });
 
 describe('the chequebooks', () => {
-  it("lists each stage's chequebooks under its name, every digit of each balance, and no catalogue node", async () => {
+  it("lists the catalogue node's chequebook first, then each stage's under its name, every digit of each balance", async () => {
     serve(() => makeChequebookView());
     await openChequebooks();
 
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
+      'Catalogue node',
       'Main stage',
       'Second stage',
       'Third stage',
     ]);
     expect(screen.getByText(/^Chequebooks as the manager read them/)).toBeInTheDocument();
-    expect(screen.queryByText('catalogue-node')).not.toBeInTheDocument();
+    const catalogue = rowOf('Catalogue node', 'catalogue-node');
+    expect(
+      catalogue.getByRole('checkbox', { name: 'Bring the chequebook of catalogue-node to the target' }),
+    ).toBeEnabled();
+    expect(catalogue.getByText('1.5 xBZZ')).toBeInTheDocument();
+    expect(
+      screen.getByRole('checkbox', { name: "Bring the catalogue node's chequebook to the target" }),
+    ).toBeInTheDocument();
     expect(
       table('Main stage')
         .getAllByRole('columnheader')
@@ -226,13 +235,26 @@ describe('the chequebooks', () => {
     expect(screen.getAllByText(NO_CHEQUEBOOK_IN_STAGE)).toHaveLength(2);
   });
 
-  it('says so when the manager reports no stage', async () => {
-    serve(() => makeView({ stages: [] }));
+  it("says so when the manager reports no stage, under the catalogue node's chequebook", async () => {
+    serve(() => {
+      const view = makeView({ stages: [] });
+      return { ...view, catalogue: view.catalogue && { ...view.catalogue, chequebook: makeChequebook() } };
+    });
     renderWithProviders(<FundingPage />);
     fireEvent.click(screen.getByRole('tab', { name: 'Chequebooks' }));
 
     expect(await screen.findByText(NO_STAGES)).toBeInTheDocument();
+    expect(rowOf('Catalogue node', 'catalogue-node').getByRole('checkbox')).toBeInTheDocument();
     expect(screen.queryByText(NO_CHEQUEBOOKS_REPORTED)).not.toBeInTheDocument();
+  });
+
+  it('says so when the manager reports no chequebook for the catalogue node', async () => {
+    serve(() => {
+      const view = makeChequebookView();
+      return { ...view, catalogue: view.catalogue && { ...view.catalogue, chequebook: null } };
+    });
+    await openChequebooks();
+    expect(screen.getByText(NO_CATALOGUE_CHEQUEBOOK)).toBeInTheDocument();
   });
 });
 
@@ -252,15 +274,16 @@ describe('Select all and Clear', () => {
     expect(clear()).toBeDisabled();
 
     fireEvent.click(selectAll());
-    // The uploader's and two rungs': the gateway's, the unread one and the one whose wallet was not read have none.
-    expect(ticks()).toEqual([true, true, true]);
+    // The catalogue node's, the uploader's and two rungs': the gateway's, the unread one and the one whose wallet was
+    // not read have none.
+    expect(ticks()).toEqual([true, true, true, true]);
     expect(rowOf('Main stage', 'rung-1080p').getByText('no change')).toBeInTheDocument();
-    expect(summary(`To apply: 1 deposit, +0.500 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+    expect(summary(`To apply: 2 deposits, +1.000 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
     expect(selectAll()).toBeDisabled();
     expect(clear()).toBeEnabled();
 
     fireEvent.click(clear());
-    expect(ticks()).toEqual([false, false, false]);
+    expect(ticks()).toEqual([false, false, false, false]);
     expect(screen.getByText(NOTHING_TICKED_PROBLEM)).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Target' })).toHaveValue('2');
     expect(clear()).toBeDisabled();
@@ -278,7 +301,7 @@ describe('Select all and Clear', () => {
     fireEvent.click(selectAll());
     const boxes = screen.getAllByRole('checkbox', { name: 'Bring the chequebook of shared-720p to the target' });
     expect(boxes.map((box) => (box as HTMLInputElement).checked)).toEqual([true, true]);
-    expect(summary(`To apply: 2 deposits, +1.000 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
+    expect(summary(`To apply: 3 deposits, +1.500 xBZZ; 1 withdrawal, ${MINUS}1.250 xBZZ.`)).toBeInTheDocument();
   });
 
   it('is disabled while no chequebook has a tick box', async () => {

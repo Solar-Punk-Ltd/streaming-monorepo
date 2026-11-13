@@ -268,12 +268,13 @@ wallet, so there is no password, only a confirm dialog.
   Each top-up carries the price the page quoted, and the API refuses it if postage costs more by
   then, so a top-up never costs more than the dialog said.
 
-**Chequebooks** brings the chequebooks of the stages' nodes to a target balance. Each node pays from
-its own wallet, so there is no password, only a confirm dialog.
+**Chequebooks** brings the chequebooks of the catalogue node and the stages' nodes to a target
+balance. Each node pays from its own wallet, so there is no password, only a confirm dialog.
 
-- A row per chequebook under its stage: a tick box, the node's card, the chequebook's available
-  balance, its total and its uncashed cheques, then the node's xBZZ and xDAI. The catalogue node's
-  chequebook is not listed. A gateway's is shown read-only.
+- A row per chequebook, the catalogue node's first, since it pays its peers for every recording it
+  copies onto an archive stamp, then each stage's under its name: a tick box, the node's card, the
+  chequebook's available balance, its total and its uncashed cheques, then the node's xBZZ and
+  xDAI. A gateway's is shown read-only.
 - The target is in xBZZ, at least 1. Each ticked row then shows its move: a deposit from the node's
   wallet when it is under the target, a withdrawal into the node's wallet when it is over, or no
   change. Fund all works as on the Stamps tab.

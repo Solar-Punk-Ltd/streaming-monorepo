@@ -71,9 +71,15 @@ export const NO_CHEQUEBOOK_IN_STAGE = 'The manager reports no chequebook for thi
 export const NO_CHEQUEBOOKS_REPORTED =
   "The manager does not report its nodes' chequebooks. A manager older than this page does not read them.";
 
-type Inventory = Pick<FundingView, 'stages'>;
+/** Said in the catalogue node's group when the manager answers no chequebook for it. */
+export const NO_CATALOGUE_CHEQUEBOOK = 'The manager reports no chequebook for the catalogue node.';
 
-/** One stage's chequebooks: the stage's node group, which the node cards need, and a row for each node with one. */
+type Inventory = Pick<FundingView, 'stages' | 'catalogue'>;
+
+/**
+ * The catalogue node's chequebook, or one stage's chequebooks: the node group, which the node cards need, and a row for
+ * each node with one.
+ */
 export interface ChequebookGroup {
   key: string;
   title: string;
@@ -87,12 +93,13 @@ function hasChequebook(node: AdminFundingNode): boolean {
 }
 
 /**
- * Each stage's chequebooks under its name, in the admin's order, and no catalogue group: the catalogue node's
- * chequebook is of no use, so it is not listed. A node that has no chequebook, or of which the manager says nothing,
- * has no row.
+ * The catalogue node's chequebook in a group of its own on top, then each stage's chequebooks under its name, in the
+ * admin's order. The catalogue node pays its peers from its chequebook for every recording it copies onto an archive
+ * stamp, so it is funded here like a stage's node. A node that has no chequebook, or of which the manager says
+ * nothing, has no row.
  */
 export function chequebookGroups(view: Inventory): ChequebookGroup[] {
-  return nodeGroups({ stages: view.stages, catalogue: null }).map((nodes) => ({
+  return nodeGroups(view).map((nodes) => ({
     key: nodes.key,
     title: nodes.title,
     nodes,
@@ -123,15 +130,15 @@ export function movableChequebooks(group: ChequebookGroup): string[] {
   return [...new Set(group.rows.flatMap((node) => (movableChequebook(node) ? [node.nodeId] : [])))];
 }
 
-/** Whether the manager names any stage node's chequebook: one older than the Chequebooks tab answers without them. */
+/** Whether the manager names any node's chequebook: one older than the Chequebooks tab answers without them. */
 export function reportsChequebooks(view: Inventory): boolean {
-  return view.stages.some((stage) => stage.nodes.some((node) => node.chequebook !== undefined));
+  return nodeGroups(view).some((group) => group.nodes.some((node) => node.chequebook !== undefined));
 }
 
 /**
  * Why a chequebook has no tick box, said in its row instead, or null when it has one. The rule is the common
- * `movableChequebook`, which the backend checks too: a stage's own Bee node's or a rung's, with its wallet and its
- * chequebook read.
+ * `movableChequebook`, which the backend checks too: an uploader's or a rung's, the catalogue node's among them, with
+ * its wallet and its chequebook read.
  */
 export function whyNotMovable(node: AdminFundingNode): string | null {
   if (movableChequebook(node)) return null;

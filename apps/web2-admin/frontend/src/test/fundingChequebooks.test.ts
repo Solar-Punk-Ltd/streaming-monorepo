@@ -54,9 +54,10 @@ function withNode(nodeId: string, over: Partial<AdminFundingNode>, view: Funding
 }
 
 describe('the chequebooks, grouped', () => {
-  it("lists each stage's nodes that have a chequebook under its name, with no catalogue group", () => {
+  it("lists the catalogue node's chequebook first, then each stage's nodes that have one under its name", () => {
     const groups = chequebookGroups(makeChequebookView());
     expect(groups.map((group) => [group.title, group.nodes.catalogue, group.rows.map((node) => node.label)])).toEqual([
+      ['Catalogue node', true, ['catalogue-node']],
       ['Main stage', false, ['stage-1-uploader', 'rung-720p', 'rung-1080p', 'rung-480p', 'stage-1-gateway']],
       ['Second stage', false, ['pool-360p']],
       ['Third stage', false, []],
@@ -65,16 +66,16 @@ describe('the chequebooks, grouped', () => {
 
   it('knows whether the manager reports chequebooks at all, which one older than the tab does not', () => {
     expect(reportsChequebooks(makeView())).toBe(false);
-    expect(chequebookGroups(makeView()).map((group) => group.rows.length)).toEqual([0, 0]);
+    expect(chequebookGroups(makeView()).map((group) => group.rows.length)).toEqual([0, 0, 0]);
     expect(reportsChequebooks(makeChequebookView())).toBe(true);
 
-    // A manager that reads chequebooks and finds none still reports them; the catalogue node's alone does not count.
+    // A manager that reads chequebooks and finds none still reports them, and the catalogue node's alone counts too.
     const none = makeView();
     for (const stage of none.stages) stage.nodes = stage.nodes.map((node) => ({ ...node, chequebook: null }));
     expect(reportsChequebooks(none)).toBe(true);
     const catalogueOnly = makeView();
     if (catalogueOnly.catalogue) catalogueOnly.catalogue = { ...catalogueOnly.catalogue, chequebook: makeChequebook() };
-    expect(reportsChequebooks(catalogueOnly)).toBe(false);
+    expect(reportsChequebooks(catalogueOnly)).toBe(true);
   });
 
   it('lists a node two stages share under both, and counts it once, for the first listing that can be moved', () => {
@@ -91,6 +92,7 @@ describe('the chequebooks, grouped', () => {
     expect(listed.filter((node) => node.nodeId === 'pool:720p').map((node) => node.label)).toEqual(['second-720p']);
     // Still in the place it is first listed.
     expect(listed.map((node) => node.nodeId)).toEqual([
+      'catalogue:bee',
       UNDER,
       OVER,
       AT,
@@ -268,11 +270,13 @@ describe('what bringing the ticked chequebooks to the target comes to', () => {
   it('never counts a tick left on a chequebook that cannot be moved, nor on a node with none', () => {
     const check = checkChequebooks(
       makeChequebookView(),
-      select('2', ['stage-1:gateway', 'stage-1:480p', 'stage-2:360p', 'stage-1:240p', 'catalogue:bee']),
+      select('2', ['stage-1:gateway', 'stage-1:480p', 'stage-2:360p', 'stage-1:240p']),
     );
     expect(check.tickedCount).toBe(0);
     expect(check.lines).toEqual([]);
     expect(check.problems).toEqual([NOTHING_TICKED_PROBLEM]);
+    // The catalogue node's chequebook is moved like a stage node's.
+    expect(checkChequebooks(makeChequebookView(), select('2', ['catalogue:bee'])).tickedCount).toBe(1);
   });
 });
 
