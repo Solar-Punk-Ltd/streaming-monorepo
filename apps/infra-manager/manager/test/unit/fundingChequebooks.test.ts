@@ -1,7 +1,8 @@
 /**
  * The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
- * node or a rung, checked against the inventory, then carried out by the manager's own chequebook path and journalled
- * there as requested by `web2-admin`; and its state, in the transfers' four, checked again through that path.
+ * node, a rung or the catalogue node, checked against the inventory, then carried out by the manager's own chequebook
+ * path and journalled there as requested by `web2-admin`; and its state, in the transfers' four, checked again through
+ * that path.
  *
  * Unit test, no database, no chain, no Docker and no Bee node: the real `ChequebookOperationsService` and
  * `ChequebookSubmission` over the in-memory chequebook journal, a fake node behind the preparation, a fake check of the
@@ -80,6 +81,7 @@ const NOT_KNOWN =
 const NODE_ADDRESSES: Readonly<Record<string, string>> = {
   [STAGE]: `0x${'a1'.repeat(20)}`,
   [RUNG_ID]: `0x${'b2'.repeat(20)}`,
+  [CATALOGUE_ID]: `0x${'c3'.repeat(20)}`,
 };
 
 /** The deployments whose own Bee nodes the inventory lists, by node id. */
@@ -439,15 +441,32 @@ describe('POST /api/admin-funding/chequebook-operations', () => {
     assert.deepEqual([...bee.prepared, ...vanished.node.prepared], []);
   });
 
-  it('refuses a gateway’s chequebook and the catalogue node’s, which no stage lists, 422 chequebook_refused', async () => {
+  it('refuses a gateway’s chequebook, 422 chequebook_refused', async () => {
     const { journal, node: bee, service } = setup();
-    for (const nodeId of [GATEWAY, CATALOGUE]) {
-      await refusedWith(
-        service.operate(deposit({ nodeId })),
-        'chequebook_refused',
-        'This manager moves only the chequebook of a stage’s Bee node or a rung.',
-      );
-    }
+    await refusedWith(
+      service.operate(deposit({ nodeId: GATEWAY })),
+      'chequebook_refused',
+      'This manager moves only the chequebook of a stage’s Bee node, a rung or the catalogue node.',
+    );
+    assert.equal(journal.rows.size, 0);
+    assert.deepEqual(bee.prepared, []);
+  });
+
+  it('moves the designated catalogue node’s chequebook, which no stage lists, through its own deployment', async () => {
+    const { journal, node: bee, service } = setup();
+    const answer = await service.operate(deposit({ nodeId: CATALOGUE }));
+    assert.deepEqual(answer, { requestId: REQUEST, direction: 'deposit', state: 'submitted', txHash: TX });
+    assert.deepEqual(
+      [bee.prepared[0]!.profileName, bee.prepared[0]!.profileInstanceId, bee.prepared[0]!.requestedBy],
+      ['catalogue', CATALOGUE_ID, 'web2-admin'],
+    );
+    assert.deepEqual(bee.sent, [REQUEST]);
+    assert.equal([...journal.rows.values()][0]!.profileName, 'catalogue');
+  });
+
+  it('refuses a catalogue node it no longer lists, as a node it does not know', async () => {
+    const { journal, node: bee, service } = setup({ edit: (answer) => void (answer.catalogue = null) });
+    await refusedWith(service.operate(deposit({ nodeId: CATALOGUE })), 'unknown_node');
     assert.equal(journal.rows.size, 0);
     assert.deepEqual(bee.prepared, []);
   });

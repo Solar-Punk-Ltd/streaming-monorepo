@@ -56,7 +56,7 @@ export interface FundingChequebookDeps {
   checkWaitMs?: number;
 }
 
-const ONLY_OWN = 'This manager moves only the chequebook of a stage’s Bee node or a rung.';
+const ONLY_OWN = 'This manager moves only the chequebook of a stage’s Bee node, a rung or the catalogue node.';
 const NO_CHEQUEBOOK = 'The node answered that it has no chequebook, so there is none to move xBZZ in or out of.';
 const NO_GAS = 'The node’s wallet holds no xDAI to pay the gas with.';
 const BUSY = 'Another chequebook move on this node is still under way.';
@@ -77,14 +77,16 @@ function unknownNode(): FundingApiError {
 
 /**
  * The node whose chequebook a request moves, as the inventory read it now: a stage's own Bee node or a rung, wherever
- * a stage lists it. A gateway, and the catalogue node where no stage lists it, are refused, since the chequebook path
- * moves only a deployment's own `bee-uploader` and only these are the stages'. A node listed nowhere is unknown.
+ * a stage lists it, or the designated catalogue node, which pays its peers for every recording copied onto an archive
+ * batch. A gateway is refused, since the chequebook path moves only a deployment's own `bee-uploader`. A node listed
+ * nowhere is unknown, a former catalogue node among them.
  */
 function movableNode(inventory: FundingInventory, nodeId: string): FundingNode {
   const listed = inventory.stages.flatMap((stage) => stage.nodes).filter((node) => node.nodeId === nodeId);
   const movable = listed.find((node) => node.role === 'uploader' || node.role === 'rung');
   if (movable) return movable;
-  if (listed.length > 0 || inventory.catalogue?.nodeId === nodeId) throw refused(ONLY_OWN);
+  if (inventory.catalogue?.nodeId === nodeId) return inventory.catalogue;
+  if (listed.length > 0) throw refused(ONLY_OWN);
   throw unknownNode();
 }
 
@@ -243,9 +245,9 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 
 /**
  * The funding API's chequebook operations: a deposit into, or a withdrawal from, the chequebook of a stage's own Bee
- * node or a rung, which the node carries out and pays the gas of in xDAI. A thin adapter over the manager's own
- * chequebook path, `ChequebookOperationsService`, the one behind the deployment page's Fill chequebook and Withdraw:
- * the same preparation through the node's Bee API, the same last check before sending, the same single
+ * node, a rung or the catalogue node, which the node carries out and pays the gas of in xDAI. A thin adapter over the
+ * manager's own chequebook path, `ChequebookOperationsService`, the one behind the deployment page's Fill chequebook
+ * and Withdraw: the same preparation through the node's Bee API, the same last check before sending, the same single
  * POST to the node and the same journal, `chequebook_operations`, where the move is recorded as requested by
  * `web2-admin`. This adapter journals nothing of its own.
  *
@@ -254,8 +256,8 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
  * never runs one request twice.
  *
  * Otherwise the move is checked against the inventory read now, and each refusal comes before anything is journalled:
- * the node is a stage's own Bee node or a rung (404 `unknown_node` for one listed nowhere, and 422
- * `chequebook_refused` for a gateway or the catalogue node no stage lists), its wallet and its chequebook were read, a
+ * the node is a stage's own Bee node, a rung or the catalogue node (404 `unknown_node` for one listed nowhere, and 422
+ * `chequebook_refused` for a gateway), its wallet and its chequebook were read, a
  * deposit is within the wallet's xBZZ, a withdrawal within what the chequebook has available, and the wallet holds
  * some xDAI for the gas. Then the chequebook path takes it, and checks the node and the chain again before it sends.
  * What it could not prepare is refused with its own sentence for the cause, and another move still under way on the

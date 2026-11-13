@@ -520,8 +520,9 @@ async function main(): Promise<void> {
     chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
   });
   // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
-  // node or a rung, checked against the inventory read now, then carried out by the manager's own chequebook path and
-  // journalled in chequebook_operations as requested by web2-admin, beside the operators' own transfers.
+  // node, a rung or the catalogue node, checked against the inventory read now, then carried out by the manager's own
+  // chequebook path and journalled in chequebook_operations as requested by web2-admin, beside the operators' own
+  // transfers.
   const fundingChequebooks = new FundingChequebookService({
     operations: chequebookOperations,
     inventory: fundingInventory,

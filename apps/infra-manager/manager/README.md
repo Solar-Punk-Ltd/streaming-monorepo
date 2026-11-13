@@ -781,10 +781,11 @@ own wallet.
 - **A request still under way** answers `submitted` with no hash on the `GET` until its call has
   answered, because the chequebook path records a move only once it has prepared it.
 - **The checks**, each refused before anything is recorded: `nodeId` is a stage's own Bee node, a
-  rung or the catalogue node (404 `unknown_node` otherwise, 422 `chequebook_refused` for a
-  gateway). The catalogue node pays its peers from its chequebook for every recording the admin
-  copies onto an archive batch. The node's wallet and chequebook were read, a deposit is at most the wallet's xBZZ,
-  a withdrawal at most what the chequebook has available, and the wallet holds some xDAI.
+  rung or the designated catalogue node (404 `unknown_node` otherwise, a former catalogue node
+  among them, and 422 `chequebook_refused` for a gateway). The catalogue node pays its peers from
+  its chequebook for every recording the admin copies onto an archive batch. The node's wallet and
+  chequebook were read, a deposit is at most the wallet's xBZZ, a withdrawal at most what the
+  chequebook has available, and the wallet holds some xDAI.
 - **Preparation** refusals are 422 `chequebook_refused` with the manager's sentence for the cause
   (see [Funding a chequebook on a new host](#funding-a-chequebook-on-a-new-host)), and another move
   still open on the node is 409 `conflict`. A record the manager could not read or write is 503
