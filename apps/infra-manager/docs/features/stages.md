@@ -133,6 +133,14 @@ a deployment on the manager's host with no address of its own while
 `PUBLIC_HOST` is unset. Its outcome is `skipped-no-record`, and the log and
 `GET /stages` say "set the deployment's public ingest address or PUBLIC_HOST".
 
+On a Mac, an address set to the Mac's `<name>.local` gives an SRT line that OBS
+cannot dial. macOS answers a `.local` name with `::1` first, OBS's SRT output
+tries only the first address and gives up after about 3 seconds, and the stack
+publishes SRT on IPv4 alone, its `0.0.0.0` default bind. So OBS on the same Mac
+uses `srt://127.0.0.1:<port>?<the same query>`, and another device on the LAN
+uses the Mac's LAN IPv4 address in place of the name. An address set to that
+IPv4 address goes stale when the Mac's address changes.
+
 ## When
 
 `StagePublisher` (`manager/src/domain/stages/StagePublisher.ts`) pushes a

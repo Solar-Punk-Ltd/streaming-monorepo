@@ -318,6 +318,12 @@ only in a secure context, so on a console served over plain http Copy falls back
 `document.execCommand('copy')` and, failing that, selects the value for a manual copy. Rotate key
 asks first. Without a stage the panel says to pick one.
 
+A stage on a Mac whose public ingest address is the Mac's `<name>.local` gives an SRT Server line
+that OBS cannot dial. OBS on that Mac uses `127.0.0.1` in place of the name, and another device on
+the LAN uses the Mac's LAN IPv4 address.
+[The manager's stages page](../../infra-manager/docs/features/stages.md#the-public-ingest-address)
+says why.
+
 Rotate key refuses the old key from the next connection on. It does not end a broadcast that is
 already live on the old key. A stream takes one encoder at a time. Two encoders with the same
 details push each other off every few seconds, because a stage lets an encoder with the right key
