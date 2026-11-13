@@ -1,6 +1,7 @@
 export * from './adminAnswers.js';
 export * from './adminApi.js';
 export * from './adminLink.js';
+export * from './archiveCapacity.js';
 export * from './catalog.js';
 export * from './catalogState.js';
 export * from './funding.js';

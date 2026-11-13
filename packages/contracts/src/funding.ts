@@ -1,13 +1,16 @@
 import { z } from 'zod';
 
 import { UUID_PATTERN } from './adminApi.js';
+import { ARCHIVE_MAX_DEPTH, ARCHIVE_MIN_DEPTH } from './archiveCapacity.js';
+import { ARCHIVE_BATCH_LABEL_MAX_LENGTH } from './stage.js';
 
 /**
  * The manager's funding API, which the web2 admin calls to keep a brand's stages funded from the brand wallet: the
  * nodes with their wallets, batches and chequebooks, the brand account's balances and nonce, transfers the admin signs
- * and the manager checks and broadcasts, stamp operations, the top-ups and dilutions of the nodes' batches, and
- * chequebook operations, the deposits into and withdrawals from the nodes' chequebooks, which each node pays for from
- * its own wallet. The admin has no chain connection of its own. `docs/architecture/funding.md` is the design.
+ * and the manager checks and broadcasts, stamp operations, the top-ups and dilutions of the nodes' batches, stamp
+ * purchases, the archive stamps bought on the catalogue node, and chequebook operations, the deposits into and
+ * withdrawals from the nodes' chequebooks, which each node pays for from its own wallet. The admin has no chain
+ * connection of its own. `docs/architecture/funding.md` is the design.
  *
  * Every route is under {@link ADMIN_FUNDING_PATH}, takes `Authorization: Bearer` with the manager's
  * `FUNDING_API_TOKEN`, and refuses a session cookie; the manager's operator routes refuse that bearer.
@@ -48,6 +51,18 @@ export const FUNDING_STAMP_OPERATIONS_PATH = `${ADMIN_FUNDING_PATH}/stamp-operat
 export function fundingStampOperationPath(requestId: string): string {
   if (!UUID_PATTERN.test(requestId)) throw new Error('A stamp operation request id is a UUID.');
   return `${FUNDING_STAMP_OPERATIONS_PATH}/${requestId.toLowerCase()}`;
+}
+
+/**
+ * `POST`: one purchase of an archive stamp on the catalogue node, which the manager checks, journals and asks the
+ * node for.
+ */
+export const FUNDING_STAMP_PURCHASES_PATH = `${ADMIN_FUNDING_PATH}/stamp-purchases`;
+
+/** `GET`: the state of one stamp purchase, by the request id the admin gave it. */
+export function fundingStampPurchasePath(requestId: string): string {
+  if (!UUID_PATTERN.test(requestId)) throw new Error('A stamp purchase request id is a UUID.');
+  return `${FUNDING_STAMP_PURCHASES_PATH}/${requestId.toLowerCase()}`;
 }
 
 /**
@@ -112,7 +127,10 @@ export const FUNDING_ERROR_CODES = [
    * same id is safe.
    */
   'unknown_request',
-  /** A check of a stamp operation failed, and the sentence says which. Nothing was asked of the node. */
+  /**
+   * A check of a stamp operation or of a stamp purchase failed, and the sentence says which. Nothing was asked of the
+   * node.
+   */
   'stamp_refused',
   /** The node's Bee API did not answer the manager. */
   'node_unreachable',
@@ -231,6 +249,18 @@ export const fundingChequebookSchema = z.object({
 export type FundingChequebook = z.infer<typeof fundingChequebookSchema>;
 
 /**
+ * One archive batch of the catalogue node: an immutable batch that finished recordings are copied onto, with the
+ * readings of any batch. `label` is the name its buyer gave it, null when it has none. `writable` is true while the
+ * catalogue node holds the batch, and false for one left on a node that is the catalogue node no longer, which can be
+ * topped up and never written.
+ */
+export const fundingArchiveBatchSchema = fundingBatchSchema.extend({
+  label: z.string().min(1).max(ARCHIVE_BATCH_LABEL_MAX_LENGTH).nullable(),
+  writable: z.boolean(),
+});
+export type FundingArchiveBatch = z.infer<typeof fundingArchiveBatchSchema>;
+
+/**
  * One node a stage, or the catalogue, runs, with its wallet as the manager read it from the node. The wallet and its
  * balances are null when the node could not be read, and `readError` says why in a sentence; it is null otherwise.
  *
@@ -242,6 +272,9 @@ export type FundingChequebook = z.infer<typeof fundingChequebookSchema>;
  * `chequebook` is the node's chequebook, read with its wallet. It is null when the node answered that it has none, as
  * an ultra-light node or one with its chequebook off answers, and optional, so the answer of a manager that does not
  * read chequebooks still parses.
+ *
+ * `archiveBatches` is the catalogue node's archive batches, in the order they were designated, and no other node
+ * carries any. It is optional, so the answer of a manager that keeps none still parses, and absent is read as none.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -253,6 +286,7 @@ export const fundingNodeSchema = z.object({
   readError: z.string().nullable(),
   batch: fundingBatchSchema.nullable().optional(),
   chequebook: fundingChequebookSchema.nullable().optional(),
+  archiveBatches: z.array(fundingArchiveBatchSchema).optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 
@@ -366,7 +400,8 @@ const stampOperationFields = {
 /**
  * `POST /api/admin-funding/stamp-operations`: one top-up or dilution of a batch, which the node that holds it carries
  * out and pays for from its own wallet. `nodeId` and `batchId` must be a node and its batch in the manager's current
- * inventory, and `expectedDepth` the depth the admin saw, so a batch whose depth moved since is refused. A `topup`
+ * inventory, which for the catalogue node is its catalogue batch or any of its archive batches, and `expectedDepth`
+ * the depth the admin saw, so a batch whose depth moved since is refused. A `topup`
  * adds `amountPerChunkPlur` to each of the batch's chunks, which costs that amount times `2^depth` in xBZZ. A `dilute`
  * raises the batch to `newDepth`, one or two steps deeper than `expectedDepth`. The same `requestId` sent again
  * answers the operation's state and never runs it twice.
@@ -420,6 +455,64 @@ export const fundingStampOperationStatusSchema = z.object({
 });
 export type FundingStampOperationStatus = z.infer<typeof fundingStampOperationStatusSchema>;
 
+/** The depth of an archive stamp: one the capacity table of `archiveCapacity.ts` names. */
+const archiveDepth = z.number().int().min(ARCHIVE_MIN_DEPTH).max(ARCHIVE_MAX_DEPTH);
+
+/**
+ * `POST /api/admin-funding/stamp-purchases`: one purchase of an archive stamp, a new immutable batch of `depth` on the
+ * catalogue node, which that node buys and pays for from its own wallet: `amountPerChunkPlur` for each of the batch's
+ * `2^depth` stamps in xBZZ, and the gas in xDAI. `nodeId` must be the catalogue node of the manager's current
+ * inventory; any other node is refused with `stamp_refused`, as is an amount that buys less life than the postage
+ * contract's floor, a wallet that holds less than the cost, and a node that is buying already. Nothing is asked of the
+ * node when a check refuses.
+ *
+ * `label` is the name the batch carries in the manager and the admin, null for none. The manager journals the request
+ * before it asks the node, records the batch as an archive batch once the node answers with its id, and pushes the
+ * catalogue stamp record. The same `requestId` sent again answers the purchase's state and never buys twice.
+ */
+export const fundingStampPurchaseRequestSchema = z.object({
+  requestId: uuid,
+  nodeId,
+  depth: archiveDepth,
+  amountPerChunkPlur: positiveBaseUnits,
+  label: z.string().trim().min(1).max(ARCHIVE_BATCH_LABEL_MAX_LENGTH).nullable(),
+});
+export type FundingStampPurchaseRequest = z.infer<typeof fundingStampPurchaseRequestSchema>;
+
+/**
+ * What `POST /api/admin-funding/stamp-purchases` answers, with 202: the purchase's state, in the transfers' four
+ * states, and the batch and its transaction hash once the node has answered with them. Bee answers a purchase only
+ * once its transaction is mined, so a purchase is `unknown` until then and the manager never answers `submitted`.
+ */
+export const fundingStampPurchaseAnswerSchema = z.object({
+  requestId: uuid,
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  batchId: batchId.nullable(),
+  txHash: txHash.nullable(),
+});
+export type FundingStampPurchaseAnswer = z.infer<typeof fundingStampPurchaseAnswerSchema>;
+
+/**
+ * `GET /api/admin-funding/stamp-purchases/:requestId`: where the purchase stands. The batch, the hash and the error
+ * are each null until there is one.
+ *
+ * `usable` is Bee's own word about the bought batch: false from the purchase until the node has seen enough blocks
+ * after it, which takes some minutes, and true from then on, when the batch can stamp. It is null while there is no
+ * batch yet and when the node could not be read about it.
+ *
+ * A purchase whose answer the manager lost stays `unknown` until this route settles it: `confirmed` once the node
+ * lists a batch under the purchase's own label, and `failed` when it lists none thirty minutes after the request.
+ */
+export const fundingStampPurchaseStatusSchema = z.object({
+  requestId: uuid,
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  batchId: batchId.nullable(),
+  txHash: txHash.nullable(),
+  usable: z.boolean().nullable(),
+  error: z.string().nullable(),
+});
+export type FundingStampPurchaseStatus = z.infer<typeof fundingStampPurchaseStatusSchema>;
+
 /**
  * An amount a chequebook operation moves: base units, more than none, and at most 30 digits, as the manager's
  * chequebook journal takes one, which is more xBZZ than there is.
@@ -428,9 +521,9 @@ const chequebookAmount = positiveBaseUnits.refine((amount) => amount.length <= 3
 
 /**
  * `POST /api/admin-funding/chequebook-operations`: one deposit into, or withdrawal from, a node's chequebook, which the
- * node carries out and pays the gas of. `nodeId` must be a stage's own Bee node or a rung in the manager's current
- * inventory: never a gateway, whose chequebook the manager does not move, nor the catalogue node, which no stage lists.
- * A `deposit` moves `amountPlur` from the node's wallet into its chequebook, a `withdraw` from its chequebook back into
+ * node carries out and pays the gas of. `nodeId` must be a stage's own Bee node, a rung or the catalogue node in the
+ * manager's current inventory: never a gateway, whose chequebook the manager does not move. The catalogue node pays
+ * its peers from its chequebook for every recording it copies onto an archive batch. A `deposit` moves `amountPlur` from the node's wallet into its chequebook, a `withdraw` from its chequebook back into
  * its wallet. The same `requestId` sent again answers the operation's state and never runs it twice.
  */
 export const fundingChequebookOperationRequestSchema = z.object({

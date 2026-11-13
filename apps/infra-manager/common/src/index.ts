@@ -2,6 +2,7 @@ export * from './abrLadder.js';
 export * from './abrRungSettings.js';
 export * from './adminLink.js';
 export * from './adminLinkTest.js';
+export * from './archiveBatches.js';
 export * from './auth.js';
 export * from './buildLabel.js';
 export * from './catalogueNode.js';

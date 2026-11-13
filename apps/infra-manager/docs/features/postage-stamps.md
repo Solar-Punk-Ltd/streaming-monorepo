@@ -255,6 +255,16 @@ overwrites its oldest chunks, and the catalogue's oldest entries are the ones
 a viewer reads first. It refuses a batch whose kind the node does not report as
 well. **Buy** on the catalogue node should buy an immutable batch.
 
+## The catalogue node's archive batches
+
+The catalogue node also holds the brand's **archive batches**, immutable batches
+the web2 admin copies finished recordings onto
+([stages.md](stages.md#archive-batches)). The admin buys them through the
+funding API, and a batch bought on this page is adopted on the Manager settings
+page. In the stamps table an archive batch carries an **archive** chip.
+**Top up** and **Dilute** keep it, as they keep the pinned batch. **Use** leaves
+the list of archive batches as it is.
+
 ## After Bee answers
 
 Bee sends a top-up or a dilute from the node's own wallet and answers once the
