@@ -18,6 +18,7 @@ import { encodeAbiParameters } from 'viem';
 
 import type { BeeStampTransaction } from '@streaming-infra-manager/common';
 import type {
+  FundingArchiveBatch,
   FundingBatch,
   FundingInventory,
   FundingNode,
@@ -53,9 +54,15 @@ const NODE = `${STAGE}:bee-uploader`;
 const GATEWAY = `${STAGE}:bee-gateway`;
 const RUNG = `${RUNG_ID}:bee-uploader`;
 const CATALOGUE = `${CATALOGUE_ID}:bee-uploader`;
+/** A former catalogue node, which keeps the archive batches it bought. */
+const OLD_CATALOGUE_ID = '5adebf83-7192-43a4-bf40-6b7c8d9eafb0';
+const OLD_CATALOGUE = `${OLD_CATALOGUE_ID}:bee-uploader`;
 const BATCH = `0x${'ab'.repeat(32)}`;
 const RUNG_BATCH = `0x${'cd'.repeat(32)}`;
 const CATALOGUE_BATCH = `0x${'ef'.repeat(32)}`;
+/** An archive batch the catalogue node holds, and one left on the former catalogue node. */
+const ARCHIVE_BATCH = `0x${'a7'.repeat(32)}`;
+const LEFT_BATCH = `0x${'b8'.repeat(32)}`;
 const REQUEST = '7d1e2f3a-4b5c-4d6e-9f0a-b1c2d3e4f5a6';
 const TX = `0x${'9a'.repeat(32)}`;
 /** A day at 24000 PLUR a chunk a block: 17280 blocks of it. */
@@ -69,6 +76,7 @@ const APIS: Readonly<Record<string, string>> = {
   [NODE]: 'http://stage-one-node.invalid:1633',
   [RUNG]: 'http://pool-720p.invalid:1633',
   [CATALOGUE]: 'http://catalogue.invalid:1633',
+  [OLD_CATALOGUE]: 'http://old-catalogue.invalid:1633',
 };
 
 function batch(batchId: string, over: Partial<FundingBatch> = {}): FundingBatch {
@@ -152,6 +160,8 @@ class FakeChain implements PostageContractReader {
     [BATCH, { owner: WALLET, depth: 22, normalisedBalance: BALANCE_BEFORE }],
     [RUNG_BATCH, { owner: WALLET, depth: 21, normalisedBalance: BALANCE_BEFORE }],
     [CATALOGUE_BATCH, { owner: WALLET, depth: 20, normalisedBalance: BALANCE_BEFORE }],
+    [ARCHIVE_BATCH, { owner: WALLET, depth: 24, normalisedBalance: BALANCE_BEFORE }],
+    [LEFT_BATCH, { owner: OTHER_WALLET, depth: 24, normalisedBalance: BALANCE_BEFORE }],
   ]);
   down = false;
   garbled = false;
@@ -216,12 +226,40 @@ interface SetupOptions {
   journal?: InMemoryFundingStampOperationJournal;
   /** The real BeeClient, over whatever fetch the test fakes, instead of the fake nodes. */
   realClient?: boolean;
+  /** The node that holds an archive batch, read now, by the batch's id; none by default. */
+  holder?: (batchId: string) => FundingNode | null;
+}
+
+/** An archive batch at depth 24, read as any batch is, held by the catalogue node unless named otherwise. */
+function archive(batchId: string, over: Partial<FundingArchiveBatch> = {}): FundingArchiveBatch {
+  return {
+    ...batch(batchId, { depth: 24 }),
+    nodeId: CATALOGUE,
+    nodeLabel: 'catalogue',
+    label: 'Autumn event',
+    writable: true,
+    ...over,
+  };
+}
+
+/** Two archive batches: one the catalogue node holds, and one left on the former catalogue node, listed nowhere else. */
+function withArchives(answer: FundingInventory): void {
+  answer.archiveBatches = [
+    archive(ARCHIVE_BATCH),
+    archive(LEFT_BATCH, { nodeId: OLD_CATALOGUE, nodeLabel: 'old-catalogue', label: null, writable: false }),
+  ];
+}
+
+/** The former catalogue node, whose wallet bought the batch left on it. */
+function formerCatalogue(over: Partial<FundingNode> = {}): FundingNode {
+  return node(OLD_CATALOGUE, 'old-catalogue Bee node', 'uploader', { walletAddress: OTHER_WALLET, ...over });
 }
 
 function setup(options: SetupOptions = {}) {
   const chain = options.chain === undefined ? new FakeChain() : options.chain;
   const journal = options.journal ?? new InMemoryFundingStampOperationJournal();
   const nodes = new FakeNodes();
+  const holdersAsked: string[] = [];
   let inventoryReads = 0;
   let now = START;
   const service = new FundingStampService({
@@ -237,6 +275,10 @@ function setup(options: SetupOptions = {}) {
     nodeApiUrl: async (nodeId) => APIS[nodeId] ?? null,
     node: (apiUrl) => (options.realClient ? new BeeClient(apiUrl) : nodes.at(apiUrl)),
     chain,
+    archiveBatchHolder: async (batchId) => {
+      holdersAsked.push(batchId);
+      return options.holder?.(batchId) ?? null;
+    },
     now: () => now,
   });
   return {
@@ -244,6 +286,7 @@ function setup(options: SetupOptions = {}) {
     journal,
     chain: chain as FakeChain,
     nodes,
+    holdersAsked,
     inventoryReads: () => inventoryReads,
     advance: (ms: number) => void (now += ms),
   };
@@ -814,5 +857,122 @@ describe('the node’s answer and the contract’s reading, settling one row', (
     };
     assert.equal((await service.operate(topUp())).state, 'confirmed');
     assert.deepEqual([journal.rows.get(REQUEST)?.state, journal.rows.get(REQUEST)?.error], ['confirmed', null]);
+  });
+});
+
+describe('an archive batch, named with the node that holds it', () => {
+  const onArchive = (over: Partial<FundingStampTopUpRequest> = {}) =>
+    topUp({ nodeId: CATALOGUE, batchId: ARCHIVE_BATCH, expectedDepth: 24, ...over });
+  const onLeft = (over: Partial<FundingStampTopUpRequest> = {}) =>
+    topUp({ nodeId: OLD_CATALOGUE, batchId: LEFT_BATCH, expectedDepth: 24, ...over });
+
+  it('is topped up on the catalogue node that holds it, paid from its wallet, asking after no other node', async () => {
+    const { holdersAsked, journal, nodes, service } = setup({ edit: withArchives });
+    assert.deepEqual(await service.operate(onArchive()), {
+      requestId: REQUEST,
+      kind: 'topup',
+      state: 'confirmed',
+      txHash: TX,
+    });
+    assert.deepEqual(nodes.calls, [
+      { apiUrl: APIS[CATALOGUE], kind: 'topup', batchId: 'a7'.repeat(32), value: AMOUNT },
+    ]);
+    const row = journal.rows.get(REQUEST)!;
+    assert.deepEqual(
+      [row.nodeId, row.batchId, row.costPlur],
+      [CATALOGUE, ARCHIVE_BATCH, (414_720_000n * 2n ** 24n).toString()],
+    );
+    assert.deepEqual(holdersAsked, []);
+  });
+
+  it('is diluted on the catalogue node that holds it', async () => {
+    const { nodes, service } = setup({ edit: withArchives });
+    const answer = await service.operate(
+      dilute({ nodeId: CATALOGUE, batchId: ARCHIVE_BATCH, expectedDepth: 24, newDepth: 25 }),
+    );
+    assert.equal(answer.state, 'confirmed');
+    assert.deepEqual(nodes.calls, [{ apiUrl: APIS[CATALOGUE], kind: 'dilute', batchId: 'a7'.repeat(32), value: 25 }]);
+  });
+
+  it('left on a former catalogue node, which the inventory lists nowhere else, is topped up by that node', async () => {
+    const { holdersAsked, journal, nodes, service } = setup({ edit: withArchives, holder: () => formerCatalogue() });
+    assert.equal((await service.operate(onLeft())).state, 'confirmed');
+    assert.deepEqual(holdersAsked, [LEFT_BATCH], 'its wallet was read now');
+    assert.deepEqual(nodes.calls, [
+      { apiUrl: APIS[OLD_CATALOGUE], kind: 'topup', batchId: 'b8'.repeat(32), value: AMOUNT },
+    ]);
+    assert.equal(journal.rows.get(REQUEST)!.nodeId, OLD_CATALOGUE);
+  });
+
+  it('left on a former catalogue node, is paid from that node’s wallet, which the checks read', async () => {
+    const { journal, nodes, service } = setup({
+      edit: withArchives,
+      holder: () => formerCatalogue({ xbzzPlur: '1000' }),
+    });
+    await refusedWith(
+      service.operate(onLeft()),
+      'stamp_refused',
+      /^The node’s wallet holds 0\.0000000000001 xBZZ, less than the .* xBZZ this top-up costs\.$/,
+    );
+    assert.equal(journal.rows.size, 0);
+    assert.deepEqual(nodes.calls, []);
+  });
+
+  it('left on a former catalogue node, is diluted by that node, whose wallet bought it', async () => {
+    const { nodes, service } = setup({ edit: withArchives, holder: () => formerCatalogue() });
+    const answer = await service.operate(
+      dilute({ nodeId: OLD_CATALOGUE, batchId: LEFT_BATCH, expectedDepth: 24, newDepth: 25 }),
+    );
+    assert.equal(answer.state, 'confirmed');
+    assert.equal(nodes.calls[0]?.apiUrl, APIS[OLD_CATALOGUE]);
+  });
+
+  it('left on a node that is gone by the time it is read, is refused, journalling nothing and asking nothing', async () => {
+    const { journal, nodes, service } = setup({ edit: withArchives, holder: () => null });
+    await refusedWith(
+      service.operate(onLeft()),
+      'stamp_refused',
+      /^The node that holds this archive batch is gone from this manager/,
+    );
+    assert.equal(journal.rows.size, 0);
+    assert.deepEqual(nodes.calls, []);
+  });
+
+  it('is held to the checks of any batch: read, with time left, usable and at the depth the admin saw', async () => {
+    const cases: Array<[Partial<FundingArchiveBatch>, RegExp]> = [
+      [{ readError: 'The node could not be reached.' }, /^The batch could not be read/],
+      [{ ttlSeconds: 0 }, /expired/],
+      [{ usable: false }, /does not call the batch usable/],
+      [{ depth: 25 }, /at depth 25 now/],
+    ];
+    for (const [over, pattern] of cases) {
+      const { journal, nodes, service } = setup({
+        edit: (answer) => void (answer.archiveBatches = [archive(ARCHIVE_BATCH, over)]),
+      });
+      await refusedWith(service.operate(onArchive()), 'stamp_refused', pattern);
+      assert.equal(journal.rows.size + nodes.calls.length, 0, JSON.stringify(over));
+    }
+  });
+
+  it('named with another node than the one that holds it, is refused with the holder’s name', async () => {
+    const { service } = setup({ edit: withArchives });
+    await refusedWith(service.operate(onArchive({ batchId: LEFT_BATCH })), 'stamp_refused', /held by old-catalogue/);
+    await refusedWith(service.operate(onArchive({ nodeId: NODE })), 'stamp_refused', /held by catalogue/);
+  });
+
+  it('refuses a batch that is neither the holder’s own nor an archive batch it holds', async () => {
+    const { service } = setup({ edit: withArchives });
+    await refusedWith(
+      service.operate(onLeft({ batchId: BATCH, expectedDepth: 22 })),
+      'stamp_refused',
+      /^The batch is neither the one this node uploads with nor an archive batch it holds/,
+    );
+  });
+
+  it('knows a former catalogue node by the archive batches it holds, and no node by nothing', async () => {
+    const { service } = setup({ edit: withArchives });
+    await refusedWith(service.operate(onLeft({ nodeId: 'nobody:bee-uploader' })), 'unknown_node');
+    const { service: without } = setup();
+    await refusedWith(without.operate(onLeft()), 'unknown_node');
   });
 });

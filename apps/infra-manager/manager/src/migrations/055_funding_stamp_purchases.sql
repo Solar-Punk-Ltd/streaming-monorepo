@@ -40,6 +40,11 @@
 -- Whether the batch is usable yet is read from the node on every status call
 -- and is never kept here.
 --
+-- recorded_at is when a confirmed purchase's batch was made an archive batch,
+-- and null until it was. A status call designates a confirmed batch only while
+-- it is null, so a batch taken off the list of archive batches is never put
+-- back by a later call, a manager that restarted included.
+--
 -- Going back to an older manager needs no step: it never reads the table.
 CREATE TABLE funding_stamp_purchases (
   request_id        UUID PRIMARY KEY,
@@ -55,7 +60,9 @@ CREATE TABLE funding_stamp_purchases (
   error             TEXT,
   created_at        TIMESTAMPTZ NOT NULL,
   updated_at        TIMESTAMPTZ NOT NULL,
-  CONSTRAINT funding_stamp_purchases_confirmed_with_batch CHECK (state <> 'confirmed' OR batch_id IS NOT NULL)
+  recorded_at       TIMESTAMPTZ,
+  CONSTRAINT funding_stamp_purchases_confirmed_with_batch CHECK (state <> 'confirmed' OR batch_id IS NOT NULL),
+  CONSTRAINT funding_stamp_purchases_recorded_when_confirmed CHECK (recorded_at IS NULL OR state = 'confirmed')
 );
 
 -- At most one purchase is being settled on a node at a time: a second one is

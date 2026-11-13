@@ -95,6 +95,9 @@ its block is in and Confirmed once that block is final, about 3 minutes later on
 | Buy an archive stamp | the catalogue node             | the catalogue node's wallet | the manager, through the catalogue node's Bee API |
 | Move chequebooks     | the node                       | the node's wallet           | the manager, through each node's Bee API          |
 
+An archive stamp stays with the node that bought it: one left on a former catalogue node is topped
+up and diluted by that node, from its own wallet.
+
 The brand wallet's key never leaves the admin. For a transfer the admin builds and signs the
 transaction itself, and the manager supplies the nonce and the fee, sends it and reports the
 receipt. The admin checks a fee the manager supplies against a sane bound before it signs, and the

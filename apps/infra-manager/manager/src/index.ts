@@ -45,6 +45,10 @@ import { fundingNodeApiUrl, fundingNodeDeployment } from './domain/funding/fundi
 import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
+import { createFundingStampPurchaseRouter } from './api/routes/fundingStampPurchases.js';
+import { FundingStampPurchaseService } from './domain/funding/FundingStampPurchaseService.js';
+import { PostgresFundingStampPurchaseJournal } from './domain/funding/FundingStampPurchaseJournal.js';
+import type { ArchiveBatchDesignator, ArchiveBatchReader } from './domain/stages/archiveBatchPorts.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';
 import { BeeClient } from './domain/BeeClient.js';
 import { CataloguePublisher, publishedBeeApiUrl } from './domain/stages/CataloguePublisher.js';
@@ -481,12 +485,22 @@ async function main(): Promise<void> {
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
     isArchiveBatch: (batchId) => archiveBatchService.isArchiveBatch(batchId),
   });
+  // The archive batches meet the funding API through two ports (domain/stages/archiveBatchPorts.ts). This stand-in
+  // holds their place until the archive batches' own service is wired in here: the funding API lists no archive batch,
+  // and a purchase it confirms is not made one.
+  const archiveBatchPorts: ArchiveBatchReader & ArchiveBatchDesignator = {
+    list: async () => [],
+    designateArchiveBatch: async () => {
+      throw new Error('The archive batches are not wired into this manager.');
+    },
+  };
   // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet, its
-  // batch and its chequebook, and the price of postage. A node's address stays here: the inventory names each node by
-  // an opaque id.
+  // batch and its chequebook, the catalogue node's archive batches, and the price of postage. A node's address stays
+  // here: the inventory names each node by an opaque id.
   const fundingInventory = new FundingInventoryService({
     profiles: profileRepository,
     catalogue: catalogueDesignation,
+    archiveBatches: archiveBatchPorts,
     uploaderApiUrl: beeApiUrlFor,
     gatewayApiUrl: async (profile) => {
       const port = (await orchestrator.nextEnvFor(profile)).env.BEE_GATEWAY_API_PORT ?? '';
@@ -509,15 +523,31 @@ async function main(): Promise<void> {
     journal: new PostgresFundingTransferJournal(database.pool),
     inventory: fundingInventory,
   });
-  // The funding API's stamp operations: a top-up or a dilution of a node's batch, checked against the inventory and
-  // the postage contract read now, journalled in funding_stamp_operations before the node is asked, and paid from the
-  // node's own wallet. The node's Bee API is worked out the way the inventory works it out, and stays here.
+  // The funding API's stamp operations: a top-up or a dilution of a node's batch, or of one of the catalogue node's
+  // archive batches, checked against the inventory and the postage contract read now, journalled in
+  // funding_stamp_operations before the node is asked, and paid from the wallet of the node that holds the batch. The
+  // node's Bee API is worked out the way the inventory works it out, and stays here.
   const fundingStamps = new FundingStampService({
     journal: new PostgresFundingStampOperationJournal(database.pool),
     inventory: fundingInventory,
     nodeApiUrl: fundingNodeApiUrl({ profiles: profileRepository, uploaderApiUrl: beeApiUrlFor }),
     node: (apiUrl) => new BeeClient(apiUrl),
     chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
+    archiveBatchHolder: (batchId) => fundingInventory.archiveBatchHolder(batchId),
+  });
+  // The funding API's stamp purchases: an archive stamp, a new immutable batch on the catalogue node, checked against
+  // the inventory read now, journalled in funding_stamp_purchases before the node is asked, paid from the node's own
+  // wallet, and recorded as an archive batch once bought.
+  const fundingPurchases = new FundingStampPurchaseService({
+    journal: new PostgresFundingStampPurchaseJournal(database.pool),
+    inventory: fundingInventory,
+    deployment: fundingNodeDeployment({ profiles: profileRepository }),
+    uploaderApiUrl: beeApiUrlFor,
+    node: (apiUrl) => new BeeClient(apiUrl),
+    reads: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS),
+    archiveBatches: archiveBatchPorts,
+    catalogue: catalogueDesignation,
+    designator: archiveBatchPorts,
   });
   // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
   // node, a rung or the catalogue node, checked against the inventory read now, then carried out by the manager's own
@@ -611,6 +641,7 @@ async function main(): Promise<void> {
           createFundingInventoryRouter(fundingInventory),
           createFundingChainRouter(fundingChain),
           createFundingStampRouter(fundingStamps),
+          createFundingStampPurchaseRouter(fundingPurchases),
           createFundingChequebookRouter(fundingChequebooks),
         ],
       },
