@@ -104,11 +104,24 @@ CREATE TABLE archive_rate (
 --                    progress, saved as the job goes.
 --   tag_uid          the Bee tag every post of this quality carries. With a
 --                    tag Bee defers the push, and the tag counts it.
---   posts_under_tag  the posts the job made under the tag, a segment copied
---                    again after a resume counted again.
---   chunks_synced    the tag's `synced`, as last read. The quality is complete
---                    when the tag's `split` equals posts_under_tag and its
---                    `synced` equals its `split`.
+--   posts_under_tag  every post the job made under the tag, a chunk posted
+--                    again after a resume counted again, as the tag's `split`
+--                    counts it. After a restart the job takes the tag's
+--                    `split` as this count, since Bee counted every post it
+--                    answered.
+--   chunks_synced, chunks_seen
+--                    the tag's `synced` and `seen`, as last read. A chunk
+--                    posted again while its first post still waits to be
+--                    pushed goes to `seen`, and one posted again after it
+--                    synced is pushed and counted in `synced` again. The
+--                    quality is complete when no data or tree chunk failed, the
+--                    tag's `split` equals posts_under_tag, and its `synced`
+--                    and `seen` together equal its `split`.
+--
+-- A tag the node no longer knows cannot be read for that verdict. The quality
+-- then takes a new tag, posts_under_tag and both counts start from 0, its rows
+-- in archive_job_segments are deleted, and it is posted again, which costs
+-- pushes and no room.
 --   bucket_sum_before
 --                    the stamps used on the batch when this quality's copy
 --                    started.
@@ -132,6 +145,7 @@ CREATE TABLE archive_job_items (
   tag_uid            BIGINT CHECK (tag_uid IS NULL OR tag_uid >= 0),
   posts_under_tag    BIGINT NOT NULL DEFAULT 0,
   chunks_synced      BIGINT NOT NULL DEFAULT 0,
+  chunks_seen        BIGINT NOT NULL DEFAULT 0,
   bucket_sum_before  BIGINT CHECK (bucket_sum_before IS NULL OR bucket_sum_before >= 0),
   PRIMARY KEY (job_id, rendition),
   UNIQUE (job_id, position),
@@ -140,7 +154,7 @@ CREATE TABLE archive_job_items (
   CONSTRAINT archive_job_items_done_with_result CHECK ((state = 'done') = (result IS NOT NULL)),
   CONSTRAINT archive_job_items_counts_non_negative CHECK (
     segments_done >= 0 AND chunks_copied >= 0 AND chunks_rebuilt >= 0 AND parity_missing >= 0
-    AND bytes_copied >= 0 AND posts_under_tag >= 0 AND chunks_synced >= 0
+    AND bytes_copied >= 0 AND posts_under_tag >= 0 AND chunks_synced >= 0 AND chunks_seen >= 0
     AND (segments_total IS NULL OR segments_total >= 0)
     AND (chunks_total IS NULL OR chunks_total >= 0)
   )

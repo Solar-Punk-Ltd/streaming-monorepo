@@ -36,8 +36,12 @@ import { SECONDS_PER_DAY } from './stampQuote.js';
  * - `GET {@link ARCHIVE_STAMPS_PATH}` answers {@link ArchiveStampsResponse}, for the Stamps tab's group and the buy
  *   dialog.
  * - `POST {@link ARCHIVE_STAMP_PURCHASES_PATH}` takes {@link ArchiveBuyChoice}, starts a purchase from the Stamps tab,
- *   and answers 202 {@link ArchiveStampPurchase}, or 409 {@link ArchiveRefusedAnswer}.
+ *   and answers 202 {@link ArchiveStampPurchase}, or 409 {@link ArchiveRefusedAnswer}. The API forwards it to the
+ *   manager's funding API.
  * - `GET archiveStampPurchasePath(id)` answers {@link ArchiveStampPurchase}.
+ * - `POST {@link ARCHIVE_CONFIRM_PURCHASE_PATH}` takes {@link ArchiveBuyChoice}, the confirm of the stamp an archive
+ *   waits to buy, and answers {@link ArchiveCurrentResponse}, or 409 {@link ArchiveRefusedAnswer}. The job owns that
+ *   purchase: the API asks the manager, and the job goes through `buying` and `waiting_usable` to `copying`.
  * - `GET {@link ARCHIVE_STREAMS_PATH}` answers {@link ArchiveStreamsResponse}, the Archive page.
  *
  * The stream list and a stream's own answer carry `archive`, a {@link StreamArchiveSummary}, for the badge.
@@ -54,6 +58,9 @@ export const ARCHIVE_STAMP_PURCHASES_PATH = `${ARCHIVE_PATH}/stamp-purchases`;
 
 /** The streams that have an archive, for the Archive page. */
 export const ARCHIVE_STREAMS_PATH = `${ARCHIVE_PATH}/streams`;
+
+/** Where the stamp the current archive waits to buy is confirmed. `current` is no job's id, which is a UUID. */
+export const ARCHIVE_CONFIRM_PURCHASE_PATH = `${ARCHIVE_PATH}/current/confirm-purchase`;
 
 /** One purchase, by its id. */
 export function archiveStampPurchasePath(purchaseId: string): string {
@@ -160,6 +167,11 @@ export interface ArchiveQuality {
   /** The size before any copy, from the bitrate and length, parity included. An upper bound. */
   estimatedChunks: number | null;
   estimatedBytes: number | null;
+  /** What copying it is expected to cost the catalogue node's chequebook, a range in PLUR. */
+  estimatedBzzLowPlur: string | null;
+  estimatedBzzHighPlur: string | null;
+  /** How long copying it is expected to take, from the rate the last archive measured. */
+  estimatedSeconds: number | null;
   /** Null when it can be archived now; otherwise the sentence that says why not. */
   unavailable: string | null;
 }
@@ -171,6 +183,13 @@ export interface ArchiveStamp {
   /** The batch, 64 hex digits without `0x`, in lower case. */
   batchId: string;
   label: string | null;
+  /**
+   * The node that holds it, as the funding inventory names it, and that node's name. It is the catalogue node for a
+   * stamp bought here, whose group on the Stamps tab the stamp sits in beside the catalogue batch. Null when the
+   * manager's inventory was not read.
+   */
+  nodeId: string | null;
+  nodeLabel: string | null;
   depth: number;
   immutable: boolean;
   /** The manager's word for what the batch is worth now, as `StageStampState` of `packages/contracts`. */
@@ -178,7 +197,7 @@ export interface ArchiveStamp {
   ttlSeconds: number | null;
   /** Its fullest bucket's share of what one bucket holds. An immutable batch refuses a chunk once this reaches 1. */
   fillRatio: number | null;
-  /** False for a stamp left on a node that is the catalogue node no longer: it is topped up, never written. */
+  /** True only for a usable, unexpired stamp on the catalogue node. Any other is topped up, never written. */
   writable: boolean;
   designatedAt: string;
   /** What a batch of this depth holds, in chunks. */
@@ -191,6 +210,14 @@ export interface ArchiveStamp {
   qualitiesArchived: number;
   /** Whether its time left is under the warning threshold. */
   expiresSoon: boolean;
+}
+
+/**
+ * Whether a stamp holds `chunks` more, with the sizing margin: it can be written and its room, as the node last gave
+ * it, is enough. A stamp whose room was not read fits nothing.
+ */
+export function archiveStampFits(stamp: Pick<ArchiveStamp, 'writable' | 'roomChunks'>, chunks: number): boolean {
+  return stamp.writable && stamp.roomChunks !== null && stamp.roomChunks >= archiveChunksWithMargin(chunks);
 }
 
 /** What a buy dialog needs beside the stamps: the price, the paying wallet and the bounds. Null fields were not read. */
@@ -212,7 +239,12 @@ export interface ArchiveStampsResponse {
   stamps: ArchiveStamp[];
   /** The purchases that are still running, newest first. */
   purchases: ArchiveStampPurchase[];
-  /** Null when no stamp can be bought now, with `buyUnavailable` saying why. */
+  /**
+   * What the buy dialog prices with, or null when the price or the paying wallet could not be read, with
+   * `buyUnavailable` saying why. Whether the manager offers purchases at all is not known beforehand: the button stays
+   * enabled, and a manager that offers none makes the purchase route answer `purchases_not_offered`, whose sentence
+   * the dialog shows.
+   */
   buy: ArchiveBuyTerms | null;
   buyUnavailable: string | null;
   /** The days under which a stamp's time left is worth a warning, `ARCHIVE_TTL_WARNING_DAYS`. */
@@ -259,14 +291,8 @@ export function archiveBuyQuote(input: {
   postage: FundingPostage;
 }): ArchiveBuyQuote {
   const { days, postage } = input;
-  if (!Number.isSafeInteger(days) || days < ARCHIVE_BUY_MIN_DAYS) {
-    throw new RangeError(`days must be a whole number of ${ARCHIVE_BUY_MIN_DAYS} or more`);
-  }
+  const amountPerChunkPlur = archiveBuyAmountPerChunkPlur(days, postage);
   const chunks = input.chunks ?? null;
-  const seconds = BigInt(days) * BigInt(SECONDS_PER_DAY);
-  const blockSeconds = BigInt(postage.blockSeconds);
-  const blocks = (seconds + blockSeconds - 1n) / blockSeconds;
-  const amountPerChunkPlur = (blocks * BigInt(postage.pricePerChunkPerBlockPlur)).toString();
   const depths = chunks === null ? archiveDepthChoices() : archiveDepthChoices(chunks);
   return {
     chunksNeeded: chunks === null ? null : archiveChunksWithMargin(chunks),
@@ -282,21 +308,40 @@ export function archiveBuyQuote(input: {
 }
 
 /**
- * What the user chose in a buy dialog, and what a purchase is started with: the depth, the amount for each chunk as
- * the dialog's row showed it, and a label. The cost the user confirmed is exactly `amountPerChunkPlur × 2^depth`,
- * whatever the price does next; the life it buys is what the node reports afterwards.
+ * The amount a purchase gives each chunk for `days` at `postage`'s price, in PLUR: the price of every block of the
+ * days, the blocks rounded up. The buy dialog's rows and the API's check of a choice both use it.
+ */
+export function archiveBuyAmountPerChunkPlur(days: number, postage: FundingPostage): string {
+  if (!Number.isSafeInteger(days) || days < ARCHIVE_BUY_MIN_DAYS) {
+    throw new RangeError(`days must be a whole number of ${ARCHIVE_BUY_MIN_DAYS} or more`);
+  }
+  const seconds = BigInt(days) * BigInt(SECONDS_PER_DAY);
+  const blockSeconds = BigInt(postage.blockSeconds);
+  const blocks = (seconds + blockSeconds - 1n) / blockSeconds;
+  return (blocks * BigInt(postage.pricePerChunkPerBlockPlur)).toString();
+}
+
+/**
+ * What the user chose in the buy dialog, and what a purchase is started with: the depth, the days, a label, and the
+ * cost the dialog showed for them. The API works the amount out again from the depth and the days at the price it
+ * reads then. When that cost is another than `costPlur`, the price moved since the dialog priced the stamp, and the
+ * purchase is refused with `price_moved` and the new cost, so what is spent is what a user confirmed.
  */
 export interface ArchiveBuyChoice {
   depth: number;
-  amountPerChunkPlur: string;
+  /** A whole number of {@link ARCHIVE_BUY_MIN_DAYS} or more. */
+  days: number;
   /** 1 to 64 characters once trimmed, or null. */
   label: string | null;
+  /** The cost the dialog's row showed, in PLUR. */
+  costPlur: string;
 }
 
 /**
  * Why a choice cannot be bought, one sentence, or null. The depth is one the table names and, with `chunksNeeded`,
- * holds the recording; the amount buys {@link ARCHIVE_BUY_MIN_DAYS} or more at the price now; and the wallet holds the
- * cost and some xDAI for the gas. A wallet that was not read refuses nothing here: the manager checks again.
+ * holds the recording; the days are {@link ARCHIVE_BUY_MIN_DAYS} or more; the cost is the one the price gives now; and
+ * the wallet holds it, and some xDAI for the gas. A wallet that was not read refuses nothing here: the manager checks
+ * again.
  */
 export function archiveBuyProblem(
   choice: ArchiveBuyChoice,
@@ -308,16 +353,16 @@ export function archiveBuyProblem(
   if (chunksNeeded !== null && holds < chunksNeeded) {
     return `A stamp of depth ${choice.depth} holds ${holds} chunks, and this recording needs ${chunksNeeded}.`;
   }
-  if (!/^[1-9]\d{0,77}$/.test(choice.amountPerChunkPlur)) return 'The amount for each chunk is a whole number of PLUR.';
-  if (terms.postage === null) return 'The price of postage could not be read, so the stamp cannot be priced now.';
-  const blocks = BigInt(choice.amountPerChunkPlur) / BigInt(terms.postage.pricePerChunkPerBlockPlur);
-  const seconds = blocks * BigInt(terms.postage.blockSeconds);
-  if (seconds < BigInt(ARCHIVE_BUY_MIN_DAYS * SECONDS_PER_DAY)) {
+  if (!Number.isSafeInteger(choice.days) || choice.days < ARCHIVE_BUY_MIN_DAYS) {
     return `A new archive stamp lasts ${ARCHIVE_BUY_MIN_DAYS} days or more.`;
   }
-  const cost = BigInt(archiveBatchCostPlur(choice.depth, choice.amountPerChunkPlur));
-  if (terms.walletXbzzPlur !== null && BigInt(terms.walletXbzzPlur) < cost) {
-    const missing = (cost - BigInt(terms.walletXbzzPlur)).toString();
+  if (terms.postage === null) return 'The price of postage could not be read, so the stamp cannot be priced now.';
+  const cost = archiveBatchCostPlur(choice.depth, archiveBuyAmountPerChunkPlur(choice.days, terms.postage));
+  if (cost !== choice.costPlur) {
+    return `The price of postage moved, and this stamp now costs ${cost} PLUR. Confirm it again at that cost.`;
+  }
+  if (terms.walletXbzzPlur !== null && BigInt(terms.walletXbzzPlur) < BigInt(cost)) {
+    const missing = (BigInt(cost) - BigInt(terms.walletXbzzPlur)).toString();
     return `The catalogue node's wallet is ${missing} PLUR short of the stamp's cost. Send it xBZZ on the Balance tab.`;
   }
   if (terms.walletXdaiWei !== null && BigInt(terms.walletXdaiWei) === 0n) {
@@ -325,6 +370,20 @@ export function archiveBuyProblem(
   }
   return null;
 }
+
+/**
+ * What the wallet is short of for a cost, in PLUR, or null when it holds the cost or was not read. The panel shows it
+ * beside a stamp an archive waits to buy.
+ */
+export function archiveWalletShortfallPlur(costPlur: string, walletXbzzPlur: string | null): string | null {
+  if (walletXbzzPlur === null) return null;
+  const missing = BigInt(costPlur) - BigInt(walletXbzzPlur);
+  return missing > 0n ? missing.toString() : null;
+}
+
+/** What the dialog says when the manager offers no purchases, as one older than archive stamps answers a 404. */
+export const ARCHIVE_PURCHASES_NOT_OFFERED =
+  'The manager does not offer stamp purchases. A manager older than this page does not buy archive stamps.';
 
 /**
  * Where a purchase stands:
@@ -340,6 +399,8 @@ export interface ArchiveStampPurchase {
   /** Its id, which is the request id the manager's funding API knows it by. */
   id: string;
   depth: number;
+  /** The days the user chose. */
+  days: number;
   amountPerChunkPlur: string;
   costPlur: string;
   label: string | null;
@@ -355,8 +416,10 @@ export interface ArchiveStampPurchase {
 // The job
 
 /**
- * - `measuring`: each segment's size is read, which gives the chunks to copy and proves every segment is on Swarm.
- * - `awaiting_purchase`: the user chose to buy a new stamp, the size is known, and the buy dialog waits for a confirm.
+ * - `measuring`: each segment's root is read, which gives the chunks to copy and proves that root is on Swarm. A
+ *   chunk deeper in a segment that cannot be read shows while copying, as the `unreadable` pause.
+ * - `awaiting_purchase`: the user chose to buy a new stamp, the size is known, and the buy dialog waits for a confirm,
+ *   which is a POST to {@link ARCHIVE_CONFIRM_PURCHASE_PATH}.
  * - `buying`, `waiting_usable`: the purchase runs, then the batch becomes usable.
  * - `copying`: chunks are read through the catalogue node and posted to it under the archive stamp.
  * - `verifying`: every chunk was posted, and the job waits for Bee to report each one synced.
@@ -408,27 +471,17 @@ export function archiveHoldsPlace(state: ArchiveJobState, pauseReason: ArchivePa
  * - `pause`: stop after the chunks in flight. The place is given up.
  * - `resume`: carry on; after `unreadable`, `batch`, `node`, `funds` and `problem` it tries again.
  * - `wait`: after `live`, carry on by itself once the stream is a recording again.
- * - `confirm_purchase`: buy the stamp chosen in the buy dialog, then copy onto it.
  * - `use_stamp`: copy onto this archive stamp, in place of the one chosen or of a purchase.
  * - `buy_new`: go to the buy dialog, in place of the stamp chosen.
  * - `cancel`: stop. What was copied stays on Swarm, and its qualities show as partial.
  * - `dismiss`: close the widget of a finished archive, for the user who asks only.
  */
-export type ArchiveAction =
-  | 'pause'
-  | 'resume'
-  | 'wait'
-  | 'confirm_purchase'
-  | 'use_stamp'
-  | 'buy_new'
-  | 'cancel'
-  | 'dismiss';
+export type ArchiveAction = 'pause' | 'resume' | 'wait' | 'use_stamp' | 'buy_new' | 'cancel' | 'dismiss';
 
 export const ARCHIVE_ACTIONS: readonly ArchiveAction[] = [
   'pause',
   'resume',
   'wait',
-  'confirm_purchase',
   'use_stamp',
   'buy_new',
   'cancel',
@@ -438,7 +491,6 @@ export const ARCHIVE_ACTIONS: readonly ArchiveAction[] = [
 /** `POST /api/archive/:id/actions`. */
 export type ArchiveActionRequest =
   | { action: 'pause' | 'resume' | 'wait' | 'buy_new' | 'cancel' | 'dismiss' }
-  | { action: 'confirm_purchase'; choice: ArchiveBuyChoice }
   | { action: 'use_stamp'; batchId: string };
 
 /** How one quality's copy went, once it ended. */
@@ -460,8 +512,14 @@ export interface ArchiveJobItem {
   chunksRebuilt: number;
   /** Parity chunks that could not be read, and were left out. */
   parityMissing: number;
-  /** Chunks Bee reports synced, of those posted under this quality's tag. */
+  /**
+   * Posts Bee reports settled, of those made under this quality's tag: the tag's `synced` and `seen` together. The
+   * quality is complete when no data or tree chunk failed, the tag's `split` equals the posts made, and this equals
+   * the `split`.
+   */
   chunksSynced: number;
+  /** The posts made under the tag, a chunk posted again after a resume counted again. */
+  postsMade: number;
   bytesCopied: number;
 }
 
@@ -469,6 +527,24 @@ export interface ArchiveJobItem {
 export type ArchiveJobTarget =
   | { kind: 'stamp'; batchId: string; label: string | null }
   | { kind: 'purchase'; purchase: ArchiveStampPurchase | null };
+
+/**
+ * The stamp an archive in `awaiting_purchase` proposes, which the buy dialog opens on: the recording's measured
+ * chunks, the smallest depth that holds them with the margin, the default days, what that costs now, and what the
+ * paying wallet is short of. The user can pick a deeper stamp and other days in the dialog.
+ */
+export interface ArchivePurchaseProposal {
+  /** The measured chunks of every chosen quality together, which the dialog's rows start from. */
+  chunkCount: number;
+  /** The smallest depth that holds them, or null when no depth does. */
+  depth: number | null;
+  days: number;
+  /** The cost of that depth for those days at the price now, or null when the price was not read or no depth fits. */
+  costPlur: string | null;
+  /** What the catalogue node's wallet lacks of that cost, or null when it holds it or was not read. */
+  shortfallPlur: string | null;
+  terms: ArchiveBuyTerms;
+}
 
 /** The archive on the server, as every user sees it. */
 export interface ArchiveJobSummary {
@@ -484,6 +560,8 @@ export interface ArchiveJobSummary {
   /** Whether it holds the one place a job has, as {@link archiveHoldsPlace} says. */
   holdsPlace: boolean;
   target: ArchiveJobTarget;
+  /** Set while `awaiting_purchase`, null otherwise. */
+  proposal: ArchivePurchaseProposal | null;
   items: ArchiveJobItem[];
   /** The chunks of every chosen quality together, once all are measured. */
   chunksTotal: number | null;
@@ -525,6 +603,8 @@ export type ArchiveRefusalProblem =
   | 'no_stamp'
   | 'stamp_unusable'
   | 'purchase_refused'
+  | 'purchases_not_offered'
+  | 'price_moved'
   | 'not_now';
 
 export interface ArchiveRefusal {

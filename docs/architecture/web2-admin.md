@@ -168,15 +168,18 @@ copy is the playlist as it stands. The catalogue entry says which qualities are 
 An archive stamp is an immutable batch on the catalogue node, kept by the manager as an archive
 batch (`apps/infra-manager/docs/features/stages.md`, "Archive batches"). There can be any number,
 of any depth. The manager pushes them inside the catalogue stamp record, which the admin keeps
-whole, so the archive stamps are the record's `archiveBatches`.
+whole, so the archive stamps are the record's `archiveBatches`. The admin copies onto a stamp the
+record calls `writable`: a usable, unexpired one on the catalogue node.
 
 The admin buys them. The catalogue node pays from its own wallet, and the manager carries the
 purchase out through that node's Bee API ([funding.md](funding.md)). One buy dialog serves two
 places:
 
-- **The Stamps tab**, where the "Archive stamps" group has a "Buy archive stamp" button.
+- **The Stamps tab**, where the "Archive stamps" group has a "Buy archive stamp" button. The
+  purchase goes to the admin's own purchase route, which asks the manager.
 - **The archive panel**, which offers the archive stamps that have room, or "Buy a new archive
-  stamp" sized to the selection.
+  stamp" sized to the selection. The confirm goes to the job, which owns that purchase and asks the
+  manager.
 
 The dialog works like this:
 
@@ -190,19 +193,23 @@ The dialog works like this:
    amount for each of its `2^depth` stamps, in xBZZ, plus gas in xDAI. The dialog shows the cost,
    the catalogue node's wallet balances, and what is missing when they fall short.
 4. **Confirm.** A confirm dialog without the password, as for a top-up, since the node pays. The
-   cost the user confirmed is exactly what is spent. The node's wallet is the most a purchase can
-   spend, and only a password-confirmed transfer from the brand wallet fills it.
+   choice is the depth, the days and the cost the dialog showed. The API prices it again, and
+   refuses a cost that is another by then, so the cost the user confirmed is exactly what is spent.
+   The node's wallet is the most a purchase can spend, and only a password-confirmed transfer from
+   the brand wallet fills it.
 5. **Buy, then wait.** The admin records the purchase and asks the manager. A new batch is usable
    some minutes after its transaction, and the Stamps tab shows it as being bought, then waiting to
    be usable.
 
-| Case                                            | Outcome                                                                                                          |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| The wallet lacks xBZZ or xDAI                   | refused before the node is asked, with the amount missing                                                        |
-| The node does not answer                        | the purchase fails, and nothing was spent                                                                        |
-| The manager stops between asking and the answer | the manager finds the batch on the node by the purchase's own label and settles it, or fails it after 30 minutes |
-| The price moved                                 | the batch's life differs from the estimate, and the tab shows the life the node reports                          |
-| The batch does not become usable in 30 minutes  | an archive job waiting for it pauses with the reason                                                             |
+| Case                                              | Outcome                                                                                                          |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| The wallet lacks xBZZ or xDAI                     | refused before the node is asked, with the amount missing                                                        |
+| The node does not answer                          | the purchase fails, and nothing was spent                                                                        |
+| The manager stops between asking and the answer   | the manager finds the batch on the node by the purchase's own label and settles it, or fails it after 30 minutes |
+| The price moved since the dialog priced the stamp | refused with the cost now, to confirm again                                                                      |
+| The batch does not become usable in 30 minutes    | an archive job waiting for it pauses with the reason                                                             |
+| Another operation is under way on the node        | refused, to try again once it has ended                                                                          |
+| The manager offers no purchases                   | the dialog says so, as a manager older than archive stamps answers                                               |
 
 ### The job
 
@@ -210,16 +217,16 @@ One job exists at a time for the whole admin, an export or an archive. An archiv
 the stream's page, from the Archive page, or from the download panel's finished export, where the
 recording is already on the node and every chunk of it is readable.
 
-| State                      | What happens                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `measuring`                | reads each segment root's span and level, which gives the bytes and an upper bound of the chunks, and proves every segment is on Swarm before any postage is spent |
-| `awaiting_purchase`        | with "Buy a new archive stamp": the buy dialog comes to front with the sized stamp and its cost, for the user's confirm                                            |
-| `buying`, `waiting_usable` | the purchase runs, then the batch becomes usable                                                                                                                   |
-| `copying`                  | chunks are read through the catalogue node and posted to it under the archive stamp                                                                                |
-| `verifying`                | waits for Bee to report every posted chunk synced                                                                                                                  |
-| `paused`                   | stopped, with a reason                                                                                                                                             |
-| `waiting`                  | the stream went live again, and the job continues once it is a recording again                                                                                     |
-| `done`                     | every picked quality is complete, or complete with reduced protection                                                                                              |
+| State                      | What happens                                                                                                                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `measuring`                | reads each segment root's span and level, which gives the bytes and an upper bound of the chunks, and proves each segment's root is on Swarm before any postage is spent. A chunk deeper in a segment that cannot be read shows while copying, as the `unreadable` pause |
+| `awaiting_purchase`        | with "Buy a new archive stamp": the buy dialog comes to front with the sized stamp, its cost and what the wallet lacks, for the user's confirm                                                                                                                           |
+| `buying`, `waiting_usable` | the purchase runs, then the batch becomes usable                                                                                                                                                                                                                         |
+| `copying`                  | chunks are read through the catalogue node and posted to it under the archive stamp                                                                                                                                                                                      |
+| `verifying`                | waits for Bee to report every posted chunk synced                                                                                                                                                                                                                        |
+| `paused`                   | stopped, with a reason                                                                                                                                                                                                                                                   |
+| `waiting`                  | the stream went live again, and the job continues once it is a recording again                                                                                                                                                                                           |
+| `done`                     | every picked quality is complete, or complete with reduced protection                                                                                                                                                                                                    |
 
 It never fails, it pauses, and a user decides. The panel comes to front once per pause for the user
 who started it.
@@ -243,19 +250,24 @@ Chunks already copied stay on Swarm whatever the user chooses, and the quality s
   The widget shows the running job, and a paused archive beside it.
 - **Tag.** Each quality gets one Bee tag. Every post of that quality carries `swarm-tag`, the feed
   slots included, and no `swarm-deferred-upload` header. With a tag Bee defers the push, and the tag
-  counts it.
+  counts it: `split` counts every post, a chunk posted again included.
 - **Push window.** The job stops posting while the tag's `split` is more than
-  `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of `synced`. The catalogue node also publishes the catalogue
-  for live stages, and this keeps its push queue short.
+  `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of `synced` and `seen` together. The catalogue node also
+  publishes the catalogue for live stages, and this keeps its push queue short.
 - **Rebuilding.** A data chunk the network lost comes back by reading its segment through `/bytes`,
   which makes Bee restore it from parity, then reading the chunk again.
 - **Lost parity.** A parity chunk that cannot be read is counted and left out. The quality then
   completes with reduced protection.
 - **Resume.** The ledger is the list of segments done. A segment restarts whole, which costs pushes
-  and no room, because Bee's stamper keeps one stamp per batch and chunk.
+  and no room, because Bee's stamper keeps one stamp per batch and chunk. A chunk posted again
+  after it synced is pushed and counted in `synced` again. One posted again while its first post
+  still waits is counted in `seen`, and the first post syncs. After a restart the job takes the
+  tag's `split` as the posts it made, since Bee counted every post it answered.
 - **Complete.** A quality is complete when no data or tree chunk failed, the tag's `split` equals
-  the posts the job made under it, and its `synced` equals its `split`. A complete row in
-  `stream_archives` is what "archived" means.
+  the posts the job made under it, and its `synced` and `seen` together equal its `split`. A
+  complete row in `stream_archives` is what "archived" means.
+- **A tag the node no longer knows.** The quality takes a new tag and is posted again from its
+  first segment, which costs pushes and no room.
 - **Room.** Room on a stamp is its capacity less the sum of the node's `GET /stamps/{id}/buckets`.
   `utilization` and `fillRatio` name the fullest bucket. One quality goes whole onto one stamp. A
   chunk already on the stamp takes no room, so for a stream that recorded again the estimate is an
@@ -279,11 +291,12 @@ it the slower the copy runs.
 - A finished job shows what the chequebook went down by. The catalogue's writes share it, so the
   figure is approximate.
 
-The push to Swarm sets the pace. One post is a pushsync round trip of about 60 ms, and beyond 16 at
-once the requests queue. On a light node with about 90 peers the rate levels off at 130 to 200
-chunks a second, 0.5 to 0.8 MB/s, so a 1080p hour, about 650,000 chunks, takes 55 to 85 minutes,
-whether the recording is on the node or read from Swarm. A host's rate follows its network and its
-peers. The panel estimates from the rate the last job measured.
+The push to Swarm sets the pace. With a tag the posts are deferred, and Bee's own pusher pushes
+them, at 130 to 200 chunks a second, 0.5 to 0.8 MB/s, on a light node with about 90 peers. A 1080p
+hour, about 650,000 chunks, then takes 55 to 85 minutes. `ARCHIVE_PARALLEL_CHUNKS` bounds the
+reads and the node's stamping, 16 at once. For a recording read from Swarm the reads through one
+light node, about 0.57 MB/s at 16 at once, can be the limit instead. A host's rate follows its
+network and its peers. The panel estimates from the rate the last job measured.
 
 ### What a stream shows
 
@@ -320,8 +333,9 @@ peers. The panel estimates from the rate the last job measured.
 | `archive_stamp_purchases` | each purchase, written before the manager is asked                                                            |
 | `archive_rate`            | the rate the last job measured                                                                                |
 
-Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), `ARCHIVE_PUSH_WINDOW_CHUNKS` (2000),
-`ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30) and `ARCHIVE_BUY_DEFAULT_DAYS` (30).
+Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), the chunks read and posted at once,
+`ARCHIVE_PUSH_WINDOW_CHUNKS` (2000), `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30)
+and `ARCHIVE_BUY_DEFAULT_DAYS` (30).
 Every action goes to the audit log, with times in UTC.
 
 ## What it does not do

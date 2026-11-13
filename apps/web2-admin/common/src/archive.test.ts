@@ -7,17 +7,22 @@ import {
   ARCHIVE_ACTIONS,
   ARCHIVE_BADGE_TEXT,
   ARCHIVE_BUY_MIN_DAYS,
+  ARCHIVE_CONFIRM_PURCHASE_PATH,
   ARCHIVE_PATH,
+  ARCHIVE_PURCHASES_NOT_OFFERED,
   ARCHIVE_STAMP_PURCHASES_PATH,
   ARCHIVE_STAMPS_PATH,
   ARCHIVE_STREAMS_PATH,
   ARCHIVED_STATES,
   archiveActionPath,
+  archiveBuyAmountPerChunkPlur,
   archiveBuyProblem,
   archiveBuyQuote,
   archiveHoldsPlace,
   archivePauseNeedsDecision,
+  archiveStampFits,
   archiveStampPurchasePath,
+  archiveWalletShortfallPlur,
   isArchived,
   streamArchiveListingPath,
   streamArchivePath,
@@ -38,6 +43,10 @@ describe('the archive paths', () => {
     assert.equal(ARCHIVE_STAMPS_PATH, '/api/archive/stamps');
     assert.equal(ARCHIVE_STAMP_PURCHASES_PATH, '/api/archive/stamp-purchases');
     assert.equal(ARCHIVE_STREAMS_PATH, '/api/archive/streams');
+  });
+
+  it('confirms the stamp the current archive waits to buy at a path no job id can be', () => {
+    assert.equal(ARCHIVE_CONFIRM_PURCHASE_PATH, '/api/archive/current/confirm-purchase');
   });
 
   it("builds a stream's paths and a job's, each id escaped", () => {
@@ -111,16 +120,7 @@ describe('the one place a job has', () => {
   });
 
   it('names every action once', () => {
-    assert.deepEqual(ARCHIVE_ACTIONS, [
-      'pause',
-      'resume',
-      'wait',
-      'confirm_purchase',
-      'use_stamp',
-      'buy_new',
-      'cancel',
-      'dismiss',
-    ]);
+    assert.deepEqual(ARCHIVE_ACTIONS, ['pause', 'resume', 'wait', 'use_stamp', 'buy_new', 'cancel', 'dismiss']);
   });
 });
 
@@ -181,14 +181,21 @@ describe('the rows of a buy dialog', () => {
 });
 
 describe('whether a choice can be bought', () => {
-  const choice = () => ({ depth: 22, amountPerChunkPlur: THIRTY_DAYS_AMOUNT, label: 'Autumn event' });
   const cost = BigInt(THIRTY_DAYS_AMOUNT) * 2n ** 22n;
+  const choice = () => ({ depth: 22, days: 30, label: 'Autumn event', costPlur: cost.toString() });
   const terms = () => ({ postage: postage(), walletXbzzPlur: cost.toString(), walletXdaiWei: '1' });
+
+  it('prices a stamp as the dialog does: the price of every block of the days, for each chunk', () => {
+    assert.equal(archiveBuyAmountPerChunkPlur(30, postage()), THIRTY_DAYS_AMOUNT);
+    assert.equal(archiveBuyQuote({ days: 30, postage: postage() }).rows[0]!.amountPerChunkPlur, THIRTY_DAYS_AMOUNT);
+    assert.throws(() => archiveBuyAmountPerChunkPlur(1, postage()), RangeError);
+  });
 
   it('passes a choice the wallet covers, of a depth that holds the recording, for the least days or more', () => {
     assert.equal(archiveBuyProblem(choice(), terms()), null);
     assert.equal(archiveBuyProblem(choice(), terms(), archiveEffectiveChunks(22)), null);
-    assert.equal(archiveBuyProblem({ ...choice(), depth: 30 }, { ...terms(), walletXbzzPlur: null }), null);
+    const deeper = { ...choice(), depth: 30, costPlur: (BigInt(THIRTY_DAYS_AMOUNT) * 2n ** 30n).toString() };
+    assert.equal(archiveBuyProblem(deeper, { ...terms(), walletXbzzPlur: null }), null);
   });
 
   it('refuses a depth the table does not name, and one too shallow for the recording', () => {
@@ -197,12 +204,18 @@ describe('whether a choice can be bought', () => {
     assert.match(archiveBuyProblem(choice(), terms(), archiveEffectiveChunks(22) + 1)!, /this recording needs/);
   });
 
-  it('refuses an amount that is no whole number above 0, and one that buys under the least days', () => {
-    for (const amountPerChunkPlur of ['0', '', '1.5', '-1']) {
-      assert.match(archiveBuyProblem({ ...choice(), amountPerChunkPlur }, terms())!, /whole number of PLUR/);
+  it('refuses days under the least a stamp lasts, and days that are no whole number', () => {
+    for (const days of [0, 1, 2.5, Number.NaN]) {
+      assert.match(archiveBuyProblem({ ...choice(), days }, terms())!, /2 days or more/, String(days));
     }
-    const oneDay = (24000n * 17280n).toString();
-    assert.match(archiveBuyProblem({ ...choice(), amountPerChunkPlur: oneDay }, terms())!, /2 days or more/);
+  });
+
+  it('refuses a cost the price no longer gives, naming the cost now', () => {
+    const moved = { ...terms(), postage: { ...postage(), pricePerChunkPerBlockPlur: '24001' } };
+    const now = (24001n * 518400n * 2n ** 22n).toString();
+    const problem = archiveBuyProblem(choice(), moved);
+    assert.match(problem!, /price of postage moved/);
+    assert.ok(problem!.includes(now));
   });
 
   it('says what the wallet is short of, and that it needs xDAI for the gas', () => {
@@ -213,5 +226,28 @@ describe('whether a choice can be bought', () => {
 
   it('cannot price a stamp without the price of postage', () => {
     assert.match(archiveBuyProblem(choice(), { ...terms(), postage: null })!, /could not be read/);
+  });
+
+  it('works out what a wallet lacks of a cost, and nothing for one that holds it or was not read', () => {
+    assert.equal(archiveWalletShortfallPlur('100', '40'), '60');
+    assert.equal(archiveWalletShortfallPlur('100', '100'), null);
+    assert.equal(archiveWalletShortfallPlur('100', '250'), null);
+    assert.equal(archiveWalletShortfallPlur('100', null), null);
+  });
+
+  it('has a sentence for a manager that offers no purchases', () => {
+    assert.match(ARCHIVE_PURCHASES_NOT_OFFERED, /does not offer stamp purchases/);
+  });
+});
+
+describe('whether a stamp fits a recording', () => {
+  it('needs the stamp writable and its room to hold the chunks with the margin', () => {
+    assert.equal(archiveStampFits({ writable: true, roomChunks: 105 }, 100), true);
+    assert.equal(archiveStampFits({ writable: true, roomChunks: 104 }, 100), false);
+    assert.equal(archiveStampFits({ writable: false, roomChunks: 1_000_000 }, 100), false);
+  });
+
+  it('fits nothing while its room was not read', () => {
+    assert.equal(archiveStampFits({ writable: true, roomChunks: null }, 1), false);
   });
 });

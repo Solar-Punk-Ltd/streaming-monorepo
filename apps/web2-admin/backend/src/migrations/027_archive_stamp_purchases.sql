@@ -7,10 +7,13 @@
 -- the manager's funding API knows the purchase by, so asking again never buys
 -- twice. One purchase runs at a time, as the node buys one at a time.
 --
---   depth, amount_per_chunk_plur, cost_plur
---                 what the user confirmed in the buy dialog: the depth, the
---                 PLUR each chunk is given, and that amount for every one of
---                 the batch's 2^depth stamps, which the node pays in xBZZ.
+--   depth, days, amount_per_chunk_plur, cost_plur
+--                 what the user confirmed in the buy dialog: the depth and
+--                 the days, the PLUR each chunk is given for them at the price
+--                 read then, and that amount for every one of the batch's
+--                 2^depth stamps, which the node pays in xBZZ. A cost other
+--                 than the one the dialog showed is refused before a row is
+--                 written.
 --   label         the name the user gave the stamp, 1 to 64 characters, or
 --                 null.
 --   state         buying while the node's transaction is not mined,
@@ -28,6 +31,7 @@
 CREATE TABLE archive_stamp_purchases (
   id                     UUID PRIMARY KEY,
   depth                  SMALLINT NOT NULL CHECK (depth BETWEEN 17 AND 41),
+  days                   INTEGER NOT NULL CHECK (days >= 2),
   amount_per_chunk_plur  NUMERIC(78, 0) NOT NULL CHECK (amount_per_chunk_plur > 0),
   cost_plur              NUMERIC(78, 0) NOT NULL CHECK (cost_plur > 0),
   label                  TEXT CHECK (label IS NULL OR (label <> '' AND char_length(label) <= 64)),
