@@ -70,8 +70,9 @@ it was designated, and `observedAt`. While a move is pending in the manager, `pr
 batch moved from, its node's name and Bee API and the same readings
 (`catalogueStampPreviousSchema`). It is null or absent otherwise. `archiveBatches` carries the
 brand's archive batches, the immutable batches on the catalogue node that finished recordings are
-copied onto: each batch's id, label, readings, when it was designated and whether the node the
-record names holds it (`catalogueArchiveBatchSchema`). The admin replaces its whole list with it.
+copied onto: each batch's id, label, readings, when it was designated and `writable`, true only for
+a usable, unexpired batch on the node the record names (`catalogueArchiveBatchSchema`). The admin
+replaces its whole list with it.
 
 Neither record ever carries a signing key, a wallet key, an RPC endpoint, a token or a rung's
 node address.
