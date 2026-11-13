@@ -68,6 +68,44 @@ export function SaveFileButton({
   );
 }
 
+/** Clear: once confirmed, deletes the kept file from the server for everyone, as the panel's Clear does. */
+export function ClearFileButton() {
+  const { act } = useExport();
+  const snackbar = useSnackbar();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const clear = async () => {
+    setBusy(true);
+    try {
+      await act('clear');
+      setConfirm(false);
+    } catch (error) {
+      snackbar.error(errorMessage(error, 'The file could not be cleared.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Button color="error" disabled={busy} onClick={() => setConfirm(true)}>
+        Clear
+      </Button>
+      <ConfirmDialog
+        open={confirm}
+        title="Clear the kept file?"
+        message={CLEAR_EXPORT_PROMPT}
+        confirmText="Clear"
+        cancelText="Keep it"
+        busy={busy}
+        onConfirm={() => void clear()}
+        onCancel={() => setConfirm(false)}
+      />
+    </>
+  );
+}
+
 /**
  * The Download panel, one for the whole console. Opened for a stream from its page, it offers the qualities to choose
  * from; opened from the widget, or once an export started, it follows the export on the server, whichever stream that

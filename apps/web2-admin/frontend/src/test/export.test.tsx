@@ -9,12 +9,20 @@ import {
   type Stream,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { ExportPanel } from '../components/export/ExportPanel';
+import { CLEAR_EXPORT_PROMPT, ExportPanel } from '../components/export/ExportPanel';
 import { EXPORT_POLL_IDLE_MS, ExportProvider } from '../components/export/ExportProvider';
-import { formatTook, formatUtc } from '../components/export/exportText';
+import { formatTook, formatUtc, statusLine } from '../components/export/exportText';
 import { ExportWidget } from '../components/export/ExportWidget';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
-import { jsonOk, makeIngest, makeStream, mockFetch, renderWithProviders, type Route as MockRoute } from './helpers';
+import {
+  jsonError,
+  jsonOk,
+  makeIngest,
+  makeStream,
+  mockFetch,
+  renderWithProviders,
+  type Route as MockRoute,
+} from './helpers';
 
 const ID = '7d3c0e5a-2a8b-4f61-9c1e-3b2a1f0e9d8c';
 const EXPORT_ID = '0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -132,6 +140,18 @@ describe('formatTook', () => {
     expect(formatTook('2026-11-10T10:00:00.000Z', '2026-11-10T11:00:20.000Z')).toBe('1 h');
     expect(formatTook('2026-11-10T10:00:00.000Z', null)).toBeNull();
     expect(formatTook('not a date', '2026-11-10T10:20:00.000Z')).toBeNull();
+  });
+
+  it('says 0 s from cache for an export that took under half a second', () => {
+    expect(formatTook('2026-11-12T18:39:19.800Z', '2026-11-12T18:39:20.100Z')).toBe('0 s from cache');
+    expect(formatTook('2026-11-12T18:39:19.800Z', '2026-11-12T18:39:20.400Z')).toBe('1 s');
+  });
+});
+
+describe('statusLine', () => {
+  it('keeps a word between the segment count and the bytes read, so the two never read as one number', () => {
+    const reading = makeExport({ state: 'reading', segmentsRead: 18, segmentsTotal: 32, bytesRead: 4_200_000 });
+    expect(statusLine(reading)).toBe('Reading from Swarm: 18 of 32 segments, 4 MB so far.');
   });
 });
 
@@ -339,6 +359,120 @@ describe('exporting a recording', () => {
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'dismiss' });
     // The file stays on the page to save again.
+    expect(screen.getByRole('region', { name: 'downloaded file' })).toBeInTheDocument();
+  });
+
+  it('offers Clear under Save file on the kept file card when the export allows it, and not when it does not', async () => {
+    const done = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+    mockFetch(pageRoutes(recorded(), done));
+    const first = renderPage();
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    const save = within(card).getByRole('link', { name: /Save file/ });
+    const clear = within(card).getByRole('button', { name: 'Clear' });
+    expect(save.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      within(card).getByText(
+        'Kept on the server until it is cleared or the next export starts, so saving it again reads nothing from Swarm.',
+      ),
+    ).toBeInTheDocument();
+    first.unmount();
+
+    mockFetch(pageRoutes(recorded(), { ...done, actions: ['dismiss'] }));
+    renderPage();
+    const without = await screen.findByRole('region', { name: 'downloaded file' });
+    expect(within(without).getByRole('link', { name: /Save file/ })).toBeInTheDocument();
+    expect(within(without).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+  });
+
+  it('asks before clearing the kept file from the card, and Keep it sends nothing', async () => {
+    const done = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+    const fetchMock = mockFetch(pageRoutes(recorded(), done));
+    renderPage();
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Clear' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Clear the kept file?')).toBeInTheDocument();
+    expect(within(dialog).getByText(CLEAR_EXPORT_PROMPT)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    expect(screen.getByRole('region', { name: 'downloaded file' })).toBeInTheDocument();
+  });
+
+  it('clears the kept file from the card once confirmed, and the card goes', async () => {
+    let kept: ExportSummary | null = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+    const fetchMock = mockFetch(
+      pageRoutes(recorded(), null, [
+        { path: '/api/export', respond: () => jsonOk({ export: kept }) },
+        {
+          path: `/api/export/${EXPORT_ID}/actions`,
+          method: 'POST',
+          respond: () => {
+            kept = null;
+            return jsonOk({ export: null });
+          },
+        },
+      ]),
+    );
+    renderPage();
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'downloaded file' })).not.toBeInTheDocument());
+    const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'clear' });
+  });
+
+  it('keeps the kept file card and says so when clearing it fails', async () => {
+    const done = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+    mockFetch(
+      pageRoutes(recorded(), done, [
+        {
+          path: `/api/export/${EXPORT_ID}/actions`,
+          method: 'POST',
+          respond: () => jsonError(409, { error: 'export_changed', message: 'The export changed meanwhile.' }),
+        },
+      ]),
+    );
+    renderPage();
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
+
+    expect(await screen.findByText('The export changed meanwhile.')).toBeInTheDocument();
+    // The question stays open, as the panel's does, and the card is still there behind it.
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Keep it' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByRole('region', { name: 'downloaded file' })).toBeInTheDocument();
   });
 });
