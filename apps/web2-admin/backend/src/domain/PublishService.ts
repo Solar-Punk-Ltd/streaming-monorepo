@@ -152,6 +152,14 @@ export interface FeedWriteLog {
   lastWrite(owner: string, topic: string): Promise<{ index: number; entries: unknown[] } | null>;
 }
 
+/**
+ * The qualities a stream's entry lists while its "List only archived qualities" switch is on: those that play from an
+ * archive stamp. Null while the switch is off, and the entry lists every rung. ArchiveService answers it.
+ */
+export interface PublishArchiveListing {
+  listedRenditions(stream: StreamRow): Promise<Set<string> | null>;
+}
+
 /** The slice of CatalogueBatchService publishing needs: where a write goes, and where the boot check reads. */
 export type CatalogueTargets = Pick<CatalogueBatchService, 'forWrite' | 'forRead'>;
 
@@ -312,6 +320,8 @@ export const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
  * shout, but only after the damage.
  */
 export class PublishService {
+  private archiveListing: PublishArchiveListing | null = null;
+
   constructor(
     private readonly streams: PublishStreamStore,
     private readonly renditions: PublishRenditionStore,
@@ -324,6 +334,14 @@ export class PublishService {
     private readonly audit: AuditLog,
     private readonly mutex: Mutex = new Mutex(),
   ) {}
+
+  /**
+   * From now on, a stream whose "List only archived qualities" switch is on gets an entry with its archived qualities
+   * alone. Set once at boot, after the archive service, which itself rewrites entries through this service.
+   */
+  listArchivedOnlyWith(listing: PublishArchiveListing): void {
+    this.archiveListing = listing;
+  }
 
   async publish(actor: Actor, id: string): Promise<PublishOutcome> {
     return this.mutex.run(async () => {
@@ -800,10 +818,20 @@ export class PublishService {
   private async laddersOf(rows: readonly StreamRow[]): Promise<Map<string, Rendition[]>> {
     const ladders = new Map<string, Rendition[]>();
     for (const row of rows) {
-      const rungs = await this.renditions.listByStream(row.id);
-      if (rungs.length > 0) ladders.set(row.id, rungs.map(toRendition));
+      const rungs = await this.ladderOf(row);
+      if (rungs.length > 0) ladders.set(row.id, rungs);
     }
     return ladders;
+  }
+
+  /**
+   * The rungs a stream's entry lists: every rung reported, or, while its "List only archived qualities" switch is on,
+   * those that play from an archive stamp. A quality without an index is not offered by the players.
+   */
+  private async ladderOf(stream: StreamRow): Promise<Rendition[]> {
+    const rungs = (await this.renditions.listByStream(stream.id)).map(toRendition);
+    const listed = this.archiveListing ? await this.archiveListing.listedRenditions(stream) : null;
+    return listed === null ? rungs : rungs.filter((rung) => listed.has(rung.name));
   }
 
   /**
@@ -855,7 +883,7 @@ export class PublishService {
     stream: StreamRow,
     thumbnailRef: string | null,
   ): Promise<{ entry: FeedStreamEntry; renditions: Rendition[] }> {
-    const renditions = (await this.renditions.listByStream(stream.id)).map(toRendition);
+    const renditions = await this.ladderOf(stream);
     const entry = buildFeedEntry(stream, thumbnailRef, Date.now(), renditions);
     return { entry, renditions };
   }

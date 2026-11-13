@@ -844,6 +844,35 @@ describe('PublishService and the ABR ladder', () => {
     assert.equal(entry!.renditions?.[1]?.avgBandwidth, 720 * 3000);
   });
 
+  it('lists the archived qualities alone while "List only archived qualities" is on', async () => {
+    const { store, renditions, gateway, service } = setup();
+    const on = store.add(streamRow({ archived_only: true }));
+    const off = store.add(streamRow());
+    for (const row of [on, off]) {
+      await renditions.upsert(row.id, rung('720p', 720, 12));
+      await renditions.upsert(row.id, rung('360p', 360, 12));
+    }
+    service.listArchivedOnlyWith({
+      listedRenditions: async (stream) => (stream.archived_only ? new Set(['720p']) : null),
+    });
+
+    await service.publish(TEST_OPERATOR, on.id);
+    assert.deepEqual(
+      entriesOf(gateway)
+        .find((entry) => entry.topic === on.topic)!
+        .renditions?.map((r) => r.name),
+      ['720p'],
+    );
+    await service.publish(TEST_OPERATOR, off.id);
+    assert.deepEqual(
+      entriesOf(gateway)
+        .find((entry) => entry.topic === off.topic)!
+        .renditions?.map((r) => r.name),
+      ['360p', '720p'],
+      'off, every rung',
+    );
+  });
+
   it('rewrites the ladder on a state report, not only on a publish', async () => {
     // The rungs are read on every write: a report that did not carry them
     // would take the ladder off the entry until the next rung reported.

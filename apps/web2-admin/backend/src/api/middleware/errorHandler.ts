@@ -4,6 +4,8 @@ import { ValidationError as YupValidationError } from 'yup';
 
 import {
   AdminRequiredError,
+  ArchiveNotFoundError,
+  ArchiveRefusedError,
   CannotRemoveUserError,
   CatalogueMoveRefusedError,
   CatalogueStampUnavailableError,
@@ -226,6 +228,14 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof CatalogueMoveRefusedError) {
     res.status(409).json({ error: 'catalogue_move_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof ArchiveRefusedError) {
+    res.status(409).json({ error: 'archive_refused', problem: err.problem, message: err.message });
+    return;
+  }
+  if (err instanceof ArchiveNotFoundError) {
+    res.status(404).json({ error: 'archive_not_found', id: err.archiveId });
     return;
   }
   if (err instanceof ExportRefusedError) {

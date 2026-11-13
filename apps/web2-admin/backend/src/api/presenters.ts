@@ -9,6 +9,7 @@ import type {
   RenditionReportResponse,
   StageSummary,
   Stream,
+  StreamArchiveSummary,
   User,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -43,7 +44,8 @@ export function useRestartWindow(minutes: number): void {
   restartWindowMinutes = minutes;
 }
 
-export function toStream(row: StreamRow): Stream {
+/** The stream as the console reads it. `archive` is its archive, absent when nothing of it was copied. */
+export function toStream(row: StreamRow, archive?: StreamArchiveSummary): Stream {
   return {
     id: row.id,
     topic: row.topic,
@@ -67,6 +69,7 @@ export function toStream(row: StreamRow): Stream {
     restartUntil: iso(restartUntilOf(row, restartWindowMinutes)),
     hasUnpublishedEdits: hasUnpublishedEdits(row),
     stageId: row.stage_id,
+    ...(archive ? { archive } : {}),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
