@@ -91,7 +91,9 @@ and the settings.
   so it carries no Bee address of its own.
 - **One export at a time, for the whole admin.** One node reads it, and a second export would only
   halve the speed of both. While one is reading, paused or waiting, nobody can start another, and
-  every signed-in user sees it in a widget in the top right of every page.
+  every signed-in user sees it in a widget in the top right of every page. An archive takes the
+  same place, so neither starts while the other holds it ([Archiving a recording](#archiving-a-recording)).
+  A finished export's panel offers "Archive this quality", since the recording is on the node then.
 - **The last file is kept.** The finished MP4 stays until it is cleared or the next export starts
   and replaces it, so saving it again costs no Swarm read. Its stream's page shows it above the OBS
   details. A user can clear it from the panel or from that card, which asks first and deletes it for
@@ -108,12 +110,227 @@ and the settings.
 - **A playlist names references, not addresses.** Only the Swarm reference of each segment is read,
   through the node, so a recording can never make the admin fetch an address of its choosing.
 
+## Archiving a recording
+
+A stage's batches are mutable and short lived, so a recording lasts only while they do. The admin
+archives a finished recording, quality by quality, onto an archive stamp: an immutable batch on the
+brand's catalogue node that the admin buys, tops up and dilutes. The copy is byte for byte, so every
+address stays the same, and the catalogue entry, the viewer and the export read an archived
+recording exactly as before. The shapes and the routes are in
+`apps/web2-admin/common/src/archive.ts`.
+
+- **A user starts it, by hand,** for one stream, and picks the qualities.
+- **It runs in the admin as a background job,** like the export, and shares the export's widget.
+- **A quality is archived once Bee reports every one of its chunks synced** to Swarm.
+- **The archive stamp alone keeps the chunks on Swarm.** The node pins none of them.
+
+The copy outlives the stage's batch because Bee's reserve keeps one chunk under several stamps, with
+one item per batch. When the stage batch expires, eviction removes that batch's item only, and the
+bytes stay while the archive stamp's item holds them (Bee 2.8 `reserve.go`, `EvictBatchBin`,
+`chunkstore.Delete`).
+
+### What is copied
+
+Per quality, one row of `stream_renditions` or the stream itself for a single-quality recording:
+
+1. **The playlist slot.** The single-owner chunk at `keccak(keccak(topic, index), owner)`, with the
+   stream's owner, the quality's topic and its `manifest_index`. It is written with
+   `POST /soc/{owner}/{identifier}?sig=`, with the signature it already carries, so the copy needs
+   no key.
+2. **The playlist root.** A playlist above 4096 bytes is a single-owner chunk that wraps a root
+   chunk. The root is rebuilt from the slot's payload and span, its address computed, and posted
+   with `POST /chunks`. The export reads a playlist through this root.
+3. **The playlist tree** under that root.
+4. **Every segment** the playlist names: its root, intermediate chunks, data chunks and parity
+   chunks. A parity chunk is copied and never opened. Which references are parity follows from the
+   erasure level in the chunk's span and Bee's parity tables (`pkg/file/redundancy/level.go`).
+   Segments are level 1 and playlists level 0, and the level is read from each chunk.
+5. **The master playlist slot**, at the stream's own topic and `manifest_index`, as it is.
+
+Every post must answer the address the job expected, and any other answer stops the quality.
+
+The thumbnail and the catalogue already live on the catalogue batch. Feed slots below the recorded
+index stay with the stage, since a recording is read by index. The ladder's time markers serve a
+live stream alone: a player of a recording asks for the current period's marker, finds none, and
+reads by index.
+
+| Reader                                                     | How it finds a quality's playlist                                     |
+| ---------------------------------------------------------- | --------------------------------------------------------------------- |
+| The export                                                 | `stream_renditions.manifest_index`, then the root through `/bytes`    |
+| The event viewer and the stack player, for a listed stream | the catalogue entry's `renditions[].index`, which is that same column |
+| Any reader of an unlisted stream                           | the master feed's head                                                |
+
+The master playlist names every recorded quality with no slot, and the stage key signs it, so the
+copy is the playlist as it stands. The catalogue entry says which qualities are archived.
+
+### Archive stamps
+
+An archive stamp is an immutable batch on the catalogue node, kept by the manager as an archive
+batch (`apps/infra-manager/docs/features/stages.md`, "Archive batches"). There can be any number,
+of any depth. The manager pushes them inside the catalogue stamp record, which the admin keeps
+whole, so the archive stamps are the record's `archiveBatches`.
+
+The admin buys them. The catalogue node pays from its own wallet, and the manager carries the
+purchase out through that node's Bee API ([funding.md](funding.md)). One buy dialog serves two
+places:
+
+- **The Stamps tab**, where the "Archive stamps" group has a "Buy archive stamp" button.
+- **The archive panel**, which offers the archive stamps that have room, or "Buy a new archive
+  stamp" sized to the selection.
+
+The dialog works like this:
+
+1. **Size.** In the archive panel the depth starts at the smallest whose capacity holds the measured
+   chunks plus a 5% margin, and the user can pick any deeper one. On the Stamps tab the user picks
+   among all depths. Each choice shows its capacity and its cost. The capacity table is
+   `packages/contracts/src/archiveCapacity.ts`: an immutable batch refuses a chunk when that chunk's
+   bucket is full, so it holds less than its `2^depth` stamps.
+2. **Duration.** The user picks days, `ARCHIVE_BUY_DEFAULT_DAYS` by default, 2 at least.
+3. **Cost.** Each chunk gets the price of every block of those days, and the batch costs that
+   amount for each of its `2^depth` stamps, in xBZZ, plus gas in xDAI. The dialog shows the cost,
+   the catalogue node's wallet balances, and what is missing when they fall short.
+4. **Confirm.** A confirm dialog without the password, as for a top-up, since the node pays. The
+   cost the user confirmed is exactly what is spent. The node's wallet is the most a purchase can
+   spend, and only a password-confirmed transfer from the brand wallet fills it.
+5. **Buy, then wait.** The admin records the purchase and asks the manager. A new batch is usable
+   some minutes after its transaction, and the Stamps tab shows it as being bought, then waiting to
+   be usable.
+
+| Case                                            | Outcome                                                                                                          |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| The wallet lacks xBZZ or xDAI                   | refused before the node is asked, with the amount missing                                                        |
+| The node does not answer                        | the purchase fails, and nothing was spent                                                                        |
+| The manager stops between asking and the answer | the manager finds the batch on the node by the purchase's own label and settles it, or fails it after 30 minutes |
+| The price moved                                 | the batch's life differs from the estimate, and the tab shows the life the node reports                          |
+| The batch does not become usable in 30 minutes  | an archive job waiting for it pauses with the reason                                                             |
+
+### The job
+
+One job exists at a time for the whole admin, an export or an archive. An archive is started from
+the stream's page, from the Archive page, or from the download panel's finished export, where the
+recording is already on the node and every chunk of it is readable.
+
+| State                      | What happens                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `measuring`                | reads each segment root's span and level, which gives the bytes and an upper bound of the chunks, and proves every segment is on Swarm before any postage is spent |
+| `awaiting_purchase`        | with "Buy a new archive stamp": the buy dialog comes to front with the sized stamp and its cost, for the user's confirm                                            |
+| `buying`, `waiting_usable` | the purchase runs, then the batch becomes usable                                                                                                                   |
+| `copying`                  | chunks are read through the catalogue node and posted to it under the archive stamp                                                                                |
+| `verifying`                | waits for Bee to report every posted chunk synced                                                                                                                  |
+| `paused`                   | stopped, with a reason                                                                                                                                             |
+| `waiting`                  | the stream went live again, and the job continues once it is a recording again                                                                                     |
+| `done`                     | every picked quality is complete, or complete with reduced protection                                                                                              |
+
+It never fails, it pauses, and a user decides. The panel comes to front once per pause for the user
+who started it.
+
+| Reason       | When                                                     | Choices                                                      |
+| ------------ | -------------------------------------------------------- | ------------------------------------------------------------ |
+| `user`       | a user paused it                                         | Resume, Cancel                                               |
+| `unreadable` | a data or tree chunk was neither read nor rebuilt        | Try again, Cancel                                            |
+| `live`       | the stream went live again                               | Wait, Cancel                                                 |
+| `batch`      | the stamp is full, expired, removed or lacks room        | another stamp, a new one, Try again after a dilution, Cancel |
+| `node`       | the catalogue node does not answer or is designated anew | Try again, Cancel                                            |
+| `funds`      | the catalogue node's chequebook is under the floor       | Try again after funding it, Cancel                           |
+| `problem`    | anything else, such as a tag that stopped moving         | Try again, Cancel                                            |
+
+Chunks already copied stay on Swarm whatever the user chooses, and the quality shows as partial.
+
+- **One place for a job.** The export and the archive take one shared lock at start, check that the
+  other holds no place, then begin. A kept export file holds none. An archive that a user paused,
+  or that waits for the user's confirm of a purchase, gives its place up, so an export can run
+  meanwhile, and it resumes from its ledger once the place is free. Any other pause keeps the place.
+  The widget shows the running job, and a paused archive beside it.
+- **Tag.** Each quality gets one Bee tag. Every post of that quality carries `swarm-tag`, the feed
+  slots included, and no `swarm-deferred-upload` header. With a tag Bee defers the push, and the tag
+  counts it.
+- **Push window.** The job stops posting while the tag's `split` is more than
+  `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of `synced`. The catalogue node also publishes the catalogue
+  for live stages, and this keeps its push queue short.
+- **Rebuilding.** A data chunk the network lost comes back by reading its segment through `/bytes`,
+  which makes Bee restore it from parity, then reading the chunk again.
+- **Lost parity.** A parity chunk that cannot be read is counted and left out. The quality then
+  completes with reduced protection.
+- **Resume.** The ledger is the list of segments done. A segment restarts whole, which costs pushes
+  and no room, because Bee's stamper keeps one stamp per batch and chunk.
+- **Complete.** A quality is complete when no data or tree chunk failed, the tag's `split` equals
+  the posts the job made under it, and its `synced` equals its `split`. A complete row in
+  `stream_archives` is what "archived" means.
+- **Room.** Room on a stamp is its capacity less the sum of the node's `GET /stamps/{id}/buckets`.
+  `utilization` and `fillRatio` name the fullest bucket. One quality goes whole onto one stamp. A
+  chunk already on the stamp takes no room, so for a stream that recorded again the estimate is an
+  upper bound.
+
+### What it costs
+
+The archive stamp is postage, bought and topped up by the user. The copy itself costs bandwidth:
+the catalogue node pays its peers from its chequebook to read and to push, about 300,000 accounting
+units a chunk to read and 388,000 to push. A node's free time allowance covers part of it, more of
+it the slower the copy runs.
+
+| Per 1080p hour, about 2.7 GB with parity        | Recording on the node | Recording read from Swarm |
+| ----------------------------------------------- | --------------------- | ------------------------- |
+| Measured on a light node with about 90 peers    | about 0.5 BZZ         | about 0.75 BZZ            |
+| With nothing covered by the free time allowance | about 2.6 BZZ         | about 4.7 BZZ             |
+
+- The panel shows an estimated range before a start and warns when the chequebook holds less.
+- Under `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ` the job pauses with reason `funds`. An empty chequebook
+  raises no error, and the catalogue's own writes need it too. The Chequebooks tab funds it.
+- A finished job shows what the chequebook went down by. The catalogue's writes share it, so the
+  figure is approximate.
+
+The push to Swarm sets the pace. One post is a pushsync round trip of about 60 ms, and beyond 16 at
+once the requests queue. On a light node with about 90 peers the rate levels off at 130 to 200
+chunks a second, 0.5 to 0.8 MB/s, so a 1080p hour, about 650,000 chunks, takes 55 to 85 minutes,
+whether the recording is on the node or read from Swarm. A host's rate follows its network and its
+peers. The panel estimates from the rate the last job measured.
+
+### What a stream shows
+
+| State    | Meaning                                            | Badge in the stream list     |
+| -------- | -------------------------------------------------- | ---------------------------- |
+| none     | nothing copied                                     | none                         |
+| partial  | a copy stopped before it was complete              | Archive incomplete           |
+| complete | at least one quality complete at its current index | Archived                     |
+| reduced  | complete, with parity chunks missing               | Archived, reduced protection |
+| outdated | the stream recorded again after the copy           | Archive outdated             |
+| expired  | the stamp's reading says expired                   | Archive expired              |
+
+- **Archive page.** Only streams with an archive: title, date, qualities, size, stamp label, the
+  stamp's time left, archived at and by. A user archives more qualities there, and archives again
+  when a copy is outdated. A copy stays on its stamp for the stamp's life.
+- **Stream page.** An archive card with each quality's state, the start action and the switch.
+- **List only archived qualities.** A per-stream switch, set by hand, off by default, offered once
+  one quality is archived. On, the catalogue entry lists the archived qualities only, which the
+  players honour: a quality without an index is not offered. The card hints at it when a stage batch
+  that holds an unarchived quality reads expired.
+- **A stamp running low or out.** Nothing is funded by itself. Under `ARCHIVE_TTL_WARNING_DAYS` the
+  Stamps tab group, the Archive page and the stream's archive card warn. An expired stamp turns its
+  streams to "Archive expired". A full stamp pauses the job with the dilute hint.
+
+### What it keeps
+
+| Table                     | Holds                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `stream_archives`         | one row per stream and quality: the stamp, the playlist slot copied, partial or complete, what the copy holds |
+| `streams.archived_only`   | the "List only archived qualities" switch                                                                     |
+| `archive_jobs`            | at most one row: the stream, the stamp or the purchase, the state, the pause, who started it                  |
+| `archive_job_items`       | one per picked quality: its state, its counters and its tag                                                   |
+| `archive_job_segments`    | the segments done, which is the resume ledger                                                                 |
+| `archive_stamp_purchases` | each purchase, written before the manager is asked                                                            |
+| `archive_rate`            | the rate the last job measured                                                                                |
+
+Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), `ARCHIVE_PUSH_WINDOW_CHUNKS` (2000),
+`ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30) and `ARCHIVE_BUY_DEFAULT_DAYS` (30).
+Every action goes to the audit log, with times in UTC.
+
 ## What it does not do
 
 - It never holds a node's key and never touches a host. Postage, cheques, ssh and Docker all belong
   to the manager. The one wallet the admin holds is the brand wallet, and it signs with that alone.
-- It does not provision or stop a stage, buy a batch, or choose the catalogue's batch. The manager
-  pushes what it runs, and the admin reads it.
+- It does not provision or stop a stage, buy a stage's batch or the catalogue's, or choose the
+  catalogue's batch. The manager pushes what it runs, and the admin reads it. An archive stamp is
+  the one batch the admin buys, and the manager carries the purchase out.
 - It carries no stage in its settings: no ingest address, port or passphrase, Bee address or batch
   id. It learns them from the manager's pushes, and refuses to publish, saying why, until the
   manager has designated a catalogue batch.

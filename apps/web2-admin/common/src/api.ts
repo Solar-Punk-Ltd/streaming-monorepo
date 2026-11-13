@@ -9,6 +9,7 @@
 
 import type { CatalogState, MediaType } from '@streaming-monorepo/contracts';
 
+import type { StreamArchiveSummary } from './archive.js';
 import type { AdminThemeName } from './theme.js';
 
 export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
@@ -152,6 +153,12 @@ export interface Stream {
    * the console's own responses.
    */
   renditions?: Rendition[];
+  /**
+   * The stream's archive: which qualities play from an archive stamp, and
+   * whether the catalogue lists only those. Absent on a stream with nothing
+   * copied. `docs/architecture/web2-admin.md`, "Archiving a recording".
+   */
+  archive?: StreamArchiveSummary;
   /**
    * The stage the stream is broadcast on (`GET /api/stages` names it), or
    * null until one is picked. A draft needs one to be published. It changes

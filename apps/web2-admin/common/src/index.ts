@@ -1,5 +1,6 @@
 export * from './auth.js';
 export * from './api.js';
+export * from './archive.js';
 export * from './chequebookPlan.js';
 export * from './funding.js';
 export * from './export.js';

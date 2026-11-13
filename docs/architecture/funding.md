@@ -38,7 +38,7 @@ empties every amount at once. The password is asked again before every send.
 
 ### Stamps tab
 
-The catalogue batch first, then each stage's batches. You choose Top up or Dilute and tick batches,
+The catalogue batch first, then the archive stamps, then each stage's batches. You choose Top up or Dilute and tick batches,
 one at a time, a stage at a time or all at once. One days slider, any whole number of days from 1,
 or 1 or 2 dilution steps, applies to every ticked batch, and each row shows what its batch has left
 after the operation and what it costs. A confirm dialog, without the password, comes before the
@@ -48,12 +48,20 @@ operation runs, because each node pays from its own wallet and nothing leaves th
 - A dilution takes at most 2 steps and must leave the batch 7 days or more.
 - The catalogue batch can be topped up and diluted like any other. A move of the catalogue to
   another batch is not handled here: the tab lists only the designated catalogue batch.
+- **Archive stamps** are the immutable batches on the catalogue node that recordings are archived
+  onto ([web2-admin.md](web2-admin.md#archiving-a-recording)). The group lists each with its label,
+  depth, time left, room and the qualities on it, and tops them up and dilutes them like any other.
+  **Buy archive stamp** opens the buy dialog: a depth with what it holds, the days it lasts and
+  what it costs, then a confirm without the password, since the catalogue node pays. A stamp being
+  bought shows in the group until it is usable. A stamp left on a node that is the catalogue node no
+  longer is listed for top-ups alone.
 
 ### Chequebooks tab
 
 Each stage's nodes with their chequebooks: the available balance, the total and the uncashed
 cheques, to the last digit. The available balance is the one that matters, because the total
-includes cheques already written that a peer has not cashed yet. The catalogue node is not listed.
+includes cheques already written that a peer has not cashed yet. The catalogue node is listed
+first: it pays its peers for every recording it copies onto an archive stamp.
 
 You type one target in xBZZ, 1 xBZZ or more, and tick chequebooks. One under the target takes a
 deposit of the difference from its node's wallet, one over it a withdrawal of the difference into

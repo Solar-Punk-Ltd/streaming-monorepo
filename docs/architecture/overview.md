@@ -87,7 +87,8 @@ machines of its own.
   the viewer page and a gateway node.
 - **Bee host**: the Bee nodes of an ABR node pool, one per quality rung, which the uploaders on stage
   hosts publish through, and the brand's catalogue node, which the admin on the control host
-  writes the catalogue through and reads recordings through to export them.
+  writes the catalogue through, reads recordings through to export them, and copies them onto
+  archive stamps through.
 
 [The self-hosting guide](../self-hosting.md) says how to set up each one.
 
