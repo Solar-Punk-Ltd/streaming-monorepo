@@ -477,6 +477,75 @@ describe('exporting a recording', () => {
   });
 });
 
+describe('an export that is no longer on the server', () => {
+  const GONE = 'This export is no longer on the server. The page shows what is there now.';
+
+  function done(): ExportSummary {
+    return makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      actions: ['dismiss', 'clear'],
+    });
+  }
+
+  /** The page with `current` on the server, whose actions all answer that the export is gone. */
+  function renderGone(current: ExportSummary) {
+    mockFetch(
+      pageRoutes(recorded(), current, [
+        {
+          path: `/api/export/${EXPORT_ID}/actions`,
+          method: 'POST',
+          respond: () => jsonError(404, { error: 'export_not_found', id: EXPORT_ID }),
+        },
+      ]),
+    );
+    renderPage();
+  }
+
+  async function expectGoneSaid() {
+    expect(await screen.findByText(GONE)).toBeInTheDocument();
+    expect(screen.queryByText('export_not_found')).not.toBeInTheDocument();
+  }
+
+  it("says so in words when one of the panel's buttons acts on it", async () => {
+    renderGone(makeExport());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open the export' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Pause' }));
+    await expectGoneSaid();
+  });
+
+  it("says so in words when the panel's Clear acts on it", async () => {
+    renderGone(done());
+
+    fireEvent.click(await screen.findByRole('button', { name: 'open the export' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
+    await screen.findByText('Clear the kept file?');
+    const confirm = screen.getAllByRole('dialog').at(-1)!;
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Clear' }));
+    await expectGoneSaid();
+  });
+
+  it("says so in words when the kept file card's Clear acts on it", async () => {
+    renderGone(done());
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    fireEvent.click(within(card).getByRole('button', { name: 'Clear' }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear' }));
+    await expectGoneSaid();
+  });
+
+  it("says so in words when the widget's close acts on it", async () => {
+    renderGone(done());
+
+    const widget = await screen.findByRole('status', { name: 'export' });
+    fireEvent.click(within(widget).getByRole('button', { name: 'close the export' }));
+    await expectGoneSaid();
+  });
+});
+
 describe('the timer that looks at the export', () => {
   it('reads in the background, so an open console does not keep its session awake', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
