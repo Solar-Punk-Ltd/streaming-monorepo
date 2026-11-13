@@ -567,9 +567,8 @@ the admin copies nothing onto them.
 
 Every adopt, removal and purchase pushes the catalogue stamp record, and the
 manager's reading schedule of the catalogue batch reads the archive batches with
-it. A deployment that holds an archive batch is not removed: its removal, from
-the page or the Clean action, answers 409 `archive_batches_held` with a sentence
-naming the batches, until they are taken off the list.
+it. Removing the deployment that holds archive batches leaves them without a node
+that can top them up.
 
 ## Settings
 
