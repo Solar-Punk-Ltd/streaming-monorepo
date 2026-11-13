@@ -12,6 +12,7 @@ import { NO_BATCHES_REPORTED, TODAYS_PRICE_CAPTION } from '../components/funding
 import { FundingPage } from '../pages/FundingPage';
 import {
   BATCH,
+  makeArchiveStamps,
   makeBatch,
   makeNode,
   makeStampItem,
@@ -25,12 +26,16 @@ import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from '.
 /** The price of postage the view shows, which every top-up is asked for with. */
 const PRICE = POSTAGE.pricePerChunkPerBlockPlur;
 const FUNDING = '/api/funding';
+const ARCHIVE_STAMPS = '/api/archive/stamps';
 const STAMPS = '/api/funding/stamp-operations';
 const TX_HASH = `0x${'ab'.repeat(32)}`;
 const BULK = '3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f';
 const WAIT = 'Wait for the stamp operations above to finish.';
 
-/** The funding view, answered from a getter so a test can change it between two reads. */
+/**
+ * The funding view, answered from a getter so a test can change it between two reads, and the archive stamps, none
+ * unless `extra` answers them.
+ */
 function serve(view: () => FundingView | Response, extra: Route[] = []) {
   return mockFetch([
     {
@@ -41,6 +46,7 @@ function serve(view: () => FundingView | Response, extra: Route[] = []) {
       },
     },
     ...extra,
+    { path: ARCHIVE_STAMPS, respond: () => jsonOk(makeArchiveStamps()) },
   ]);
 }
 
@@ -95,6 +101,7 @@ describe('the batches', () => {
 
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual([
       'Catalogue batch',
+      'Archive stamps',
       'Main stage',
       'Second stage',
     ]);

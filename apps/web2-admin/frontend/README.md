@@ -235,10 +235,28 @@ set up. What the API does behind each tab is in the backend's [Funding](../backe
 **Stamps** tops up or dilutes the batches the nodes upload with. Each node pays from its own
 wallet, so there is no password, only a confirm dialog.
 
-- A row per batch, the catalogue's on top and each stage's below: a tick box, the batch's short id
-  with Copy and an Immutable chip, the node's card, its depth, time left and fill. A gateway has no
-  batch and no row. Only a batch read whole, usable, not expired and whose node's wallet was read
-  has a tick box. The others say why.
+- A row per batch, the catalogue's on top, then the archive stamps, then each stage's: a tick box,
+  the batch's short id with Copy and an Immutable chip, the node's card, its depth, time left and
+  fill. A gateway has no batch and no row. Only a batch read whole, usable, not expired and whose
+  node's wallet was read has a tick box. The others say why.
+- **Archive stamps** are the immutable batches that recordings are archived onto, from
+  `GET /api/archive/stamps`. Each row shows the stamp's label in place of a node's card, the node
+  that holds it, its room and the qualities on it, and a warning when its time left is under
+  `ARCHIVE_TTL_WARNING_DAYS`. The holding node pays for it, the catalogue node for every stamp
+  bought here, so that node's one wallet pays for its stamps and for the catalogue batch, and its
+  xBZZ after counts them all. A stamp that is not written any more, such as one left on a node that
+  is the catalogue node no longer, is marked Top-ups only and has no tick box on Dilute. A stamp on a
+  node the Funding view lists nowhere has no tick box, since its wallet is not known. With no stamp,
+  the group says "No archive stamps yet." With no catalogue node designated, the group comes first.
+- **Buy archive stamp**, under the group, opens the buy dialog
+  (`components/archive/BuyStampDialog.tsx`, which the archive panel shares): a row per depth from
+  17 to 41, each with what it holds and costs for the days typed, 30 by default and 2 at least, an
+  optional label, the catalogue node's wallet, and a confirm step with the exact cost. The choice
+  goes to `POST /api/archive/stamp-purchases` with its depth, days, label and that cost. There is no
+  password: the node pays. A purchase still running is listed under the group as being bought, then
+  waiting to be usable, read again every 10 seconds, and the batches are read again once it is
+  done. When no stamp can be priced the button says why. The dialog shows the API's refusal, such as
+  a manager that offers no purchases, or the new cost when the price moved.
 - Select all, Clear, and a tick box per group. Switching between Top up and Dilute clears the ticks.
 - Top up takes days on a slider from 1 to 365, presets of 7, 30 and 90, or any whole number from 1.
   Each ticked row shows its time left after, its cost in xBZZ, and its node's xBZZ after. Dilute

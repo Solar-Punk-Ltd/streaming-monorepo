@@ -2,6 +2,9 @@ import {
   parseBaseUnits,
   XBZZ_DECIMALS,
   type AdminFundingNode,
+  type ArchiveStamp,
+  type ArchiveStampPurchase,
+  type ArchiveStampsResponse,
   type FundingBatch,
   type FundingChequebook,
   type FundingChequebookItem,
@@ -341,6 +344,81 @@ export function makeChequebookItem(over: Partial<FundingChequebookItem> = {}): F
     mined: false,
     settled: false,
     watched: false,
+    ...over,
+  };
+}
+
+/**
+ * One batch id per archive stamp of the fixtures, as the funding view and the stamp operations carry it, with `0x`: the
+ * talks', and an older one. The archive's own answers carry them without.
+ */
+export const ARCHIVE = {
+  talks: `0x${'9a'.repeat(32)}`,
+  old: `0x${'9b'.repeat(32)}`,
+} as const;
+
+/**
+ * The archive stamp "Talks" as the admin answers it, on the catalogue node of {@link makeView}: immutable, depth 22
+ * with 200 days left, a tenth full, still written, with room for 1,000,000 chunks and 3 qualities on it.
+ */
+export function makeArchiveStamp(over: Partial<ArchiveStamp> = {}): ArchiveStamp {
+  return {
+    batchId: ARCHIVE.talks.slice(2),
+    label: 'Talks',
+    nodeId: 'catalogue:bee',
+    nodeLabel: 'catalogue-node',
+    depth: 22,
+    immutable: true,
+    state: 'active',
+    ttlSeconds: 200 * DAY,
+    fillRatio: 0.1,
+    writable: true,
+    designatedAt: '2026-11-01T10:00:00.000Z',
+    effectiveChunks: 1_887_207,
+    chunksStamped: 887_207,
+    roomChunks: 1_000_000,
+    qualitiesArchived: 3,
+    expiresSoon: false,
+    ...over,
+  };
+}
+
+/** A purchase of a depth 20 stamp labelled "Spring", 1.305 xBZZ, being bought. */
+export function makeArchivePurchase(over: Partial<ArchiveStampPurchase> = {}): ArchiveStampPurchase {
+  return {
+    id: '5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b',
+    depth: 20,
+    days: 30,
+    amountPerChunkPlur: '12441600000',
+    costPlur: THIRTY_DAYS_DEPTH_20,
+    label: 'Spring',
+    state: 'buying',
+    batchId: null,
+    error: null,
+    startedBy: 'admin',
+    startedAt: '2026-11-13T10:00:00.000Z',
+    ...over,
+  };
+}
+
+/**
+ * The admin's answer for the archive stamps: none and no purchase by default, the catalogue node's wallet with 5 xBZZ
+ * and 0.2 xDAI, 30 days by default and 2 the least, at {@link POSTAGE}.
+ */
+export function makeArchiveStamps(over: Partial<ArchiveStampsResponse> = {}): ArchiveStampsResponse {
+  return {
+    nodeName: 'catalogue-node',
+    stamps: [],
+    purchases: [],
+    buy: {
+      postage: POSTAGE,
+      walletXbzzPlur: '50000000000000000',
+      walletXdaiWei: '200000000000000000',
+      defaultDays: 30,
+      minimumDays: 2,
+    },
+    buyUnavailable: null,
+    ttlWarningDays: 30,
     ...over,
   };
 }

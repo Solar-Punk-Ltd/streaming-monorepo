@@ -35,6 +35,16 @@ import {
   type ExportStartRequest,
   type ExportSummary,
 } from '@streaming-monorepo/web2-admin-common';
+import {
+  ARCHIVE_STAMP_PURCHASES_PATH,
+  ARCHIVE_STAMPS_PATH,
+  ARCHIVE_STREAMS_PATH,
+  type ArchiveBuyChoice,
+  type ArchivedStream,
+  type ArchiveStampPurchase,
+  type ArchiveStampsResponse,
+  type ArchiveStreamsResponse,
+} from '@streaming-monorepo/web2-admin-common';
 
 import {
   FUNDING_CHEQUEBOOK_OPERATIONS_ADMIN_PATH,
@@ -498,4 +508,25 @@ export async function fetchCurrentExport(options: { background?: boolean } = {})
 export async function actOnExport(exportId: string, action: ExportAction): Promise<ExportSummary | null> {
   const body: ExportActionRequest = { action };
   return (await sendJson<ExportCurrentResponse>('POST', exportActionPath(exportId), body)).export;
+}
+
+// --- archive stamps and the Archive page ----------------------------------------
+
+/**
+ * The archive stamps with their room, the purchases still running and what a purchase needs: the Stamps tab's group.
+ * A `background` look, the tab's timer while a purchase runs, says so in a header, as the export's widget does.
+ */
+export function fetchArchiveStamps(options: { background?: boolean } = {}): Promise<ArchiveStampsResponse> {
+  const headers = options.background ? { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE } : undefined;
+  return getJson<ArchiveStampsResponse>(ARCHIVE_STAMPS_PATH, headers);
+}
+
+/** Starts buying an archive stamp on the catalogue node, from the Stamps tab; the answer is the purchase as it starts. */
+export function buyArchiveStamp(choice: ArchiveBuyChoice): Promise<ArchiveStampPurchase> {
+  return sendJson<ArchiveStampPurchase>('POST', ARCHIVE_STAMP_PURCHASES_PATH, choice);
+}
+
+/** The streams that have an archive, newest copy first: the Archive page. */
+export async function fetchArchivedStreams(): Promise<ArchivedStream[]> {
+  return (await getJson<ArchiveStreamsResponse>(ARCHIVE_STREAMS_PATH)).streams;
 }
