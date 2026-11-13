@@ -709,7 +709,14 @@ describe('an error answer', () => {
 
 const CATALOGUE_NODE_ID = 'catalogue:bee-uploader';
 
-const archiveBatch = () => ({ ...batch(), batchId: `0x${'e5'.repeat(32)}`, label: 'Autumn event', writable: true });
+const archiveBatch = () => ({
+  ...batch(),
+  batchId: `0x${'e5'.repeat(32)}`,
+  nodeId: CATALOGUE_NODE_ID,
+  nodeLabel: 'catalogue',
+  label: 'Autumn event',
+  writable: true,
+});
 
 const purchaseRequest = () => ({
   requestId: REQUEST_ID,
@@ -719,27 +726,43 @@ const purchaseRequest = () => ({
   label: 'Autumn event',
 });
 
-describe("the catalogue node's archive batches, in the inventory", () => {
+describe('the archive batches, in the inventory', () => {
   it('are absent from the answer of a manager that keeps none, which still parses', () => {
-    assert.equal('archiveBatches' in fundingInventorySchema.parse(inventory()).catalogue!, false);
+    assert.equal('archiveBatches' in fundingInventorySchema.parse(inventory()), false);
   });
 
-  it('carry each batch with its readings, its label and whether it can be written', () => {
-    const left = { ...archiveBatch(), batchId: `0x${'F6'.repeat(32)}`, label: null, writable: false };
-    const answer = { ...inventory(), catalogue: { ...inventory().catalogue, archiveBatches: [archiveBatch(), left] } };
-    assert.deepEqual(fundingInventorySchema.parse(answer).catalogue!.archiveBatches, [
+  it('carry each batch with the node that holds it, its readings, its label and whether it can be written', () => {
+    const left = {
+      ...archiveBatch(),
+      batchId: `0x${'F6'.repeat(32)}`,
+      nodeId: 'catalogue-old:bee-uploader',
+      nodeLabel: 'catalogue-old',
+      label: null,
+      writable: false,
+    };
+    const answer = { ...inventory(), archiveBatches: [archiveBatch(), left] };
+    assert.deepEqual(fundingInventorySchema.parse(answer).archiveBatches, [
       archiveBatch(),
       { ...left, batchId: left.batchId.toLowerCase() },
     ]);
   });
 
-  it('read an empty list as no archive batches', () => {
-    assert.deepEqual(fundingNodeSchema.parse({ ...node(), archiveBatches: [] }).archiveBatches, []);
+  it('are listed while no catalogue node is designated, since each still needs its top-ups', () => {
+    const answer = { ...inventory(), catalogue: null, archiveBatches: [{ ...archiveBatch(), writable: false }] };
+    assert.equal(fundingInventorySchema.parse(answer).archiveBatches!.length, 1);
   });
 
-  it('hold each to the rules of a batch, with a said writability and a label of a length', () => {
+  it('read an empty list as no archive batches, and hang on no node', () => {
+    assert.deepEqual(fundingInventorySchema.parse({ ...inventory(), archiveBatches: [] }).archiveBatches, []);
+    assert.equal('archiveBatches' in fundingNodeSchema.parse({ ...node(), archiveBatches: [archiveBatch()] }), false);
+  });
+
+  it('hold each to the rules of a batch, with a holding node, a said writability and a label of a length', () => {
     for (const over of [
       { batchId: 'e5'.repeat(32) },
+      { nodeId: '' },
+      { nodeId: 'catalogue/../x' },
+      { nodeLabel: '' },
       { writable: null },
       { label: '' },
       { label: 'x'.repeat(65) },
@@ -752,12 +775,17 @@ describe("the catalogue node's archive batches, in the inventory", () => {
         JSON.stringify(over),
       );
     }
-    assert.equal(fundingNodeSchema.safeParse({ ...node(), archiveBatches: null }).success, false);
+    assert.equal(fundingInventorySchema.safeParse({ ...inventory(), archiveBatches: null }).success, false);
   });
 
   it('drop what a newer manager adds to one, a Bee API address among them', () => {
     const parsed = fundingArchiveBatchSchema.parse({ ...archiveBatch(), beeApiUrl: 'http://bee.example.org:1633' });
     assert.deepEqual(parsed, archiveBatch());
+  });
+
+  it('are what a stamp operation names with their own holder, as it names any node and its batch', () => {
+    const request = { ...topUpRequest(), nodeId: 'catalogue-old:bee-uploader', batchId: archiveBatch().batchId };
+    assert.deepEqual(fundingStampOperationRequestSchema.parse(request), request);
   });
 });
 

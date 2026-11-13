@@ -23,8 +23,14 @@
 -- designated_at is the manager's moment. designated_by is the user who adopted
 -- it, and null for a purchase, which the admin's own audit log names.
 --
--- A removal deletes the row. The batch itself stays on its node and on Swarm
--- until it expires.
+-- A removal deletes the row, and only an expired batch is removed: the admin
+-- shows the recordings of a batch that left the list as expired. An adopt
+-- brings a removed batch back.
+--
+-- The rows stay while no catalogue node is designated, when the record that
+-- carries them is cleared, and are pushed again with the next designation.
+-- They stay too when the deployment of a batch is deleted: the batch is then
+-- listed with its state unknown, and nothing is copied onto it.
 --
 -- archive_batches_revision is the one row an adopt and a removal check and
 -- raise, as catalogue_designation.revision is for the designation, so two

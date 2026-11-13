@@ -1,5 +1,6 @@
 import type { CatalogueBatchLike, CataloguePushState, CatalogueReading } from './catalogueNode.js';
 import { shortHex } from './displayFormat.js';
+import type { StampState } from './stampHealth.js';
 
 /**
  * The brand's archive batches: immutable batches on the catalogue node that the web2 admin copies finished recordings
@@ -16,11 +17,18 @@ import { shortHex } from './displayFormat.js';
  * - `PUT /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchAdopt}, adopts a batch the catalogue
  *   node holds, and answers {@link ArchiveBatchesAnswer}. It answers 422 with the sentence of
  *   {@link archiveBatchProblem} when the batch cannot be one, and 409 when `expectedRevision` is behind.
- * - `DELETE /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchRemove}, takes the batch off the
- *   list, and answers {@link ArchiveBatchesAnswer}, with the same 409. The batch itself stays on its node and on
- *   Swarm until it expires: a removal only stops the manager listing, pushing and funding it.
+ * - `DELETE /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchRemove}, takes an expired batch off
+ *   the list, and answers {@link ArchiveBatchesAnswer}, with the same 409. It answers 422 with the sentence of
+ *   {@link archiveRemoveProblem} for a batch that has not expired: the admin would show its recordings as expired
+ *   while they are paid for and on Swarm. An adopt brings a removed batch back.
  *
  * `:batchId` is 64 hex digits without `0x`. Every change raises the revision and pushes the catalogue stamp record.
+ *
+ * While no catalogue node is designated the record is cleared as it is today, the archive batches with it. The rows
+ * stay, and are pushed again with the next designation. Designating the catalogue's own batch refuses a batch that is
+ * an archive batch, with {@link catalogueIsArchiveBatchRefusal}.
+ *
+ * The funding API reaches the archive batches through `manager/src/domain/stages/archiveBatchPorts.ts`.
  */
 
 /** How an archive batch came to be one: bought through the funding API, or adopted on the settings page. */
@@ -58,9 +66,10 @@ export interface ArchiveBatchRow extends ArchiveBatchDesignation {
   /** The manager's last reading of the batch on its node, or null before any. */
   reading: CatalogueReading | null;
   /**
-   * True while the batch's deployment is the designated catalogue node, so the admin can stamp with it. False for a
-   * batch left on a deployment that is the catalogue node no longer: it is listed and can be topped up, and nothing
-   * is copied onto it.
+   * True only for a batch whose deployment is the designated catalogue node, that the node calls usable and that has
+   * not expired, so the admin can stamp with it. False for a batch left on a deployment that is the catalogue node no
+   * longer: it stays listed and can be topped up, and nothing is copied onto it. A batch whose deployment was deleted
+   * stays listed too, with its state `unknown` and this false.
    */
   writable: boolean;
 }
@@ -123,7 +132,28 @@ export const ARCHIVE_NOT_HELD_REFUSAL =
 export const ARCHIVE_UNREACHABLE_REFUSAL =
   'The catalogue node did not answer, so whether this batch is immutable could not be checked. Try again once the node answers.';
 
-export const ARCHIVE_ALREADY_REFUSAL = 'This batch is an archive batch already.';
+export const ARCHIVE_ALREADY_REFUSAL = 'This batch is already an archive batch.';
+
+export const ARCHIVE_REMOVE_LIVE_REFUSAL =
+  'This batch has not expired. Its recordings are paid for and on Swarm, and the web2 admin would show them as expired once the batch is off the list. A batch is removed once it has expired.';
+
+export const ARCHIVE_REMOVE_UNREAD_REFUSAL =
+  'The node did not say whether this batch has expired, so it stays on the list. Try again once the node answers.';
+
+/**
+ * Why an archive batch cannot be taken off the list, one sentence, or null. Only one the node reports as expired, or
+ * as gone from it, is removed. `state` is the manager's last reading of the batch, or null before any.
+ */
+export function archiveRemoveProblem(state: StampState | null): string | null {
+  if (state === 'expired' || state === 'gone') return null;
+  if (state === null || state === 'unknown') return ARCHIVE_REMOVE_UNREAD_REFUSAL;
+  return ARCHIVE_REMOVE_LIVE_REFUSAL;
+}
+
+/** Why an archive batch cannot be designated as the catalogue's own batch. */
+export function catalogueIsArchiveBatchRefusal(batchId: string): string {
+  return `Batch ${shortHex(batchId)} is an archive batch, which recordings fill. A full immutable batch takes no new catalogue slot, so the catalogue keeps a batch of its own.`;
+}
 
 /** Why the catalogue's own batch, the pinned one or the one a move left, is no archive batch. */
 export function archiveIsCatalogueBatchRefusal(batchId: string): string {
@@ -169,20 +199,48 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** What the label a purchase's batch carries on its node starts with. */
 export const ARCHIVE_PURCHASE_NODE_LABEL_PREFIX = 'archive-';
 
+/** How many hex digits of the request id the node label carries: its first twelve. */
+export const ARCHIVE_PURCHASE_NODE_LABEL_HEX = 12;
+
 /**
- * The label a purchase's batch carries on its node: the prefix and the purchase's request id in lower case. A new
- * batch's id is known only once the node answers, so a purchase whose answer was lost is found again by this label
- * among the node's batches. The name a person gave the batch is kept in the manager, never on the node.
+ * The label a purchase's batch carries on its node: the prefix and the first twelve hex digits of the purchase's
+ * request id, in lower case. A new batch's id is known only once the node answers, so a purchase whose answer was lost
+ * is found again by this label among the node's batches. The journal keeps the label unique. The name a person gave
+ * the batch is kept in the manager, never on the node.
  */
 export function archivePurchaseNodeLabel(requestId: string): string {
   const id = requestId.toLowerCase();
   if (!UUID.test(id)) throw new Error('A purchase request id is a UUID.');
-  return `${ARCHIVE_PURCHASE_NODE_LABEL_PREFIX}${id}`;
+  return `${ARCHIVE_PURCHASE_NODE_LABEL_PREFIX}${id.replaceAll('-', '').slice(0, ARCHIVE_PURCHASE_NODE_LABEL_HEX)}`;
 }
 
-/** The request id of the purchase a node label names, in lower case, or null for any other label. */
-export function archivePurchaseRequestIdOf(nodeLabel: string | null | undefined): string | null {
-  if (typeof nodeLabel !== 'string' || !nodeLabel.startsWith(ARCHIVE_PURCHASE_NODE_LABEL_PREFIX)) return null;
-  const id = nodeLabel.slice(ARCHIVE_PURCHASE_NODE_LABEL_PREFIX.length);
-  return UUID.test(id) ? id : null;
+/** The fields of bee's `/stamps` entry that decide whether a batch is the one a purchase bought. */
+export interface PurchasedBatchLike {
+  label?: string | null;
+  depth?: number | null;
+  immutableFlag?: boolean | null;
+}
+
+/** What a settle knows of the purchase and of the batches that cannot be it. */
+export interface ArchivePurchaseSettleContext {
+  /** The batch asked about, 64 hex digits without `0x`, in lower case. */
+  batchId: string;
+  /** The label the purchase gave its batch on the node, as {@link archivePurchaseNodeLabel} made it. */
+  nodeLabel: string;
+  /** The depth the purchase asked for. */
+  depth: number;
+  /** The catalogue's pinned batch and the one a pending move left, in the same form, without the absent ones. */
+  catalogueBatchIds: readonly string[];
+  /** The batches that are archive batches already, in the same form. */
+  archiveBatchIds: readonly string[];
+}
+
+/**
+ * Whether a batch the node lists is the one a purchase with a lost answer bought: it carries exactly the purchase's
+ * label, has the purchase's depth and is immutable, and is neither the catalogue's batch nor an archive batch already.
+ */
+export function isPurchasedArchiveBatch(stamp: PurchasedBatchLike, context: ArchivePurchaseSettleContext): boolean {
+  if (stamp.label !== context.nodeLabel) return false;
+  if (stamp.depth !== context.depth || stamp.immutableFlag !== true) return false;
+  return !context.catalogueBatchIds.includes(context.batchId) && !context.archiveBatchIds.includes(context.batchId);
 }

@@ -247,9 +247,10 @@ export const ARCHIVE_BATCH_LABEL_MAX_LENGTH = 64;
 /**
  * One archive batch: an immutable batch on the catalogue node that finished recordings are copied onto, as the manager
  * read it at the record's `observedAt`. `label` is the name its buyer gave it, null when it has none. `writable` is
- * true while the node the record names holds the batch, so the admin can stamp with it; a batch left on a node that is
- * the catalogue node no longer stays listed with false, to be topped up and never written. The readings are null when
- * the manager could not read them.
+ * true only for a batch the node the record names holds, that the node calls usable and that has not expired, so the
+ * admin can stamp with it. A batch left on a node that is the catalogue node no longer stays listed with false, to be
+ * topped up and never written, and one whose deployment is gone stays listed with state `unknown` and false. The
+ * readings are null when the manager could not read them.
  */
 export const catalogueArchiveBatchSchema = z.object({
   batchId,
@@ -272,7 +273,9 @@ export type CatalogueArchiveBatch = z.infer<typeof catalogueArchiveBatchSchema>;
  *
  * `archiveBatches` is every archive batch the manager keeps, in the order they were designated, and the admin replaces
  * its whole list with it. The admin copies recordings through the same Bee API address. A manager older than the field
- * sends none, which the admin reads as no archive batches, and an admin older than the field drops it.
+ * sends none, which the admin reads as no archive batches, and an admin older than the field drops it. While no
+ * catalogue node is designated the record is cleared, the list with it; the manager keeps its archive batches and
+ * sends them again with the next designation.
  */
 export const catalogueStampRecordSchema = z.object({
   schemaVersion: z.literal(STAGE_RECORD_SCHEMA_VERSION),

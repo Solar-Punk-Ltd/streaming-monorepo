@@ -11,13 +11,18 @@ import {
   ARCHIVE_LABEL_MAX_LENGTH,
   ARCHIVE_MUTABLE_REFUSAL,
   ARCHIVE_NOT_HELD_REFUSAL,
+  ARCHIVE_PURCHASE_NODE_LABEL_HEX,
   ARCHIVE_PURCHASE_NODE_LABEL_PREFIX,
   ARCHIVE_PURCHASE_SETTLE_MS,
+  ARCHIVE_REMOVE_LIVE_REFUSAL,
+  ARCHIVE_REMOVE_UNREAD_REFUSAL,
   archiveBatchProblem,
   archiveIsCatalogueBatchRefusal,
   archiveLabelProblem,
   archivePurchaseNodeLabel,
-  archivePurchaseRequestIdOf,
+  archiveRemoveProblem,
+  catalogueIsArchiveBatchRefusal,
+  isPurchasedArchiveBatch,
 } from './archiveBatches.js';
 
 const BATCH = 'ab'.repeat(32);
@@ -98,11 +103,44 @@ describe('a label', () => {
   });
 });
 
+describe('taking an archive batch off the list', () => {
+  it('is for a batch the node reports as expired, or as gone from it', () => {
+    assert.equal(archiveRemoveProblem('expired'), null);
+    assert.equal(archiveRemoveProblem('gone'), null);
+  });
+
+  it('is refused for a batch with life left, since the admin would show its recordings as expired', () => {
+    for (const state of ['active', 'pending', 'full', 'none'] as const) {
+      assert.equal(archiveRemoveProblem(state), ARCHIVE_REMOVE_LIVE_REFUSAL, state);
+    }
+    assert.match(ARCHIVE_REMOVE_LIVE_REFUSAL, /has not expired/);
+  });
+
+  it('is refused while the node did not say', () => {
+    assert.equal(archiveRemoveProblem('unknown'), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+    assert.equal(archiveRemoveProblem(null), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+  });
+});
+
+describe("designating the catalogue's own batch", () => {
+  it('refuses an archive batch, naming it', () => {
+    const sentence = catalogueIsArchiveBatchRefusal(ARCHIVED_BATCH);
+    assert.match(sentence, /is an archive batch/);
+    assert.match(sentence, new RegExp(ARCHIVED_BATCH.slice(0, 6)));
+  });
+
+  it('says the same of an adopt the other way round: already an archive batch', () => {
+    assert.match(ARCHIVE_ALREADY_REFUSAL, /already an archive batch/);
+  });
+});
+
 describe("the label a purchase's batch carries on its node", () => {
-  it('is the prefix and the request id in lower case, and reads back as that id', () => {
-    const label = archivePurchaseNodeLabel(REQUEST_ID.toUpperCase());
-    assert.equal(label, `${ARCHIVE_PURCHASE_NODE_LABEL_PREFIX}${REQUEST_ID}`);
-    assert.equal(archivePurchaseRequestIdOf(label), REQUEST_ID);
+  const LABEL = `${ARCHIVE_PURCHASE_NODE_LABEL_PREFIX}7d1e2f3a4b5c`;
+
+  it('is the prefix and the first twelve hex digits of the request id, in lower case', () => {
+    assert.equal(ARCHIVE_PURCHASE_NODE_LABEL_HEX, 12);
+    assert.equal(archivePurchaseNodeLabel(REQUEST_ID.toUpperCase()), LABEL);
+    assert.match(LABEL, /^archive-[0-9a-f]{12}$/);
   });
 
   it('is made from a UUID alone', () => {
@@ -111,10 +149,31 @@ describe("the label a purchase's batch carries on its node", () => {
     }
   });
 
-  it('reads any other label as no purchase', () => {
-    for (const label of [null, undefined, '', 'archive', 'archive-', 'archive-event', `catalogue-${REQUEST_ID}`]) {
-      assert.equal(archivePurchaseRequestIdOf(label), null, String(label));
+  const settle = (batchId: string = BATCH) => ({
+    batchId,
+    nodeLabel: LABEL,
+    depth: 22,
+    catalogueBatchIds: [CATALOGUE_BATCH, MOVED_FROM_BATCH],
+    archiveBatchIds: [ARCHIVED_BATCH],
+  });
+  const bought = () => ({ label: LABEL, depth: 22, immutableFlag: true });
+
+  it('finds the batch of a purchase with a lost answer: its exact label, its depth, immutable', () => {
+    assert.equal(isPurchasedArchiveBatch(bought(), settle()), true);
+  });
+
+  it('passes over a batch with another label, another depth or no said immutability', () => {
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), label: `${LABEL}0` }, settle()), false);
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), label: 'archive' }, settle()), false);
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), label: null }, settle()), false);
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), depth: 23 }, settle()), false);
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), immutableFlag: false }, settle()), false);
+    assert.equal(isPurchasedArchiveBatch({ ...bought(), immutableFlag: null }, settle()), false);
+  });
+
+  it("never takes the catalogue's batch or one that is an archive batch already, whatever its label", () => {
+    for (const batchId of [CATALOGUE_BATCH, MOVED_FROM_BATCH, ARCHIVED_BATCH]) {
+      assert.equal(isPurchasedArchiveBatch(bought(), settle(batchId)), false, batchId);
     }
-    assert.equal(archivePurchaseRequestIdOf(`archive-${REQUEST_ID.toUpperCase()}`), null, 'a label is in lower case');
   });
 });

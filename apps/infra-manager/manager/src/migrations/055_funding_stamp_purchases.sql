@@ -17,9 +17,11 @@
 --
 -- label is the name the batch carries in the manager and the admin, or null.
 -- node_label is the label the batch carries on its node, 'archive-' and the
--- request id, and unique. A new batch's id is known only once the node
--- answers, so the status route finds the batch of an 'unknown' row by this
--- label among the node's batches.
+-- first twelve hex digits of the request id, and unique. A new batch's id is
+-- known only once the node answers, so the status route finds the batch of an
+-- 'unknown' row among the node's batches: the one with exactly this label, the
+-- row's depth and the immutable flag, that is neither the catalogue's batch nor
+-- an archive batch already.
 --
 -- batch_id is the batch, 0x and 64 hex digits in lower case, as the funding
 -- API prints one, and null until the node answered or the row was settled.
@@ -27,12 +29,13 @@
 -- none.
 --
 -- state follows the contract: 'confirmed' once the node answered with the
--- batch, which Bee does after the receipt, or once the node lists a batch under
--- node_label; 'failed' when the node refused, or could not be reached, or lists
--- no such batch thirty minutes after the row was written; 'unknown' before the
--- node answers and when its answer was lost. The manager never writes
--- 'submitted' for a purchase; the column takes it because the contract's
--- states are four. A confirmed row has its batch. error says why in a sentence.
+-- batch, which Bee does after the receipt, or once the node lists the batch of
+-- node_label; 'failed' when the node refused, a 429 among its refusals, or could
+-- not be reached, or lists no such batch thirty minutes after the row was
+-- written; 'unknown' before the node answers and when its answer was lost. The
+-- manager never writes 'submitted' for a purchase; the column takes it because
+-- the contract's states are four. A confirmed row has its batch. error says
+-- why in a sentence.
 --
 -- Whether the batch is usable yet is read from the node on every status call
 -- and is never kept here.
@@ -45,7 +48,7 @@ CREATE TABLE funding_stamp_purchases (
   amount_per_chunk  NUMERIC(78, 0) NOT NULL CHECK (amount_per_chunk > 0),
   cost              NUMERIC(78, 0) NOT NULL CHECK (cost > 0),
   label             TEXT CHECK (label IS NULL OR (label <> '' AND char_length(label) <= 64)),
-  node_label        TEXT NOT NULL UNIQUE CHECK (node_label ~ '^archive-[0-9a-f-]{36}$'),
+  node_label        TEXT NOT NULL UNIQUE CHECK (node_label ~ '^archive-[0-9a-f]{12}$'),
   batch_id          TEXT CHECK (batch_id ~ '^0x[0-9a-f]{64}$'),
   tx_hash           TEXT CHECK (tx_hash ~ '^0x[0-9a-f]{64}$'),
   state             TEXT NOT NULL CHECK (state IN ('submitted', 'confirmed', 'failed', 'unknown')),
@@ -56,8 +59,8 @@ CREATE TABLE funding_stamp_purchases (
 );
 
 -- At most one purchase is being settled on a node at a time: a second one is
--- refused while the first is 'unknown' or 'submitted', since both would spend
--- the same wallet.
+-- answered 409 conflict while the first is 'unknown' or 'submitted', since both
+-- would spend the same wallet.
 CREATE UNIQUE INDEX funding_stamp_purchases_one_open_per_node
   ON funding_stamp_purchases (node_id)
   WHERE state IN ('unknown', 'submitted');

@@ -249,12 +249,17 @@ export const fundingChequebookSchema = z.object({
 export type FundingChequebook = z.infer<typeof fundingChequebookSchema>;
 
 /**
- * One archive batch of the catalogue node: an immutable batch that finished recordings are copied onto, with the
- * readings of any batch. `label` is the name its buyer gave it, null when it has none. `writable` is true while the
- * catalogue node holds the batch, and false for one left on a node that is the catalogue node no longer, which can be
- * topped up and never written.
+ * One archive batch: an immutable batch that finished recordings are copied onto, with the readings of any batch.
+ * `nodeId` is the node that holds it, the only one that can stamp with it, top it up through its Bee API and dilute
+ * it, and `nodeLabel` that node's name for a person. It is the catalogue node for a batch bought through this API, and
+ * another node for a batch left where it was bought once the catalogue node was designated anew, which the inventory
+ * lists nowhere else. `label` is the name its buyer gave the batch, null when it has none. `writable` is true only
+ * for a batch the catalogue node holds, that the node calls usable and that has not expired; any other is topped up
+ * and never written.
  */
 export const fundingArchiveBatchSchema = fundingBatchSchema.extend({
+  nodeId,
+  nodeLabel: someText,
   label: z.string().min(1).max(ARCHIVE_BATCH_LABEL_MAX_LENGTH).nullable(),
   writable: z.boolean(),
 });
@@ -272,9 +277,6 @@ export type FundingArchiveBatch = z.infer<typeof fundingArchiveBatchSchema>;
  * `chequebook` is the node's chequebook, read with its wallet. It is null when the node answered that it has none, as
  * an ultra-light node or one with its chequebook off answers, and optional, so the answer of a manager that does not
  * read chequebooks still parses.
- *
- * `archiveBatches` is the catalogue node's archive batches, in the order they were designated, and no other node
- * carries any. It is optional, so the answer of a manager that keeps none still parses, and absent is read as none.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -286,7 +288,6 @@ export const fundingNodeSchema = z.object({
   readError: z.string().nullable(),
   batch: fundingBatchSchema.nullable().optional(),
   chequebook: fundingChequebookSchema.nullable().optional(),
-  archiveBatches: z.array(fundingArchiveBatchSchema).optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 
@@ -324,12 +325,17 @@ export type FundingChain = z.infer<typeof fundingChainSchema>;
 /**
  * `GET /api/admin-funding/inventory`: every stage's nodes and the brand's catalogue node, null when none is
  * designated, as the manager read them at `observedAt`. Never a Bee API address, an RPC endpoint or a key.
+ *
+ * `archiveBatches` is every archive batch the manager keeps, in the order they were designated, each naming the node
+ * that holds it. They are listed while no catalogue node is designated too, since each still needs its top-ups. It is
+ * optional, so the answer of a manager that keeps none still parses, and absent is read as none.
  */
 export const fundingInventorySchema = z.object({
   observedAt: isoMoment,
   chain: fundingChainSchema,
   stages: z.array(fundingStageSchema),
   catalogue: fundingNodeSchema.nullable(),
+  archiveBatches: z.array(fundingArchiveBatchSchema).optional(),
 });
 export type FundingInventory = z.infer<typeof fundingInventorySchema>;
 
@@ -400,8 +406,8 @@ const stampOperationFields = {
 /**
  * `POST /api/admin-funding/stamp-operations`: one top-up or dilution of a batch, which the node that holds it carries
  * out and pays for from its own wallet. `nodeId` and `batchId` must be a node and its batch in the manager's current
- * inventory, which for the catalogue node is its catalogue batch or any of its archive batches, and `expectedDepth`
- * the depth the admin saw, so a batch whose depth moved since is refused. A `topup`
+ * inventory, or an archive batch of the inventory with the `nodeId` it names as its holder, and `expectedDepth` the
+ * depth the admin saw, so a batch whose depth moved since is refused. A `topup`
  * adds `amountPerChunkPlur` to each of the batch's chunks, which costs that amount times `2^depth` in xBZZ. A `dilute`
  * raises the batch to `newDepth`, one or two steps deeper than `expectedDepth`. The same `requestId` sent again
  * answers the operation's state and never runs it twice.
@@ -463,12 +469,14 @@ const archiveDepth = z.number().int().min(ARCHIVE_MIN_DEPTH).max(ARCHIVE_MAX_DEP
  * catalogue node, which that node buys and pays for from its own wallet: `amountPerChunkPlur` for each of the batch's
  * `2^depth` stamps in xBZZ, and the gas in xDAI. `nodeId` must be the catalogue node of the manager's current
  * inventory; any other node is refused with `stamp_refused`, as is an amount that buys less life than the postage
- * contract's floor, a wallet that holds less than the cost, and a node that is buying already. Nothing is asked of the
- * node when a check refuses.
+ * contract's floor and a wallet that holds less than the cost. A node on which another operation of this API is still
+ * under way answers 409 `conflict`, as it does for a chequebook operation. Nothing is asked of the node when a check
+ * refuses.
  *
- * `label` is the name the batch carries in the manager and the admin, null for none. The manager journals the request
- * before it asks the node, records the batch as an archive batch once the node answers with its id, and pushes the
- * catalogue stamp record. The same `requestId` sent again answers the purchase's state and never buys twice.
+ * `label` is the name the batch carries in the manager and the admin, null for none. On its node the batch carries a
+ * label of the manager's own, made from the request id. The manager journals the request before it asks the node,
+ * records the batch as an archive batch once the node answers with its id, and pushes the catalogue stamp record. The
+ * same `requestId` sent again answers the purchase's state and never buys twice.
  */
 export const fundingStampPurchaseRequestSchema = z.object({
   requestId: uuid,
@@ -496,12 +504,14 @@ export type FundingStampPurchaseAnswer = z.infer<typeof fundingStampPurchaseAnsw
  * `GET /api/admin-funding/stamp-purchases/:requestId`: where the purchase stands. The batch, the hash and the error
  * are each null until there is one.
  *
- * `usable` is Bee's own word about the bought batch: false from the purchase until the node has seen enough blocks
- * after it, which takes some minutes, and true from then on, when the batch can stamp. It is null while there is no
- * batch yet and when the node could not be read about it.
+ * `usable` is Bee's own word about the bought batch, read from the node on every call of this route: false from the
+ * purchase until the node has seen enough blocks after it, which takes some minutes, and true from then on, when the
+ * batch can stamp. It is null while there is no batch yet and when the node could not be read about it. The manager
+ * waits for nothing in the background: whoever needs the batch usable calls this route until it says so.
  *
  * A purchase whose answer the manager lost stays `unknown` until this route settles it: `confirmed` once the node
- * lists a batch under the purchase's own label, and `failed` when it lists none thirty minutes after the request.
+ * lists an immutable batch of the purchase's depth under the purchase's own label, and `failed` when it lists none
+ * thirty minutes after the request. A node that answered 429 made the purchase `failed`, as it does a stamp operation.
  */
 export const fundingStampPurchaseStatusSchema = z.object({
   requestId: uuid,

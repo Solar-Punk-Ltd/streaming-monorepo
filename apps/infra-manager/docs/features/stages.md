@@ -323,7 +323,7 @@ All behind the session. The full reference is
 | POST   | `/manager-settings/catalogue-node/release`   | `{ expectedRevision }`                              | the same answer after the release                                                                                                                                       |
 | GET    | `/manager-settings/archive-batches`          |                                                     | the archive batches with their last readings, the other batches the catalogue node holds with why each cannot be adopted, the revision and the last push                |
 | PUT    | `/manager-settings/archive-batches/:batchId` | `{ expectedRevision, label }`                       | the same answer after the adopt. 422 with the sentence when the batch cannot be one, 409 when the revision is behind                                                    |
-| DELETE | `/manager-settings/archive-batches/:batchId` | `{ expectedRevision }`                              | the same answer after the removal                                                                                                                                       |
+| DELETE | `/manager-settings/archive-batches/:batchId` | `{ expectedRevision }`                              | the same answer after the removal. 422 with the sentence for a batch that has not expired                                                                               |
 
 ## The catalogue node
 
@@ -437,7 +437,7 @@ before it leaves:
 | `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                                                                                                                                                                               |
 | `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                                                                                                                                                                                         |
 | `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it. Null otherwise                                                                                                                                                                                   |
-| `archiveBatches`                                | every row of `archive_batches`, in the order they were designated: the batch, its label, the same readings of it, when it was designated, and `writable`, true while its deployment is the designated catalogue node ([Archive batches](#archive-batches))                                                |
+| `archiveBatches`                                | every row of `archive_batches`, in the order they were designated: the batch, its label, the same readings of it, when it was designated, and `writable`, true only for a usable, unexpired batch on the designated catalogue node ([Archive batches](#archive-batches))                                  |
 
 `previous` is there because the admin keeps writing with the batch moved from
 until its own move runs. Without it the admin would hold readings of that batch
@@ -543,6 +543,11 @@ A batch becomes an archive batch in one of two ways:
   names the other batches the catalogue node holds, each with why it cannot be
   adopted when it cannot.
 
+Both go through one call, `designateArchiveBatch`
+(`manager/src/domain/stages/archiveBatchPorts.ts`), which writes the row, raises
+the revision and pushes the catalogue stamp record. A batch that is an archive
+batch already changes nothing.
+
 `archive_batches` holds one row per batch: the batch id (64 hex digits, lower
 case, no `0x`), the deployment whose node holds it, its label, whether it was
 bought or adopted, the purchase's request id, and when and by whom it was
@@ -553,22 +558,32 @@ refused.
 An adopt is refused, with the manager's own sentence (`archiveBatchProblem` in
 `common/src/archiveBatches.ts`), for a mutable batch, one whose kind the node
 does not report, an expired one, one the node does not hold, the catalogue's own
-batch (the pinned one and the one a move left), and one that is an archive batch
-already. With no catalogue node designated nothing is adopted.
+batch (the pinned one, and the previous one while a move is pending), and one
+that is already an archive batch. With no catalogue node designated nothing is
+adopted. The other way round, designating the catalogue's batch refuses a batch
+that is an archive batch (`catalogueIsArchiveBatchRefusal`).
 
-**Remove** takes a batch off the list, after a confirm. The batch stays on its
-node and on Swarm until it expires. The manager then no longer lists it, pushes
-it or tops it up through the funding API, so it is for a batch that expired.
+**Remove** takes an expired batch off the list, after a confirm. A batch with
+life left is refused (`archiveRemoveProblem`): the admin shows the recordings of
+a batch that left the list as expired, and these are paid for and on Swarm. An
+adopt brings a removed batch back.
 
-A batch stays with the node that bought it. When the catalogue node is
-designated anew on another deployment, the archive batches of the old one stay
-listed and can be topped up, and the record carries them as not `writable`, so
-the admin copies nothing onto them.
+`writable` is true only for a usable, unexpired batch on the designated
+catalogue node, and the admin copies onto no other.
+
+- A batch stays with the node that bought it. When the catalogue node is
+  designated anew on another deployment, the archive batches of the old one stay
+  listed and can be topped up through their own node, and are not `writable`.
+- Removing the deployment that holds archive batches leaves them without a node
+  that can top them up. They stay listed with the state `unknown`, not
+  `writable`.
+- While no catalogue node is designated the record is cleared, the archive
+  batches with it. The rows stay, and are pushed again with the next
+  designation.
 
 Every adopt, removal and purchase pushes the catalogue stamp record, and the
 manager's reading schedule of the catalogue batch reads the archive batches with
-it. Removing the deployment that holds archive batches leaves them without a node
-that can top them up.
+it.
 
 ## Settings
 

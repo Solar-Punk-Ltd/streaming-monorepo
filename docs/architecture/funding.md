@@ -111,7 +111,8 @@ It answers:
 
 - every stage's nodes, with their wallet balances, batches (depth, time left, fill) and
   chequebook balances,
-- the catalogue node, its batch and its archive batches,
+- the catalogue node and its batch,
+- the archive batches, each with the node that holds it,
 - the brand wallet's balances,
 - the price of a top-up.
 
