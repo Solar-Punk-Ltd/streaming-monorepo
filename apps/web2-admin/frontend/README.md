@@ -44,6 +44,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
 | `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
 | `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done` or `off`                                      |
+| `MOCK_ARCHIVE_STAMPS` | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                  |
 | `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
 
@@ -91,7 +92,18 @@ as the API works them out, names an open one in `openBulkId`, `openStampBulkId` 
   dilution leaves 7 days, an expired one, and one its node could not be read about. A stamp bulk is
   checked as the API checks it, then sends its operations two seconds apart and confirms each six
   seconds after it is sent, when the batch gains its days or its depth and its node pays.
-- **Chequebooks.** Against a target of 2 xBZZ, the nodes hold a chequebook under it (whose node
+- **Archive stamps.** `MOCK_ARCHIVE_STAMPS=some`, the default, puts three on the catalogue node:
+  "Talks", depth 22 with 200 days and room, "Spring", depth 20 with 120 days and nearly full, and
+  "Autumn", depth 21 with 20 days, under the 30-day warning. `none` has none. `buying` adds a depth
+  19 purchase, "Summer", waiting to be usable, which turns into a stamp 10 seconds after the mock
+  starts. `left` adds "Old node", left on the mock stage's uploader, a node that is the catalogue
+  node no longer, topped up only. `unoffered` answers every purchase as a manager that offers no
+  purchases does. A purchase from the buy dialog is checked as the API checks it, the cost it names
+  priced again, so a cost that differs is refused as a moved price. It is being bought for 5
+  seconds, waits to be usable for 10 more, then is a stamp, its cost taken from the catalogue
+  node's wallet. `MOCK_FUNDING=refuse` fails every purchase.
+- **Chequebooks.** The catalogue node's chequebook holds 1 xBZZ. Against a target of 2 xBZZ, the
+  stage nodes hold a chequebook under it (whose node
   cannot pay a deposit to a target over 5.4 xBZZ), one over it, one at it (whose node holds no xDAI
   for gas), one whose node could not be read, a light gateway's shown read-only, and an ultra-light
   gateway with none. A chequebook bulk is checked as the API checks it, sends its moves two seconds
