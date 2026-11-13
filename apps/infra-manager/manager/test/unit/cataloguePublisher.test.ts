@@ -264,12 +264,12 @@ describe('the catalogue stamp record', () => {
     assert.equal(gone.publisher.status().lastPush?.outcome, 'skipped-no-node');
   });
 
-  it('is not sent for a node whose Bee API reaches the dialling host alone', async () => {
+  it('is not sent for a node whose Bee API reaches the dialling host alone, with an outcome that says so', async () => {
     for (const url of ['http://127.0.0.1:10025', 'http://localhost:10025', 'http://[::1]:10025']) {
       const t = await publisherFor({ beeApiUrl: url });
       await t.publisher.pushNow();
       assert.equal(t.sent.length, 0, url);
-      assert.equal(t.publisher.status().lastPush?.outcome, 'skipped-no-record', url);
+      assert.equal(t.publisher.status().lastPush?.outcome, 'skipped-loopback-address', url);
     }
   });
 

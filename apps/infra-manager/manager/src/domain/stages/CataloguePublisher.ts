@@ -302,7 +302,7 @@ export class CataloguePublisher {
       this.logProblem(
         `${profile.name}'s Bee API is ${beeApiUrl}, which reaches the dialling host alone; the web2 admin needs an address it can dial`,
       );
-      return this.record('store', 'skipped-no-record');
+      return this.record('store', 'skipped-loopback-address');
     }
     this.loggedProblem = null;
 
