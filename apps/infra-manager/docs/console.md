@@ -24,7 +24,7 @@ the Vite dev server serve one page and never see them. An unknown hash shows the
 | Host             | `#/host`               | CPU, memory, disk, network and disk I/O of the host, and a table of every deployment's containers                                                                                                                                               |
 | Versions         | `#/versions`           | The stack versions, their builds and the deploy attempts that hold a project. **Settings** on a card opens `#/versions/<id>/settings`. See [Stack versions](features/stack-versions.md)                                                         |
 | Access           | `#/access`             | The users, their sessions, and the password change. See [Sign-in and public access](features/auth-and-public-access.md)                                                                                                                         |
-| Manager settings | `#/manager-settings`   | The admin link for new deployments and the catalogue node. See [The admin link](features/web2-admin-link.md) and [Stages](features/stages.md#the-catalogue-node)                                                                                |
+| Manager settings | `#/manager-settings`   | The admin link for new deployments, the catalogue node and its archive batches. See [The admin link](features/web2-admin-link.md), [Stages](features/stages.md#the-catalogue-node) and [Archive batches](features/stages.md#archive-batches)    |
 
 The sidebar shows the manager's instance name and the build it runs, from `GET /config` and
 `GET /version`. The theme follows the system and can be switched to light or dark in the sidebar.

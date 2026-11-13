@@ -155,6 +155,8 @@ export function catalogueIsArchiveBatchRefusal(batchId: string): string {
   return `Batch ${shortHex(batchId)} is an archive batch, which recordings fill. A full immutable batch takes no new catalogue slot, so the catalogue keeps a batch of its own.`;
 }
 
+export const ARCHIVE_UNKNOWN_REFUSAL = 'There is no archive batch with this id.';
+
 /** Why the catalogue's own batch, the pinned one or the one a move left, is no archive batch. */
 export function archiveIsCatalogueBatchRefusal(batchId: string): string {
   return `Batch ${shortHex(batchId)} holds the catalogue. Recordings fill a batch, and a full immutable batch takes no new catalogue slot, so the catalogue keeps a batch of its own.`;

@@ -15,6 +15,7 @@ export { ManagerSettingsChangedError } from './ManagerSettingsChangedError.js';
 export { AdminLinkInputError } from './AdminLinkInputError.js';
 export { CatalogueNodeInputError } from './CatalogueNodeInputError.js';
 export { CatalogueNodeRemovalError } from './CatalogueNodeRemovalError.js';
+export { ArchiveBatchNotFoundError, ArchiveBatchRefusedError } from './ArchiveBatchErrors.js';
 export { ProfileExistsError } from './ProfileExistsError.js';
 export { ProfileNotFoundError } from './ProfileNotFoundError.js';
 export { NotesConflictError } from './NotesConflictError.js';

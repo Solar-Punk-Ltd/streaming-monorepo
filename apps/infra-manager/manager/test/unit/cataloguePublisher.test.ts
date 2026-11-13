@@ -7,7 +7,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { type CataloguePushOutcome, type StampHealth, stampHealthFrom } from '@streaming-infra-manager/common';
+import {
+  type ArchiveBatchDesignation,
+  type CataloguePushOutcome,
+  type StampHealth,
+  stampHealthFrom,
+} from '@streaming-infra-manager/common';
 import { catalogueStampRecordSchema } from '@streaming-monorepo/contracts';
 
 import { EventBus } from '../../src/domain/EventBus.js';
@@ -97,6 +102,8 @@ interface Setup {
   /** The production address, `publishedBeeApiUrl`, in place of the two above. */
   published?: (profile: Profile) => Promise<string>;
   profiles?: Profile[];
+  /** The archive batches, which the publisher reads only when a test gives some, an empty list included. */
+  archive?: ArchiveBatchDesignation[];
 }
 
 async function publisherFor(setup: Setup = {}) {
@@ -115,9 +122,19 @@ async function publisherFor(setup: Setup = {}) {
     byBatch: Map<string, Reading>;
     readingDelayMs: number;
     readings: number;
-  } = { reading: readingOf(), byBatch: new Map(), readingDelayMs: 0, readings: 0 };
+    /** The archive batches the list answers, or an error it rejects with. */
+    archive: ArchiveBatchDesignation[] | Error;
+  } = { reading: readingOf(), byBatch: new Map(), readingDelayMs: 0, readings: 0, archive: setup.archive ?? [] };
   const publisher = new CataloguePublisher({
     designation: store,
+    archiveBatches: setup.archive
+      ? {
+          list: async () => {
+            if (state.archive instanceof Error) throw state.archive;
+            return [...state.archive];
+          },
+        }
+      : undefined,
     profiles: { findByName: async (name) => profiles.find((profile) => profile.name === name) ?? null },
     reading: async (_profile, batchId) => {
       // A slow node: the record still says the moment its row was read.
@@ -546,5 +563,237 @@ describe('the catalogue stamp record, with the address the manager pushes', () =
       await pushedAddress(local('bee-host.example.invalid'), '172.17.0.1'),
       'http://bee-host.example.invalid:10025',
     );
+  });
+});
+
+const ARCHIVE_BATCH = 'd3'.repeat(32);
+const OLD_NODE_ARCHIVE_BATCH = 'd4'.repeat(32);
+
+/** One archive batch as its node reads it: immutable, depth 22, a month of life. */
+function archiveReadingOf(
+  batchId: string,
+  over: { ttl?: number; utilization?: number; usable?: boolean; depth?: number | null } = {},
+): Reading {
+  const stamp = {
+    batchID: batchId,
+    usable: over.usable ?? true,
+    batchTTL: over.ttl ?? 30 * 86_400,
+    depth: 22,
+    bucketDepth: 16,
+    utilization: over.utilization ?? 4,
+    immutableFlag: true,
+    exists: true,
+  };
+  return { health: stampHealthFrom(batchId, [stamp]), depth: over.depth === undefined ? 22 : over.depth };
+}
+
+/** A node that did not answer: the reading `StampService.batchReadingFor` gives then. */
+const UNANSWERED: Reading = { health: stampHealthFrom(ARCHIVE_BATCH, null), depth: null };
+
+function archiveRow(batchId: string, over: Partial<ArchiveBatchDesignation> = {}): ArchiveBatchDesignation {
+  return {
+    batchId,
+    profileName: 'catalogue',
+    label: 'Archive one',
+    source: 'purchase',
+    purchaseRequestId: '7d1e2f3a-4b5c-4d6e-9f0a-b1c2d3e4f5a6',
+    designatedAt: '2026-10-01T09:00:00.000Z',
+    designatedBy: null,
+    ...over,
+  };
+}
+
+const ARCHIVE_PROFILES = [
+  makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'] }),
+  makeProfile({ name: 'catalogue-old', kind: 'custom', components: ['bee-uploader'] }),
+];
+
+function lastRecord(sent: CatalogueRequest[]) {
+  const last = stores(sent).at(-1);
+  assert.ok(last && last.kind === 'store');
+  return last.record;
+}
+
+describe('the archive batches on the catalogue stamp record', () => {
+  it('carries every archive batch with its label, readings and designation, writable only on the catalogue node', async () => {
+    const t = await publisherFor({
+      profiles: ARCHIVE_PROFILES,
+      archive: [
+        archiveRow(ARCHIVE_BATCH),
+        archiveRow(OLD_NODE_ARCHIVE_BATCH, {
+          profileName: 'catalogue-old',
+          label: null,
+          source: 'adopted',
+          purchaseRequestId: null,
+          designatedAt: '2026-10-02T09:00:00.000Z',
+          designatedBy: 'op',
+        }),
+      ],
+    });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH, { utilization: 16 }));
+    t.publisher.start();
+    await settle();
+    const record = lastRecord(t.sent);
+    assert.deepEqual(catalogueStampRecordSchema.parse(record), record);
+    assert.deepEqual(record.archiveBatches, [
+      {
+        batchId: ARCHIVE_BATCH,
+        label: 'Archive one',
+        immutable: true,
+        depth: 22,
+        state: 'active',
+        ttlSeconds: 30 * 86_400,
+        fillRatio: 4 / 64,
+        writable: true,
+        designatedAt: '2026-10-01T09:00:00.000Z',
+      },
+      {
+        batchId: OLD_NODE_ARCHIVE_BATCH,
+        label: null,
+        immutable: true,
+        depth: 22,
+        state: 'active',
+        ttlSeconds: 30 * 86_400,
+        fillRatio: 16 / 64,
+        // A batch left on a node that is the catalogue node no longer is listed, and nothing is copied onto it.
+        writable: false,
+        designatedAt: '2026-10-02T09:00:00.000Z',
+      },
+    ]);
+    t.publisher.stop();
+  });
+
+  it('carries an empty list when there is no archive batch, and leaves the field out without the list', async () => {
+    const withList = await publisherFor({ archive: [] });
+    withList.publisher.start();
+    await settle();
+    assert.deepEqual(lastRecord(withList.sent).archiveBatches, []);
+    withList.publisher.stop();
+
+    const without = await publisherFor();
+    without.publisher.start();
+    await settle();
+    assert.equal('archiveBatches' in lastRecord(without.sent), false);
+    without.publisher.stop();
+  });
+
+  it('is pushed at once when an archive batch is recorded, and at the next check when the list changes', async () => {
+    const t = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: [] });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    t.state.archive = [archiveRow(ARCHIVE_BATCH)];
+    await t.publisher.pushNow();
+    assert.equal(stores(t.sent).length, 2);
+    assert.deepEqual(
+      lastRecord(t.sent).archiveBatches?.map((batch) => batch.batchId),
+      [ARCHIVE_BATCH],
+    );
+    t.state.archive = [archiveRow(ARCHIVE_BATCH), archiveRow(OLD_NODE_ARCHIVE_BATCH, { purchaseRequestId: null })];
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 3, 'a batch added without a push is pushed at the next check');
+    t.publisher.stop();
+  });
+
+  it('is pushed at the next check when an archive batch fills or is topped up, and not for its clock’s wear', async () => {
+    const t = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: [archiveRow(ARCHIVE_BATCH)] });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH, { ttl: 30 * 86_400 - 10 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 1, 'ten seconds of wear is no change');
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH, { ttl: 60 * 86_400 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 2, 'a top-up is a change');
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH, { ttl: 60 * 86_400, utilization: 64 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 3, 'a full batch is a change');
+    const [full] = lastRecord(t.sent).archiveBatches ?? [];
+    assert.equal(full?.state, 'full');
+    assert.equal(full?.writable, true);
+    t.publisher.stop();
+  });
+
+  it('keeps the last depth of a batch whose node stops answering, as unknown and not writable', async () => {
+    const t = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: [archiveRow(ARCHIVE_BATCH)] });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    t.state.byBatch.set(ARCHIVE_BATCH, UNANSWERED);
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    const [batch] = lastRecord(t.sent).archiveBatches ?? [];
+    assert.deepEqual(
+      { state: batch?.state, depth: batch?.depth, writable: batch?.writable, ttlSeconds: batch?.ttlSeconds },
+      { state: 'unknown', depth: 22, writable: false, ttlSeconds: null },
+    );
+    t.publisher.stop();
+  });
+
+  it('leaves out a batch whose depth no node has reported yet, until its node answers', async () => {
+    const t = await publisherFor({
+      profiles: ARCHIVE_PROFILES,
+      archive: [archiveRow(ARCHIVE_BATCH), archiveRow(OLD_NODE_ARCHIVE_BATCH, { profileName: 'catalogue-old' })],
+    });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, UNANSWERED);
+    t.publisher.start();
+    await settle();
+    assert.deepEqual(
+      lastRecord(t.sent).archiveBatches?.map((batch) => batch.batchId),
+      [ARCHIVE_BATCH],
+    );
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.deepEqual(
+      lastRecord(t.sent).archiveBatches?.map((batch) => batch.batchId),
+      [ARCHIVE_BATCH, OLD_NODE_ARCHIVE_BATCH],
+    );
+    t.publisher.stop();
+  });
+
+  it('reads a batch whose deployment is gone as unknown, and keeps the depth it had', async () => {
+    const profiles = [...ARCHIVE_PROFILES];
+    const t = await publisherFor({
+      profiles,
+      archive: [archiveRow(OLD_NODE_ARCHIVE_BATCH, { profileName: 'catalogue-old' })],
+    });
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    profiles.pop();
+    await t.clock.advance(3 * CATALOGUE_CHECK_MS);
+    const [batch] = lastRecord(t.sent).archiveBatches ?? [];
+    assert.deepEqual([batch?.state, batch?.depth, batch?.writable], ['unknown', 22, false]);
+    assert.equal(t.publisher.archiveStatus().readings.get(OLD_NODE_ARCHIVE_BATCH)?.state, 'unknown');
+    t.publisher.stop();
+  });
+
+  it('pushes nothing when the list cannot be read, so the admin never hears there are none', async () => {
+    const t = await publisherFor({ archive: [archiveRow(ARCHIVE_BATCH)] });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    t.state.archive = new Error('the database went away');
+    await t.clock.advance(3 * CATALOGUE_CHECK_MS);
+    assert.equal(stores(t.sent).length, 1);
+    t.publisher.stop();
+  });
+
+  it('reads the archive batches for the settings page with no designation, and pushes nothing', async () => {
+    const t = await publisherFor({
+      designated: false,
+      profiles: ARCHIVE_PROFILES,
+      archive: [archiveRow(ARCHIVE_BATCH)],
+    });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    assert.equal(stores(t.sent).length, 0);
+    const reading = t.publisher.archiveStatus().readings.get(ARCHIVE_BATCH);
+    assert.deepEqual([reading?.state, reading?.depth], ['active', 22]);
+    t.publisher.stop();
   });
 });

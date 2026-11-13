@@ -1,4 +1,9 @@
-import { ADMIN_LINK_TOKEN_HOLDERS, type AdminLinkTokenChoice } from '@streaming-infra-manager/common';
+import {
+  ADMIN_LINK_TOKEN_HOLDERS,
+  type AdminLinkTokenChoice,
+  ARCHIVE_LABEL_MAX_LENGTH,
+  archiveLabelProblem,
+} from '@streaming-infra-manager/common';
 import { boolean, InferType, mixed, number, object, string } from 'yup';
 
 /** Far past any real address or token, while keeping a save a small request. */
@@ -126,3 +131,35 @@ export type ClearCatalogueNodeBody = InferType<typeof clearCatalogueNodeSchema>;
 export const releaseCatalogueNodeSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
 
 export type ReleaseCatalogueNodeBody = InferType<typeof releaseCatalogueNodeSchema>;
+
+const ARCHIVE_BATCH_ID_MESSAGE = 'batchId is a batch id, 64 hex digits with or without 0x';
+const ARCHIVE_LABEL_MESSAGE = `label is a name of 1 to ${ARCHIVE_LABEL_MAX_LENGTH} characters, or null for none`;
+
+/** The batch an adopt or a removal of an archive batch names in its path. */
+export const archiveBatchParamsSchema = object({
+  batchId: string()
+    .typeError(ARCHIVE_BATCH_ID_MESSAGE)
+    .required(ARCHIVE_BATCH_ID_MESSAGE)
+    .matches(/^(0x)?[0-9a-fA-F]{64}$/, ARCHIVE_BATCH_ID_MESSAGE),
+});
+
+/**
+ * What `PUT /manager-settings/archive-batches/:batchId` takes: the revision the page read and the name to give the
+ * batch, or null. Only the shape here: whether the batch can be an archive batch is the service's to answer.
+ */
+export const adoptArchiveBatchSchema = object({
+  expectedRevision: catalogueRevision,
+  label: string()
+    .strict()
+    .typeError(ARCHIVE_LABEL_MESSAGE)
+    .nullable()
+    .defined(ARCHIVE_LABEL_MESSAGE)
+    .test('archive-label', ARCHIVE_LABEL_MESSAGE, (label) => archiveLabelProblem(label ?? null) === null),
+}).noUnknown(true);
+
+export type AdoptArchiveBatchBody = InferType<typeof adoptArchiveBatchSchema>;
+
+/** What `DELETE /manager-settings/archive-batches/:batchId` takes: the revision the page read. */
+export const removeArchiveBatchSchema = object({ expectedRevision: catalogueRevision }).noUnknown(true);
+
+export type RemoveArchiveBatchBody = InferType<typeof removeArchiveBatchSchema>;

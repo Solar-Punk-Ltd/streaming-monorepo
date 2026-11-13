@@ -1,12 +1,16 @@
 import {
+  type ArchiveBatchDesignation,
   type CataloguePushOutcome,
   type CataloguePushState,
   type CatalogueReading,
   getErrorMessage,
   isLoopbackIngestHost,
+  shortHex,
   type StampHealth,
 } from '@streaming-infra-manager/common';
 import {
+  CATALOGUE_ARCHIVE_BATCHES_MAX,
+  type CatalogueArchiveBatch,
   type CatalogueStampPrevious,
   type CatalogueStampRecord,
   STAGE_RECORD_SCHEMA_VERSION,
@@ -18,6 +22,7 @@ import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 import { beePublisherUrlFor } from '../StampService.js';
 
+import { archiveBatchWritable, type ArchiveBatchStatus } from './ArchiveBatchService.js';
 import { type CatalogueDesignationRow, isDesignated, isMoving } from './CatalogueDesignationRepository.js';
 import type { CatalogueStatus } from './CatalogueDesignationService.js';
 import { type CatalogueSender, sendCatalogueRequest } from './catalogueRequest.js';
@@ -46,6 +51,11 @@ export function publishedBeeApiUrl(publisherHost: () => Promise<string>): (profi
 export interface CataloguePublisherDeps {
   designation: { read(): Promise<CatalogueDesignationRow> };
   profiles: { findByName(name: string): Promise<Profile | null> };
+  /**
+   * The archive batches, `ArchiveBatchService.list`, read on the same cadence and carried as the record's
+   * `archiveBatches`. Without it the record leaves the field out, as a manager older than the field does.
+   */
+  archiveBatches?: { list(): Promise<ArchiveBatchDesignation[]> };
   /** The pinned batch as the node reports it, `StampService.batchReadingFor`. Never throws. */
   reading(profile: Profile, batchId: string): Promise<{ health: StampHealth; depth: number | null }>;
   /**
@@ -71,6 +81,8 @@ interface Sent {
   ttlSeconds: number | null;
   /** The time to live of the batch moved from, when the record carried one. */
   previousTtlSeconds: number | null;
+  /** The time to live of each archive batch the record carried, by batch id. */
+  archiveTtlSeconds: ReadonlyMap<string, number | null>;
   at: number;
 }
 
@@ -108,6 +120,10 @@ const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared
  * readings is pushed as one in the pinned batch's is. A reading the node did not answer, or one with no depth or with
  * an address that reaches the dialling host alone, is left out, so the admin keeps the last one it had.
  *
+ * Every archive batch is read on the same cadence, each on the node of its own deployment, and the record carries
+ * them all as `archiveBatches`, each `writable` only while its deployment is the designated catalogue node and its
+ * node calls it usable. A change in their readings, or in the list, is pushed as one in the pinned batch's is.
+ *
  * The last outcome and the last readings are kept in memory for the Manager settings card. The log says the outcome
  * when it changes, and never what the admin answered, its address or a token.
  */
@@ -122,6 +138,12 @@ export class CataloguePublisher {
   private reading: CatalogueReading | null = null;
   /** The last reading of the batch the catalogue is moving from, while a move is pending. */
   private previousReading: CatalogueReading | null = null;
+  /** The last reading of each archive batch, by batch id. */
+  private archiveReadings: ReadonlyMap<string, CatalogueReading> = new Map();
+  /** The last depth each archive batch's node reported, for a reading the node did not answer. */
+  private readonly archiveDepths = new Map<string, number>();
+  /** The archive batches left out of the record for want of a depth, each logged once. */
+  private readonly archiveSkipsLogged = new Set<string>();
   private sent: Sent | null = null;
   /** The clear moment the admin answered, so a clear is sent until it is answered and not after. */
   private clearAnswered: string | null = null;
@@ -164,6 +186,11 @@ export class CataloguePublisher {
     return { reading: this.reading, previousReading: this.previousReading, lastPush: this.last };
   }
 
+  /** The last readings of the archive batches and the last call, for the archive batches on the settings page. */
+  archiveStatus(): ArchiveBatchStatus {
+    return { readings: this.archiveReadings, lastPush: this.last };
+  }
+
   /** Pushes or clears now, after a call in flight: what the designation service calls once it saved a change. */
   pushNow(): Promise<void> {
     return this.run('always');
@@ -193,13 +220,85 @@ export class CataloguePublisher {
     // Taken as the row is read, before the node is asked: the moment the record says it was observed.
     const readAt = this.clock.now();
     const row = await this.deps.designation.read();
-    // Both batches are read at once, so the push waits for the slower of the two nodes, whose reads are bounded.
+    // Every batch is read at once, so the push waits for the slowest of the nodes, whose reads are bounded.
     const previous = this.readPrevious(row, readAt);
+    const archive = this.readArchive(row, readAt);
     try {
-      await this.pushFor(row, urge, readAt, previous);
+      await this.pushFor(row, urge, readAt, previous, archive);
     } finally {
       await previous;
+      // A failed read of the list was the push's to report, and with no designation nothing waited for it.
+      await archive.catch(() => undefined);
     }
+  }
+
+  /**
+   * Reads every archive batch on its own node, for the settings page and for the record, whether or not a catalogue
+   * node is designated, and answers what the record carries of them. A batch whose node did not answer keeps the last
+   * depth that node reported, and one with no depth known yet is left out until its node answers. Rejects only when
+   * the list itself could not be read, so no push says the admin has no archive batches when it has.
+   */
+  private async readArchive(row: CatalogueDesignationRow, readAt: number): Promise<CatalogueArchiveBatch[] | null> {
+    if (!this.deps.archiveBatches) return null;
+    const batches = (await this.deps.archiveBatches.list()).slice(0, CATALOGUE_ARCHIVE_BATCHES_MAX);
+    const catalogueProfileName = isDesignated(row) ? row.profileName : null;
+    const read = await Promise.all(
+      batches.map(async (batch) => ({ batch, reading: await this.readArchiveBatch(batch, readAt) })),
+    );
+    this.archiveReadings = new Map(read.map(({ batch, reading }) => [batch.batchId, reading]));
+    for (const id of this.archiveDepths.keys()) {
+      if (!this.archiveReadings.has(id)) this.archiveDepths.delete(id);
+    }
+
+    const entries: CatalogueArchiveBatch[] = [];
+    for (const { batch, reading } of read) {
+      const depth = reading.depth;
+      if (depth === null || !Number.isInteger(depth) || depth < 17 || depth > 64) {
+        if (!this.archiveSkipsLogged.has(batch.batchId)) {
+          logger.warn(
+            `[Catalogue] archive batch ${shortHex(batch.batchId)} on ${batch.profileName} is left out of the record until its node reports its depth`,
+          );
+          this.archiveSkipsLogged.add(batch.batchId);
+        }
+        continue;
+      }
+      this.archiveSkipsLogged.delete(batch.batchId);
+      entries.push({
+        batchId: batch.batchId,
+        label: batch.label,
+        // Adopted only as immutable, and bought only as immutable, and a batch's kind never changes.
+        immutable: reading.immutable ?? true,
+        depth,
+        state: reading.state,
+        ttlSeconds: reading.ttlSeconds,
+        fillRatio: reading.fillRatio,
+        writable: archiveBatchWritable(batch.profileName, catalogueProfileName, reading.state),
+        designatedAt: batch.designatedAt,
+      });
+    }
+    return entries;
+  }
+
+  /** One archive batch as its own node reports it, `unknown` when the node or its deployment did not answer. */
+  private async readArchiveBatch(batch: ArchiveBatchDesignation, readAt: number): Promise<CatalogueReading> {
+    let health: StampHealth | null = null;
+    let depth: number | null = null;
+    try {
+      const profile = await this.deps.profiles.findByName(batch.profileName);
+      if (profile) ({ health, depth } = await this.deps.reading(profile, batch.batchId));
+    } catch (err) {
+      logger.warn(`[Catalogue] reading archive batch ${shortHex(batch.batchId)} failed (${getErrorMessage(err)})`);
+    }
+    if (depth !== null) this.archiveDepths.set(batch.batchId, depth);
+    return {
+      batchId: batch.batchId,
+      state: health?.state ?? 'unknown',
+      ttlSeconds: health?.ttl ?? null,
+      fillRatio: health?.fillRatio ?? null,
+      immutable: health?.immutable ?? null,
+      depth: depth ?? this.archiveDepths.get(batch.batchId) ?? null,
+      readAt: new Date(readAt).toISOString(),
+    };
   }
 
   /**
@@ -254,6 +353,7 @@ export class CataloguePublisher {
     urge: Urge,
     readAt: number,
     previousRead: Promise<CatalogueStampPrevious | null>,
+    archiveRead: Promise<CatalogueArchiveBatch[] | null>,
   ): Promise<void> {
     if (!isDesignated(row)) {
       this.designatedName = null;
@@ -307,6 +407,7 @@ export class CataloguePublisher {
     this.loggedProblem = null;
 
     const previous = await previousRead;
+    const archiveBatches = await archiveRead;
     const record: CatalogueStampRecord = {
       schemaVersion: STAGE_RECORD_SCHEMA_VERSION,
       managerId: this.deps.managerId,
@@ -322,6 +423,7 @@ export class CataloguePublisher {
       designatedAt: row.designatedAt.toISOString(),
       observedAt: new Date(readAt).toISOString(),
       previous,
+      ...(archiveBatches ? { archiveBatches } : {}),
     };
     const key = JSON.stringify([
       link.url,
@@ -342,29 +444,51 @@ export class CataloguePublisher {
         previous.state,
         previous.fillRatio,
       ],
+      (archiveBatches ?? []).map((batch) => [
+        batch.batchId,
+        batch.label,
+        batch.immutable,
+        batch.depth,
+        batch.state,
+        batch.fillRatio,
+        batch.writable,
+        batch.designatedAt,
+      ]),
     ]);
     const previousTtlSeconds = previous?.ttlSeconds ?? null;
-    if (urge === 'if-changed' && !this.due(key, record.ttlSeconds, previousTtlSeconds, readAt)) return;
+    const archiveTtlSeconds = new Map((archiveBatches ?? []).map((batch) => [batch.batchId, batch.ttlSeconds]));
+    if (urge === 'if-changed' && !this.due(key, record.ttlSeconds, previousTtlSeconds, archiveTtlSeconds, readAt)) {
+      return;
+    }
 
     const outcome = await this.send({ kind: 'store', baseUrl: link.url, token: link.token, record });
     this.sent = ANSWERED_STORE.includes(outcome)
-      ? { key, ttlSeconds: record.ttlSeconds, previousTtlSeconds, at: readAt }
+      ? { key, ttlSeconds: record.ttlSeconds, previousTtlSeconds, archiveTtlSeconds, at: readAt }
       : null;
     return this.record('store', outcome);
   }
 
   /**
    * Whether a push is owed: 30 seconds since the last one the admin answered, or a reading that moved, of the pinned
-   * batch or of the one moved from.
+   * batch, of the one moved from or of an archive batch.
    */
-  private due(key: string, ttlSeconds: number | null, previousTtlSeconds: number | null, at: number): boolean {
+  private due(
+    key: string,
+    ttlSeconds: number | null,
+    previousTtlSeconds: number | null,
+    archiveTtlSeconds: ReadonlyMap<string, number | null>,
+    at: number,
+  ): boolean {
     const sent = this.sent;
     if (!sent || sent.key !== key || at - sent.at >= this.intervalMs) return true;
     const elapsedSeconds = (at - sent.at) / 1000;
-    return (
-      lifeMoved(sent.ttlSeconds, ttlSeconds, elapsedSeconds) ||
-      lifeMoved(sent.previousTtlSeconds, previousTtlSeconds, elapsedSeconds)
-    );
+    if (lifeMoved(sent.ttlSeconds, ttlSeconds, elapsedSeconds)) return true;
+    if (lifeMoved(sent.previousTtlSeconds, previousTtlSeconds, elapsedSeconds)) return true;
+    // The key holds the same batches in the same order, so each one has a time to live that was sent.
+    for (const [batchId, ttl] of archiveTtlSeconds) {
+      if (lifeMoved(sent.archiveTtlSeconds.get(batchId) ?? null, ttl, elapsedSeconds)) return true;
+    }
+    return false;
   }
 
   private logProblem(problem: string): void {
