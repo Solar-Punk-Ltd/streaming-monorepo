@@ -44,6 +44,12 @@
  * chequebook bulk named in the view until then.
  * The host's default look is MOCK_DEFAULT_THEME, `swarm` when unset.
  *
+ * MOCK_ARCHIVE_STAMPS decides the archive stamps, as below at its constants:
+ * `some`, the default, three on the catalogue node; `none`, none yet;
+ * `buying`, a purchase on its way too; `left`, one more left on a node that
+ * is the catalogue node no longer; `unoffered`, a purchase route that answers
+ * as a manager that offers no purchases.
+ *
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
@@ -231,7 +237,7 @@ function fundingNode(
  * under it, whose node cannot pay a deposit to a target over 5.4 xBZZ; a rung's, every digit of 3.1234567890123456
  * xBZZ, over it; a rung's at it, whose node holds no xDAI for the gas of a move to another target; a rung's its node
  * could not be read about; the light gateway's, which the tab shows read-only; and the other gateway, an ultra-light
- * node, with none. The catalogue node's chequebook is answered and never listed.
+ * node, with none. The catalogue node's chequebook, 1 xBZZ, is listed first.
  */
 const fundingNodes = new Map(
   [
@@ -301,6 +307,268 @@ const fundingNodes = new Map(
     ),
   ].map((node) => [node.nodeId, node]),
 );
+
+/*
+ * The archive stamps (`docs/architecture/web2-admin.md`, "Archiving a recording"), each held by a node of the funding
+ * mock, which pays for its top-ups. MOCK_ARCHIVE_STAMPS decides them, with the values `MOCK_ARCHIVE_STAMPS_SEEDS` of
+ * `src/components/archive/archiveSeams.ts` lists:
+ *
+ * - `some`, the default: on the catalogue node, "Talks", depth 22 with 200 days and room, "Spring", depth 20 with 120
+ *   days and nearly full, and "Autumn", depth 21 with 20 days, under the warning.
+ * - `none`: no archive stamp.
+ * - `buying`: `some`, and a purchase of a depth 19 stamp, "Summer", waiting to be usable, which turns into a stamp 10
+ *   seconds after the mock starts.
+ * - `left`: `some`, and "Old node", depth 21 with 50 days, left on the mock stage's uploader, a node that is the
+ *   catalogue node no longer: topped up only.
+ * - `unoffered`: `some`, and the purchase route answers as a manager that offers no purchases does.
+ *
+ * A purchase made here is checked as the API checks it, the cost it names priced again; it is being bought for 5
+ * seconds, waits to be usable for 10 more, then is a stamp on the catalogue node, its cost taken from that node's
+ * wallet. MOCK_FUNDING=refuse fails every one.
+ */
+const ARCHIVE_STAMPS_SEED = process.env.MOCK_ARCHIVE_STAMPS ?? 'some';
+const ARCHIVE_PURCHASE_BOUGHT_AFTER_MS = 5_000;
+const ARCHIVE_PURCHASE_USABLE_AFTER_MS = 15_000;
+const ARCHIVE_TTL_WARNING_DAYS = 30;
+const ARCHIVE_BUY_DEFAULT_DAYS = 30;
+const ARCHIVE_BUY_MIN_DAYS = 2;
+const ARCHIVE_CATALOGUE_NODE_ID = 'catalogue:bee-uploader';
+/** `ARCHIVE_PURCHASES_NOT_OFFERED` of the admin's common package, as the API answers it. */
+const ARCHIVE_PURCHASES_NOT_OFFERED =
+  'The manager does not offer stamp purchases. A manager older than this page does not buy archive stamps.';
+
+/** What an immutable batch of each depth holds, in bytes: the table of `packages/contracts/src/archiveCapacity.ts`. */
+const ARCHIVE_EFFECTIVE_BYTES = {
+  17: 44_700,
+  18: 6_660_000,
+  19: 112_060_000,
+  20: 687_620_000,
+  21: 2_600_000_000,
+  22: 7_730_000_000,
+  23: 19_940_000_000,
+  24: 47_060_000_000,
+  25: 105_510_000_000,
+  26: 227_980_000_000,
+  27: 476_680_000_000,
+  28: 993_650_000_000,
+  29: 2_040_000_000_000,
+  30: 4_170_000_000_000,
+  31: 8_450_000_000_000,
+  32: 17_070_000_000_000,
+  33: 34_360_000_000_000,
+  34: 69_040_000_000_000,
+  35: 138_540_000_000_000,
+  36: 277_720_000_000_000,
+  37: 556_350_000_000_000,
+  38: 1_110_000_000_000_000,
+  39: 2_230_000_000_000_000,
+  40: 4_460_000_000_000_000,
+  41: 8_930_000_000_000_000,
+};
+
+function archiveEffectiveChunks(depth) {
+  return Math.floor((ARCHIVE_EFFECTIVE_BYTES[depth] ?? 0) / 4096);
+}
+
+/**
+ * An archive stamp as the mock holds it: a batch, with the node that holds it, its label, whether it is written, and
+ * what is on it.
+ */
+function archiveStamp(nodeId, batchId, depth, daysLeft, fillRatio, label, writable, qualities, stampedShare) {
+  return {
+    ...fundingBatch(batchId, depth, true, daysLeft, fillRatio),
+    nodeId,
+    label,
+    writable,
+    designatedAt: new Date(Date.now() - 20 * DAY_MS).toISOString(),
+    chunksStamped: Math.floor(archiveEffectiveChunks(depth) * stampedShare),
+    qualitiesArchived: qualities,
+  };
+}
+
+/** The archive stamps, in the order they were designated. */
+const archiveStamps =
+  ARCHIVE_STAMPS_SEED === 'none'
+    ? []
+    : [
+        archiveStamp(ARCHIVE_CATALOGUE_NODE_ID, `0x${'a1'.repeat(32)}`, 22, 200, 0.1, 'Talks', true, 3, 0.3),
+        archiveStamp(ARCHIVE_CATALOGUE_NODE_ID, `0x${'a2'.repeat(32)}`, 20, 120, 0.97, 'Spring', true, 2, 0.96),
+        archiveStamp(ARCHIVE_CATALOGUE_NODE_ID, `0x${'a3'.repeat(32)}`, 21, 20, 0.4, 'Autumn', true, 1, 0.35),
+        ...(ARCHIVE_STAMPS_SEED === 'left'
+          ? [
+              archiveStamp(
+                `${MOCK_STAGE_ID}:bee-uploader`,
+                `0x${'a5'.repeat(32)}`,
+                21,
+                50,
+                0.4,
+                'Old node',
+                false,
+                2,
+                0.35,
+              ),
+            ]
+          : []),
+      ];
+
+/** id -> a purchase of an archive stamp, as the admin journals it. */
+const archivePurchases = new Map();
+
+/** The amount each chunk gets for `days` at today's price: the price of every block of the days, rounded up. */
+function archiveAmountPerChunk(days) {
+  // A batch of depth 0 costs exactly its amount per chunk.
+  return topUpCost(days, 0);
+}
+
+if (ARCHIVE_STAMPS_SEED === 'buying') {
+  const amount = archiveAmountPerChunk(ARCHIVE_BUY_DEFAULT_DAYS);
+  const id = randomUUID();
+  archivePurchases.set(id, {
+    id,
+    depth: 19,
+    days: ARCHIVE_BUY_DEFAULT_DAYS,
+    amountPerChunkPlur: amount.toString(),
+    costPlur: (amount << 19n).toString(),
+    label: 'Summer',
+    batchId: `0x${'a4'.repeat(32)}`,
+    error: null,
+    startedBy: 'admin',
+    startedAt: new Date().toISOString(),
+    // Seeded already bought and paid for, so it waits to be usable from the start, for 10 seconds.
+    requestedAt: Date.now() - ARCHIVE_PURCHASE_BOUGHT_AFTER_MS,
+    boughtAt: Date.now(),
+    failed: false,
+    settled: false,
+  });
+}
+
+/** The batch of `node` named `batchId`: its own, or an archive stamp it holds, or null. */
+function nodeBatch(node, batchId) {
+  if (!node) return null;
+  if (node.batch && node.batch.batchId === batchId) return node.batch;
+  return archiveStamps.find((stamp) => stamp.nodeId === node.nodeId && stamp.batchId === batchId) ?? null;
+}
+
+/**
+ * Where a purchase stands now, its stamp added on the catalogue node once it is usable, and its cost taken from the
+ * node's wallet once it is bought.
+ */
+function archivePurchaseState(purchase, now = Date.now()) {
+  if (purchase.failed) return 'failed';
+  if (now - purchase.requestedAt < ARCHIVE_PURCHASE_BOUGHT_AFTER_MS) return 'buying';
+  const node = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  if (purchase.boughtAt === null) {
+    purchase.boughtAt = now;
+    node.xbzzPlur -= BigInt(purchase.costPlur);
+    node.xdaiWei = node.xdaiWei > STAMP_GAS_WEI ? node.xdaiWei - STAMP_GAS_WEI : 0n;
+  }
+  if (now - purchase.requestedAt < ARCHIVE_PURCHASE_USABLE_AFTER_MS) return 'waiting_usable';
+  if (!purchase.settled) {
+    purchase.settled = true;
+    archiveStamps.push(
+      archiveStamp(node.nodeId, purchase.batchId, purchase.depth, purchase.days, 0, purchase.label, true, 0, 0),
+    );
+  }
+  return 'usable';
+}
+
+function archivePurchaseAnswer(purchase) {
+  const state = archivePurchaseState(purchase);
+  return {
+    id: purchase.id,
+    depth: purchase.depth,
+    days: purchase.days,
+    amountPerChunkPlur: purchase.amountPerChunkPlur,
+    costPlur: purchase.costPlur,
+    label: purchase.label,
+    state,
+    batchId: state === 'buying' || state === 'failed' ? null : purchase.batchId.slice(2),
+    error: purchase.error,
+    startedBy: purchase.startedBy,
+    startedAt: purchase.startedAt,
+  };
+}
+
+/** `GET /api/archive/stamps`: the stamps with their room, the purchases still running, and what a purchase needs. */
+function archiveStampsAnswer() {
+  const catalogue = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  const purchases = [...archivePurchases.values()]
+    .map(archivePurchaseAnswer)
+    .filter((purchase) => purchase.state === 'buying' || purchase.state === 'waiting_usable')
+    .reverse();
+  return {
+    nodeName: catalogue.label,
+    stamps: archiveStamps.map((stamp) => {
+      const ttlSeconds = ttlOf(stamp);
+      const effectiveChunks = archiveEffectiveChunks(stamp.depth);
+      return {
+        batchId: stamp.batchId.slice(2),
+        label: stamp.label,
+        nodeId: stamp.nodeId,
+        nodeLabel: fundingNodes.get(stamp.nodeId)?.label ?? null,
+        depth: stamp.depth,
+        immutable: true,
+        state: ttlSeconds > 0 ? (stamp.fillRatio >= 1 ? 'full' : 'active') : 'expired',
+        ttlSeconds,
+        fillRatio: stamp.fillRatio,
+        writable: stamp.writable && stamp.nodeId === ARCHIVE_CATALOGUE_NODE_ID && ttlSeconds > 0,
+        designatedAt: stamp.designatedAt,
+        effectiveChunks,
+        chunksStamped: stamp.chunksStamped,
+        roomChunks: Math.max(0, effectiveChunks - stamp.chunksStamped),
+        qualitiesArchived: stamp.qualitiesArchived,
+        expiresSoon: ttlSeconds < ARCHIVE_TTL_WARNING_DAYS * 86_400,
+      };
+    }),
+    purchases,
+    buy: {
+      postage: FUNDING_POSTAGE,
+      walletXbzzPlur: catalogue.xbzzPlur.toString(),
+      walletXdaiWei: catalogue.xdaiWei.toString(),
+      defaultDays: ARCHIVE_BUY_DEFAULT_DAYS,
+      minimumDays: ARCHIVE_BUY_MIN_DAYS,
+    },
+    buyUnavailable: null,
+    ttlWarningDays: ARCHIVE_TTL_WARNING_DAYS,
+  };
+}
+
+/**
+ * Why the mock refuses a purchase, as the API checks one, with the refusal's problem, or null: a depth of the table,
+ * whole days of 2 or more, a label of 1 to 64 characters or none, the cost the dialog showed equal to what the depth
+ * and the days cost at today's price, and a catalogue node's wallet that holds it and some xDAI for the gas.
+ */
+function archivePurchaseRefusal(choice) {
+  const refused = (message, problem = 'purchase_refused') => ({ problem, message });
+  const depth = choice?.depth;
+  if (!Number.isInteger(depth) || ARCHIVE_EFFECTIVE_BYTES[depth] === undefined) {
+    return refused("An archive stamp's depth is 17 to 41.");
+  }
+  if (!Number.isSafeInteger(choice.days) || choice.days < ARCHIVE_BUY_MIN_DAYS) {
+    return refused(`A new archive stamp lasts ${ARCHIVE_BUY_MIN_DAYS} days or more.`);
+  }
+  const label = choice.label;
+  if (label !== null && (typeof label !== 'string' || label.trim().length < 1 || label.trim().length > 64)) {
+    return refused('A label is 1 to 64 characters, or none.');
+  }
+  const cost = archiveAmountPerChunk(choice.days) << BigInt(depth);
+  if (typeof choice.costPlur !== 'string' || choice.costPlur !== cost.toString()) {
+    return refused(
+      `The price of postage moved, and this stamp now costs ${cost} PLUR. Confirm it again at that cost.`,
+      'price_moved',
+    );
+  }
+  const node = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  if (cost > node.xbzzPlur) {
+    return refused(
+      `The catalogue node's wallet is ${cost - node.xbzzPlur} PLUR short of the stamp's cost. Send it xBZZ on the Balance tab.`,
+    );
+  }
+  if (node.xdaiWei === 0n) {
+    return refused("The catalogue node's wallet holds no xDAI for the gas. Send it xDAI on the Balance tab.");
+  }
+  return null;
+}
 
 /** bulkId -> the transfers one send asked for. */
 const fundingBulks = new Map();
@@ -466,7 +734,7 @@ function settleStampOperations() {
       if (item.state !== 'submitted' || now - sentAt < STAMP_CONFIRM_AFTER_MS) continue;
       item.state = 'confirmed';
       const node = fundingNodes.get(item.nodeId);
-      const batch = node.batch;
+      const batch = nodeBatch(node, item.batchId);
       if (item.kind === 'topup') {
         batch.expiresAt += item.days * DAY_MS;
         node.xbzzPlur -= item.cost;
@@ -521,8 +789,8 @@ function stampRefusal(asked) {
   const costs = new Map();
   for (const item of asked) {
     const node = fundingNodes.get(item?.nodeId);
-    const batch = node?.batch;
-    if (!batch || batch.batchId !== item.batchId) return `${item?.batchId} is not the batch of ${item?.nodeId}.`;
+    const batch = nodeBatch(node, item?.batchId);
+    if (!batch) return `${item?.batchId} is not a batch of ${item?.nodeId}.`;
     if (batch.readError || ttlOf(batch) === 0) return `The batch of ${node.label} cannot take it now.`;
     if (batch.depth !== item.expectedDepth) {
       return `The batch of ${node.label} is at depth ${batch.depth} now, not ${item.expectedDepth}.`;
@@ -539,6 +807,7 @@ function stampRefusal(asked) {
       costs.set(node, (costs.get(node) ?? 0n) + topUpCost(item.days, batch.depth));
     } else if (item.kind === 'dilute') {
       if (item.steps !== 1 && item.steps !== 2) return 'A dilution takes 1 or 2 steps.';
+      if (batch.writable === false) return `The archive stamp ${batch.label ?? batch.batchId} is topped up only.`;
       if (ttlOf(batch) / 2 ** item.steps < 7 * 86_400) return `It would leave the batch of ${node.label} under 7 days.`;
     } else {
       return 'An operation is a top-up or a dilution.';
@@ -673,8 +942,10 @@ function chequebookRefusal(body) {
   if (new Set(asked.map((item) => item?.nodeId)).size !== asked.length) return 'A node is named twice.';
   for (const item of asked) {
     const node = fundingNodes.get(item?.nodeId);
-    if (!node || node.nodeId.startsWith('catalogue:')) return `${item?.nodeId} is not a node of any stage.`;
-    if (node.role === 'gateway') return "This manager moves only the chequebook of a stage's Bee node or a rung.";
+    if (!node) return `${item?.nodeId} is not a node the manager reports.`;
+    if (node.role === 'gateway') {
+      return "This manager moves only the chequebook of the catalogue node, a stage's Bee node or a rung.";
+    }
     const chequebook = node.chequebook;
     if (!chequebook || chequebook.readError || node.walletAddress === null) {
       return `The chequebook of ${node.label} cannot be moved now.`;
@@ -1540,6 +1811,49 @@ async function handle(req, res) {
 
   if (path === '/api/funding' && method === 'GET') return send(res, 200, fundingView());
 
+  if (path === '/api/archive/stamps' && method === 'GET') return send(res, 200, archiveStampsAnswer());
+
+  // No password: the catalogue node pays from its own wallet, as for a top-up.
+  if (path === '/api/archive/stamp-purchases' && method === 'POST') {
+    if (ARCHIVE_STAMPS_SEED === 'unoffered') {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'purchases_not_offered',
+        message: ARCHIVE_PURCHASES_NOT_OFFERED,
+      });
+    }
+    const choice = await readJson(req);
+    const refusal = archivePurchaseRefusal(choice);
+    if (refusal) return send(res, 409, { error: 'archive_refused', ...refusal });
+    const id = randomUUID();
+    const amount = archiveAmountPerChunk(choice.days);
+    const purchase = {
+      id,
+      depth: choice.depth,
+      days: choice.days,
+      amountPerChunkPlur: amount.toString(),
+      costPlur: choice.costPlur,
+      label: choice.label === null ? null : choice.label.trim(),
+      batchId: `0x${hex(32)}`,
+      error: FUNDING_REFUSE ? 'The node refused the purchase, so nothing was spent.' : null,
+      startedBy: user.username,
+      startedAt: new Date().toISOString(),
+      requestedAt: Date.now(),
+      boughtAt: null,
+      failed: FUNDING_REFUSE,
+      settled: false,
+    };
+    archivePurchases.set(id, purchase);
+    return send(res, 202, archivePurchaseAnswer(purchase));
+  }
+
+  const purchaseMatch = /^\/api\/archive\/stamp-purchases\/([^/]+)$/.exec(path);
+  if (purchaseMatch && method === 'GET') {
+    const purchase = archivePurchases.get(decodeURIComponent(purchaseMatch[1]));
+    if (!purchase) return send(res, 404, { error: 'not_found', path });
+    return send(res, 200, archivePurchaseAnswer(purchase));
+  }
+
   if (path === '/api/funding/transfers' && method === 'GET') {
     const items = fundingBulks.get(url.searchParams.get('bulkId') ?? '');
     if (!items) return send(res, 404, { error: 'not_found', path });
@@ -1579,7 +1893,7 @@ async function handle(req, res) {
         batchId: item.batchId,
         days: item.kind === 'topup' ? item.days : null,
         steps: item.kind === 'dilute' ? item.steps : null,
-        cost: item.kind === 'topup' ? topUpCost(item.days, node.batch.depth) : 0n,
+        cost: item.kind === 'topup' ? topUpCost(item.days, nodeBatch(node, item.batchId).depth) : 0n,
         state: FUNDING_REFUSE ? 'failed' : FUNDING_LOST ? 'unknown' : 'queued',
         txHash: FUNDING_LOST ? `0x${hex(32)}` : null,
         error: FUNDING_REFUSE ? STAMP_REFUSED : null,
