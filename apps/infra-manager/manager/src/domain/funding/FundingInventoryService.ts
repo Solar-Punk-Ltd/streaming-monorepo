@@ -1,4 +1,5 @@
 import {
+  type ArchiveBatchDesignation,
   BEE_GATEWAY_SERVICE,
   BEE_UPLOADER_SERVICE,
   BLOCK_TIME_SECONDS,
@@ -14,6 +15,8 @@ import {
   rungOrder,
 } from '@streaming-infra-manager/common';
 import {
+  ARCHIVE_BATCH_LABEL_MAX_LENGTH,
+  type FundingArchiveBatch,
   type FundingBatch,
   type FundingChequebook,
   type FundingInventory,
@@ -29,6 +32,7 @@ import { tokenAddressForChain } from '../chequebook/transactionIdentity.js';
 import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { Logger } from '../Logger.js';
 import { readFailureFrom } from '../nodeReadFailure.js';
+import type { ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
 import { type CatalogueDesignationRow, isDesignated } from '../stages/CatalogueDesignationRepository.js';
 
 const logger = Logger.getInstance();
@@ -101,6 +105,8 @@ export interface FundingInventoryDeps {
   profiles: { list(): Promise<Profile[]> };
   /** The catalogue designation, whose deployment and batch in force are the catalogue node and its batch. */
   catalogue: { read(): Promise<CatalogueDesignationRow> };
+  /** The archive batches, each with the deployment whose node holds it, in the order they were designated. */
+  archiveBatches: ArchiveBatchReader;
   /** The Bee API of a deployment's own `bee-uploader`, as the manager reaches it, `beeApiUrlFor`. */
   uploaderApiUrl(profile: Profile): string;
   /** The Bee API of a deployment's `bee-gateway`, from the port its next deploy gives it. */
@@ -214,6 +220,39 @@ function unreadBatch(batchId: string, readError: string): FundingBatch {
     fillRatio: null,
     readError,
   };
+}
+
+const HOLDER_GONE = 'The deployment whose node held this archive batch was removed, so no node can top it up.';
+
+/**
+ * How the inventory names the holder of an archive batch whose deployment was removed: by the name its row keeps for
+ * that deployment, under an id no node of this manager has, so a stamp operation naming it finds no node.
+ */
+function removedHolderOf(designation: ArchiveBatchDesignation): { nodeId: string; nodeLabel: string } {
+  const name = designation.profileName.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 180);
+  return { nodeId: `${name}:${BEE_UPLOADER_SERVICE}`, nodeLabel: designation.profileName };
+}
+
+/** Whether an archive batch's reading lets the admin write with it: read, usable, and not expired. */
+function isWritable(batch: FundingBatch): boolean {
+  return batch.readError === null && batch.usable === true && batch.ttlSeconds !== 0;
+}
+
+/**
+ * The deployment whose own Bee node holds an archive batch: the one its designation names, while it is still here and
+ * still runs a Bee node of its own. A batch stays with the node that bought it, which is the catalogue node while the
+ * batch is writable and a former catalogue node once another is designated.
+ */
+function holderOf(designation: ArchiveBatchDesignation, profiles: readonly Profile[]): Profile | null {
+  return profiles.find((profile) => profile.name === designation.profileName && ownsBeeNode(profile)) ?? null;
+}
+
+/**
+ * An archive batch's label as the contract takes one, or none: a label the contract would refuse is answered as none
+ * rather than refusing the whole inventory over one batch.
+ */
+function archiveLabelOf(label: string | null): string | null {
+  return label !== null && label.length >= 1 && label.length <= ARCHIVE_BATCH_LABEL_MAX_LENGTH ? label : null;
 }
 
 /** The deepest a batch can be: the postage contract keeps a batch's depth in a byte. */
@@ -396,6 +435,13 @@ function chequebookFrom(
  * move left. A gateway has none. The batch is read from the node's `GET /stamps/{id}`, and the price of postage from
  * the `/chainstate` of the first node listed whose wallet reads on Gnosis Chain, since the price is the chain's.
  *
+ * The inventory also lists the brand's archive batches at its top, in the order they were designated and whether or
+ * not a catalogue node is designated, each read with the same `GET /stamps/{id}` from the node that holds it and named
+ * with that node's id and its deployment's name: the catalogue node for a batch bought through the funding API, and a
+ * former catalogue node for one left there. `writable` is true only for a usable, unexpired batch on the designated
+ * catalogue node. A batch whose deployment was removed is answered unread, with the reason, under the name its row
+ * keeps for that deployment.
+ *
  * Each node's chequebook, which pays its peers for bandwidth, is read with its wallet from its
  * `GET /chequebook/address` and `GET /chequebook/balance`, for every node listed, a gateway and the catalogue node
  * among them. It is null when the node says it has none, in Bee 2.x's words (`saysNoChequebook`), or names no address
@@ -425,8 +471,12 @@ export class FundingInventoryService {
         .filter((profile) => isStageKind(profile.kind))
         .map(async (stage) => ({ stage, answers: await Promise.all(this.nodesOf(stage, profiles).map(read)) })),
     );
-    const catalogueNode = await this.catalogueNodeOf(profiles);
-    const catalogue = catalogueNode ? await read(catalogueNode) : null;
+    const designation = await this.deps.catalogue.read();
+    const catalogueNode = this.catalogueNodeOf(designation, profiles);
+    const [catalogue, archiveBatches] = await Promise.all([
+      catalogueNode ? read(catalogueNode) : null,
+      this.archiveBatchesOf(isDesignated(designation) ? designation.profileName : null, profiles, reads),
+    ]);
     const listed = [...stages.flatMap(({ answers }) => answers), ...(catalogue ? [catalogue] : [])];
     const price = listed.find((answer) => answer.price !== null)?.price ?? null;
 
@@ -439,8 +489,40 @@ export class FundingInventoryService {
         nodes: answers.map(({ node }) => node),
       })),
       catalogue: catalogue?.node ?? null,
+      archiveBatches,
     };
     return fundingInventorySchema.parse(answer);
+  }
+
+  /**
+   * The node that holds an archive batch, by the batch's id as the inventory answers it: the own Bee node of the
+   * deployment the batch stays with, its wallet read now as the inventory reads one, with no batch. A stamp operation
+   * names an archive batch with this node, which carries it out and pays for it from its wallet; for a former catalogue
+   * node, which the inventory lists nowhere else, this is how its wallet is read. Null when no archive batch has this
+   * id, or its deployment is gone.
+   */
+  async archiveBatchHolder(batchId: string): Promise<FundingNode | null> {
+    const wanted = batchIdOf(batchId);
+    const designation = (await this.deps.archiveBatches.list()).find((each) => batchIdOf(each.batchId) === wanted);
+    if (!designation) return null;
+    const profiles = (await this.deps.profiles.list()).filter((profile) => profile.status !== 'REMOVING');
+    const holder = holderOf(designation, profiles);
+    if (!holder) return null;
+    const planned = this.ownNodeOf(holder, null);
+    const reads: Reads = { wallets: new Map(), batches: new Map(), prices: new Map(), chequebooks: new Map() };
+    const { nodeId, label, role } = planned;
+    let reading: WalletReading;
+    try {
+      reading = await this.walletOf(planned, await planned.apiUrl(), reads);
+    } catch (err) {
+      logger.debug(`[Funding] could not work out the address of ${planned.label}: ${getErrorMessage(err)}`);
+      reading = { ok: false, readError: addressErrorOf(role) };
+    }
+    if (!reading.ok) {
+      const { readError } = reading;
+      return { nodeId, label, role, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError, batch: null };
+    }
+    return { nodeId, label, role, ...pick(reading), readError: null, batch: null };
   }
 
   /** A stage's nodes, before any is read. */
@@ -485,8 +567,7 @@ export class FundingInventoryService {
    * The catalogue node, when a designation is in force and its deployment is still here, with the designated batch.
    * While a move is pending, the batch the catalogue moved from is the row's `movingFrom` one, which is not read.
    */
-  private async catalogueNodeOf(profiles: readonly Profile[]): Promise<PlannedNode | null> {
-    const row = await this.deps.catalogue.read();
+  private catalogueNodeOf(row: CatalogueDesignationRow, profiles: readonly Profile[]): PlannedNode | null {
     if (!isDesignated(row)) return null;
     const node = profiles.find((profile) => profile.name === row.profileName);
     if (!node) return null;
@@ -497,6 +578,57 @@ export class FundingInventoryService {
       apiUrl: async () => this.deps.uploaderApiUrl(node),
       batchId: recordedBatchId(row.batchId),
     };
+  }
+
+  /** A deployment's own Bee node, before it is read, as the node that holds an archive batch. */
+  private ownNodeOf(profile: Profile, batchId: string | null): PlannedNode {
+    return {
+      nodeId: `${profile.instance_id}:${BEE_UPLOADER_SERVICE}`,
+      label: `${profile.name} Bee node`,
+      role: 'uploader',
+      apiUrl: async () => this.deps.uploaderApiUrl(profile),
+      batchId,
+    };
+  }
+
+  /**
+   * The archive batches, in the order they were designated, each read from the node that holds it and named with that
+   * node's id and its deployment's name, with its label and whether the admin can write with it: `writable` only for a
+   * usable, unexpired batch whose deployment is the designated catalogue node, `designatedName`, null while none is. A
+   * batch whose deployment was removed, or whose node's address could not be worked out, is answered unread with the
+   * reason, and is not writable.
+   */
+  private async archiveBatchesOf(
+    designatedName: string | null,
+    profiles: readonly Profile[],
+    reads: Reads,
+  ): Promise<FundingArchiveBatch[]> {
+    const designations = await this.deps.archiveBatches.list();
+    const answers = await Promise.all(
+      designations.map(async (designation): Promise<FundingArchiveBatch | null> => {
+        // The table keeps batch ids alone, so a row that is not one is never answered.
+        const batchId = recordedBatchId(designation.batchId);
+        if (batchId === null) return null;
+        const label = archiveLabelOf(designation.label);
+        const holder = holderOf(designation, profiles);
+        if (!holder) {
+          const named = { ...removedHolderOf(designation), label };
+          return { ...unreadBatch(batchId, HOLDER_GONE), ...named, writable: false };
+        }
+        const planned = this.ownNodeOf(holder, batchId);
+        const named = { nodeId: planned.nodeId, nodeLabel: holder.name, label };
+        let apiUrl: string;
+        try {
+          apiUrl = await planned.apiUrl();
+        } catch (err) {
+          logger.debug(`[Funding] could not work out the address of ${planned.label}: ${getErrorMessage(err)}`);
+          return { ...unreadBatch(batchId, addressErrorOf(planned.role)), ...named, writable: false };
+        }
+        const reading = await this.batchOf(planned, batchId, apiUrl, reads);
+        return { ...reading, ...named, writable: holder.name === designatedName && isWritable(reading) };
+      }),
+    );
+    return answers.filter((answer): answer is FundingArchiveBatch => answer !== null);
   }
 
   /**

@@ -16,7 +16,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { beePublishersValue, type ChequebookBalance } from '@streaming-infra-manager/common';
+import {
+  type ArchiveBatchDesignation,
+  beePublishersValue,
+  type ChequebookBalance,
+} from '@streaming-infra-manager/common';
 import { type FundingInventory, type FundingNode, fundingInventorySchema } from '@streaming-monorepo/contracts';
 
 import type { BeeChainState, BeeChequebookAddress, BeeStamp, BeeWallet } from '../../src/domain/BeeClient.js';
@@ -185,6 +189,8 @@ const unreadChequebook = (readError: string) => ({ address: null, availablePlur:
 
 interface Setup {
   designated?: string | null;
+  /** The archive batches the manager keeps, in the order they were designated; none by default. */
+  archived?: ArchiveBatchDesignation[];
   /** A pending move: the batch the catalogue moved from, on the catalogue node. */
   movingFrom?: string;
   profiles?: (list: Profile[]) => Profile[];
@@ -219,6 +225,7 @@ function service(setup: Setup = {}) {
   const inventory = new FundingInventoryService({
     profiles: { list: async () => (setup.profiles ? setup.profiles(profiles()) : profiles()) },
     catalogue: { read: async () => row },
+    archiveBatches: { list: async () => setup.archived ?? [] },
     uploaderApiUrl: setup.uploaderApiUrl ?? ((profile) => `http://bee.internal:${10005 + profile.port_slot * 10}`),
     gatewayApiUrl: setup.gatewayApiUrl ?? (async (profile) => `http://bee.internal:${10007 + profile.port_slot * 10}`),
     wallet: async (url) => {
@@ -866,5 +873,207 @@ describe('the price of postage in the funding inventory', () => {
   it('answers no price when every node with a chain state is on another chain', async () => {
     const { inventory } = service({ walletAt: async () => wallet({ chainID: 11155111 }) });
     assert.equal((await inventory.inventory()).chain.postage, null);
+  });
+});
+
+/** A deployment that was the catalogue node before another was designated, and keeps the archive batches it bought. */
+const OLD_CATALOGUE_ID = '8b2c3d4e-5f60-4a7b-9c8d-0e1f2a3b4c5d';
+const OLD_CATALOGUE_URL = 'http://bee.internal:10085';
+/** An archive batch the catalogue node holds, and one left on the former catalogue node. */
+const ARCHIVE_ONE = 'a7'.repeat(32);
+const ARCHIVE_LEFT = 'b8'.repeat(32);
+const HOLDER_GONE = 'The deployment whose node held this archive batch was removed, so no node can top it up.';
+
+function withFormerCatalogue(list: Profile[]): Profile[] {
+  return [
+    ...list,
+    makeProfile({
+      name: 'old-catalogue',
+      kind: 'custom',
+      instance_id: OLD_CATALOGUE_ID,
+      components: ['bee-uploader'],
+      port_slot: 8,
+    }),
+  ];
+}
+
+/** An archive batch as the archive batches keep one: bought through the funding API, on the catalogue node. */
+function designation(batchId: string, over: Partial<ArchiveBatchDesignation> = {}): ArchiveBatchDesignation {
+  return {
+    batchId,
+    profileName: 'catalogue',
+    label: 'Autumn event',
+    source: 'purchase',
+    purchaseRequestId: '9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f',
+    designatedAt: '2026-11-13T10:00:00.000Z',
+    designatedBy: null,
+    ...over,
+  };
+}
+
+/** The batch left on the former catalogue node, adopted there with no label. */
+const left = () =>
+  designation(ARCHIVE_LEFT, {
+    profileName: 'old-catalogue',
+    label: null,
+    source: 'adopted',
+    purchaseRequestId: null,
+    designatedBy: 'operator',
+  });
+
+describe('the archive batches in the funding inventory', () => {
+  it('answers an empty list at its top while the manager keeps none, and the field on no node', async () => {
+    const answer = await service().inventory.inventory();
+    assert.deepEqual(answer.archiveBatches, []);
+    for (const node of nodesById(answer).values()) assert.equal('archiveBatches' in node, false, node.nodeId);
+  });
+
+  it('reads each from the node that holds it, in the order they were designated, named with that node', async () => {
+    const { inventory, stampsAsked } = service({
+      profiles: withFormerCatalogue,
+      archived: [designation(ARCHIVE_ONE), left()],
+      stampAt: async (_url, batchId) =>
+        batchId === ARCHIVE_LEFT ? stamp(batchId, { depth: 24, utilization: 8, batchTTL: 86_400 }) : stamp(batchId),
+    });
+    const answer = await inventory.inventory();
+    assert.deepEqual(answer.archiveBatches, [
+      {
+        batchId: `0x${ARCHIVE_ONE}`,
+        depth: 22,
+        immutable: true,
+        usable: true,
+        ttlSeconds: 1_296_000,
+        fillRatio: 0.25,
+        readError: null,
+        nodeId: `${CATALOGUE_ID}:bee-uploader`,
+        nodeLabel: 'catalogue',
+        label: 'Autumn event',
+        writable: true,
+      },
+      {
+        batchId: `0x${ARCHIVE_LEFT}`,
+        depth: 24,
+        immutable: true,
+        usable: true,
+        ttlSeconds: 86_400,
+        fillRatio: 8 / 256,
+        readError: null,
+        nodeId: `${OLD_CATALOGUE_ID}:bee-uploader`,
+        nodeLabel: 'old-catalogue',
+        label: null,
+        writable: false,
+      },
+    ]);
+    assert.equal(answer.catalogue?.nodeId, `${CATALOGUE_ID}:bee-uploader`, 'the catalogue node holds the first');
+    assert.ok(stampsAsked.includes(`${CATALOGUE_URL} ${ARCHIVE_ONE}`), 'the catalogue node was asked about its own');
+    assert.ok(stampsAsked.includes(`${OLD_CATALOGUE_URL} ${ARCHIVE_LEFT}`), 'the former one was asked about its own');
+    assert.equal(stampsAsked.filter((read) => read.includes(ARCHIVE_LEFT)).length, 1);
+  });
+
+  it('writes with none on the catalogue node that is not usable, has expired or could not be read', async () => {
+    const notUsable = 'a8'.repeat(32);
+    const expired = 'a9'.repeat(32);
+    const notHeld = new BeeHttpError(404, 'bee GET /stamps/x → 404: {"message":"issuer does not exist"}');
+    const { inventory } = service({
+      archived: [designation(ARCHIVE_ONE), designation(notUsable), designation(expired)],
+      stampAt: async (_url, batchId) => {
+        if (batchId === ARCHIVE_ONE) throw notHeld;
+        if (batchId === notUsable) return stamp(batchId, { usable: false });
+        if (batchId === expired) return stamp(batchId, { batchTTL: 0, usable: false });
+        return stamp(batchId);
+      },
+    });
+    const answer = await inventory.inventory();
+    assert.deepEqual(
+      answer.archiveBatches!.map((batch) => [batch.batchId, batch.writable]),
+      [
+        [`0x${ARCHIVE_ONE}`, false],
+        [`0x${notUsable}`, false],
+        [`0x${expired}`, false],
+      ],
+    );
+    assert.match(answer.archiveBatches![0]!.readError ?? '', /does not hold this batch/);
+    assert.equal(answer.archiveBatches![0]!.label, 'Autumn event', 'its label kept all the same');
+  });
+
+  it('answers one whose deployment was removed unread, under the name its row keeps, and asks no node', async () => {
+    const { inventory, stampsAsked } = service({ archived: [designation(ARCHIVE_LEFT, { profileName: 'removed' })] });
+    assert.deepEqual((await inventory.inventory()).archiveBatches, [
+      {
+        ...unreadBatch(ARCHIVE_LEFT, HOLDER_GONE),
+        nodeId: 'removed:bee-uploader',
+        nodeLabel: 'removed',
+        label: 'Autumn event',
+        writable: false,
+      },
+    ]);
+    assert.ok(!stampsAsked.some((read) => read.includes(ARCHIVE_LEFT)));
+  });
+
+  it('lists and reads them while no catalogue node is designated, none of them writable', async () => {
+    const { inventory, stampsAsked } = service({ designated: null, archived: [designation(ARCHIVE_ONE)] });
+    const answer = await inventory.inventory();
+    assert.equal(answer.catalogue, null);
+    assert.deepEqual(
+      answer.archiveBatches!.map((batch) => [batch.nodeId, batch.usable, batch.writable]),
+      [[`${CATALOGUE_ID}:bee-uploader`, true, false]],
+    );
+    assert.ok(stampsAsked.includes(`${CATALOGUE_URL} ${ARCHIVE_ONE}`));
+  });
+
+  it('answers a label the contract would refuse as none, rather than refusing the whole inventory', async () => {
+    const { inventory } = service({ archived: [designation(ARCHIVE_ONE, { label: 'x'.repeat(65) })] });
+    const answer = await inventory.inventory();
+    assert.equal(answer.archiveBatches![0]!.label, null);
+  });
+
+  it('answers what the contract takes, with no address of a node that holds one', async () => {
+    const { inventory } = service({ profiles: withFormerCatalogue, archived: [designation(ARCHIVE_ONE), left()] });
+    const answer = await inventory.inventory();
+    assert.deepEqual(fundingInventorySchema.parse(answer), answer);
+    assert.ok(!JSON.stringify(answer).includes('bee.internal'));
+  });
+});
+
+describe('the node that holds an archive batch', () => {
+  it('is read with its wallet, by the batch id as the inventory answers it, and named by its own id', async () => {
+    const { inventory, asked } = service({
+      profiles: withFormerCatalogue,
+      archived: [designation(ARCHIVE_ONE), left()],
+    });
+    assert.deepEqual(await inventory.archiveBatchHolder(`0x${ARCHIVE_LEFT}`), {
+      nodeId: `${OLD_CATALOGUE_ID}:bee-uploader`,
+      label: 'old-catalogue Bee node',
+      role: 'uploader',
+      walletAddress: WALLET,
+      xdaiWei: '250000000000000000',
+      xbzzPlur: '10000000000000000',
+      readError: null,
+      batch: null,
+    });
+    assert.deepEqual(asked, [OLD_CATALOGUE_URL]);
+  });
+
+  it('is none for a batch no archive batch has, and for one whose deployment is gone', async () => {
+    const { inventory, asked } = service({ archived: [designation(ARCHIVE_LEFT, { profileName: 'removed' })] });
+    assert.equal(await inventory.archiveBatchHolder(`0x${ARCHIVE_ONE}`), null);
+    assert.equal(await inventory.archiveBatchHolder(`0x${ARCHIVE_LEFT}`), null);
+    assert.deepEqual(asked, []);
+  });
+
+  it('is answered with no wallet, and why, when its wallet could not be read', async () => {
+    const { inventory } = service({
+      profiles: withFormerCatalogue,
+      archived: [left()],
+      walletAt: async () => {
+        throw new BeeHttpError(503, 'bee GET /wallet → 503: syncing');
+      },
+    });
+    const holder = await inventory.archiveBatchHolder(`0x${ARCHIVE_LEFT}`);
+    assert.deepEqual(
+      [holder?.nodeId, holder?.walletAddress, holder?.xbzzPlur],
+      [`${OLD_CATALOGUE_ID}:bee-uploader`, null, null],
+    );
+    assert.ok(holder?.readError);
   });
 });

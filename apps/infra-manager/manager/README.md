@@ -666,7 +666,9 @@ The inventory's `archiveBatches` are the archive batches in the order they were 
 whether or not a catalogue node is designated. Each is a batch with the `nodeId` and `nodeLabel` of
 the node that holds it, a `label`, null for none, and `writable`, true only for a usable, unexpired
 batch on the catalogue node. A batch left on a node that is the catalogue node no longer names that
-node, which the inventory lists nowhere else. With no archive batches the list is empty.
+node, which the inventory lists nowhere else. Each is read from the node that holds it. One whose
+deployment was removed is answered unread, with the reason, under the name its row keeps for that
+deployment, and is not `writable`. With no archive batches the list is empty.
 
 - A batch is `{ batchId, depth, immutable, usable, ttlSeconds, fillRatio, readError }`: `0x` and
   64 hex digits, Bee's depth, `immutableFlag` and `usable`, the seconds left (0 once it has
@@ -705,13 +707,17 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
 
 - **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded. Against the
   inventory read now: `batchId` is the batch `nodeId` uploads with, or an archive batch with
-  `nodeId` the node that holds it (404 `unknown_node` for a node this manager does not run), the batch was read, has time left, is usable and is at
-  `expectedDepth`. A top-up's cost, `amountPerChunkPlur × 2^depth`, is within the node's xBZZ. A
+  `nodeId` the node that holds it (404 `unknown_node` for a node this manager does not run), the
+  batch was read, has time left, is usable and is at `expectedDepth`. A top-up's cost,
+  `amountPerChunkPlur × 2^depth`, is within the node's xBZZ. A
   dilution goes to depth 40 at most and leaves seven days or more, the time left halving for every
   step. The node's wallet holds some xDAI. Then against the postage contract, `batches(id)` on
   Swarm's PostageStamp on Gnosis Chain, read through `FUNDING_RPC_URL` or `BEE_RPC_ENDPOINT` (502
   `chain_unreachable` when it cannot be): it holds the batch at `expectedDepth`, and for a dilution
   the node's wallet bought it, since only that wallet may dilute it.
+- **An archive batch** is named with `nodeId` the node that holds it, which carries the operation
+  out and pays for it. A former catalogue node, which the inventory lists only as the holder of an
+  archive batch, has its wallet read now for the checks.
 - **The record**: the operation is written to `funding_stamp_operations` as `unknown`, with the
   batch's normalised balance, before the node's `PATCH /stamps/topup/{id}/{amount}` or
   `PATCH /stamps/dilute/{id}/{depth}` is sent, within Bee's on-chain budget of 180 seconds. Bee
@@ -740,22 +746,29 @@ batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive
   inventory read now: `nodeId` is the catalogue node (404 `unknown_node` for a node this manager
   does not run), `depth` is 17 to 41, the cost, `amountPerChunkPlur × 2^depth`, is within the
   node's xBZZ, and the node's wallet holds some xDAI. `amountPerChunkPlur` buys the postage
-  contract's floor of life or more at the price read now.
+  contract's floor of life or more at the price read now, which is refused too when no node
+  answered a price.
 - **A node with an operation under way**, a purchase still open among them, answers 409
-  `conflict`, as it does for a chequebook operation.
+  `conflict`, as it does for a chequebook operation. An open purchase is first settled from the
+  node's batches, as the `GET` settles one.
 - **The record**: the purchase is written to `funding_stamp_purchases` as `unknown`, with the label
   the batch will carry on its node, `archive-` and the first twelve hex digits of the request id,
   before the node's `POST /stamps/{amount}/{depth}` is sent with that label and `immutable: true`,
   within Bee's on-chain budget of 180 seconds. Bee answers once the transaction is mined, so an
   answer with a batch is `confirmed`. A refusal (a 4xx, a 429 among them, 501 or 503) is `failed`
   with Bee's words. A node the manager could not connect to is `failed` and answered 502
-  `node_unreachable`. A 500, and an answer that never came, stay `unknown`.
+  `node_unreachable`. A 500, and an answer that never came, stay `unknown`. A request id whose
+  first twelve hex digits another purchase's label carries already is 409 `conflict`.
 - **On `confirmed`** the manager makes the batch an archive batch with the request's `label`,
-  through `designateArchiveBatch`, which pushes the catalogue stamp record.
+  through `designateArchiveBatch`, which pushes the catalogue stamp record, and marks the purchase
+  `recorded_at`. A designation that fails leaves the purchase `confirmed` and unmarked, and the
+  next `GET` designates it again. A marked purchase is never designated again, so a batch removed
+  from the list stays removed.
 - **The `GET`** settles an `unknown` purchase from the node's own list of batches: the batch with
   exactly the purchase's label, its depth and the immutable flag, that is neither the catalogue's
   batch nor an archive batch already, makes it `confirmed`, with the same designation. None thirty
-  minutes after the request makes it `failed`.
+  minutes after the request makes it `failed`, and a node that does not answer leaves it
+  `unknown`. The list is read at most once every five seconds per request id.
 - **`usable`** is read from the node on every `GET`, as the inventory reads a batch: false for the
   minutes after a purchase, true once the batch can stamp, and null while there is no batch or the
   node did not answer. The manager waits for nothing in the background.

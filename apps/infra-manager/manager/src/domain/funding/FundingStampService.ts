@@ -7,6 +7,8 @@ import {
   topUpPreview,
 } from '@streaming-infra-manager/common';
 import type {
+  FundingArchiveBatch,
+  FundingBatch,
   FundingInventory,
   FundingNode,
   FundingStampOperationAnswer,
@@ -58,6 +60,12 @@ export interface FundingStampDeps {
   node(apiUrl: string): FundingStampNode;
   /** The postage contract, read through FUNDING_RPC_URL or BEE_RPC_ENDPOINT; null when the manager has neither. */
   chain: PostageContractReader | null;
+  /**
+   * The node that holds an archive batch, with its wallet read now, or null when it is gone:
+   * `FundingInventoryService.archiveBatchHolder`. Asked only when the inventory lists the holder nowhere but as the
+   * holder of archive batches, as it lists a former catalogue node.
+   */
+  archiveBatchHolder(batchId: string): Promise<FundingNode | null>;
   now?: () => number;
 }
 
@@ -70,16 +78,32 @@ interface Outcome {
   unreachable: boolean;
 }
 
-/** The node as the inventory read it now, once every check of it and its batch has passed. */
-interface Held {
-  node: FundingNode;
-  /** A top-up's cost in PLUR, `amountPerChunkPlur × 2^depth`; null for a dilution. */
-  costPlur: string | null;
+/** The batch a request names, as the inventory read it now, once every check of the batch itself has passed. */
+interface Target {
+  /** The node the request names, as the inventory lists it, or null for a holder of archive batches it lists nowhere. */
+  node: FundingNode | null;
+  /** The node's own batch, or an archive batch it holds. */
+  batch: FundingBatch;
+  /** The archive batch the request names, or null for the batch the node uploads with. */
+  archive: FundingArchiveBatch | null;
+  /** The batch's depth and time left, both read. */
+  reading: { depth: number; batchTTL: number };
 }
 
 const TX_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 const NO_GAS = 'The node’s wallet holds no xDAI to pay the gas with.';
+const NOT_ITS_BATCH = 'The batch is not the one this node uploads with, so the manager does not change it.';
+const NO_BATCH = 'This node uploads with no batch of the manager’s, so there is none to change.';
+const NOT_ITS_BATCH_OR_ARCHIVE =
+  'The batch is neither the one this node uploads with nor an archive batch it holds, so the manager does not change it.';
+const HOLDER_GONE =
+  'The node that holds this archive batch is gone from this manager, so the batch is not changed now.';
+
+/** Why an archive batch named with another node than its holder is refused. */
+function heldElsewhere(archive: FundingArchiveBatch): string {
+  return `This archive batch is held by ${archive.nodeLabel}, and an operation on it names the node that holds it.`;
+}
 const NOT_REACHED = 'The node’s Bee API could not be reached, so it was asked nothing.';
 const ANSWER_LOST =
   'The node’s answer was lost, so whether it went through is read from the postage contract until it shows.';
@@ -129,7 +153,7 @@ function described(row: FundingStampOperationRow): string {
  * error's text after the status. Null when the body was not Bee's JSON. Control characters are dropped and the words
  * cut at 200 characters, since they travel on to the web2 admin's operator.
  */
-function beeWords(err: BeeHttpError): string | null {
+export function beeWords(err: BeeHttpError): string | null {
   const marker = `→ ${err.status}: `;
   const at = err.message.indexOf(marker);
   if (at < 0) return null;
@@ -155,7 +179,7 @@ function beeWords(err: BeeHttpError): string | null {
  * it syncs. Bee checks all of those before it sends a transaction. A 500 is not one of them: Bee answers 500 as well
  * when it sent the transaction and then lost sight of it, waiting for its receipt (bee `pkg/api/postage.go`).
  */
-function sentNothing(status: number): boolean {
+export function sentNothing(status: number): boolean {
   return (status >= 400 && status < 500) || status === 501 || status === 503;
 }
 
@@ -176,7 +200,7 @@ function connectionNeverMade(failure: object): boolean {
 }
 
 /** Whether a failed call never reached the node. `BeeClient` wraps fetch's error, and fetch the socket's. */
-function neverReached(err: unknown): boolean {
+export function neverReached(err: unknown): boolean {
   let failure: unknown = err;
   for (let depth = 0; depth < 4 && typeof failure === 'object' && failure !== null; depth += 1) {
     if (connectionNeverMade(failure)) return true;
@@ -225,15 +249,20 @@ function answerOf(row: FundingStampOperationRow): FundingStampOperationAnswer {
 }
 
 /**
- * The funding API's stamp operations: a top-up or a dilution of the batch one of the manager's nodes uploads with,
- * which that node carries out through its Bee API and pays for from its own wallet.
+ * The funding API's stamp operations: a top-up or a dilution of the batch one of the manager's nodes uploads with, or
+ * of an archive batch, which the node that holds the batch carries out through its Bee API and pays for from its own
+ * wallet.
  *
  * An operation is checked before anything is written, against the inventory read now and the postage contract read
- * now: the node is one of the manager's and the batch is the one it uploads with, wherever the node is listed; the
- * batch was read, has not expired, is usable and is at the depth the admin saw; a top-up's cost in xBZZ is in the
- * node's wallet, and a dilution takes one or two steps and leaves seven days. The node needs some xDAI for the gas
- * either way, checked here because Bee's own refusal of an empty gas wallet is no clear sentence. The postage
- * contract must hold the batch at that depth, and only the wallet that bought a batch may dilute it.
+ * now: the node is one of the manager's and the batch is the one it uploads with, wherever the node is listed, or an
+ * archive batch of the inventory's that names it as its holder; the batch was read, has not expired, is usable and is
+ * at the depth the admin saw; a top-up's cost in xBZZ is in the paying node's wallet, and a dilution takes one or two
+ * steps and leaves seven days. The node needs some xDAI for the gas either way, checked here because Bee's own refusal
+ * of an empty gas wallet is no clear sentence. The postage contract must hold the batch at that depth, and only the
+ * wallet that bought a batch may dilute it.
+ *
+ * A former catalogue node, which the inventory lists only as the holder of archive batches, has its wallet read now for
+ * those checks.
  *
  * Then the operation is journalled, with the batch's balance in the postage contract, and the node asked once. Bee
  * answers once the transaction is mined, so its answer with a hash is `confirmed`. A refusal is `failed` with its
@@ -255,10 +284,12 @@ export class FundingStampService {
     const known = await this.deps.journal.find(request.requestId);
     if (known) return this.repeat(known, request);
 
-    const { node, costPlur } = this.held(await this.deps.inventory.inventory(), request);
-    const apiUrl = await this.deps.nodeApiUrl(request.nodeId);
+    const target = this.target(await this.deps.inventory.inventory(), request);
+    const payer = await this.payerOf(target, request);
+    const costPlur = this.checked(target, payer, request);
+    const apiUrl = await this.deps.nodeApiUrl(payer.nodeId);
     if (apiUrl === null) throw new FundingApiError('unknown_node', 'No node of this manager has this id.');
-    const before = await this.onChain(request, node);
+    const before = await this.onChain(request, payer);
 
     const at = new Date(this.now());
     const row: FundingStampOperationRow = {
@@ -370,19 +401,28 @@ export class FundingStampService {
     return answerOf(row);
   }
 
-  /** The node and its batch, checked against the inventory read now, and what the operation costs. */
-  private held(inventory: FundingInventory, request: FundingStampOperationRequest): Held {
+  /**
+   * The node and the batch the request names, checked against the inventory read now: the batch the node uploads with,
+   * or an archive batch that names the node as its holder, read, with time left, usable and at the depth the admin saw.
+   * A node the inventory lists only as the holder of archive batches is known by those alone.
+   */
+  private target(inventory: FundingInventory, request: FundingStampOperationRequest): Target {
     const appearances = appearancesOf(inventory, request.nodeId);
-    if (appearances.length === 0) throw new FundingApiError('unknown_node', 'No node of this manager has this id.');
-    const node = appearances.find((candidate) => candidate.batch?.batchId === request.batchId);
-    const batch = node?.batch;
-    if (!node || !batch) {
-      throw refused(
-        appearances.some((candidate) => candidate.batch)
-          ? 'The batch is not the one this node uploads with, so the manager does not change it.'
-          : 'This node uploads with no batch of the manager’s, so there is none to change.',
-      );
+    const archived = inventory.archiveBatches ?? [];
+    const held = archived.filter((archive) => archive.nodeId === request.nodeId);
+    if (appearances.length === 0 && held.length === 0) {
+      throw new FundingApiError('unknown_node', 'No node of this manager has this id.');
     }
+    const own = appearances.find((candidate) => candidate.batch?.batchId === request.batchId);
+    const archive = own ? null : (held.find((each) => each.batchId === request.batchId) ?? null);
+    const batch = own?.batch ?? archive;
+    if (!batch) {
+      const elsewhere = archived.find((each) => each.batchId === request.batchId);
+      if (elsewhere) throw refused(heldElsewhere(elsewhere));
+      if (held.length > 0) throw refused(NOT_ITS_BATCH_OR_ARCHIVE);
+      throw refused(appearances.some((candidate) => candidate.batch) ? NOT_ITS_BATCH : NO_BATCH);
+    }
+    const node = own ?? appearances[0] ?? null;
     if (batch.readError !== null) {
       throw refused(`The batch could not be read, so it is not changed now. ${batch.readError}`);
     }
@@ -396,22 +436,41 @@ export class FundingStampService {
         `The batch is at depth ${batch.depth} now, not the depth ${request.expectedDepth} the request was made for.`,
       );
     }
-    const reading = { depth: batch.depth, batchTTL: batch.ttlSeconds };
+    return { node, batch, archive, reading: { depth: batch.depth, batchTTL: batch.ttlSeconds } };
+  }
 
+  /**
+   * The node that carries the operation out and pays for it: the node the request names, as the inventory lists it,
+   * or, for a holder of archive batches it lists nowhere else, that node read now.
+   */
+  private async payerOf(target: Target, request: FundingStampOperationRequest): Promise<FundingNode> {
+    if (target.node) return target.node;
+    const holder = await this.deps.archiveBatchHolder(request.batchId);
+    if (!holder || holder.nodeId !== request.nodeId) throw refused(HOLDER_GONE);
+    return holder;
+  }
+
+  /**
+   * The checks of the operation itself, against the paying node's wallet: a top-up's cost in xBZZ, and a dilution's
+   * steps and the life it leaves; some xDAI for the gas of either. Answers a top-up's cost in PLUR, and null for a
+   * dilution.
+   */
+  private checked(target: Target, payer: FundingNode, request: FundingStampOperationRequest): string | null {
+    const { reading } = target;
     if (request.kind === 'topup') {
       const costPlur = topUpPreview(reading, request.amountPerChunkPlur, null).costPlur;
       if (costPlur === null) throw refused('The cost of this top-up could not be worked out.');
-      const wallet = this.walletOf(node);
+      const wallet = this.walletOf(payer);
       if (wallet.xbzzPlur < BigInt(costPlur)) {
         throw refused(
           `The node’s wallet holds ${plurToBzzExact(wallet.xbzzPlur)} xBZZ, less than the ${plurToBzzExact(BigInt(costPlur))} xBZZ this top-up costs.`,
         );
       }
       if (wallet.xdaiWei === 0n) throw refused(NO_GAS);
-      return { node, costPlur };
+      return costPlur;
     }
 
-    const steps = request.newDepth - batch.depth;
+    const steps = request.newDepth - reading.depth;
     if (steps < 1 || steps > FUNDING_DILUTE_MAX_STEPS) {
       throw refused('A dilution takes a batch one step deeper, or two.');
     }
@@ -424,8 +483,8 @@ export class FundingStampService {
         `Diluting it ${steps === 1 ? 'one step' : 'two steps'} would leave it ${lifeOf(after.ttl)}, under the 7 days a dilution must leave. Top it up first.`,
       );
     }
-    if (this.walletOf(node).xdaiWei === 0n) throw refused(NO_GAS);
-    return { node, costPlur: null };
+    if (this.walletOf(payer).xdaiWei === 0n) throw refused(NO_GAS);
+    return null;
   }
 
   /** The node's wallet as the inventory read it, or a refusal when it could not be read. */
