@@ -30,6 +30,8 @@ import { StageRecordBuilder } from './domain/stages/StageRecordBuilder.js';
 import { StagePoolStrings } from './domain/stages/StagePoolStrings.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
 import { localPublisherHost } from './domain/localHost.js';
+import { ArchiveBatchRepository } from './domain/stages/ArchiveBatchRepository.js';
+import { ArchiveBatchService } from './domain/stages/ArchiveBatchService.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
 import { FundingInventoryService } from './domain/funding/FundingInventoryService.js';
@@ -448,8 +450,11 @@ async function main(): Promise<void> {
 
   // The brand's catalogue node and its pinned batch, whose record goes to the same link. docs/features/stages.md.
   const catalogueDesignation = new CatalogueDesignationRepository(database.pool);
+  // The brand's archive batches on the catalogue node, which the same record carries. docs/features/stages.md.
+  const archiveBatchStore = new ArchiveBatchRepository(database.pool);
   cataloguePublisher = new CataloguePublisher({
     designation: catalogueDesignation,
+    archiveBatches: archiveBatchStore,
     profiles: profileRepository,
     reading: (profile, batchId) => stampService.batchReadingFor(profile, batchId),
     beeApiUrl: publishedBeeApiUrl(localPublisherHost),
@@ -458,6 +463,14 @@ async function main(): Promise<void> {
     managerId,
   });
   const catalogue = cataloguePublisher;
+  const archiveBatchService = new ArchiveBatchService({
+    store: archiveBatchStore,
+    designation: catalogueDesignation,
+    listStamps: (name) => stampService.listStamps(name),
+    heldBatch: (name, batchId) => stampService.heldBatch(name, batchId),
+    status: () => catalogue.archiveStatus(),
+    changed: () => void catalogue.pushNow(),
+  });
   const catalogueService = new CatalogueDesignationService({
     store: catalogueDesignation,
     profiles: profileRepository,
@@ -466,6 +479,7 @@ async function main(): Promise<void> {
     status: () => catalogue.status(),
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
+    isArchiveBatch: (batchId) => archiveBatchService.isArchiveBatch(batchId),
   });
   // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet, its
   // batch and its chequebook, and the price of postage. A node's address stays here: the inventory names each node by
@@ -580,6 +594,7 @@ async function main(): Promise<void> {
       ),
       stagePublisher: publisher,
       catalogueService,
+      archiveBatchService,
       stackVersionService,
       orchestrator,
       deployTargets,

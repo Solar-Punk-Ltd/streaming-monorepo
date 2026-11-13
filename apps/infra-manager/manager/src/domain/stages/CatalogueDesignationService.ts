@@ -12,6 +12,7 @@ import {
   type CataloguePushState,
   type CatalogueReading,
   catalogueBatchProblem,
+  catalogueIsArchiveBatchRefusal,
   catalogueMoveRefusal,
   catalogueNodeProblem,
   catalogueReleaseFirstRefusal,
@@ -80,6 +81,8 @@ export interface CatalogueDesignationDeps {
    * and the one a container on this host does. Without it only the batch id is matched.
    */
   nodeUrls?(profile: Profile): Promise<string[]>;
+  /** Whether a batch is an archive batch, `ArchiveBatchService.isArchiveBatch`, which is refused. Without it none is. */
+  isArchiveBatch?(batchId: string): Promise<boolean>;
   now?: () => number;
 }
 
@@ -111,7 +114,7 @@ function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null):
  * one immutable batch its node holds, pinned by id. A designation is refused, with a sentence saying why, for a
  * deployment that is more than a Bee node or a rung of a node pool, and for a batch the node does not hold, one it
  * calls mutable, one whose kind it does not report, one that has expired, one an ABR uploader stamps segments
- * with, and a new one shallower than `MIN_CATALOGUE_DEPTH`. A save, a clear and a release name the revision they
+ * with, an archive batch, and a new one shallower than `MIN_CATALOGUE_DEPTH`. A save, a clear and a release name the revision they
  * read, as the admin link's do.
  *
  * Once a batch has been designated it stays the catalogue's, through a clear as well: its slots are stamped by it, so
@@ -151,6 +154,10 @@ export class CatalogueDesignationService {
     }
     if (moving && save.move !== true) {
       throw new CatalogueNodeInputError([catalogueMoveRefusal(pinnedBatchId, batchId)]);
+    }
+    // Recordings fill an archive batch, and a full immutable batch takes no new catalogue slot.
+    if (await this.deps.isArchiveBatch?.(batchId)) {
+      throw new CatalogueNodeInputError([catalogueIsArchiveBatchRefusal(batchId)]);
     }
 
     const profile = await this.deps.profiles.findByName(save.profileName);

@@ -13,6 +13,8 @@ import { ValidationError as YupValidationError } from 'yup';
 import {
   AdminLinkInputError,
   AdminRequiredError,
+  ArchiveBatchNotFoundError,
+  ArchiveBatchRefusedError,
   CatalogueNodeInputError,
   CatalogueNodeRemovalError,
   AllSlotsUsedError,
@@ -180,6 +182,14 @@ export function errorHandler(
   }
   if (err instanceof CatalogueNodeRemovalError) {
     res.status(409).json({ error: 'catalogue_node_designated', message: err.message });
+    return;
+  }
+  if (err instanceof ArchiveBatchRefusedError) {
+    res.status(422).json({ error: 'archive_batch_refused', message: err.message });
+    return;
+  }
+  if (err instanceof ArchiveBatchNotFoundError) {
+    res.status(404).json({ error: 'archive_batch_not_found', message: err.message });
     return;
   }
   if (err instanceof ManagerSettingsChangedError) {
