@@ -67,7 +67,8 @@ export type LocalPublisherHostReader = () => Promise<string>;
  * The name itself cannot be handed on. An uploader's compose service carries no
  * extra_hosts, so on Linux that name resolves nowhere inside it, and only a
  * literal address does. Running natively there is no bridge to read, so the name
- * is the answer, which is what Docker Desktop resolves inside a container anyway.
+ * is the answer, which is what Docker Desktop resolves inside a container anyway,
+ * whether BEE_LOCAL_HOST names it or is unset.
  */
 export async function resolveLocalPublisherHost(deps: LocalPublisherHostDeps = {}): Promise<string> {
   return (await readLocalPublisherHost(deps)).host;
@@ -107,11 +108,9 @@ async function readLocalPublisherHost(deps: LocalPublisherHostDeps): Promise<Loc
     warn = (message: string) => logger.warn(message),
   } = deps;
 
-  if (override) {
-    return override === DOCKER_HOST_NAME
-      ? literalAddressOf(override, lookupIpv4, warn)
-      : { host: override, settled: true };
-  }
+  if (override && override !== DOCKER_HOST_NAME) return { host: override, settled: true };
+  // The name, set or by default, is the docker host. Running natively there is no bridge to read, and the machine's
+  // own resolver may answer the loopback address for it, so the name is handed on as it is.
   if (!isInContainer()) return { host: DOCKER_HOST_NAME, settled: true };
   return literalAddressOf(DOCKER_HOST_NAME, lookupIpv4, warn);
 }

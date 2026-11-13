@@ -221,15 +221,17 @@ container on this host reaches the node on, from `resolveLocalPublisherHost` in
 `manager/src/domain/localHost.ts`:
 
 - `BEE_LOCAL_HOST` when it is set, taken as given. The bare name `host.docker.internal` is
-  resolved as in the next case. The manager checks the value at startup and refuses to start on
-  anything that is not a host name or an IPv4 address.
+  treated as if the setting were unset: resolved in a container as in the next case, and kept as
+  the name natively, as in the last. The manager checks the value at startup and refuses to start
+  on anything that is not a host name or an IPv4 address.
 - Otherwise, when the manager runs in a container, the IPv4 address `host.docker.internal`
   resolves to there, which is the Docker bridge, handed on as a literal. The name itself would
   resolve nowhere inside an uploader container on Linux, because the uploader's compose service
   has no `extra_hosts`. A failed lookup answers the name, logs one warning, and is tried again on
   the next read.
 - Otherwise, running natively, the name `host.docker.internal`, which Docker Desktop resolves
-  inside a container.
+  inside a container. It is never looked up natively, since this machine's own resolver may answer
+  the loopback address for it.
 
 The stack binds every local Bee API to the bridge address unless told otherwise (see the bind
 step in [../../deploy/README.md](../../deploy/README.md)), which is why the bridge is the default.
@@ -250,8 +252,9 @@ publish address from.
 `classifyPublishUrl` (`common/src/publishUrl.ts`) refuses three shapes without touching the
 network:
 
-- `loopback`: a loopback host works only on the manager's own machine. Only
-  `BEE_LOCAL_HOST=127.0.0.1` produces one, and the message names `BEE_LOCAL_HOST`.
+- `loopback`: a loopback host works only on the manager's own machine. Only a `BEE_LOCAL_HOST`
+  that names the loopback, such as `127.0.0.1`, produces one, and the message names
+  `BEE_LOCAL_HOST`.
 - `ssh-target`: a URL with user information is a deploy target, not a network address.
 - `malformed`: no usable http(s) URL.
 
