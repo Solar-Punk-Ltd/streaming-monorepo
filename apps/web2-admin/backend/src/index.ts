@@ -8,6 +8,10 @@ import { PostgresSessionRepository } from './domain/auth/PostgresSessionReposito
 import { PostgresUserRepository } from './domain/auth/PostgresUserRepository.js';
 import { SessionSweep, startSessionSweep } from './domain/auth/sessionSweep.js';
 import { startStreamFinishSweep, StreamFinishService, type StreamFinishSweep } from './domain/StreamFinishService.js';
+import { BeeArchiveNode } from './domain/archive/ArchiveNode.js';
+import { ArchiveRepository } from './domain/archive/ArchiveRepository.js';
+import { ArchiveService } from './domain/archive/ArchiveService.js';
+import { ChunkCopier } from './domain/archive/ChunkCopier.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
 import { CatalogueMoveService } from './domain/CatalogueMove.js';
@@ -98,6 +102,9 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(`[Boot]   internal API token: ${redactSecret(config.internalApiToken)}`);
   logger.info(`[Boot]   catalogue move: ${config.catalogueMoveEnabled ? 'enabled' : 'off'}`);
   logger.info(`[Boot]   exports: ${config.exportDir}, ${config.exportParallelReads} segment reads at once`);
+  logger.info(
+    `[Boot]   archive: ${config.archive.parallelChunks} chunks at once, push window ${config.archive.pushWindowChunks}, chequebook floor ${config.archive.chequebookFloorPlur} PLUR, stamp warning under ${config.archive.ttlWarningDays} days, new stamps ${config.archive.buyDefaultDays} days`,
+  );
   // Neither the secret nor the token is logged, not even in part.
   logger.info(
     `[Boot]   brand wallet secret: ${config.brandWalletSecret === null ? '(unset → no brand wallet)' : 'set'}`,
@@ -130,6 +137,7 @@ let sessionSweep: SessionSweep | undefined;
 let streamFinishSweep: StreamFinishSweep | undefined;
 let catalogueMove: CatalogueMoveService | undefined;
 let exportService: ExportService | undefined;
+let archiveService: ArchiveService | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -162,6 +170,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
       // The reads in flight are dropped and the export stays in its state, so the next start carries on with it.
       await exportService.shutdown();
       exportService = undefined;
+    }
+    if (archiveService) {
+      // The chunks in flight are dropped and the archive stays in its state, so the next start carries on with it.
+      await archiveService.shutdown();
+      archiveService = undefined;
     }
     if (database) {
       await database.close();
@@ -265,7 +278,12 @@ async function main(): Promise<void> {
     new BeeRecordingSource(),
     new FfmpegJoiner(),
     auditLog,
-    { dir: config.exportDir, parallelReads: config.exportParallelReads },
+    {
+      dir: config.exportDir,
+      parallelReads: config.exportParallelReads,
+      // The archive is created below; until then nothing can hold the place.
+      archives: { archiveHoldingPlace: async () => (await archiveService?.archiveHoldingPlace()) ?? null },
+    },
   );
   await exportService.boot();
 
@@ -312,6 +330,26 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
 
+  // Archiving a recording: copied through the catalogue node onto an archive stamp, sharing the export's place. A job
+  // left running by the last process goes on where it stopped. While a stream's "List only archived qualities"
+  // switch is on, its catalogue entry lists the archived qualities alone.
+  const exports = exportService;
+  archiveService = new ArchiveService(
+    new ArchiveRepository(database.pool),
+    streamRepository,
+    renditionRepository,
+    catalogueStampRepository,
+    new BeeArchiveNode(),
+    new ChunkCopier(new BeeArchiveNode()),
+    managerFunding,
+    publishService,
+    { exportHoldingPlace: () => exports.exportHoldingPlace() },
+    auditLog,
+    { settings: config.archive },
+  );
+  publishService.listArchivedOnlyWith(archiveService);
+  await archiveService.boot();
+
   const consoleSettings = new ConsoleSettingsService(new ConsoleSettingsRepository(database.pool));
 
   apiServer = startApiServer(
@@ -328,6 +366,7 @@ async function main(): Promise<void> {
       catalogueBatch,
       catalogueMove,
       exportService,
+      archiveService,
       fundingService,
       consoleSettings,
       internalApiToken: config.internalApiToken,

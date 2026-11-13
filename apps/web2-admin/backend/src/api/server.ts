@@ -1,6 +1,12 @@
 import http from 'node:http';
 
-import { EXPORT_PATH, FUNDING_PATH, VERSION_PATH, type VersionInfo } from '@streaming-monorepo/web2-admin-common';
+import {
+  ARCHIVE_PATH,
+  EXPORT_PATH,
+  FUNDING_PATH,
+  VERSION_PATH,
+  type VersionInfo,
+} from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
 
 import { AuthService } from '../domain/auth/AuthService.js';
@@ -8,6 +14,7 @@ import type { CatalogueBatchService } from '../domain/CatalogueBatch.js';
 import type { CatalogueMoveService } from '../domain/CatalogueMove.js';
 import type { ConsoleSettingsService } from '../domain/ConsoleSettingsService.js';
 import { Database } from '../domain/Database.js';
+import type { ArchiveService } from '../domain/archive/ArchiveService.js';
 import type { ExportService } from '../domain/export/ExportService.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import type { FundingService } from '../domain/funding/FundingService.js';
@@ -29,6 +36,7 @@ import { requireSameSite } from './middleware/requireSameSite.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createConfigRouter } from './routes/config.js';
+import { createArchiveRouter } from './routes/archive.js';
 import { createExportRouter } from './routes/exports.js';
 import { createFeedRouter } from './routes/feed.js';
 import { createFundingRouter } from './routes/funding.js';
@@ -58,6 +66,11 @@ export interface ApiDeps {
   catalogueMove: CatalogueMoveService;
   /** Exporting a recording into an MP4, one at a time, kept on the server until the next one starts. */
   exportService: ExportService;
+  /**
+   * Archiving a recording onto an archive stamp, sharing the export's place. Absent in the tests that are not about
+   * it, and then `/api/archive` answers 404.
+   */
+  archiveService?: ArchiveService;
   /**
    * The Funding page: the brand wallet, the nodes' pins, and the sends, stamp operations and chequebook operations
    * relayed through the manager.
@@ -151,10 +164,14 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       ingestService: deps.ingestService,
       streamFinishService: deps.streamFinishService,
       exportService: deps.exportService,
+      archiveService: deps.archiveService,
       requireAuth,
     }),
   );
   app.use(EXPORT_PATH, createExportRouter({ exportService: deps.exportService, requireAuth }));
+  if (deps.archiveService) {
+    app.use(ARCHIVE_PATH, createArchiveRouter({ archiveService: deps.archiveService, requireAuth }));
+  }
   app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
   app.use(
     '/api/catalogue-stamp',

@@ -1,5 +1,7 @@
 import {
   STREAM_LIMITS,
+  type ArchiveListingRequest,
+  type ArchiveStartRequest,
   type ExportStartRequest,
   type Stream,
   type StreamFinishAnswer,
@@ -7,15 +9,17 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
+import type { ArchiveService } from '../../domain/archive/ArchiveService.js';
 import { UnsupportedMediaTypeError } from '../../domain/errors/index.js';
 import type { ExportService } from '../../domain/export/ExportService.js';
 import { IngestService } from '../../domain/IngestService.js';
 import { PublishService } from '../../domain/PublishService.js';
 import { StreamFinishService } from '../../domain/StreamFinishService.js';
 import { normaliseThumbnailMime, StreamService } from '../../domain/StreamService.js';
+import { archiveListingSchema, archiveStartSchema } from '../../schemas/archive.js';
 import { exportStartSchema } from '../../schemas/export.js';
 import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
-import { THUMBNAIL_MIME_TYPES } from '../../types/index.js';
+import { THUMBNAIL_MIME_TYPES, type StreamRow } from '../../types/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { actorOf } from '../middleware/requireAuth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
@@ -29,6 +33,12 @@ export interface StreamRoutesDeps {
   streamFinishService: StreamFinishService;
   /** Exporting a recording: the panel's options, and the start. The export itself lives under `/api/export`. */
   exportService: ExportService;
+  /**
+   * Archiving a recording: each stream's archive in the list and in its own answer, the panel's options, the start and
+   * the "List only archived qualities" switch. The job itself lives under `/api/archive`. Absent in the tests that are
+   * not about it, and then streams carry no `archive` and these routes answer 404.
+   */
+  archiveService?: ArchiveService;
   requireAuth: RequestHandler;
 }
 
@@ -54,7 +64,20 @@ function streamId(req: Request): string {
 }
 
 export function createStreamsRouter(deps: StreamRoutesDeps): Router {
-  const { streamService, publishService, ingestService, streamFinishService, exportService, requireAuth } = deps;
+  const {
+    streamService,
+    publishService,
+    ingestService,
+    streamFinishService,
+    exportService,
+    archiveService,
+    requireAuth,
+  } = deps;
+  /** The stream as the console reads it, with its archive when anything of it was copied. */
+  const present = async (row: StreamRow): Promise<Stream> => {
+    const archive = archiveService ? (await archiveService.summaries([row])).get(row.id) : undefined;
+    return toStream(row, archive);
+  };
   const router = Router();
 
   router.use(requireAuth);
@@ -63,7 +86,8 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     '/',
     asyncHandler(async (_req: Request, res: Response) => {
       const streams = await streamService.list();
-      const response: StreamListResponse = { streams: streams.map(toStream) };
+      const archives = archiveService ? await archiveService.summaries(streams) : new Map();
+      const response: StreamListResponse = { streams: streams.map((row) => toStream(row, archives.get(row.id))) };
       res.json(response);
     }),
   );
@@ -83,7 +107,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const stream = await streamService.get(streamId(req));
-      res.json(toStream(stream));
+      res.json(await present(stream));
     }),
   );
 
@@ -93,7 +117,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const updated = await streamService.update(actorOf(req), streamId(req), req.body as StreamInputBody);
-      res.json(toStream(updated));
+      res.json(await present(updated));
     }),
   );
 
@@ -127,7 +151,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
         return;
       }
       const updated = await streamService.setThumbnail(actorOf(req), streamId(req), contentType, body);
-      res.json(toStream(updated));
+      res.json(await present(updated));
     }),
   );
 
@@ -146,7 +170,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const updated = await streamService.removeThumbnail(actorOf(req), streamId(req));
-      res.json(toStream(updated));
+      res.json(await present(updated));
     }),
   );
 
@@ -191,7 +215,7 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateParams(streamIdParamSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const { stream, ingest } = await streamFinishService.finish(actorOf(req), streamId(req));
-      const answer: StreamFinishAnswer = { stream: toStream(stream), ingest };
+      const answer: StreamFinishAnswer = { stream: await present(stream), ingest };
       res.json(answer);
     }),
   );
@@ -217,6 +241,41 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
       res.status(201).json(await exportService.start(actorOf(req), streamId(req), rendition));
     }),
   );
+
+  if (archiveService) {
+    // Archiving the recording onto an archive stamp. GET answers what the panel and the stream's archive card offer:
+    // the qualities with their state and estimates, the stamps that fit, why none can start now if so, and the job on
+    // the server. POST starts one, 409 with the sentence when it cannot (ArchiveRefusedError), and answers 202 with the
+    // job as it starts. PUT .../listing turns "List only archived qualities", and rewrites the stream's entry.
+    router.get(
+      '/:id/archive',
+      validateParams(streamIdParamSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        res.set('Cache-Control', 'no-store');
+        res.json(await archiveService.optionsFor(streamId(req), actorOf(req).userId));
+      }),
+    );
+
+    router.post(
+      '/:id/archive',
+      validateParams(streamIdParamSchema),
+      validateBody(archiveStartSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const archive = await archiveService.start(actorOf(req), streamId(req), req.body as ArchiveStartRequest);
+        res.status(202).json({ archive });
+      }),
+    );
+
+    router.put(
+      '/:id/archive/listing',
+      validateParams(streamIdParamSchema),
+      validateBody(archiveListingSchema),
+      asyncHandler(async (req: Request, res: Response) => {
+        const { archivedOnly } = req.body as ArchiveListingRequest;
+        res.json(await archiveService.setListing(actorOf(req), streamId(req), archivedOnly));
+      }),
+    );
+  }
 
   return router;
 }
