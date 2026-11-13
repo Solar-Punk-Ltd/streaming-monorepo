@@ -16,6 +16,7 @@ import type { Profile } from '../../types/index.js';
 import type { StoredAdminLinkSecret } from '../adminLink/ManagerAdminLinkRepository.js';
 import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
+import { beePublisherUrlFor } from '../StampService.js';
 
 import { type CatalogueDesignationRow, isDesignated, isMoving } from './CatalogueDesignationRepository.js';
 import type { CatalogueStatus } from './CatalogueDesignationService.js';
@@ -33,13 +34,25 @@ export const CATALOGUE_CHECK_MS = 10_000;
  */
 export const CATALOGUE_TTL_DRIFT_SECONDS = 300;
 
+/**
+ * The catalogue node's Bee API as the web2 admin dials it. The admin is another process or container, as an uploader
+ * is, so the record carries the address a pool string carries (`beePublisherUrlFor`): the published host for a node on
+ * this host, and a declared remote host's own address otherwise.
+ */
+export function publishedBeeApiUrl(publisherHost: () => Promise<string>): (profile: Profile) => Promise<string> {
+  return async (profile) => beePublisherUrlFor(profile, await publisherHost());
+}
+
 export interface CataloguePublisherDeps {
   designation: { read(): Promise<CatalogueDesignationRow> };
   profiles: { findByName(name: string): Promise<Profile | null> };
   /** The pinned batch as the node reports it, `StampService.batchReadingFor`. Never throws. */
   reading(profile: Profile, batchId: string): Promise<{ health: StampHealth; depth: number | null }>;
-  /** The node's Bee API as the control host reaches it, `beeApiUrlFor`. */
-  beeApiUrl(profile: Profile): string;
+  /**
+   * The node's Bee API as the web2 admin dials it, from another process or container: the address a pool string
+   * carries, {@link publishedBeeApiUrl}.
+   */
+  beeApiUrl(profile: Profile): Promise<string>;
   link: { storedLink(): Promise<StoredAdminLinkSecret> };
   events: { subscribe(listener: (event: ManagerEvent) => void): () => void };
   managerId: string;
@@ -217,7 +230,7 @@ export class CataloguePublisher {
       };
       // A node that did not answer says nothing new about the batch, and the admin keeps the last reading it had.
       if (health.state === 'unknown' || knownDepth === null) return null;
-      const beeApiUrl = this.deps.beeApiUrl(profile);
+      const beeApiUrl = await this.deps.beeApiUrl(profile);
       if (isLoopbackUrl(beeApiUrl)) return null;
       return {
         nodeName: profile.name,
@@ -284,7 +297,7 @@ export class CataloguePublisher {
     if (!link.url || !link.token) return this.record('store', 'skipped-no-link');
 
     // The admin dials this address from another container, so one that reaches only the dialling host is no address.
-    const beeApiUrl = this.deps.beeApiUrl(profile);
+    const beeApiUrl = await this.deps.beeApiUrl(profile);
     if (isLoopbackUrl(beeApiUrl)) {
       this.logProblem(
         `${profile.name}'s Bee API is ${beeApiUrl}, which reaches the dialling host alone; the web2 admin needs an address it can dial`,

@@ -233,6 +233,10 @@ container on this host reaches the node on, from `resolveLocalPublisherHost` in
   inside a container. It is never looked up natively, since this machine's own resolver may answer
   the loopback address for it.
 
+The catalogue stamp record carries the same address for the catalogue node, since the web2 admin
+dials it from another process or container, as an uploader does
+([stages.md](stages.md#the-catalogue-stamp-record)).
+
 The stack binds every local Bee API to the bridge address unless told otherwise (see the bind
 step in [../../deploy/README.md](../../deploy/README.md)), which is why the bridge is the default.
 A member on a declared remote host keeps that host's address, and its API has to be bound
@@ -352,9 +356,9 @@ two different things about where uploads go.
 
 Manager environment, full list in [../../manager/README.md](../../manager/README.md):
 
-| Key              | Default                                                                                  | What it does                                                                                        |
-| ---------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `BEE_LOCAL_HOST` | for a pool string, the bridge address in a container and `host.docker.internal` natively | The host every local pool string carries, among other local reads. See [The address](#the-address). |
+| Key              | Default                                                                                     | What it does                                                                                                                     |
+| ---------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `BEE_LOCAL_HOST` | `host.docker.internal`: the bridge address it resolves to in a container, the name natively | The host every local pool string and the catalogue stamp record carry, among other local reads. See [The address](#the-address). |
 
 Stack keys an ABR uploader's env file carries:
 

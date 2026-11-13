@@ -45,7 +45,7 @@ import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';
 import { BeeClient } from './domain/BeeClient.js';
-import { CataloguePublisher } from './domain/stages/CataloguePublisher.js';
+import { CataloguePublisher, publishedBeeApiUrl } from './domain/stages/CataloguePublisher.js';
 import { UploaderHealthService } from './domain/UploaderHealthService.js';
 import { UploaderStartGate } from './domain/UploaderStartGate.js';
 import { readBundledCommit } from './domain/versions/bundledCommit.js';
@@ -452,7 +452,7 @@ async function main(): Promise<void> {
     designation: catalogueDesignation,
     profiles: profileRepository,
     reading: (profile, batchId) => stampService.batchReadingFor(profile, batchId),
-    beeApiUrl: beeApiUrlFor,
+    beeApiUrl: publishedBeeApiUrl(localPublisherHost),
     link: managerAdminLink,
     events: eventBus,
     managerId,

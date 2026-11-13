@@ -15,6 +15,7 @@ import {
   CATALOGUE_CHECK_MS,
   CATALOGUE_TTL_DRIFT_SECONDS,
   CataloguePublisher,
+  publishedBeeApiUrl,
 } from '../../src/domain/stages/CataloguePublisher.js';
 import type { CatalogueRequest } from '../../src/domain/stages/catalogueRequest.js';
 import type { StageClock } from '../../src/domain/stages/StagePublisher.js';
@@ -93,6 +94,8 @@ interface Setup {
   beeApiUrl?: string;
   /** A Bee API per deployment name, over `beeApiUrl`. */
   beeApiUrls?: Record<string, string>;
+  /** The production address, `publishedBeeApiUrl`, in place of the two above. */
+  published?: (profile: Profile) => Promise<string>;
   profiles?: Profile[];
 }
 
@@ -122,7 +125,7 @@ async function publisherFor(setup: Setup = {}) {
       state.readings += 1;
       return state.byBatch.get(batchId) ?? state.reading;
     },
-    beeApiUrl: (profile) => setup.beeApiUrls?.[profile.name] ?? setup.beeApiUrl ?? BEE_API,
+    beeApiUrl: setup.published ?? (async (profile) => setup.beeApiUrls?.[profile.name] ?? setup.beeApiUrl ?? BEE_API),
     link: { storedLink: async () => ({ ...link }) },
     events,
     managerId: MANAGER_ID,
@@ -509,5 +512,39 @@ describe('stopping', () => {
     await t.publisher.pushNow();
     await t.clock.advance(CATALOGUE_CHECK_MS * 6);
     assert.equal(t.sent.length, count);
+  });
+});
+
+describe('the catalogue stamp record, with the address the manager pushes', () => {
+  /** The pushed record's Bee API address, for one catalogue node and the host a pool string carries. */
+  async function pushedAddress(profile: Profile, publisherHost: string): Promise<string | null> {
+    const t = await publisherFor({
+      profiles: [profile],
+      published: publishedBeeApiUrl(async () => publisherHost),
+    });
+    t.publisher.start();
+    await settle();
+    const store = stores(t.sent)[0];
+    return store && store.kind === 'store' ? store.record.beeApiUrl : null;
+  }
+
+  const local = (host: string | null) =>
+    makeProfile({ name: 'catalogue', kind: 'custom', components: ['bee-uploader'], host, port_slot: 2 });
+
+  it('carries the name host.docker.internal for a node on this host when the manager runs natively', async () => {
+    // The admin dials it from another process or container, as an uploader dials a pool string.
+    assert.equal(await pushedAddress(local(null), 'host.docker.internal'), 'http://host.docker.internal:10025');
+    assert.equal(await pushedAddress(local('localhost'), 'host.docker.internal'), 'http://host.docker.internal:10025');
+  });
+
+  it('carries the bridge address a manager in a container resolves, as a pool string does', async () => {
+    assert.equal(await pushedAddress(local(null), '172.17.0.1'), 'http://172.17.0.1:10025');
+  });
+
+  it("carries a declared remote host's own address", async () => {
+    assert.equal(
+      await pushedAddress(local('bee-host.example.invalid'), '172.17.0.1'),
+      'http://bee-host.example.invalid:10025',
+    );
   });
 });

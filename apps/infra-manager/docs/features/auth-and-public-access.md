@@ -350,12 +350,12 @@ by hand.
 
 Keys in `manager/.env`:
 
-| Key                 | Default                | What it does                                                                                                                             |
-| ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `WEB_PORT`          | `8080`                 | The host port the console is published on                                                                                                |
-| `MANAGER_WEB_BIND`  | `127.0.0.1`            | The host address `WEB_PORT` is published on. Docker publishes past a host firewall, so widen it only behind one                          |
-| `FUNDING_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                              |
-| `BEE_LOCAL_HOST`    | `host.docker.internal` | The address the manager reaches a local Bee node's API and OME's HLS port on. Set it when the binds name something other than the bridge |
+| Key                 | Default                | What it does                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEB_PORT`          | `8080`                 | The host port the console is published on                                                                                                                                                                                                                                                                                                                        |
+| `MANAGER_WEB_BIND`  | `127.0.0.1`            | The host address `WEB_PORT` is published on. Docker publishes past a host firewall, so widen it only behind one                                                                                                                                                                                                                                                  |
+| `FUNDING_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                                                                                                                                                                                                                                                      |
+| `BEE_LOCAL_HOST`    | `host.docker.internal` | The host of a local deployment's published ports: where the manager reads a local Bee node's API and OME's HLS port, and the address of a local Bee node that pool strings and the catalogue stamp record carry. Set it when the binds name something other than the bridge. The manager README's settings table says how it is read in a container and natively |
 
 The stack's `*_BIND` and `*_API_LISTEN` keys are in the deploy guide's step 2. The manager's other
 settings are in the [API reference](../../manager/README.md).
