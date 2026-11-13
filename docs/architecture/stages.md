@@ -64,11 +64,11 @@ that receives them.
 | `adminToken`                             | the sha256 of the token the deployment's uploader presents to the admin, and its kind: `own` or `shared`, below                             |
 
 **A catalogue stamp record**, pushed by the manager for the brand: the catalogue node's name, its
-Bee API address as the control host reaches it, the pinned `batchId`, whether the batch is
-`immutable`, its `depth`, its stamp `state`, `ttlSeconds` and `fillRatio`, when it was designated,
-and `observedAt`. While a move is pending in the manager, `previous` carries the batch moved from,
-its node's name and Bee API and the same readings (`catalogueStampPreviousSchema`). It is null or
-absent otherwise.
+Bee API address as the admin dials it (the address a pool string carries), the pinned `batchId`,
+whether the batch is `immutable`, its `depth`, its stamp `state`, `ttlSeconds` and `fillRatio`, when
+it was designated, and `observedAt`. While a move is pending in the manager, `previous` carries the
+batch moved from, its node's name and Bee API and the same readings
+(`catalogueStampPreviousSchema`). It is null or absent otherwise.
 
 Neither record ever carries a signing key, a wallet key, an RPC endpoint, a token or a rung's
 node address.
