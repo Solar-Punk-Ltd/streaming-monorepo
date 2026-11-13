@@ -65,6 +65,24 @@ describe('resolveLocalPublisherHost', () => {
     assert.deepEqual(spy.looked, [DOCKER_HOST_NAME]);
   });
 
+  it('keeps an override that names the docker host as the name when the manager runs natively', async () => {
+    // A native manager has no bridge to read: the name resolves through the machine's own resolver, which may
+    // answer the loopback address (a hosts-file line), and a pool string carrying that reaches nothing.
+    const spy = spies();
+    const host = await resolveLocalPublisherHost({
+      beeLocalHost: DOCKER_HOST_NAME,
+      isInContainer: () => false,
+      lookupIpv4: async (hostname: string) => {
+        spy.looked.push(hostname);
+        return '127.0.0.1';
+      },
+      warn: spy.warn,
+    });
+    assert.equal(host, DOCKER_HOST_NAME);
+    assert.deepEqual(spy.looked, []);
+    assert.deepEqual(spy.warnings, []);
+  });
+
   it('answers the bridge address as a literal when the manager runs in a container', async () => {
     const spy = spies();
     const host = await resolveLocalPublisherHost({

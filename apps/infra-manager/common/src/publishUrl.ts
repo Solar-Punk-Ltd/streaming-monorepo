@@ -13,9 +13,10 @@
  *
  *  - **A loopback host.** The host in a pool string is the address
  *    `BEE_LOCAL_HOST` names, or the Docker bridge address the manager resolves
- *    when that is unset, so a loopback one comes from `BEE_LOCAL_HOST=127.0.0.1`
- *    or from a manager running natively. The value assembles fine and cannot
- *    work anywhere but this machine.
+ *    in a container, or the name `host.docker.internal` natively, so a loopback
+ *    one comes only from a `BEE_LOCAL_HOST` that names the loopback, such as
+ *    `127.0.0.1`. The value assembles fine and cannot work anywhere but this
+ *    machine.
  *  - **An ssh target used as a network address.** `profiles.host` holds a *deploy*
  *    target, the schema documents it as "localhost, an ssh alias, or user@host".
  *    A `user@host` target composes to `http://deploy@203.0.113.4:10055`, which is not
