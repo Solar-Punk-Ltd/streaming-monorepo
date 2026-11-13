@@ -157,8 +157,9 @@ function ChequebookBar({
 }
 
 /**
- * The Chequebooks tab: bring the chequebooks of every stage's nodes to a target, each node paying from its own
- * wallet. Each stage's chequebooks are listed under its name; the catalogue node's is not, being of no use. Type the
+ * The Chequebooks tab: bring the chequebooks of the catalogue node and of every stage's nodes to a target, each node
+ * paying from its own wallet. The catalogue node's chequebook comes first, since it pays its peers for every recording
+ * copied onto an archive stamp, then each stage's chequebooks under its name. Type the
  * target, tick chequebooks, and each ticked one shows its move: a deposit of the difference from its node's wallet when
  * it is under the target, a withdrawal of the difference into its node's wallet when it is over it, and no change at
  * it. Apply opens a confirm dialog, which reads the view again as it opens and asks for what that reading shows; each
@@ -167,7 +168,7 @@ function ChequebookBar({
  * all beside Apply opens the Balance tab with what each such node lacks entered. A gateway's chequebook is shown
  * read-only. A new chequebook bulk waits while one is on its way, the one made here or the one the view says is
  * open, which the page follows after a reload too. Select all, above the tables, ticks every chequebook that has a tick
- * box, and Clear unticks them all; the tick box in front of a stage's name ticks or clears the stage's.
+ * box, and Clear unticks them all; the tick box in front of a group's name ticks or clears the group's.
  *
  * The target and the ticks, `selection`, are the Funding page's, so they stay while another tab is shown; the
  * operations sent clear the ticks and keep the target. The tab reads the view again each time it is shown, and a tick
@@ -242,7 +243,8 @@ export function ChequebooksTab({
             />
           ) : null}
           <TargetControls target={target} onTarget={setTarget} />
-          {groups.length === 0 ? (
+          {/* Said whenever no stage is reported, the catalogue node's chequebook listed above it or not. */}
+          {view.stages.length === 0 ? (
             <Paper variant="outlined" sx={{ p: 6, textAlign: 'center' }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                 {NO_STAGES}
