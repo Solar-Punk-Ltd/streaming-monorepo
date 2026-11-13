@@ -20,13 +20,14 @@ export function formatLength(seconds: number | null | undefined): string {
 
 /**
  * How long a finished export took, from its start to its finish, pauses included: `45 s`, `1 min 7 s`, `1 h 4 min`.
- * Null without both moments.
+ * Under half a second it is `0 s from cache`: the node had every segment already. Null without both moments.
  */
 export function formatTook(startedAt: string | null | undefined, finishedAt: string | null | undefined): string | null {
   const start = startedAt ? Date.parse(startedAt) : Number.NaN;
   const end = finishedAt ? Date.parse(finishedAt) : Number.NaN;
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
   const total = Math.round((end - start) / 1000);
+  if (total === 0) return '0 s from cache';
   const hours = Math.floor(total / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
@@ -58,7 +59,7 @@ export function statusLine(current: ExportSummary): string {
   switch (current.state) {
     case 'reading':
       return current.segmentsTotal
-        ? `Reading segments from Swarm: ${current.segmentsRead} of ${current.segmentsTotal}, ${formatBytes(current.bytesRead)} so far.`
+        ? `Reading from Swarm: ${current.segmentsRead} of ${current.segmentsTotal} segments, ${formatBytes(current.bytesRead)} so far.`
         : 'Reading the recording playlist from Swarm.';
     case 'joining':
       return 'Joining the segments into an MP4.';
