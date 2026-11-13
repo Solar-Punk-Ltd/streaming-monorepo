@@ -45,7 +45,7 @@ async function testApi(t: TestContext, token: string | null = TOKEN) {
       if (request.nodeId.startsWith('refused')) {
         throw new FundingApiError(
           'chequebook_refused',
-          'This manager moves only the chequebook of a stage’s Bee node or a rung.',
+          'This manager moves only the chequebook of a stage’s Bee node, a rung or the catalogue node.',
         );
       }
       if (request.nodeId.startsWith('busy')) {
