@@ -1675,7 +1675,9 @@ const ARCHIVE_JOB_CAPACITY_BYTES = {
   41: 8_930_000_000_000_000,
 };
 /** The best a quality's copy can be, then down to none, as the stream list ranks them. */
-const ARCHIVE_JOB_STATE_RANK = { complete: 5, reduced: 4, outdated: 3, expired: 2, partial: 1, none: 0 };
+const ARCHIVE_JOB_STATE_RANK = { complete: 6, reduced: 5, unlisted: 4, outdated: 3, expired: 2, partial: 1, none: 0 };
+/** The states in which a quality plays from its archive stamp, as the contract's `ARCHIVED_STATES`. */
+const ARCHIVE_JOB_ARCHIVED = new Set(['complete', 'reduced', 'unlisted']);
 
 function archiveJobChunksAt(depth) {
   const bytes = ARCHIVE_JOB_CAPACITY_BYTES[depth];
@@ -1720,7 +1722,7 @@ function streamArchiveSummaryOf(row) {
   const archived = [];
   for (const copy of copies.values()) {
     if (ARCHIVE_JOB_STATE_RANK[copy.state] > ARCHIVE_JOB_STATE_RANK[state]) state = copy.state;
-    if (copy.state === 'complete' || copy.state === 'reduced') archived.push(copy.rendition);
+    if (ARCHIVE_JOB_ARCHIVED.has(copy.state)) archived.push(copy.rendition);
   }
   return { state, archived, archivedOnly: archivedOnlyStreams.has(row.id) };
 }
@@ -1979,7 +1981,7 @@ function cancelArchiveJob(job, now = Date.now()) {
     const copies = archiveCopies.get(row.id) ?? new Map();
     for (const item of archiveJobItems(job, now)) {
       const before = copies.get(item.rendition);
-      if (item.chunksCopied === 0 || before?.state === 'complete' || before?.state === 'reduced') continue;
+      if (item.chunksCopied === 0 || ARCHIVE_JOB_ARCHIVED.has(before?.state)) continue;
       copies.set(item.rendition, {
         rendition: item.rendition,
         state: item.state === 'done' ? 'complete' : 'partial',
@@ -2146,7 +2148,7 @@ function archiveJobOptions(row, user, now = Date.now()) {
     qualities: EXPORT_QUALITIES.map((q) => {
       const copy = copies.get(q.rendition) ?? null;
       const estimate = seconds ? archiveJobEstimate(q, seconds) : null;
-      const archived = copy?.state === 'complete' || copy?.state === 'reduced';
+      const archived = ARCHIVE_JOB_ARCHIVED.has(copy?.state);
       return {
         rendition: q.rendition,
         label: q.rendition,
@@ -2202,7 +2204,7 @@ function archivedStreamsAnswer(now = Date.now()) {
         batchTtlSeconds: stamp ? archiveJobStampAnswer(stamp, now).ttlSeconds : null,
       };
     });
-    const archived = [...copies.values()].filter((copy) => copy.state === 'complete' || copy.state === 'reduced');
+    const archived = [...copies.values()].filter((copy) => ARCHIVE_JOB_ARCHIVED.has(copy.state));
     const newest = [...copies.values()]
       .filter((copy) => copy.completedAt !== null)
       .sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0];
@@ -2242,7 +2244,7 @@ function seedArchivedRecording(title, description, endedMinutesAgo) {
 }
 
 // Every recording carries an archive of its own, whichever MOCK_ARCHIVE is: the first none, as the job's stream; the
-// second archived, with a hint to list only its archived qualities; and four more, seeded here, one of each other state.
+// second archived, with a hint to list only its archived qualities; and five more, seeded here, one of each other state.
 {
   const [roomy, nearlyFull, expired] = archiveJobStamps;
   const [, archivedRecording] = [...streams.values()].filter((r) => r.status === 'vod' && r.manifestIndex !== null);
@@ -2279,6 +2281,14 @@ function seedArchivedRecording(title, description, endedMinutesAgo) {
     40 * DAY,
   );
   setArchiveCopies(meetup, [archiveCopy(meetup, '1080p', 'expired', expired, by)]);
+  const conference = seedArchivedRecording(
+    'Conference opening',
+    'Seeded with an archive of 1080p on a stamp the manager no longer lists.',
+    20 * DAY,
+  );
+  // A stamp that is in no listing, as one removed in the manager is.
+  const removed = archiveJobStamp('Removed archive', 21, 300_000, 120);
+  setArchiveCopies(conference, [archiveCopy(conference, '1080p', 'unlisted', removed, by)]);
 }
 
 // The archive seeded at start, of the first seeded recording, MOCK_ARCHIVE deciding which.

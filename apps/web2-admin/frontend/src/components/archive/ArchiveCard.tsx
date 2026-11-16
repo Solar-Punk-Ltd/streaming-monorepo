@@ -1,4 +1,5 @@
 import {
+  ARCHIVE_UNLISTED_TEXT,
   holdsFinishedRecording,
   isArchived,
   type ArchiveOptionsResponse,
@@ -49,7 +50,7 @@ export function startLabel(qualities: readonly ArchiveQuality[]): string {
 
 /**
  * Where one quality's copy stands: `2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice`, with what a
- * reduced, outdated or expired copy lacks; or, with no copy, its estimate or why it cannot be archived.
+ * reduced, unlisted, outdated or expired copy lacks; or, with no copy, its estimate or why it cannot be archived.
  */
 export function copyLine(quality: ArchiveQuality): string {
   if (quality.state === 'none') return quality.unavailable ?? estimateLine(estimateOf([quality]));
@@ -67,6 +68,7 @@ export function copyLine(quality: ArchiveQuality): string {
   if (quality.state === 'reduced') {
     line += ` ${formatCount(quality.parityMissing)} parity chunk${quality.parityMissing === 1 ? '' : 's'} could not be read, so it plays with less protection.`;
   }
+  if (quality.state === 'unlisted') line += ` ${ARCHIVE_UNLISTED_TEXT}`;
   if (quality.state === 'outdated') line += ' The stream recorded again after the copy.';
   if (quality.state === 'expired') line += ' The stamp has expired.';
   return line.charAt(0).toUpperCase() + line.slice(1);

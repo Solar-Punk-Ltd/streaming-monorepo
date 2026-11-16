@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
   ARCHIVE_BADGE_TEXT,
+  ARCHIVE_UNLISTED_TEXT,
   type ArchivedStream,
   type StreamArchiveSummary,
 } from '@streaming-monorepo/web2-admin-common';
@@ -84,7 +85,7 @@ function serve(streams: ArchivedStream[] | Response) {
 
 describe('the archive badge', () => {
   it('says each state in the words of the contract, and nothing for a stream with nothing copied', () => {
-    for (const state of ['partial', 'complete', 'reduced', 'outdated', 'expired'] as const) {
+    for (const state of ['partial', 'complete', 'reduced', 'unlisted', 'outdated', 'expired'] as const) {
       const { unmount } = render(<ArchiveBadge archive={summary({ state })} />);
       expect(screen.getByText(ARCHIVE_BADGE_TEXT[state] as string)).toBeInTheDocument();
       unmount();
@@ -144,6 +145,22 @@ describe('the Archive page', () => {
     expect(row.getByText('by admin')).toBeInTheDocument();
     // With no panel to open, no action is offered.
     expect(row.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('says of a quality on a stamp the manager no longer lists that it cannot be topped up', async () => {
+    const [first] = makeArchivedStream().qualities;
+    serve([
+      makeArchivedStream({
+        summary: summary({ state: 'unlisted', archived: ['1080p'] }),
+        qualities: [{ ...first!, state: 'unlisted' }],
+      }),
+    ]);
+    renderWithProviders(<ArchivePage />);
+
+    const row = within((await screen.findByRole('link', { name: 'Opening talk' })).closest('tr') as HTMLElement);
+    expect(row.getByText('Archive stamp not listed')).toBeInTheDocument();
+    expect(row.getByText(`1080p: ${QUALITY_STATE_TEXT.unlisted}`)).toBeInTheDocument();
+    expect(row.getByText(ARCHIVE_UNLISTED_TEXT)).toBeInTheDocument();
   });
 
   it('opens the panel to archive more qualities, and again with the outdated ones ticked', async () => {

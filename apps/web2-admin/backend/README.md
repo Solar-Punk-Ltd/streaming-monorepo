@@ -1930,7 +1930,10 @@ manager lists it, and pauses as `batch` after thirty minutes without.
 the qualities that play from an archive stamp alone, and every entry written
 for it after keeps to that (`PublishService.listArchivedOnlyWith`). It is
 offered for a recording with several qualities once one is archived. Turning it
-rewrites a listed stream's entry.
+rewrites a listed stream's entry. With no quality archived any more, the entry
+lists every rung, as with the switch off, and never none. A copy on a stamp the
+manager no longer lists is `unlisted` and counts as archived; a catalogue stamp
+record without `archiveBatches` reads no copy as expired or unlisted.
 
 ### Routes
 

@@ -309,8 +309,16 @@ network and its peers. The panel estimates from the rate the last job measured.
 | partial  | a copy stopped before it was complete              | Archive incomplete           |
 | complete | at least one quality complete at its current index | Archived                     |
 | reduced  | complete, with parity chunks missing               | Archived, reduced protection |
+| unlisted | complete, on a stamp the manager no longer lists   | Archive stamp not listed     |
 | outdated | the stream recorded again after the copy           | Archive outdated             |
 | expired  | the stamp's reading says expired                   | Archive expired              |
+
+A stamp the manager no longer lists, once removed in the manager or with its deployment gone, is
+`unlisted`, not expired: nothing says when it runs out, and its recordings stay on Swarm until it
+does. It counts as archived, for the badge and for the switch, and the card and the Archive page say
+it cannot be topped up from the admin. A catalogue stamp record without `archiveBatches`, from a
+manager older than the field, tells nothing of the archive stamps, so no copy reads as expired or
+unlisted from it.
 
 - **Archive page.** Only streams with an archive: title, date, qualities, size, stamp label, the
   stamp's time left, archived at and by. A user archives more qualities there, and archives again
@@ -318,7 +326,8 @@ network and its peers. The panel estimates from the rate the last job measured.
 - **Stream page.** An archive card with each quality's state, the start action and the switch.
 - **List only archived qualities.** A per-stream switch, set by hand, off by default, offered once
   one quality is archived. On, the catalogue entry lists the archived qualities only, which the
-  players honour: a quality without an index is not offered. The card hints at it when a stage batch
+  players honour: a quality without an index is not offered. With no quality archived any more, it
+  lists every quality, as with the switch off, and never none. The card hints at it when a stage batch
   that holds an unarchived quality reads expired.
 - **A stamp running low or out.** Nothing is funded by itself. Under `ARCHIVE_TTL_WARNING_DAYS` the
   Stamps tab group, the Archive page and the stream's archive card warn. An expired stamp turns its

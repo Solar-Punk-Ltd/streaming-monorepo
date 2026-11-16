@@ -89,7 +89,7 @@ export interface ArchiveContextValue {
  * What `MOCK_ARCHIVE` takes in the mock API: which archive job a start seeds, of the first seeded recording, as
  * `MOCK_EXPORT` decides the export. The archive panel, the widget and the stream page's card are tried with these, and
  * the seeded recordings carry per-stream archive states whichever is set: one archived, one reduced, one partial, one
- * outdated, one expired and one with none.
+ * outdated, one expired, one on a stamp the manager no longer lists, and one with none.
  *
  * - `off`, the default: no job.
  * - `measuring`, `copying`, `verifying`: a job another user started, moving.

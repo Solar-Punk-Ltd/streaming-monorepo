@@ -153,6 +153,7 @@ The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 - "Panel discussion": 720p partly copied onto "Short talks".
 - "Keynote, recorded twice": 1080p, outdated.
 - "Last year's meetup": 1080p on "Old archive", expired.
+- "Conference opening": 1080p on "Removed archive", a stamp in no listing, so not listed.
 
 `MOCK_ARCHIVE` decides the archive seeded at start, of the first seeded recording:
 
@@ -189,8 +190,8 @@ or to the streams with none. A banner says when the catalogue cannot be written,
 catalogue to another batch is waiting, and when its batch is under 48 hours from expiry or 90% full.
 
 The archive badge (`components/archive/ArchiveBadge.tsx`) says the stream's archive in the words of
-`ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive incomplete, Archive outdated or
-Archive expired, and nothing for a stream with nothing copied. On hover it names the archived
+`ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive stamp not listed, Archive
+incomplete, Archive outdated or Archive expired, and nothing for a stream with nothing copied. On hover it names the archived
 qualities, and says when the catalogue lists only those.
 
 ### Archive, `#/archive`
@@ -198,7 +199,8 @@ qualities, and says when the catalogue lists only those.
 Only the streams that have an archive, newest copy first, from `GET /api/archive/streams`: the
 title, linked to the stream's page, with its badge, the date, each copied quality with its state,
 the size archived, the stamp each copy is on with its time left, in amber under
-`ARCHIVE_TTL_WARNING_DAYS`, and when and by whom the newest copy was completed. Archive more
+`ARCHIVE_TTL_WARNING_DAYS`, under a copy on a stamp the manager no longer lists the sentence that it
+cannot be topped up here and stays on Swarm until the stamp expires, and when and by whom the newest copy was completed. Archive more
 qualities opens the archive panel on the stream, and Archive again opens it with the outdated
 qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
 
@@ -255,9 +257,11 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   included; or the export of it while it runs, with when it started. Both times are in UTC, to the
   second.
 - On a finished recording, or a stream with an archive, the archive card, above the downloaded file:
-  each quality with its state, "Archived", "Archived, reduced protection", "Archive incomplete",
-  "Archive outdated", "Archive expired" or "Not archived", and what its copy holds, on which stamp,
-  completed when and by whom, or else its estimate. A stamp that holds a copy and runs out soon is
+  each quality with its state, "Archived", "Archived, reduced protection", "Archive stamp not
+  listed", "Archive incomplete", "Archive outdated", "Archive expired" or "Not archived", and what
+  its copy holds, on which stamp, completed when and by whom, or else its estimate; a copy on a stamp
+  the manager no longer lists also says it cannot be topped up here and stays on Swarm until the
+  stamp expires. A stamp that holds a copy and runs out soon is
   named with its time left. "Archive this recording", "Archive more qualities" or "Archive again"
   opens the archive panel on the stream, described below. Once one quality plays from an archive
   stamp, the "List only archived qualities" switch: on, the catalogue lists only those qualities,

@@ -886,6 +886,42 @@ describe('ArchiveService', () => {
     assert.equal((await service.summaries([stream])).get('stream-1')?.state, 'expired');
   });
 
+  it('shows a copy on a stamp the manager no longer lists as unlisted, still archived and still listed', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    catalogue.batches = [archiveBatch(OTHER_BATCH)];
+    const summary = (await service.summaries([stream])).get('stream-1');
+    assert.equal(summary?.state, 'unlisted');
+    assert.deepEqual(summary?.archived, ['360p']);
+    assert.deepEqual([...(await service.listedRenditions({ ...stream, archived_only: true }))!], ['360p']);
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.qualities.find((quality) => quality.rendition === '360p')?.state, 'unlisted');
+  });
+
+  it('reads nothing as expired or unlisted from a stamp record that does not carry the archive stamps', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    catalogue.listsArchiveBatches = false;
+    assert.equal((await service.summaries([stream])).get('stream-1')?.state, 'complete');
+    assert.deepEqual([...(await service.listedRenditions({ ...stream, archived_only: true }))!], ['360p']);
+  });
+
+  it('lists every rung, never none, while the switch is on and no quality is archived any more', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    await service.setListing(TEST_OPERATOR, 'stream-1', true);
+    catalogue.batches = [archiveBatch(BATCH, { state: 'expired' })];
+    assert.equal((await service.summaries([stream])).get('stream-1')?.state, 'expired');
+    assert.equal(
+      await service.listedRenditions({ ...stream, archived_only: true }),
+      null,
+      'with nothing archived the entry lists every rung, as with the switch off',
+    );
+  });
+
   it('turns the listing switch on only with an archived quality, and rewrites the entry with the archived ones', async () => {
     const stream = recorded();
     await assert.rejects(
