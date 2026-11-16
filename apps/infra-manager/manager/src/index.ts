@@ -485,15 +485,9 @@ async function main(): Promise<void> {
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
     isArchiveBatch: (batchId) => archiveBatchService.isArchiveBatch(batchId),
   });
-  // The archive batches meet the funding API through two ports (domain/stages/archiveBatchPorts.ts). This stand-in
-  // holds their place until the archive batches' own service is wired in here: the funding API lists no archive batch,
-  // and a purchase it confirms is not made one.
-  const archiveBatchPorts: ArchiveBatchReader & ArchiveBatchDesignator = {
-    list: async () => [],
-    designateArchiveBatch: async () => {
-      throw new Error('The archive batches are not wired into this manager.');
-    },
-  };
+  // The archive batches meet the funding API through two ports (domain/stages/archiveBatchPorts.ts), both answered by
+  // the archive batches' own service: the inventory lists them, and a purchase the funding API confirms is made one.
+  const archiveBatchPorts: ArchiveBatchReader & ArchiveBatchDesignator = archiveBatchService;
   // The web2 admin's funding API reads every stage's nodes and the catalogue node with it, each with its wallet, its
   // batch and its chequebook, the catalogue node's archive batches, and the price of postage. A node's address stays
   // here: the inventory names each node by an opaque id.
