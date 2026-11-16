@@ -6,7 +6,7 @@
  */
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import {
   archiveBatchCostPlur,
@@ -21,6 +21,7 @@ import { ARCHIVE_PURCHASES_NOT_OFFERED, type ArchiveJobSummary } from '@streamin
 
 import { ArchiveService, tagComplete, type ArchiveServiceOptions } from '../../src/domain/archive/ArchiveService.js';
 import { ChunkCopier } from '../../src/domain/archive/ChunkCopier.js';
+import { Logger } from '../../src/domain/Logger.js';
 import { ArchiveRefusedError } from '../../src/domain/errors/index.js';
 import { ManagerFundingError } from '../../src/domain/funding/ManagerFundingClient.js';
 import type { StreamRenditionRow, StreamRow } from '../../src/types/index.js';
@@ -435,6 +436,24 @@ describe('ArchiveService', () => {
     await service.settled();
     current = await job();
     assert.equal(current.state, 'done');
+  });
+
+  it('says in the log once when the funds check is skipped because the chequebook cannot be read', async () => {
+    recorded();
+    manager.inventory = async () => {
+      throw new ManagerFundingError('timeout', null, 'The manager did not answer in time.');
+    };
+    const warn = mock.method(Logger.getInstance(), 'warn', () => undefined);
+    try {
+      await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+      await service.settled();
+    } finally {
+      warn.mock.restore();
+    }
+    assert.equal((await job()).state, 'done', 'an unread chequebook does not stop the copy');
+    const skipped = warn.mock.calls.filter((call) => String(call.arguments[0]).includes('funds check is skipped'));
+    assert.equal(skipped.length, 1, 'once, though the check runs between every segment');
+    assert.match(String(skipped[0]!.arguments[0]), /The manager did not answer in time/);
   });
 
   it('pauses when the stamp is full, and copies onto another stamp the user picks, from the start', async () => {
