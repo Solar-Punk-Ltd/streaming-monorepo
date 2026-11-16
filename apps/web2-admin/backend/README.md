@@ -1832,8 +1832,10 @@ the design.
   the node does not answer, of any chunk, pauses the job as `node` instead.
 - **Complete.** A quality is complete when no data or intermediate chunk failed,
   the tag's `split` equals the posts the job made under it, and `synced` plus
-  `seen` equals `split`; the item keeps both counts as last read
-  (`chunks_synced`, `chunks_seen`). A re-post Bee finds still queued from an earlier post of
+  `seen` equals `split`. The posts the job made are the larger of the count it
+  saved (`posts_under_tag`) and the tag's `split` when a pass starts; a `split`
+  below the saved count restarts the quality under a new tag. The item keeps
+  `synced` and `seen` as last read (`chunks_synced`, `chunks_seen`). A re-post Bee finds still queued from an earlier post of
   the same chunk counts as `seen`, and syncs with that one. Its row in
   `stream_archives` then turns `complete`, or completes with reduced protection
   when parity chunks were left out.
