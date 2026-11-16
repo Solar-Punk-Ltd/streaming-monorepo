@@ -177,7 +177,7 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
 
     const state = await this.stateNow(batch);
     // A batch whose deployment is gone has no node to ask, and is taken off.
-    const problem = state === null ? null : archiveRemoveProblem(state);
+    const problem = archiveRemoveProblem(state, { deploymentGone: state === null });
     if (problem) throw new ArchiveBatchRefusedError(problem);
 
     const written = await this.deps.store.remove(batchId, remove.expectedRevision);

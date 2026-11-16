@@ -11,6 +11,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { useToast } from '../app/ToastProvider';
+import { useDeployments } from '../app/useDeploymentsStore';
 import { catalogueReadingLine } from '../catalogueNode/catalogueNodeView';
 import { ConfirmDialog, type ConfirmRequest } from '../components/ConfirmDialog';
 import { SectionCard } from '../components/SectionCard';
@@ -23,12 +24,11 @@ import {
   ARCHIVE_NO_CATALOGUE_NODE,
   ARCHIVE_NONE,
   ARCHIVE_REMOVE_CONFIRM,
-  ARCHIVE_REMOVE_LATER,
   ARCHIVE_REMOVE_TITLE,
   ARCHIVE_REMOVED,
   ARCHIVE_SAVE_RACE,
   archiveBatchOrigin,
-  archiveBatchRemovable,
+  archiveBatchRemoveProblem,
   archiveBatchTitle,
   archiveBatchWritableLine,
   archiveCandidateLabel,
@@ -88,6 +88,9 @@ function ArchiveBatchesBody({
   onNotice: (notice: string | null) => void;
 }) {
   const toast = useToast();
+  const { profiles } = useDeployments();
+  // Gone only once the deployments have been read and none is called this.
+  const deploymentGone = (name: string) => profiles !== null && !profiles.some((profile) => profile.name === name);
   const [batch, setBatch] = useState('');
   const [label, setLabel] = useState('');
   const [saving, setSaving] = useState(false);
@@ -126,7 +129,7 @@ function ArchiveBatchesBody({
   const askRemove = (row: ArchiveBatchRow) =>
     setConfirm({
       title: ARCHIVE_REMOVE_TITLE,
-      body: archiveRemoveConfirmText(row),
+      body: archiveRemoveConfirmText(row, deploymentGone(row.profileName)),
       confirmLabel: ARCHIVE_REMOVE_CONFIRM,
       danger: true,
       onConfirm: () =>
@@ -146,7 +149,7 @@ function ArchiveBatchesBody({
       ) : (
         <Stack component="ul" spacing={1.5} sx={{ m: 0, p: 0, listStyle: 'none', minWidth: 0 }}>
           {answer.batches.map((row) => {
-            const removable = archiveBatchRemovable(row);
+            const removeProblem = archiveBatchRemoveProblem(row, deploymentGone(row.profileName));
             return (
               <Box component="li" key={row.batchId} data-archive-batch={row.batchId} sx={{ minWidth: 0 }}>
                 <Stack spacing={0.25} sx={{ minWidth: 0 }}>
@@ -176,12 +179,17 @@ function ArchiveBatchesBody({
                     {archiveBatchOrigin(row)}
                   </Typography>
                   <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                    <Button size="small" color="error" disabled={saving || !removable} onClick={() => askRemove(row)}>
+                    <Button
+                      size="small"
+                      color="error"
+                      disabled={saving || removeProblem !== null}
+                      onClick={() => askRemove(row)}
+                    >
                       Remove
                     </Button>
-                    {!removable && (
-                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {ARCHIVE_REMOVE_LATER}
+                    {removeProblem && (
+                      <Typography variant="caption" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                        {removeProblem}
                       </Typography>
                     )}
                   </Stack>

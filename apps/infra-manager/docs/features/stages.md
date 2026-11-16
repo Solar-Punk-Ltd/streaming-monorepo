@@ -568,7 +568,8 @@ life left is refused (`archiveRemoveProblem`): the admin shows the recordings of
 a batch that left the list as expired, and these are paid for and on Swarm. An
 adopt brings a removed batch back. The manager reads the batch from its node
 before it takes it off, and a batch whose node did not answer stays on the list
-too.
+too. A batch whose deployment is gone has no node left to say, and is taken off:
+its recordings stay on Swarm until the batch expires, and the confirm says so.
 
 `writable` is true only for a usable, unexpired batch on the designated
 catalogue node, and the admin copies onto no other. A full batch stays
