@@ -20,6 +20,7 @@ import {
   type ArchiveBatchDesignation,
   beePublishersValue,
   type ChequebookBalance,
+  stampHealthFrom,
 } from '@streaming-infra-manager/common';
 import { type FundingInventory, type FundingNode, fundingInventorySchema } from '@streaming-monorepo/contracts';
 
@@ -32,6 +33,7 @@ import {
   FUNDING_MINIMUM_VALIDITY_BLOCKS,
   FundingInventoryService,
 } from '../../src/domain/funding/FundingInventoryService.js';
+import { archiveBatchWritable } from '../../src/domain/stages/ArchiveBatchService.js';
 import { emptyCatalogueDesignationRow } from '../support/InMemoryCatalogueDesignation.js';
 import { makeProfile } from '../support/profileFixtures.js';
 import type { Profile } from '../../src/types/index.js';
@@ -995,6 +997,29 @@ describe('the archive batches in the funding inventory', () => {
     );
     assert.match(answer.archiveBatches![0]!.readError ?? '', /does not hold this batch/);
     assert.equal(answer.archiveBatches![0]!.label, 'Autumn event', 'its label kept all the same');
+  });
+
+  it('decides writable with the rule the catalogue stamp record uses, from the same node answers', async () => {
+    const answers: Array<[string, Partial<BeeStamp>]> = [
+      ['b1'.repeat(32), {}],
+      ['b2'.repeat(32), { utilization: 64, depth: 22, bucketDepth: 16, immutableFlag: true }],
+      ['b3'.repeat(32), { usable: false }],
+      ['b4'.repeat(32), { batchTTL: 0, usable: false }],
+      ['b5'.repeat(32), { batchTTL: -1 }],
+    ];
+    const { inventory } = service({
+      archived: answers.map(([batchId]) => designation(batchId)),
+      stampAt: async (_url, batchId) => stamp(batchId, answers.find(([id]) => id === batchId)![1]),
+    });
+    const answer = await inventory.inventory();
+    const record = answers.map(([batchId, over]) =>
+      archiveBatchWritable('catalogue', 'catalogue', stampHealthFrom(batchId, [stamp(batchId, over)]).state),
+    );
+    assert.deepEqual(
+      answer.archiveBatches!.map((batch) => batch.writable),
+      record,
+    );
+    assert.deepEqual(record, [true, true, false, false, true], 'a full batch stays writable, as on the record');
   });
 
   it('answers one whose deployment was removed unread, under the name its row keeps, and asks no node', async () => {

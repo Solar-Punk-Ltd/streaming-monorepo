@@ -6,6 +6,7 @@ import {
   type ChequebookBalance,
   fullestBucketFillRatio,
   getErrorMessage,
+  isStampFull,
   LIGHT_NODE_MODE,
   MINIMUM_STAMP_VALIDITY_SECONDS,
   gatewayNodeMode,
@@ -13,6 +14,7 @@ import {
   ownsBeeNode,
   parseBeePublishers,
   rungOrder,
+  type StampState,
 } from '@streaming-infra-manager/common';
 import {
   ARCHIVE_BATCH_LABEL_MAX_LENGTH,
@@ -33,6 +35,7 @@ import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { Logger } from '../Logger.js';
 import { readFailureFrom } from '../nodeReadFailure.js';
 import type { ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
+import { archiveBatchWritable } from '../stages/ArchiveBatchService.js';
 import { type CatalogueDesignationRow, isDesignated } from '../stages/CatalogueDesignationRepository.js';
 
 const logger = Logger.getInstance();
@@ -233,9 +236,16 @@ function removedHolderOf(designation: ArchiveBatchDesignation): { nodeId: string
   return { nodeId: `${name}:${BEE_UPLOADER_SERVICE}`, nodeLabel: designation.profileName };
 }
 
-/** Whether an archive batch's reading lets the admin write with it: read, usable, and not expired. */
-function isWritable(batch: FundingBatch): boolean {
-  return batch.readError === null && batch.usable === true && batch.ttlSeconds !== 0;
+/**
+ * An archive batch's reading as the state the catalogue stamp record names it by, so the inventory and the record
+ * decide `writable` with the one rule, `archiveBatchWritable`: an unread batch is `unknown`, one with no time left
+ * `expired`, one the node does not call usable `pending`, and a usable one `full` or `active` by its fullest bucket.
+ */
+export function archiveReadingState(batch: FundingBatch): StampState {
+  if (batch.readError !== null) return 'unknown';
+  if (batch.ttlSeconds === 0) return 'expired';
+  if (batch.usable !== true) return 'pending';
+  return isStampFull(batch.fillRatio, batch.immutable) ? 'full' : 'active';
 }
 
 /**
@@ -625,7 +635,8 @@ export class FundingInventoryService {
           return { ...unreadBatch(batchId, addressErrorOf(planned.role)), ...named, writable: false };
         }
         const reading = await this.batchOf(planned, batchId, apiUrl, reads);
-        return { ...reading, ...named, writable: holder.name === designatedName && isWritable(reading) };
+        const writable = archiveBatchWritable(holder.name, designatedName, archiveReadingState(reading));
+        return { ...reading, ...named, writable };
       }),
     );
     return answers.filter((answer): answer is FundingArchiveBatch => answer !== null);
