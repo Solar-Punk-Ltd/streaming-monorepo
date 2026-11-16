@@ -74,7 +74,7 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * A request is refused, in this order, nothing journalled: a target that is not whole PLUR of 30 digits at most or is
  * under 1 xBZZ (`CHEQUEBOOK_TARGET_MIN_PLUR`), no item, an available balance that is not whole PLUR of 30 digits at
  * most, or a node named twice (`RequestShapeError`); funding not set up; a manager on another chain; an item whose node
- * no stage lists (the catalogue node alone is not listed) or whose chequebook the tab does not move
+ * is neither listed by a stage nor the catalogue node, or whose chequebook the tab does not move
  * (`movableChequebook`: a gateway's, one the node has not got or that was not read, or one whose node's wallet was not
  * read), whose chequebook stands at the target as the page showed it, or is at the target or past it now; a node that
  * holds no xDAI for the gas, or less xBZZ than its deposit; an earlier chequebook bulk with an item that still holds up
@@ -273,9 +273,9 @@ function immovable(node: FundingNode): FundingRefusedError {
 
 /**
  * Each item of a request checked against the manager's inventory, read fresh, in the request's order; the first that
- * fails refuses the request. An item names a node a stage lists, its own Bee node or a rung: the catalogue node alone
- * is not, whose chequebook the tab leaves alone. A node two stages list, as a stage's own and as another's rung, is
- * read once, so only its role differs between its listings. Its chequebook must be one the tab moves
+ * fails refuses the request. An item names a node a stage lists, its own Bee node or a rung, or the catalogue node,
+ * which pays its peers for every recording it copies onto an archive stamp. A node two stages list, as a stage's own
+ * and as another's rung, is read once, so only its role differs between its listings. Its chequebook must be one the tab moves
  * ({@link movableChequebook}). Its move is {@link chequebookMoveNow}, worked out again from the available balance the
  * page showed and the one read now, never more than the page showed: an item the page showed at the target is not
  * one, and nor is one whose chequebook is at the target or past it now, which the page should read again.
@@ -286,16 +286,11 @@ export function chequebookTargetsOf(
 ): ChequebookTarget[] {
   const staged = inventory.stages.flatMap((stage) => stage.nodes);
   return request.items.map((item) => {
-    const named = staged.filter((node) => node.nodeId === item.nodeId);
+    const listed = staged.filter((node) => node.nodeId === item.nodeId);
+    // The catalogue node, which no stage lists, is moved as itself.
+    const named = listed.length > 0 || inventory.catalogue?.nodeId !== item.nodeId ? listed : [inventory.catalogue];
     const [first] = named;
     if (!first) {
-      const catalogue = inventory.catalogue;
-      if (catalogue?.nodeId === item.nodeId) {
-        throw new FundingRefusedError(
-          'node',
-          `${nodeName(catalogue)} is the catalogue node, which no stage lists: the Chequebooks tab leaves its chequebook alone. Nothing was sent.`,
-        );
-      }
       throw new FundingRefusedError('node', `The manager has no node ${item.nodeId}, so nothing was sent.`);
     }
     const node = named.find(movableChequebook) ?? named.find((candidate) => candidate.role !== 'gateway') ?? first;

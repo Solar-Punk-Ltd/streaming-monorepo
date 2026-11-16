@@ -3,8 +3,8 @@
  * - `not_set_up`: the admin has no manager funding settings, or no brand wallet;
  * - `chain`: the manager answers for another chain than the one the admin signs for;
  * - `node`: a node is not in the manager's inventory, its wallet could not be read, it was never pinned, or it answers
- *   another address than the pinned one; for a chequebook operation, also a node no stage lists, the catalogue node
- *   alone, or a gateway, whose chequebook the manager does not move;
+ *   another address than the pinned one; for a chequebook operation, also a node that is neither a stage's nor the
+ *   catalogue node, or a gateway, whose chequebook the manager does not move;
  * - `fee`: the manager suggested a fee or a gas limit over the admin's own ceilings, so nothing is signed;
  * - `insufficient_funds`: the brand wallet cannot pay for the send, its fees counted, or a node cannot pay for its
  *   stamp operations, its top-ups in xBZZ or their gas in xDAI, or for its chequebook operation, its deposit in xBZZ

@@ -1580,10 +1580,11 @@ xBZZ than there is. Then it is refused, in this order, nothing journalled:
    `409 funding_refused`, `problem` `not_set_up` or `chain`. A manager whose
    inventory cannot be read is `502 manager_unavailable`.
 3. each item in turn, against the manager's inventory, read fresh:
-   `409 funding_refused` with the sentence. `problem: "node"` for a node no
-   stage lists (the catalogue node alone is not listed: the tab leaves its
-   chequebook alone), a gateway, whose chequebook the manager does not move,
-   and a node whose wallet could not be read. `problem: "chequebook"` for a
+   `409 funding_refused` with the sentence. `problem: "node"` for a node that
+   is neither listed by a stage nor the catalogue node, which no stage lists
+   and which is moved as itself, since it pays its peers for every recording
+   it archives; a gateway, whose chequebook the manager does not move; and a
+   node whose wallet could not be read. `problem: "chequebook"` for a
    node that has no chequebook, one the manager did not read or could not, an
    item at the target as the page showed it, and one whose chequebook is at
    the target or past it now, which moves nothing (below: read the page
