@@ -1855,7 +1855,9 @@ the design.
   time from the rate the last archive measured (`archive_rate`).
 - **Funds.** The catalogue node's chequebook, as the manager's inventory reads
   it, is checked before copying and every minute while it copies. Under
-  `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ` the job pauses as `funds`. A finished job
+  `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ` the job pauses as `funds`. A chequebook that
+  cannot be read, or funding not set up, lets the copy go on, and the log says
+  so once until the reason changes. A finished job
   records what the chequebook went down by, which the catalogue's own writes
   share.
 

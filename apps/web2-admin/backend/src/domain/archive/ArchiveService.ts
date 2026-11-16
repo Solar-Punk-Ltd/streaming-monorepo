@@ -353,6 +353,8 @@ export class ArchiveService {
   private readonly advancing = new Map<string, Promise<void>>();
   /** What the chequebook could pay as last read, for the widget, which reads the job every few seconds. */
   private lastChequebook: string | null = null;
+  /** Why the last funds check was skipped, or null, so a skip is logged once until its reason changes. */
+  private fundsSkipped: string | null = null;
   private readonly watchIntervalMs: number;
   private readonly statusCheckMs: number;
   private readonly fundsCheckMs: number;
@@ -1596,11 +1598,31 @@ export class ArchiveService {
     return available;
   }
 
-  /** Pauses for funds when the catalogue node's chequebook can pay less than the floor. Unread, it passes. */
+  /**
+   * Pauses for funds when the catalogue node's chequebook can pay less than the floor. Unread, it passes, and says why
+   * in the log, once until the reason changes, since the check runs every minute of a copy.
+   */
   private async checkFunds(): Promise<void> {
-    const available = await this.readChequebook().catch(() => null);
     const floor = BigInt(this.settings.chequebookFloorPlur);
-    if (available === null || floor === 0n) return;
+    if (floor === 0n) return;
+    let available: string | null = null;
+    let skipped: string | null = null;
+    if (!this.manager) {
+      skipped = 'funding is not set up';
+    } else {
+      try {
+        available = await this.readChequebook();
+        if (available === null) skipped = "the manager's inventory reads no chequebook on the catalogue node";
+      } catch (error) {
+        skipped = `the catalogue node's chequebook could not be read: ${getErrorMessage(error)}`;
+      }
+    }
+    if (skipped !== null || available === null) {
+      if (skipped !== this.fundsSkipped) logger.warn(`[Archive] the funds check is skipped: ${skipped}`);
+      this.fundsSkipped = skipped;
+      return;
+    }
+    this.fundsSkipped = null;
     if (BigInt(available) < floor) {
       throw new ArchivePause(
         'funds',
