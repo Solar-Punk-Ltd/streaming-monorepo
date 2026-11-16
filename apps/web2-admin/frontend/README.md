@@ -43,6 +43,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                |
 | `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
 | `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
+| `MOCK_ARCHIVE`        | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`               |
 | `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done` or `off`                                      |
 | `MOCK_ARCHIVE_STAMPS` | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                  |
 | `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
@@ -58,6 +59,9 @@ live:
 - "Ended a few minutes ago", which ended 5 minutes before the start and can go live again until 25
   minutes after it.
 - "Ended days ago", which ended 3 days before and is finalized at start with a new key.
+
+Four more recordings, which ended days or weeks before the start, carry an archive each, as
+[below](#the-mock-archive).
 
 So a default run never shows the Streams list's "No streams yet." state, and the live seed cannot
 be deleted (`409 stream_live`, as the API answers).
@@ -128,6 +132,41 @@ seeded recording:
 - `off`: none.
 
 Save file answers a stand-in file under the export's name, not a video.
+
+#### The mock archive
+
+The mock archives as the API does, one archive at a time, sharing the place a job has with the
+export: it measures for 6 seconds, copies for 60 and verifies for 8, and a new stamp is bought in 6
+seconds and is usable 6 seconds later. The archive panel offers the catalogue node's archive stamps:
+"Archive 2026", depth 22, with room; "Short talks", depth 20, nearly full and under the 30-day
+warning; and "Old archive", expired, which is not offered. A new stamp is priced at the funding
+mock's price of postage, from a catalogue node wallet of 10 xBZZ, and a confirm at another cost is
+refused as `price_moved`, with the cost now.
+
+The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
+
+- "Ended a few minutes ago": none. The seeded archive is of this one.
+- "Ended days ago": 1080p and 720p archived on "Archive 2026", with the hint that the stage batch of
+  its other qualities has expired.
+- "Workshop recording": 1080p archived with reduced protection, 12 parity chunks left out.
+- "Panel discussion": 720p partly copied onto "Short talks".
+- "Keynote, recorded twice": 1080p, outdated.
+- "Last year's meetup": 1080p on "Old archive", expired.
+
+`MOCK_ARCHIVE` decides the archive seeded at start, of the first seeded recording:
+
+- `off`, unset: none.
+- `measuring`, `copying`, `verifying`: one another user started, moving.
+- `awaiting_purchase`: one the seeded user started, waiting on the buy dialog, which comes to front.
+- `buying`: one whose new stamp is being bought, which turns usable, then copies.
+- `paused_user`, `paused_unreadable`, `paused_batch`, `paused_funds`, `paused_node`: one the seeded
+  user started, paused for that reason. The panel comes to front for every reason but the first.
+- `waiting`: one whose stream went live again.
+- `done`, `done_reduced`: a finished one, the second with 12 parity chunks of 1080p left out.
+
+`GET /api/archive/streams` answers the Archive page, and the stream answers carry each stream's
+`archive`. With the default `MOCK_EXPORT` an export runs at start, and a new archive is refused
+until it is done, as the API keeps one job at a time: set `MOCK_EXPORT=off` to start one at once.
 
 ## Pages
 
@@ -214,6 +253,16 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   the server for everyone; when its export started and finished, and how long it took, pauses
   included; or the export of it while it runs, with when it started. Both times are in UTC, to the
   second.
+- On a finished recording, or a stream with an archive, the archive card, above the downloaded file:
+  each quality with its state, "Archived", "Archived, reduced protection", "Archive incomplete",
+  "Archive outdated", "Archive expired" or "Not archived", and what its copy holds, on which stamp,
+  completed when and by whom, or else its estimate. A stamp that holds a copy and runs out soon is
+  named with its time left. "Archive this recording", "Archive more qualities" or "Archive again"
+  opens the archive panel on the stream, described below. Once one quality plays from an archive
+  stamp, the "List only archived qualities" switch: on, the catalogue lists only those qualities,
+  and turning it on or off writes the catalogue entry again. When the stage batch of a quality with
+  no archive has expired, the card says so beside the switch. While an archive of the stream runs,
+  the card says where it stands, with a button that opens it.
 - The OBS panel, with Rotate key, described below.
 
 ### Stages, `#/stages`
@@ -337,9 +386,11 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   it finishes, when the stream went live again; and Cancel export, which asks first, since
   everything read so far is deleted. Once it is done, how long it took from start to finish, pauses
   included, or "0 s from cache" under half a second, when the node had every segment already, with
-  Save file and Clear.
+  Save file and Clear, and Archive this quality, which opens the archive panel on that stream with
+  the exported quality ticked: the catalogue node has just read the recording whole.
 - **The widget.** From the moment an export starts, it floats in the top right of every page for
-  every signed-in user, the panel open or not, with its stream, quality and progress. Clicking it
+  every signed-in user, above or under the archive's, the panel open or not, with its stream,
+  quality and progress. Clicking it
   opens the panel, and so does its open button, which a keyboard reaches. It says "Paused: needs a
   decision" when a pause asks for one. A finished export
   shows that it is ready, with Save file and a close button, and each user closes it for
@@ -350,6 +401,46 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   gives it, such as `opening-keynote-2026-11-05-1080p.mp4`. Saving reads nothing from Swarm.
 
 The console reads the export every two seconds while one runs, and every ten seconds otherwise.
+
+### Archiving a recording
+
+One archive exists at a time for the whole admin, it shares the place a job has with the export,
+and every signed-in user sees it
+([Archiving a recording](../../../docs/architecture/web2-admin.md#archiving-a-recording)).
+
+- **The panel.** Opened from a stream's archive card, from the Archive page, or with Archive this
+  quality on a finished export, it shows the recording's day and each quality with its state and
+  its estimate: the bytes, the chunks, what the copy costs the catalogue node's chequebook and how
+  long it takes. The qualities it was opened with are ticked, or else the best one not archived
+  yet, and an archived quality cannot be ticked. Under them, where the copy goes: an archive stamp
+  with room for what is ticked, a stamp without it greyed out with why, or "Buy a new archive
+  stamp", sized once the recording is measured. Start archive starts it, and the panel follows it.
+  While an archive is unfinished, the panel follows that archive, whichever stream it is, and says
+  one exists at a time.
+- **Following an archive.** Where it stands, with a bar for the whole and one for each quality as it
+  copies and verifies, the rate and the time left, what it is expected to cost the chequebook and
+  what the chequebook can pay, with a warning when it holds less, who started it and when, in UTC,
+  and the buttons for what it allows now: Pause; Resume, or Try again, Try again after a dilution
+  and Try again after funding it, after the pauses that ask for them; Wait until it finishes, when
+  the stream went live again; Use another stamp, which lists the other stamps that can be written,
+  and Buy a new archive stamp, when the stamp lacks room; and Cancel archive, which asks first,
+  since what was copied stays on Swarm and its qualities show as "Archive incomplete". Once it is
+  done, each quality's result, how long it took and what the chequebook went down by.
+- **A new stamp.** Once the recording is measured, the panel shows the stamp it proposes, its depth,
+  days and cost, and what the catalogue node's wallet lacks, with Choose the stamp, which opens the
+  buy dialog. The dialog's confirm goes to the archive, which buys the stamp, waits until it is
+  usable, then copies onto it. A cost that moved since the dialog priced the stamp is refused, and
+  the dialog says the cost now.
+- **The widgets.** The export's and the archive's float one under the other in the top right of
+  every page, the one that holds the place first, so a paused archive shows under a running export.
+  The archive's shows its stream, its qualities and where it stands, with "Paused: needs a decision"
+  when a pause asks for one. A finished archive stays until each user closes it for themselves.
+- **Coming to front.** When the archive pauses for a decision, or waits for a new stamp to be
+  confirmed, the panel opens by itself for the user who started it, once each time, and with a new
+  stamp to confirm the buy dialog opens with it. Everyone else sees the widget say so.
+
+The console reads the archive every two seconds while one is unfinished, and every ten seconds
+otherwise.
 
 ### The OBS panel
 
