@@ -1824,10 +1824,12 @@ the design.
   `swarm-tag` on every post, slots included, with no `swarm-deferred-upload`.
   Posting holds while the tag's posts run `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of
   what Bee pushed, and a tag that pushes nothing for ten minutes pauses the job.
-- **Lost chunks.** A data or intermediate chunk that cannot be read, after
-  retries, is rebuilt by reading its segment whole through `/bytes`, which makes
-  Bee restore it from parity. One that still cannot be read pauses the job as
-  `unreadable`. A parity chunk that cannot be read is counted and left out.
+- **Lost chunks.** A data or intermediate chunk the node answers not found for,
+  after retries, is rebuilt by reading its segment whole through `/bytes`, which
+  makes Bee restore it from parity. One that still cannot be read pauses the job
+  as `unreadable`. A parity chunk the node answers not found for is tried once
+  more before its segment goes into the ledger, then counted and left out. A read
+  the node does not answer, of any chunk, pauses the job as `node` instead.
 - **Complete.** A quality is complete when no data or intermediate chunk failed,
   the tag's `split` equals the posts the job made under it, and `synced` plus
   `seen` equals `split`; the item keeps both counts as last read

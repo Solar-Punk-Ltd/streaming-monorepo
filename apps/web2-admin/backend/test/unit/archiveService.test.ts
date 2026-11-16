@@ -360,6 +360,36 @@ describe('ArchiveService', () => {
     assert.equal(summary?.state, 'reduced');
   });
 
+  it('pauses with the node when a parity read goes unanswered, and completes in full on Resume once it answers', async () => {
+    recorded();
+    const parity = segments.get('360p')![1]!.parity[0]!;
+    node.unreachable.add(parity);
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    let current = await job();
+    assert.equal(current.state, 'paused');
+    assert.equal(current.pauseReason, 'node');
+    assert.equal(current.items[0]!.parityMissing, 0, 'an outage loses no parity');
+
+    node.unreachable.delete(parity);
+    await service.act(TEST_OPERATOR, current.id, { action: 'resume' });
+    await service.settled();
+    current = await job();
+    assert.equal(current.state, 'done');
+    assert.equal(current.items[0]!.result, 'complete');
+    assert.equal(store.archives.get('stream-1:360p')!.parity_missing, 0);
+  });
+
+  it('pauses with the node, not as unreadable, when a segment read goes unanswered while measuring', async () => {
+    recorded();
+    node.unreachable.add(segments.get('360p')![0]!.root);
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const current = await job();
+    assert.equal(current.state, 'paused');
+    assert.equal(current.pauseReason, 'node');
+  });
+
   it('pauses on a data chunk neither read nor rebuilt, completes nothing, and copies it on Resume once it is back', async () => {
     recorded();
     const lost = segments.get('360p')![2]!.data[1]!;

@@ -1085,7 +1085,8 @@ export class ArchiveService {
           const root = await this.copier.measure([node.url], reference, signal);
           chunks += treeChunks(root.bytes, root.level);
         } catch (error) {
-          if (signal.aborted || !(error instanceof ChunkMissingError || error instanceof ArchiveNodeError)) throw error;
+          // Only a segment the node answered not found for is unreadable; a node that did not answer pauses with it.
+          if (signal.aborted || !(error instanceof ChunkMissingError)) throw error;
           unreadable += 1;
         }
       });

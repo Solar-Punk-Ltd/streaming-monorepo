@@ -254,10 +254,13 @@ Chunks already copied stay on Swarm whatever the user chooses, and the quality s
 - **Push window.** The job stops posting while the tag's `split` is more than
   `ARCHIVE_PUSH_WINDOW_CHUNKS` ahead of `synced` and `seen` together. The catalogue node also
   publishes the catalogue for live stages, and this keeps its push queue short.
-- **Rebuilding.** A data chunk the network lost comes back by reading its segment through `/bytes`,
-  which makes Bee restore it from parity, then reading the chunk again.
-- **Lost parity.** A parity chunk that cannot be read is counted and left out. The quality then
-  completes with reduced protection.
+- **Rebuilding.** A data chunk the node answers not found for comes back by reading its segment
+  through `/bytes`, which makes Bee restore it from parity, then reading the chunk again.
+- **Lost parity.** A parity chunk the node answers not found for is tried once more before its
+  segment goes into the ledger, then counted and left out. The quality then completes with reduced
+  protection.
+- **Node outage.** A read the node does not answer, of any chunk, is no sign the chunk is lost: the
+  job pauses as `node`, and nothing counts as lost or unreadable.
 - **Resume.** The ledger is the list of segments done. A segment restarts whole, which costs pushes
   and no room, because Bee's stamper keeps one stamp per batch and chunk. A chunk posted again
   after it synced is pushed and counted in `synced` again. One posted again while its first post
