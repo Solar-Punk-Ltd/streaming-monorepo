@@ -27,6 +27,8 @@ export interface ArchiveBatchToDesignate {
   batchId: string;
   /** The deployment whose Bee node holds it: the catalogue node a purchase named, or the one an adopt was made on. */
   profileName: string;
+  /** Its depth: the one the purchase bought, or the one the node reported at an adopt. 17 to 64. */
+  depth: number;
   /** The name it was given, or null. */
   label: string | null;
   /** Who designated it: the operator who adopted it, or null for a purchase, which the admin's audit log names. */

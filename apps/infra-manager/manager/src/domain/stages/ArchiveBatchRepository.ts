@@ -22,11 +22,17 @@ export interface ArchiveBatchStore {
   designate(designation: ArchiveBatchDesignation, expectedRevision: number | null): Promise<ArchiveBatchWrite>;
   /** Deletes one row under the same rule. */
   remove(batchId: string, expectedRevision: number): Promise<ArchiveBatchWrite>;
+  /**
+   * Keeps the depth a reading reported for a batch, when it differs from the one kept. A reading is no operator's
+   * edit, so the revision stays.
+   */
+  recordDepth(batchId: string, depth: number): Promise<void>;
 }
 
 interface Row {
   batch_id: string;
   profile_name: string;
+  batch_depth: number;
   label: string | null;
   source: ArchiveBatchDesignation['source'];
   purchase_request_id: string | null;
@@ -34,13 +40,14 @@ interface Row {
   designated_by: string | null;
 }
 
-const COLUMNS = 'batch_id, profile_name, label, source, purchase_request_id, designated_at, designated_by';
-const INSERT = `INSERT INTO archive_batches (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`;
+const COLUMNS = 'batch_id, profile_name, batch_depth, label, source, purchase_request_id, designated_at, designated_by';
+const INSERT = `INSERT INTO archive_batches (${COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`;
 
 function designationOf(row: Row): ArchiveBatchDesignation {
   return {
     batchId: row.batch_id,
     profileName: row.profile_name,
+    depth: row.batch_depth,
     label: row.label,
     source: row.source,
     purchaseRequestId: row.purchase_request_id,
@@ -53,6 +60,7 @@ function valuesOf(designation: ArchiveBatchDesignation): unknown[] {
   return [
     designation.batchId,
     designation.profileName,
+    designation.depth,
     designation.label,
     designation.source,
     designation.purchaseRequestId,
@@ -99,6 +107,13 @@ export class ArchiveBatchRepository implements ArchiveBatchStore {
       async (client) =>
         (await client.query('DELETE FROM archive_batches WHERE batch_id = $1', [batchId])).rowCount === 1,
     );
+  }
+
+  async recordDepth(batchId: string, depth: number): Promise<void> {
+    await this.pool.query('UPDATE archive_batches SET batch_depth = $2 WHERE batch_id = $1 AND batch_depth <> $2', [
+      batchId,
+      depth,
+    ]);
   }
 
   /**

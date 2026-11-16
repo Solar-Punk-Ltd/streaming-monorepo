@@ -13,9 +13,10 @@ import {
   type StampHealth,
   stampHealthFrom,
 } from '@streaming-infra-manager/common';
-import { catalogueStampRecordSchema } from '@streaming-monorepo/contracts';
+import { CATALOGUE_ARCHIVE_BATCHES_MAX, catalogueStampRecordSchema } from '@streaming-monorepo/contracts';
 
 import { EventBus } from '../../src/domain/EventBus.js';
+import { Logger } from '../../src/domain/Logger.js';
 import {
   CATALOGUE_CHECK_MS,
   CATALOGUE_TTL_DRIFT_SECONDS,
@@ -124,14 +125,29 @@ async function publisherFor(setup: Setup = {}) {
     readings: number;
     /** The archive batches the list answers, or an error it rejects with. */
     archive: ArchiveBatchDesignation[] | Error;
-  } = { reading: readingOf(), byBatch: new Map(), readingDelayMs: 0, readings: 0, archive: setup.archive ?? [] };
+    /** Each depth a reading had the archive batches keep. */
+    depthsRecorded: Array<[string, number]>;
+  } = {
+    reading: readingOf(),
+    byBatch: new Map(),
+    readingDelayMs: 0,
+    readings: 0,
+    archive: (setup.archive ?? []).map((row) => ({ ...row })),
+    depthsRecorded: [],
+  };
   const publisher = new CataloguePublisher({
     designation: store,
     archiveBatches: setup.archive
       ? {
           list: async () => {
             if (state.archive instanceof Error) throw state.archive;
-            return [...state.archive];
+            return state.archive.map((row) => ({ ...row }));
+          },
+          recordDepth: async (batchId: string, depth: number) => {
+            if (state.archive instanceof Error) return;
+            const row = state.archive.find((entry) => entry.batchId === batchId);
+            if (row) row.depth = depth;
+            state.depthsRecorded.push([batchId, depth]);
           },
         }
       : undefined,
@@ -594,6 +610,7 @@ function archiveRow(batchId: string, over: Partial<ArchiveBatchDesignation> = {}
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: 'Archive one',
     source: 'purchase',
     purchaseRequestId: '7d1e2f3a-4b5c-4d6e-9f0a-b1c2d3e4f5a6',
@@ -732,26 +749,82 @@ describe('the archive batches on the catalogue stamp record', () => {
     t.publisher.stop();
   });
 
-  it('leaves out a batch whose depth no node has reported yet, until its node answers', async () => {
+  it('carries a batch whose node has not answered since a restart, with the depth the manager keeps', async () => {
+    // A manager just started: nothing has been read from any node yet, and one node does not answer.
     const t = await publisherFor({
       profiles: ARCHIVE_PROFILES,
-      archive: [archiveRow(ARCHIVE_BATCH), archiveRow(OLD_NODE_ARCHIVE_BATCH, { profileName: 'catalogue-old' })],
+      archive: [
+        archiveRow(ARCHIVE_BATCH),
+        archiveRow(OLD_NODE_ARCHIVE_BATCH, { profileName: 'catalogue-old', depth: 24 }),
+      ],
     });
     t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
     t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, UNANSWERED);
     t.publisher.start();
     await settle();
+    const carried = lastRecord(t.sent).archiveBatches ?? [];
     assert.deepEqual(
-      lastRecord(t.sent).archiveBatches?.map((batch) => batch.batchId),
-      [ARCHIVE_BATCH],
-    );
-    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH));
-    await t.clock.advance(CATALOGUE_CHECK_MS);
-    assert.deepEqual(
-      lastRecord(t.sent).archiveBatches?.map((batch) => batch.batchId),
-      [ARCHIVE_BATCH, OLD_NODE_ARCHIVE_BATCH],
+      carried.map((batch) => [batch.batchId, batch.state, batch.depth, batch.writable]),
+      [
+        [ARCHIVE_BATCH, 'active', 22, true],
+        [OLD_NODE_ARCHIVE_BATCH, 'unknown', 24, false],
+      ],
     );
     t.publisher.stop();
+  });
+
+  it('carries a batch whose deployment was deleted before the manager started', async () => {
+    const t = await publisherFor({
+      profiles: ARCHIVE_PROFILES,
+      archive: [archiveRow(ARCHIVE_BATCH, { profileName: 'deleted-node', depth: 23 })],
+    });
+    t.publisher.start();
+    await settle();
+    const [batch] = lastRecord(t.sent).archiveBatches ?? [];
+    assert.deepEqual(
+      [batch?.batchId, batch?.state, batch?.depth, batch?.writable],
+      [ARCHIVE_BATCH, 'unknown', 23, false],
+    );
+    assert.deepEqual(t.state.depthsRecorded, []);
+    t.publisher.stop();
+  });
+
+  it('keeps a depth the node reports that differs from the one kept, as after a dilution', async () => {
+    const t = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: [archiveRow(ARCHIVE_BATCH)] });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.publisher.start();
+    await settle();
+    assert.deepEqual(t.state.depthsRecorded, [], 'the same depth is not written again');
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH, { depth: 23 }));
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.deepEqual(t.state.depthsRecorded, [[ARCHIVE_BATCH, 23]]);
+    assert.equal(lastRecord(t.sent).archiveBatches?.[0]?.depth, 23);
+    // The node stops answering, and the record carries the depth kept since.
+    t.state.byBatch.set(ARCHIVE_BATCH, UNANSWERED);
+    await t.clock.advance(CATALOGUE_CHECK_MS);
+    assert.equal(lastRecord(t.sent).archiveBatches?.[0]?.depth, 23);
+    t.publisher.stop();
+  });
+
+  it('carries the first archive batches up to its maximum, and says so in the log once', async (t) => {
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, 'warn', (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const many = Array.from({ length: CATALOGUE_ARCHIVE_BATCHES_MAX + 2 }, (_, index) =>
+      archiveRow(index.toString(16).padStart(64, '0'), {
+        designatedAt: new Date(Date.UTC(2026, 9, 1, 0, index)).toISOString(),
+      }),
+    );
+    const p = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: many });
+    p.publisher.start();
+    await settle();
+    await p.clock.advance(CATALOGUE_CHECK_MS);
+    const carried = lastRecord(p.sent).archiveBatches ?? [];
+    assert.equal(carried.length, CATALOGUE_ARCHIVE_BATCHES_MAX);
+    assert.equal(carried[0]?.batchId, many[0]?.batchId);
+    const truncations = lines.filter((line) => line.includes('carries the first'));
+    assert.deepEqual(truncations.length, 1);
+    assert.match(truncations[0] ?? '', new RegExp(`there are ${CATALOGUE_ARCHIVE_BATCHES_MAX + 2} archive batches`));
+    p.publisher.stop();
   });
 
   it('reads a batch whose deployment is gone as unknown, and keeps the depth it had', async () => {

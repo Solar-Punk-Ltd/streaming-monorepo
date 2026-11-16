@@ -50,6 +50,11 @@ export interface ArchiveBatchDesignation {
   batchId: string;
   /** The deployment whose Bee node holds the batch, and so the only node that can stamp with it. */
   profileName: string;
+  /**
+   * The batch's depth as its node last reported it: the depth a purchase bought or an adopt read, then each
+   * reading's. The catalogue stamp record carries it while the node does not answer.
+   */
+  depth: number;
   /** The name its buyer or adopter gave it, or null. */
   label: string | null;
   source: ArchiveBatchSource;
@@ -161,6 +166,8 @@ export function catalogueIsArchiveBatchRefusal(batchId: string): string {
 }
 
 export const ARCHIVE_UNKNOWN_REFUSAL = 'There is no archive batch with this id.';
+
+export const ARCHIVE_NO_DEPTH_REFUSAL = 'The node reported no depth for this batch that a batch can have.';
 
 /** Why the catalogue's own batch, the pinned one or the one a move left, is no archive batch. */
 export function archiveIsCatalogueBatchRefusal(batchId: string): string {

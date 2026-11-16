@@ -33,6 +33,11 @@ export class InMemoryArchiveBatches implements ArchiveBatchStore {
     return { outcome: 'saved', revision: this.currentRevision };
   }
 
+  async recordDepth(batchId: string, depth: number): Promise<void> {
+    const row = this.rows.find((entry) => entry.batchId === batchId);
+    if (row) row.depth = depth;
+  }
+
   private insert(designation: ArchiveBatchDesignation): boolean {
     const taken = this.rows.some(
       (row) =>

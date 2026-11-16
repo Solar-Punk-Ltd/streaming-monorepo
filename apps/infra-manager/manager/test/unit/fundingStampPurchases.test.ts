@@ -126,6 +126,7 @@ function archived(batchId: string, over: Partial<ArchiveBatchDesignation> = {}):
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: null,
     source: 'adopted',
     purchaseRequestId: null,
@@ -322,6 +323,7 @@ describe('POST /api/admin-funding/stamp-purchases', () => {
       {
         batchId: BOUGHT,
         profileName: 'catalogue',
+        depth: request().depth,
         label: 'Autumn event',
         designatedBy: null,
         purchaseRequestId: REQUEST,
@@ -679,6 +681,7 @@ describe('GET /api/admin-funding/stamp-purchases/:requestId', () => {
       {
         batchId: BOUGHT,
         profileName: 'catalogue',
+        depth: request().depth,
         label: 'Autumn event',
         designatedBy: null,
         purchaseRequestId: REQUEST,

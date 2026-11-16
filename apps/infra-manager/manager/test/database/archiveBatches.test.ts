@@ -5,8 +5,9 @@
  *
  * What only the database can show: that an adopt and a removal land only at the revision they read and raise it,
  * that a refused write leaves the revision where it was, that a purchase, designated at whatever revision, recorded
- * twice, or a batch recorded under a second purchase, makes one row and raises the revision once, that the list comes in the order the batches were
- * designated, and that the columns refuse a batch id in another spelling, an empty or long label, a purchase without
+ * twice, or a batch recorded under a second purchase, makes one row and raises the revision once, that the list comes
+ * in the order the batches were designated, that a reading's depth is kept without raising the revision, and that
+ * the columns refuse a batch id in another spelling, a depth no batch has, an empty or long label, a purchase without
  * its request and an adopted batch with one, even from a write that skipped the service.
  */
 import assert from 'node:assert/strict';
@@ -37,6 +38,7 @@ function adopted(batchId: string, designatedAt: string): ArchiveBatchDesignation
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: 'Spring archive',
     source: 'adopted',
     purchaseRequestId: null,
@@ -49,6 +51,7 @@ function bought(batchId: string, requestId: string): ArchiveBatchDesignation {
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: null,
     source: 'purchase',
     purchaseRequestId: requestId,
@@ -155,12 +158,24 @@ describe(
       );
     });
 
+    it('keeps the depth a reading reports, without raising the revision', async () => {
+      await store.designate(adopted(BATCH, '2026-11-13T09:00:00.000Z'), 0);
+      await store.recordDepth(BATCH, 24);
+      await store.recordDepth(OTHER_BATCH, 25);
+      assert.deepEqual(
+        (await store.list()).map((row) => [row.batchId, row.depth]),
+        [[BATCH, 24]],
+      );
+      assert.equal(await store.revision(), 1);
+      await assert.rejects(store.recordDepth(BATCH, 16), /check/i);
+    });
+
     it('refuses rows the service would never write', async () => {
       const insert = (values: unknown[]) =>
         pool.query(
-          `INSERT INTO archive_batches (batch_id, profile_name, label, source, purchase_request_id, designated_at, designated_by)
-           VALUES ($1, $2, $3, $4, $5, NOW(), NULL)`,
-          values,
+          `INSERT INTO archive_batches (batch_id, profile_name, label, source, purchase_request_id, batch_depth, designated_at, designated_by)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW(), NULL)`,
+          values.length === 5 ? [...values, 22] : values,
         );
       await assert.rejects(insert([`0x${BATCH.slice(2)}`, 'catalogue', null, 'adopted', null]), /check/i);
       await assert.rejects(insert([BATCH.toUpperCase(), 'catalogue', null, 'adopted', null]), /check/i);
@@ -170,6 +185,9 @@ describe(
       await assert.rejects(insert([BATCH, 'catalogue', null, 'adopted', REQUEST_ID]), /check/i);
       await assert.rejects(insert([BATCH, '', null, 'adopted', null]), /check/i);
       await assert.rejects(insert([BATCH, 'catalogue', null, 'bought', null]), /check/i);
+      await assert.rejects(insert([BATCH, 'catalogue', null, 'adopted', null, 16]), /check/i);
+      await assert.rejects(insert([BATCH, 'catalogue', null, 'adopted', null, 65]), /check/i);
+      await assert.rejects(insert([BATCH, 'catalogue', null, 'adopted', null, null]), /null value/i);
       assert.deepEqual(await store.list(), []);
     });
   },

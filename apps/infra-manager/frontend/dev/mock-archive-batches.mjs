@@ -53,7 +53,7 @@ function readingOf(stamps, profiles, row) {
     ttlSeconds: health.ttl,
     fillRatio: stamp ? fullestBucketFillRatio(stamp) : null,
     immutable: health.immutable,
-    depth: stamp?.depth ?? null,
+    depth: stamp?.depth ?? row.depth,
     readAt: new Date().toISOString(),
   };
 }
@@ -142,6 +142,7 @@ export function archiveBatchRoutes({ readBody, profiles, stamps, userFor }) {
     archiveBatches.rows.push({
       batchId,
       profileName: node,
+      depth: stamp.depth,
       label: body.label === null ? null : body.label.trim(),
       source: 'adopted',
       purchaseRequestId: null,

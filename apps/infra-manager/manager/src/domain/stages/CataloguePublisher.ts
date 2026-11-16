@@ -22,7 +22,7 @@ import type { ManagerEvent } from '../EventBus.js';
 import { Logger } from '../Logger.js';
 import { beePublisherUrlFor } from '../StampService.js';
 
-import { archiveBatchWritable, type ArchiveBatchStatus } from './ArchiveBatchService.js';
+import { archiveBatchWritable, type ArchiveBatchStatus, isArchiveDepth } from './ArchiveBatchService.js';
 import { type CatalogueDesignationRow, isDesignated, isMoving } from './CatalogueDesignationRepository.js';
 import type { CatalogueStatus } from './CatalogueDesignationService.js';
 import { type CatalogueSender, sendCatalogueRequest } from './catalogueRequest.js';
@@ -52,10 +52,14 @@ export interface CataloguePublisherDeps {
   designation: { read(): Promise<CatalogueDesignationRow> };
   profiles: { findByName(name: string): Promise<Profile | null> };
   /**
-   * The archive batches, `ArchiveBatchService.list`, read on the same cadence and carried as the record's
-   * `archiveBatches`. Without it the record leaves the field out, as a manager older than the field does.
+   * The archive batches, `ArchiveBatchStore.list`, read on the same cadence and carried as the record's
+   * `archiveBatches`, and `recordDepth`, which keeps the depth a reading reported. Without it the record leaves the
+   * field out, as a manager older than the field does.
    */
-  archiveBatches?: { list(): Promise<ArchiveBatchDesignation[]> };
+  archiveBatches?: {
+    list(): Promise<ArchiveBatchDesignation[]>;
+    recordDepth(batchId: string, depth: number): Promise<void>;
+  };
   /** The pinned batch as the node reports it, `StampService.batchReadingFor`. Never throws. */
   reading(profile: Profile, batchId: string): Promise<{ health: StampHealth; depth: number | null }>;
   /**
@@ -121,8 +125,9 @@ const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared
  * an address that reaches the dialling host alone, is left out, so the admin keeps the last one it had.
  *
  * Every archive batch is read on the same cadence, each on the node of its own deployment, and the record carries
- * them all as `archiveBatches`, each `writable` only while its deployment is the designated catalogue node and its
- * node calls it usable. A change in their readings, or in the list, is pushed as one in the pinned batch's is.
+ * them all as `archiveBatches`, up to its maximum, a batch whose node does not answer with the depth the manager
+ * keeps for it, each `writable` only while its deployment is the designated catalogue node and its node calls it
+ * usable. A change in their readings, or in the list, is pushed as one in the pinned batch's is.
  *
  * The last outcome and the last readings are kept in memory for the Manager settings card. The log says the outcome
  * when it changes, and never what the admin answered, its address or a token.
@@ -140,10 +145,8 @@ export class CataloguePublisher {
   private previousReading: CatalogueReading | null = null;
   /** The last reading of each archive batch, by batch id. */
   private archiveReadings: ReadonlyMap<string, CatalogueReading> = new Map();
-  /** The last depth each archive batch's node reported, for a reading the node did not answer. */
-  private readonly archiveDepths = new Map<string, number>();
-  /** The archive batches left out of the record for want of a depth, each logged once. */
-  private readonly archiveSkipsLogged = new Set<string>();
+  /** How many archive batches there were when the record last carried only the first ones, logged once per count. */
+  private archiveTruncationLogged: number | null = null;
   private sent: Sent | null = null;
   /** The clear moment the admin answered, so a clear is sent until it is answered and not after. */
   private clearAnswered: string | null = null;
@@ -234,52 +237,54 @@ export class CataloguePublisher {
 
   /**
    * Reads every archive batch on its own node, for the settings page and for the record, whether or not a catalogue
-   * node is designated, and answers what the record carries of them. A batch whose node did not answer keeps the last
-   * depth that node reported, and one with no depth known yet is left out until its node answers. Rejects only when
-   * the list itself could not be read, so no push says the admin has no archive batches when it has.
+   * node is designated, and answers what the record carries of them: every one, up to the record's maximum. A batch
+   * whose node did not answer, or whose deployment is gone, is carried as `unknown` with the depth the manager keeps
+   * for it, which each reading that reports another one refreshes. Rejects only when the list itself could not be
+   * read, so no push says the admin has no archive batches when it has.
    */
   private async readArchive(row: CatalogueDesignationRow, readAt: number): Promise<CatalogueArchiveBatch[] | null> {
-    if (!this.deps.archiveBatches) return null;
-    const batches = (await this.deps.archiveBatches.list()).slice(0, CATALOGUE_ARCHIVE_BATCHES_MAX);
+    const archive = this.deps.archiveBatches;
+    if (!archive) return null;
+    const listed = await archive.list();
+    this.logArchiveTruncation(listed.length);
+    const batches = listed.slice(0, CATALOGUE_ARCHIVE_BATCHES_MAX);
     const catalogueProfileName = isDesignated(row) ? row.profileName : null;
     const read = await Promise.all(
       batches.map(async (batch) => ({ batch, reading: await this.readArchiveBatch(batch, readAt) })),
     );
     this.archiveReadings = new Map(read.map(({ batch, reading }) => [batch.batchId, reading]));
-    for (const id of this.archiveDepths.keys()) {
-      if (!this.archiveReadings.has(id)) this.archiveDepths.delete(id);
-    }
 
-    const entries: CatalogueArchiveBatch[] = [];
-    for (const { batch, reading } of read) {
-      const depth = reading.depth;
-      if (depth === null || !Number.isInteger(depth) || depth < 17 || depth > 64) {
-        if (!this.archiveSkipsLogged.has(batch.batchId)) {
-          logger.warn(
-            `[Catalogue] archive batch ${shortHex(batch.batchId)} on ${batch.profileName} is left out of the record until its node reports its depth`,
-          );
-          this.archiveSkipsLogged.add(batch.batchId);
-        }
-        continue;
-      }
-      this.archiveSkipsLogged.delete(batch.batchId);
-      entries.push({
-        batchId: batch.batchId,
-        label: batch.label,
-        // Adopted only as immutable, and bought only as immutable, and a batch's kind never changes.
-        immutable: reading.immutable ?? true,
-        depth,
-        state: reading.state,
-        ttlSeconds: reading.ttlSeconds,
-        fillRatio: reading.fillRatio,
-        writable: archiveBatchWritable(batch.profileName, catalogueProfileName, reading.state),
-        designatedAt: batch.designatedAt,
-      });
-    }
-    return entries;
+    return read.map(({ batch, reading }) => ({
+      batchId: batch.batchId,
+      label: batch.label,
+      // Adopted only as immutable, and bought only as immutable, and a batch's kind never changes.
+      immutable: reading.immutable ?? true,
+      depth: isArchiveDepth(reading.depth) ? reading.depth : batch.depth,
+      state: reading.state,
+      ttlSeconds: reading.ttlSeconds,
+      fillRatio: reading.fillRatio,
+      writable: archiveBatchWritable(batch.profileName, catalogueProfileName, reading.state),
+      designatedAt: batch.designatedAt,
+    }));
   }
 
-  /** One archive batch as its own node reports it, `unknown` when the node or its deployment did not answer. */
+  /** Says once per count that the record carries only the first archive batches. */
+  private logArchiveTruncation(count: number): void {
+    if (count <= CATALOGUE_ARCHIVE_BATCHES_MAX) {
+      this.archiveTruncationLogged = null;
+      return;
+    }
+    if (this.archiveTruncationLogged === count) return;
+    logger.warn(
+      `[Catalogue] there are ${count} archive batches, and the catalogue stamp record carries the first ${CATALOGUE_ARCHIVE_BATCHES_MAX} of them`,
+    );
+    this.archiveTruncationLogged = count;
+  }
+
+  /**
+   * One archive batch as its own node reports it, `unknown` when the node or its deployment did not answer, with the
+   * depth the manager keeps for it then. A depth the node reports that differs from the one kept is kept from now on.
+   */
   private async readArchiveBatch(batch: ArchiveBatchDesignation, readAt: number): Promise<CatalogueReading> {
     let health: StampHealth | null = null;
     let depth: number | null = null;
@@ -289,14 +294,21 @@ export class CataloguePublisher {
     } catch (err) {
       logger.warn(`[Catalogue] reading archive batch ${shortHex(batch.batchId)} failed (${getErrorMessage(err)})`);
     }
-    if (depth !== null) this.archiveDepths.set(batch.batchId, depth);
+    const reported = isArchiveDepth(depth) ? depth : null;
+    if (reported !== null && reported !== batch.depth) {
+      await this.deps.archiveBatches?.recordDepth(batch.batchId, reported).catch((err: unknown) => {
+        logger.warn(
+          `[Catalogue] keeping depth ${reported} of archive batch ${shortHex(batch.batchId)} failed (${getErrorMessage(err)})`,
+        );
+      });
+    }
     return {
       batchId: batch.batchId,
       state: health?.state ?? 'unknown',
       ttlSeconds: health?.ttl ?? null,
       fillRatio: health?.fillRatio ?? null,
       immutable: health?.immutable ?? null,
-      depth: depth ?? this.archiveDepths.get(batch.batchId) ?? null,
+      depth: reported ?? batch.depth,
       readAt: new Date(readAt).toISOString(),
     };
   }
