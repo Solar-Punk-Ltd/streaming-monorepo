@@ -2171,6 +2171,7 @@ function archiveJobOptions(row, user, now = Date.now()) {
     }),
     stamps: archiveJobStamps.map((stamp) => archiveJobStampAnswer(stamp, now)).filter((stamp) => stamp.writable),
     buy: archiveJobBuyTerms(),
+    chequebookAvailablePlur: mockArchive?.chequebookPlur ?? ARCHIVE_JOB_CHEQUEBOOK_PLUR,
     summary,
     canListArchivedOnly: summary.archived.length > 0,
     archivedOnlyHint:

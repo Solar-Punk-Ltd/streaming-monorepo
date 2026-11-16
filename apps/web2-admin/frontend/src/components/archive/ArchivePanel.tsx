@@ -102,6 +102,16 @@ function initialTicks(options: ArchiveOptionsResponse, preselect: readonly strin
   return first ? [first.rendition] : [];
 }
 
+/**
+ * Whether the chequebook can pay less than the high end of an estimate: a warning before a start, never a refusal.
+ * Nothing is said when either was not read.
+ */
+function chequebookShort(availablePlur: string | null, highPlur: string | null): boolean {
+  if (availablePlur === null || highPlur === null) return false;
+  if (!/^\d+$/.test(availablePlur) || !/^\d+$/.test(highPlur)) return false;
+  return BigInt(availablePlur) < BigInt(highPlur);
+}
+
 function selectedOf(options: ArchiveOptionsResponse, ticked: readonly string[]): ArchiveQuality[] {
   return options.qualities.filter((q) => ticked.includes(q.rendition));
 }
@@ -496,6 +506,13 @@ export function ArchivePanel() {
                   </FormGroup>
                   {selected.length > 1 ? (
                     <Typography variant="body2">In all: {estimateLine(estimate)}.</Typography>
+                  ) : null}
+                  {chequebookShort(options.chequebookAvailablePlur, estimate.bzzHighPlur) ? (
+                    <Alert severity="warning">
+                      The catalogue node's chequebook can pay {formatXbzz(options.chequebookAvailablePlur!)} now, less
+                      than this archive may cost. It may run out while the copy runs, and the archive would then pause
+                      for funds. Fund it on the Funding page's Chequebooks tab.
+                    </Alert>
                   ) : null}
                   <Box>
                     <Typography variant="subtitle2" component="h3" gutterBottom>

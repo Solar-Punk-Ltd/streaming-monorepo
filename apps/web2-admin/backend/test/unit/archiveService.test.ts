@@ -777,6 +777,24 @@ describe('ArchiveService', () => {
     assert.ok(BigInt(quality.estimatedBzzLowPlur!) < BigInt(quality.estimatedBzzHighPlur!));
   });
 
+  it("answers the catalogue chequebook's reading before a start, and none when the manager cannot be read", async () => {
+    recorded();
+    manager.setChequebook('4000000000000000');
+    let options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.chequebookAvailablePlur, '4000000000000000');
+
+    manager.inventoryValue.catalogue!.chequebook = null;
+    options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.chequebookAvailablePlur, null, 'a node without a chequebook reads as none');
+
+    manager.inventory = async () => {
+      throw new ManagerFundingError('timeout', null, 'The manager did not answer in time.');
+    };
+    options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.chequebookAvailablePlur, null, 'an unread manager reads as none');
+    assert.ok(options.qualities.length > 0, 'the options answer all the same');
+  });
+
   it('asks the manager again, under the same id, for a purchase it never received', async () => {
     const purchase = await service.buy(TEST_OPERATOR, choice(17));
     await service.settled();

@@ -143,6 +143,7 @@ function makeOptions(overrides: Partial<ArchiveOptionsResponse> = {}): ArchiveOp
     qualities: [makeQuality(), q720()],
     stamps: [makeStamp(), springStamp()],
     buy: TERMS,
+    chequebookAvailablePlur: null,
     summary: { state: 'none', archived: [], archivedOnly: false },
     canListArchivedOnly: false,
     archivedOnlyHint: null,
@@ -490,6 +491,42 @@ describe('the archive panel', () => {
       }),
     );
   });
+
+  it('warns before a start when the chequebook can pay less than the picked qualities may cost, and still starts', async () => {
+    mockFetch([
+      ...jobRoutes(null, makeOptions({ chequebookAvailablePlur: '5000000000000000' })),
+      {
+        path: `/api/streams/${ID}/archive`,
+        method: 'POST',
+        respond: () => jsonOk({ archive: makeJob({ state: 'measuring', startedByYou: true }) }, 202),
+      },
+    ]);
+    renderPanels();
+    fireEvent.click(screen.getByRole('button', { name: 'Open the archive panel' }));
+    const panel = await screen.findByRole('dialog', { name: 'Archive “Opening keynote”' });
+
+    expect(
+      await within(panel).findByText(
+        /The catalogue node's chequebook can pay 0\.50 xBZZ now, less than this archive may cost/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText(/the archive would then pause for funds/)).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Start archive' })).toBeEnabled();
+  });
+
+  for (const [held, plur] of [
+    ['holds enough', '10000000000000000'],
+    ['was not read', null],
+  ] as const) {
+    it(`says nothing of the chequebook before a start when it ${held}`, async () => {
+      mockFetch(jobRoutes(null, makeOptions({ chequebookAvailablePlur: plur })));
+      renderPanels();
+      fireEvent.click(screen.getByRole('button', { name: 'Open the archive panel' }));
+      const panel = await screen.findByRole('dialog', { name: 'Archive “Opening keynote”' });
+      expect(await within(panel).findByText(/^About 2\.2 GB/)).toBeInTheDocument();
+      expect(within(panel).queryByText(/less than this archive may cost/)).not.toBeInTheDocument();
+    });
+  }
 
   it('says why no archive can start now, and Start stays disabled', async () => {
     const refusal = 'The export of "Opening keynote" (720p) is under way. One job runs at a time.';

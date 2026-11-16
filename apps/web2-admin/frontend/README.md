@@ -141,7 +141,8 @@ seconds and is usable 6 seconds later. The archive panel offers the catalogue no
 "Archive 2026", depth 22, with room; "Short talks", depth 20, nearly full and under the 30-day
 warning; and "Old archive", expired, which is not offered. A new stamp is priced at the funding
 mock's price of postage, from a catalogue node wallet of 10 xBZZ, and a confirm at another cost is
-refused as `price_moved`, with the cost now.
+refused as `price_moved`, with the cost now. The panel reads the catalogue node's chequebook at 2
+xBZZ, or at the archive's own reading while one exists (0.4 xBZZ with `MOCK_ARCHIVE=paused_funds`).
 
 The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 
@@ -412,7 +413,10 @@ and every signed-in user sees it
   quality on a finished export, it shows the recording's day and each quality with its state and
   its estimate: the bytes, the chunks, what the copy costs the catalogue node's chequebook and how
   long it takes. The qualities it was opened with are ticked, or else the best one not archived
-  yet, and an archived quality cannot be ticked. Under them, where the copy goes: an archive stamp
+  yet, and an archived quality cannot be ticked. When the high end of what the ticked qualities may
+  cost is above what the catalogue node's chequebook can pay now, a warning says the chequebook may
+  run out and the archive would then pause for funds; Start archive stays enabled, and with no
+  reading of the chequebook there is no warning. Under them, where the copy goes: an archive stamp
   with room for what is ticked, a stamp without it greyed out with why, or "Buy a new archive
   stamp", sized once the recording is measured. Start archive starts it, and the panel follows it.
   While an archive is unfinished, the panel follows that archive, whichever stream it is, and says
