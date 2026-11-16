@@ -22,6 +22,20 @@ import type {
   VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
 import {
+  ARCHIVE_CONFIRM_PURCHASE_PATH,
+  ARCHIVE_PATH,
+  archiveActionPath,
+  streamArchiveListingPath,
+  streamArchivePath,
+  type ArchiveActionRequest,
+  type ArchiveBuyChoice,
+  type ArchiveCurrentResponse,
+  type ArchiveJobSummary,
+  type ArchiveListingRequest,
+  type ArchiveOptionsResponse,
+  type ArchiveStartRequest,
+} from '@streaming-monorepo/web2-admin-common';
+import {
   BACKGROUND_READ_HEADER,
   BACKGROUND_READ_VALUE,
   EXPORT_PATH,
@@ -480,6 +494,43 @@ export function fetchPublicConfig(): Promise<PublicConfig> {
 /** The build the API runs, as its deploy built it in. Behind the session, so a 401 here signs out like any other. */
 export function fetchVersion(): Promise<VersionInfo> {
   return getJson<VersionInfo>(VERSION_PATH);
+}
+
+// --- archiving a recording ------------------------------------------------------
+
+/** What the archive panel and the stream's archive card offer for one stream: its qualities, the stamps, the switch. */
+export function fetchArchiveOptions(streamId: string): Promise<ArchiveOptionsResponse> {
+  return getJson<ArchiveOptionsResponse>(streamArchivePath(streamId));
+}
+
+/** Starts archiving the chosen qualities of the stream's recording; the answer is the archive as it starts. */
+export async function startArchive(streamId: string, request: ArchiveStartRequest): Promise<ArchiveJobSummary | null> {
+  return (await sendJson<ArchiveCurrentResponse>('POST', streamArchivePath(streamId), request)).archive;
+}
+
+/**
+ * The archive on the server, which every signed-in user sees, or null. A `background` look, the widget's timer, says
+ * so in a header, and the gate leaves the session's idle clock alone for it.
+ */
+export async function fetchCurrentArchive(options: { background?: boolean } = {}): Promise<ArchiveJobSummary | null> {
+  const headers = options.background ? { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE } : undefined;
+  return (await getJson<ArchiveCurrentResponse>(ARCHIVE_PATH, headers)).archive;
+}
+
+/** Pause, resume, wait, another stamp, a new stamp, cancel, or close the widget; null once the archive is gone. */
+export async function actOnArchive(jobId: string, request: ArchiveActionRequest): Promise<ArchiveJobSummary | null> {
+  return (await sendJson<ArchiveCurrentResponse>('POST', archiveActionPath(jobId), request)).archive;
+}
+
+/** Confirms the new stamp the archive waits to buy, at the cost the buy dialog showed. */
+export async function confirmArchivePurchase(choice: ArchiveBuyChoice): Promise<ArchiveJobSummary | null> {
+  return (await sendJson<ArchiveCurrentResponse>('POST', ARCHIVE_CONFIRM_PURCHASE_PATH, choice)).archive;
+}
+
+/** The "List only archived qualities" switch of one stream; the answer is the stream's archive as it now stands. */
+export function setArchiveListing(streamId: string, archivedOnly: boolean): Promise<ArchiveOptionsResponse> {
+  const body: ArchiveListingRequest = { archivedOnly };
+  return sendJson<ArchiveOptionsResponse>('PUT', streamArchiveListingPath(streamId), body);
 }
 
 // --- exporting a recording -------------------------------------------------------

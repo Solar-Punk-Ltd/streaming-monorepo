@@ -26,6 +26,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { fetchExportOptions } from '../../api';
 import { errorMessage } from '../../errors';
+import { useArchive } from '../archive/ArchiveProvider';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { useSnackbar } from '../Snackbar';
 import {
@@ -107,12 +108,37 @@ export function ClearFileButton() {
 }
 
 /**
+ * Archive this quality: on a finished export, whose recording the catalogue node has just read whole, it closes the
+ * Download panel and opens the archive panel on that stream with the exported quality ticked.
+ */
+function ArchiveThisQualityButton({
+  exported,
+  onOpen,
+}: {
+  exported: ExportSummary;
+  onOpen: (streamId: string, preselect: readonly string[]) => void;
+}) {
+  const { closePanel } = useExport();
+  return (
+    <Button
+      onClick={() => {
+        closePanel();
+        onOpen(exported.streamId, [exported.rendition]);
+      }}
+    >
+      Archive this quality
+    </Button>
+  );
+}
+
+/**
  * The Download panel, one for the whole console. Opened for a stream from its page, it offers the qualities to choose
  * from; opened from the widget, or once an export started, it follows the export on the server, whichever stream that
  * is, with the actions it allows now.
  */
 export function ExportPanel() {
   const { current, panel, closePanel, start, act } = useExport();
+  const { openPanel: openArchivePanel } = useArchive();
   const snackbar = useSnackbar();
   const [view, setView] = useState<'choose' | 'follow'>('follow');
   const [options, setOptions] = useState<ExportOptionsResponse | null>(null);
@@ -244,6 +270,7 @@ export function ExportPanel() {
                   Clear
                 </Button>
               ) : null}
+              {keptHere ? <ArchiveThisQualityButton exported={keptHere} onOpen={openArchivePanel} /> : null}
               {keptHere ? (
                 <SaveFileButton current={keptHere} />
               ) : (
@@ -317,6 +344,9 @@ export function ExportPanel() {
                 <Button color="error" disabled={busy} onClick={() => setConfirmClear(true)}>
                   Clear
                 </Button>
+              ) : null}
+              {current?.state === 'done' ? (
+                <ArchiveThisQualityButton exported={current} onOpen={openArchivePanel} />
               ) : null}
               {current?.state === 'done' ? <SaveFileButton current={current} /> : null}
               <Button onClick={closePanel}>Close</Button>
