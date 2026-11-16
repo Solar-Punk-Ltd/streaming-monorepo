@@ -623,6 +623,12 @@ export interface ArchiveOptionsResponse {
   stamps: ArchiveStamp[];
   /** What buying a new stamp needs, or null when none can be bought now. */
   buy: ArchiveBuyTerms | null;
+  /**
+   * What the catalogue node's chequebook can pay now, in PLUR, as the manager's inventory reads it: the same reading
+   * the job's funds check uses. Null when it could not be read. The panel warns before a start when the high end of
+   * the picked qualities' estimate is above it; the copy would then pause for funds once the chequebook runs low.
+   */
+  chequebookAvailablePlur: string | null;
   summary: StreamArchiveSummary;
   /** Whether the switch is offered: one quality plays from an archive stamp. */
   canListArchivedOnly: boolean;

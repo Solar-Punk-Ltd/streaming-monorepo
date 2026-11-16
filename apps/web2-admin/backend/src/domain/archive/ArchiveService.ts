@@ -469,6 +469,8 @@ export class ArchiveService {
       qualities,
       stamps,
       buy: (await this.buyTerms()).terms,
+      // The reading the job's funds check makes, read now: null without funding or when the manager cannot be read.
+      chequebookAvailablePlur: await this.readChequebook().catch(() => null),
       summary,
       canListArchivedOnly: rungs.length > 0 && summary.archived.length > 0,
       archivedOnlyHint: null,
