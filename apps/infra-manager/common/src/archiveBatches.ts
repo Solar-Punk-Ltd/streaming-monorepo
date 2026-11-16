@@ -17,10 +17,12 @@ import type { StampState } from './stampHealth.js';
  * - `PUT /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchAdopt}, adopts a batch the catalogue
  *   node holds, and answers {@link ArchiveBatchesAnswer}. It answers 422 with the sentence of
  *   {@link archiveBatchProblem} when the batch cannot be one, and 409 when `expectedRevision` is behind.
- * - `DELETE /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchRemove}, takes an expired batch off
- *   the list, and answers {@link ArchiveBatchesAnswer}, with the same 409. It answers 422 with the sentence of
- *   {@link archiveRemoveProblem} for a batch that has not expired: the admin would show its recordings as expired
- *   while they are paid for and on Swarm. An adopt brings a removed batch back.
+ * - `DELETE /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchRemove}, takes off the list an
+ *   expired batch, one its node no longer holds, or one whose deployment is gone, and answers
+ *   {@link ArchiveBatchesAnswer}, with the same 409. It answers 422 with the sentence of {@link archiveRemoveProblem}
+ *   for a batch that has not expired, or whose node did not say: the admin would show its recordings as expired while
+ *   they are paid for and on Swarm. It answers 404 for a batch that is no archive batch. A batch whose deployment is
+ *   gone keeps its recordings on Swarm until it expires. An adopt brings a removed batch back.
  *
  * `:batchId` is 64 hex digits without `0x`. Every change raises the revision and pushes the catalogue stamp record.
  *
