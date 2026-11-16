@@ -38,6 +38,7 @@ import { errorMessage, FINALIZE_WHILE_LIVE } from '../errors';
 import { ApiError } from '../http';
 import { formatDateTime } from '../dateUtil';
 import { formatDuration, shortHex } from '../format';
+import { ArchiveBadge } from '../components/archive/ArchiveBadge';
 import { ArchiveCard } from '../components/archive/ArchiveCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { IngestPanel } from '../components/IngestPanel';
@@ -380,6 +381,7 @@ export function StreamDetailsPage() {
           {stream.title}
         </Typography>
         <StatusChip status={stream.status} publishError={stream.publishError} />
+        <ArchiveBadge archive={stream.archive} />
         {/*
           While `publishing` both publish buttons are disabled and nothing
           pushes the transition here, so without this the operator is stuck

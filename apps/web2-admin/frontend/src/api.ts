@@ -53,7 +53,6 @@ import {
   ARCHIVE_STAMP_PURCHASES_PATH,
   ARCHIVE_STAMPS_PATH,
   ARCHIVE_STREAMS_PATH,
-  type ArchiveBuyChoice,
   type ArchivedStream,
   type ArchiveStampPurchase,
   type ArchiveStampsResponse,
