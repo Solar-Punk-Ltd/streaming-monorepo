@@ -77,10 +77,15 @@ describe("a stream's archive state", () => {
     assert.equal(streamArchiveState(['none', 'partial']), 'partial');
   });
 
-  it('counts complete and reduced as archived, and nothing else', () => {
-    assert.deepEqual(ARCHIVED_STATES, ['complete', 'reduced']);
-    const states: QualityArchiveState[] = ['none', 'partial', 'complete', 'reduced', 'outdated', 'expired'];
-    assert.deepEqual(states.filter(isArchived), ['complete', 'reduced']);
+  it('ranks unlisted under reduced and over outdated', () => {
+    assert.equal(streamArchiveState(['unlisted', 'reduced']), 'reduced');
+    assert.equal(streamArchiveState(['outdated', 'unlisted', 'expired']), 'unlisted');
+  });
+
+  it('counts complete, reduced and unlisted as archived, and nothing else', () => {
+    assert.deepEqual(ARCHIVED_STATES, ['complete', 'reduced', 'unlisted']);
+    const states: QualityArchiveState[] = ['none', 'partial', 'complete', 'reduced', 'unlisted', 'outdated', 'expired'];
+    assert.deepEqual(states.filter(isArchived), ['complete', 'reduced', 'unlisted']);
   });
 
   it('has a badge for every state but none', () => {
@@ -88,6 +93,7 @@ describe("a stream's archive state", () => {
     assert.equal(ARCHIVE_BADGE_TEXT.complete, 'Archived');
     assert.equal(ARCHIVE_BADGE_TEXT.reduced, 'Archived, reduced protection');
     assert.equal(ARCHIVE_BADGE_TEXT.partial, 'Archive incomplete');
+    assert.equal(ARCHIVE_BADGE_TEXT.unlisted, 'Archive stamp not listed');
     assert.equal(ARCHIVE_BADGE_TEXT.outdated, 'Archive outdated');
     assert.equal(ARCHIVE_BADGE_TEXT.expired, 'Archive expired');
   });

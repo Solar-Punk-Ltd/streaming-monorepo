@@ -23,20 +23,29 @@ export const SOURCE_RENDITION = 'source';
 
 /**
  * The archive stamps as the admin holds them: the catalogue stamp record's `archiveBatches`, with the moment the
- * manager read them, or null when no record has arrived. A record from a manager older than the field has none.
+ * manager read them, or null when the admin was not told: no record has arrived, or it comes from a manager older than
+ * the field.
  */
 export interface ArchiveStampsHeld {
   batches: readonly CatalogueArchiveBatch[];
   observedAt: string;
 }
 
-/** Whether the copy's stamp is gone: expired or gone by its reading or by its time to live, or no longer listed. */
-export function stampExpired(batchId: string, held: ArchiveStampsHeld | null, now: number): boolean {
-  if (held === null) return false;
+/**
+ * Where the copy's stamp stands: `expired` when it is expired or gone by its reading or by its time to live,
+ * `unlisted` when the manager lists it no longer, so nothing says when it runs out, and `listed` otherwise, or when the
+ * admin was not told.
+ */
+export function stampStanding(
+  batchId: string,
+  held: ArchiveStampsHeld | null,
+  now: number,
+): 'listed' | 'unlisted' | 'expired' {
+  if (held === null) return 'listed';
   const batch = held.batches.find((candidate) => candidate.batchId === batchId);
-  if (!batch) return true;
-  if (batch.state === 'expired' || batch.state === 'gone') return true;
-  return expiredByClock({ ttlSeconds: batch.ttlSeconds, observedAt: held.observedAt }, now);
+  if (!batch) return 'unlisted';
+  if (batch.state === 'expired' || batch.state === 'gone') return 'expired';
+  return expiredByClock({ ttlSeconds: batch.ttlSeconds, observedAt: held.observedAt }, now) ? 'expired' : 'listed';
 }
 
 /** One quality's state from its copy, the slot it records now, and the stamps. */
@@ -48,8 +57,10 @@ export function qualityState(
 ): QualityArchiveState {
   if (!copy) return 'none';
   if (copy.state === 'partial') return 'partial';
-  if (stampExpired(copy.batch_id, held, now)) return 'expired';
+  const standing = stampStanding(copy.batch_id, held, now);
+  if (standing === 'expired') return 'expired';
   if (currentIndex !== null && copy.manifest_index !== currentIndex) return 'outdated';
+  if (standing === 'unlisted') return 'unlisted';
   return copy.parity_missing > 0 ? 'reduced' : 'complete';
 }
 
@@ -79,7 +90,7 @@ export function streamArchiveSummary(
   };
 }
 
-/** The names of the qualities that play from an archive stamp now: what the switch lists. */
+/** The names of the qualities that play from an archive stamp now: what the switch lists when there is any. */
 export function archivedRenditions(
   copies: readonly StreamArchiveRow[],
   indexes: ReadonlyMap<string, number | null>,

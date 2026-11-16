@@ -24,6 +24,7 @@ export const QUALITY_STATE_COLOR: Readonly<Record<QualityArchiveState, 'default'
   partial: 'warning',
   complete: 'success',
   reduced: 'success',
+  unlisted: 'warning',
   outdated: 'warning',
   expired: 'error',
 };

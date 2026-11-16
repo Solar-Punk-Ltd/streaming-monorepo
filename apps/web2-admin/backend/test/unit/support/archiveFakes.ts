@@ -603,6 +603,8 @@ export function archiveBatch(batchId: string, over: Partial<CatalogueArchiveBatc
 /** The catalogue stamp row the archive reads: the catalogue node and its archive batches. */
 export class FakeCatalogue {
   batches: CatalogueArchiveBatch[] = [];
+  /** Whether the record carries `archiveBatches`, as a manager older than the field's does not. */
+  listsArchiveBatches = true;
   beeApiUrl = 'http://catalogue-node.test:1633';
   designated = true;
   observedAt = new Date().toISOString();
@@ -622,7 +624,7 @@ export class FakeCatalogue {
       fillRatio: 0,
       designatedAt: '2026-11-13T10:00:00.000Z',
       observedAt: this.observedAt,
-      archiveBatches: this.batches,
+      ...(this.listsArchiveBatches ? { archiveBatches: this.batches } : {}),
     } as unknown as CatalogueStampRecord;
     return {
       manager_id: '00000000-0000-4000-8000-0000000000aa',

@@ -91,15 +91,18 @@ export function archiveActionPath(jobId: string): string {
  * - `complete`: every chunk is on the archive stamp, and Bee reported each synced.
  * - `reduced`: complete, but some parity chunks were lost before the copy. The recording plays, with less protection.
  * - `outdated`: the stream recorded again after the copy, so its playlist is another one now.
- * - `expired`: the stamp it was copied onto has expired.
+ * - `unlisted`: complete, on a stamp the manager no longer lists, so it cannot be topped up from the admin. The
+ *   recording stays on Swarm until the stamp expires, so it counts as archived.
+ * - `outdated`: the stream recorded again after the copy, so its playlist is another one now.
+ * - `expired`: the stamp it was copied onto has expired, by its reading or its time to live.
  */
-export type QualityArchiveState = 'none' | 'partial' | 'complete' | 'reduced' | 'outdated' | 'expired';
+export type QualityArchiveState = 'none' | 'partial' | 'complete' | 'reduced' | 'unlisted' | 'outdated' | 'expired';
 
 /** A stream's archive as a whole, in the same words: its best quality decides, as {@link streamArchiveState} says. */
 export type StreamArchiveState = QualityArchiveState;
 
 /** The states in which a quality plays from its archive stamp. */
-export const ARCHIVED_STATES: readonly QualityArchiveState[] = ['complete', 'reduced'];
+export const ARCHIVED_STATES: readonly QualityArchiveState[] = ['complete', 'reduced', 'unlisted'];
 
 /** Whether a quality in this state plays from its archive stamp. */
 export function isArchived(state: QualityArchiveState): boolean {
@@ -107,8 +110,9 @@ export function isArchived(state: QualityArchiveState): boolean {
 }
 
 const STATE_RANK: Readonly<Record<QualityArchiveState, number>> = {
-  complete: 5,
-  reduced: 4,
+  complete: 6,
+  reduced: 5,
+  unlisted: 4,
   outdated: 3,
   expired: 2,
   partial: 1,
@@ -116,8 +120,8 @@ const STATE_RANK: Readonly<Record<QualityArchiveState, number>> = {
 };
 
 /**
- * A stream's state from its qualities': the best of them, in the order complete, reduced, outdated, expired, partial,
- * none. One archived quality makes the stream archived, whatever the others are.
+ * A stream's state from its qualities': the best of them, in the order complete, reduced, unlisted, outdated, expired,
+ * partial, none. One archived quality makes the stream archived, whatever the others are.
  */
 export function streamArchiveState(qualities: readonly QualityArchiveState[]): StreamArchiveState {
   let best: QualityArchiveState = 'none';
@@ -131,9 +135,14 @@ export const ARCHIVE_BADGE_TEXT: Readonly<Record<StreamArchiveState, string | nu
   partial: 'Archive incomplete',
   complete: 'Archived',
   reduced: 'Archived, reduced protection',
+  unlisted: 'Archive stamp not listed',
   outdated: 'Archive outdated',
   expired: 'Archive expired',
 };
+
+/** What the stream's archive card and the Archive page say of a copy in the `unlisted` state. */
+export const ARCHIVE_UNLISTED_TEXT =
+  "The manager no longer lists this archive stamp, so it can't be topped up here. Its recordings stay on Swarm until the stamp expires.";
 
 /** A stream's archive, as the stream list and the stream's own answer carry it. */
 export interface StreamArchiveSummary {

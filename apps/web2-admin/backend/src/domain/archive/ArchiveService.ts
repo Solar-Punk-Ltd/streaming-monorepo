@@ -316,10 +316,13 @@ function toPurchase(row: ArchivePurchaseRow): ArchiveStampPurchase {
   };
 }
 
-/** The archive stamps the catalogue stamp row holds, or null before any record arrived. */
+/**
+ * The archive stamps the catalogue stamp row holds, or null when the admin was not told: before any record arrived,
+ * or from a record without the field, which a manager older than it sends.
+ */
 function heldStamps(row: CatalogueStampRow | null): ArchiveStampsHeld | null {
-  if (!row?.record) return null;
-  return { batches: row.record.archiveBatches ?? [], observedAt: row.record.observedAt };
+  if (!row?.record?.archiveBatches) return null;
+  return { batches: row.record.archiveBatches, observedAt: row.record.observedAt };
 }
 
 /** The catalogue node's Bee API address, or the sentence that says why there is none. */
@@ -422,7 +425,8 @@ export class ArchiveService {
 
   /**
    * The qualities of a stream that play from an archive stamp now, for its catalogue entry while its "List only
-   * archived qualities" switch is on; null while it is off.
+   * archived qualities" switch is on; null while it is off, and while none plays from one, so the entry lists every
+   * rung as with the switch off and never none.
    */
   async listedRenditions(stream: StreamRow): Promise<Set<string> | null> {
     if (!stream.archived_only) return null;
@@ -431,7 +435,8 @@ export class ArchiveService {
       this.renditions.listByStream(stream.id),
       this.catalogue.get(),
     ]);
-    return archivedRenditions(copies, currentIndexes(stream, rungs), heldStamps(catalogueRow), this.now());
+    const archived = archivedRenditions(copies, currentIndexes(stream, rungs), heldStamps(catalogueRow), this.now());
+    return archived.size > 0 ? archived : null;
   }
 
   /** What the panel and the stream's archive card offer for one stream. */

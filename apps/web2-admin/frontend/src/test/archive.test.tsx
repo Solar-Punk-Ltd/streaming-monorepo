@@ -411,6 +411,34 @@ describe("the stream page's archive card", () => {
     expect(within(card).queryByText(hint)).not.toBeInTheDocument();
   });
 
+  it('says of a copy on a stamp the manager no longer lists that it cannot be topped up and stays until it expires', async () => {
+    const unlisted = makeOptions({
+      qualities: [
+        makeQuality({
+          state: 'unlisted',
+          batchId: TALKS,
+          batchLabel: 'Talks',
+          chunks: 540_000,
+          bytes: 2_200_000_000,
+          completedAt: '2026-11-12T09:51:10.000Z',
+          completedBy: 'alice',
+        }),
+        q720(),
+      ],
+      summary: { state: 'unlisted', archived: ['1080p'], archivedOnly: false },
+    });
+    renderPage(recorded({ archive: unlisted.summary }), jobRoutes(null, unlisted));
+
+    const card = await screen.findByRole('region', { name: 'archive' });
+    expect(await within(card).findAllByText('Archive stamp not listed')).not.toHaveLength(0);
+    expect(
+      within(card).getByText(
+        "2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice. The manager no longer lists this archive stamp, so it can't be topped up here. Its recordings stay on Swarm until the stamp expires.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Archive more qualities' })).toBeInTheDocument();
+  });
+
   it('is not on the page of a stream that holds no recording and has no archive', async () => {
     renderPage(makeStream({ id: ID, status: 'live', manifestIndex: null }), jobRoutes(null));
     await screen.findByRole('link', { name: 'Edit' });

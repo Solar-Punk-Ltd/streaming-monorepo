@@ -19,7 +19,12 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import type { ArchivedStream, ArchiveStamp, QualityArchiveState } from '@streaming-monorepo/web2-admin-common';
+import {
+  ARCHIVE_UNLISTED_TEXT,
+  type ArchivedStream,
+  type ArchiveStamp,
+  type QualityArchiveState,
+} from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { ArchiveBadge } from '../components/archive/ArchiveBadge';
@@ -41,6 +46,7 @@ export const QUALITY_STATE_TEXT: Readonly<Record<QualityArchiveState, string>> =
   partial: 'Incomplete',
   complete: 'Archived',
   reduced: 'Archived, reduced protection',
+  unlisted: 'Archived, stamp not listed',
   outdated: 'Outdated: recorded again since',
   expired: 'Expired with its stamp',
 };
@@ -52,14 +58,21 @@ function outdatedQualities(stream: ArchivedStream): string[] {
 
 type Quality = ArchivedStream['qualities'][number];
 
-/** One quality: its label and state, and the parity chunks it lost when protection is reduced. */
+/**
+ * One quality: its label and state, the parity chunks it lost when protection is reduced, and why a stamp no longer
+ * listed matters.
+ */
 function QualityLine({ quality }: { quality: Quality }) {
   const lost =
     quality.state === 'reduced' && quality.parityMissing > 0
       ? `, ${quality.parityMissing.toLocaleString('en-US')} parity chunks missing`
       : '';
-  const warn = quality.state === 'partial' || quality.state === 'reduced' || quality.state === 'outdated';
-  return (
+  const warn =
+    quality.state === 'partial' ||
+    quality.state === 'reduced' ||
+    quality.state === 'unlisted' ||
+    quality.state === 'outdated';
+  const line = (
     <Typography
       variant="body2"
       noWrap
@@ -67,6 +80,15 @@ function QualityLine({ quality }: { quality: Quality }) {
     >
       {`${quality.label}: ${QUALITY_STATE_TEXT[quality.state]}${lost}`}
     </Typography>
+  );
+  if (quality.state !== 'unlisted') return line;
+  return (
+    <Box>
+      {line}
+      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', maxWidth: 360 }}>
+        {ARCHIVE_UNLISTED_TEXT}
+      </Typography>
+    </Box>
   );
 }
 

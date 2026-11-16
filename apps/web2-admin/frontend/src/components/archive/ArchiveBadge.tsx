@@ -5,12 +5,16 @@ import type { ArchiveBadgeProps } from './archiveSeams';
 
 type ChipColor = 'success' | 'warning' | 'error' | 'default';
 
-/** The badge's colour: green while a quality plays from its stamp, amber when protection is reduced or a copy stopped. */
+/**
+ * The badge's colour: green while a quality plays from its stamp, amber when protection is reduced, a copy stopped, or
+ * its stamp is no longer listed.
+ */
 const BADGE_COLOR: Readonly<Record<StreamArchiveState, ChipColor>> = {
   none: 'default',
   partial: 'warning',
   complete: 'success',
   reduced: 'warning',
+  unlisted: 'warning',
   outdated: 'default',
   expired: 'error',
 };
