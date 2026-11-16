@@ -576,6 +576,9 @@ state.
 - Removing the deployment that holds archive batches leaves them without a node
   that can top them up. They stay listed with the state `unknown`, not
   `writable`.
+- The holder is kept by deployment name. A new deployment created under a
+  deleted one's name reads the batch as `gone`, which is not `writable` and can
+  be removed, and a top-up sent there fails with Bee's words.
 - While no catalogue node is designated the record is cleared, the archive
   batches with it. The rows stay, and are pushed again with the next
   designation.
