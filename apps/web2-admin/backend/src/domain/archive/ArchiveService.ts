@@ -858,7 +858,8 @@ export class ArchiveService {
       await job.promise.catch(() => undefined);
     }
     await this.ticking;
-    await Promise.all(this.advancing.values());
+    // A purchase still asked of the manager is not waited for: it can take minutes, the manager journals it under its
+    // id, and the next start reads where it stands.
   }
 
   /** Resolves once no job and no purchase look is running. For the tests. */
@@ -1178,7 +1179,10 @@ export class ArchiveService {
     const purchaseId = job.purchase_id;
     if (!purchaseId) throw new ArchivePause('batch', gone);
     for (;;) {
-      await this.advancePurchase(purchaseId);
+      // The manager answers a purchase only once Bee has, which can take minutes: a pause or a stop does not wait for
+      // it. The purchase goes on, and the next look reads where it stands.
+      await Promise.race([this.advancePurchase(purchaseId), untilAborted(signal)]);
+      if (signal.aborted) throw new MovedOn();
       const purchase = await this.store.getPurchase(purchaseId);
       if (!purchase) throw new ArchivePause('batch', gone);
       if (purchase.state === 'failed') {
@@ -2085,4 +2089,12 @@ export class ArchiveService {
       actions: archiveActionsFor(view, view.dismissed),
     };
   }
+}
+
+/** Resolves once the signal aborts; never before. */
+function untilAborted(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) resolve();
+    else signal.addEventListener('abort', () => resolve(), { once: true });
+  });
 }

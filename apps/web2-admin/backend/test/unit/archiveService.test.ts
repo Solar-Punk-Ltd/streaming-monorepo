@@ -108,8 +108,18 @@ class FakeManager {
   /** What the manager answers a purchase with instead, as a refusal. */
   refusal: ManagerFundingError | null = null;
 
+  /**
+   * Holds a purchase's answer until it settles, then ends the call as the admin's own deadline does: the manager is
+   * still waiting on the node, and no answer came.
+   */
+  late: Promise<void> | null = null;
+
   async stampPurchase(request: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
     this.requests.push(request);
+    if (this.late) {
+      await this.late;
+      throw new ManagerFundingError('timeout', null, 'The manager did not answer in time.');
+    }
     if (this.refusal) throw this.refusal;
     return { requestId: request.requestId, state: 'unknown', batchId: null, txHash: null };
   }
@@ -642,6 +652,47 @@ describe('ArchiveService', () => {
     assert.equal(current.state, 'awaiting_purchase');
     assert.equal(current.holdsPlace, false);
     assert.equal(store.purchases.get(requestId)!.state, 'failed');
+  });
+
+  it('follows a purchase the manager answers late: never failed by the wait, a pause not held up, bought once', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
+    await service.settled();
+    const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
+    let answer!: () => void;
+    manager.late = new Promise<void>((resolve) => (answer = resolve));
+
+    const confirmed = await service.confirmPurchase(TEST_OPERATOR, choice(depth, 'Alps archive'));
+    assert.equal(confirmed?.state, 'buying', 'no answer yet is no refusal');
+    const [request] = manager.requests;
+    assert.equal(store.purchases.get(request!.requestId)!.state, 'buying');
+
+    const started = Date.now();
+    await service.act(TEST_OPERATOR, jobId(), { action: 'pause' });
+    assert.ok(Date.now() - started < 1_000, 'a pause does not wait for the manager');
+    assert.equal(store.job!.state, 'paused');
+
+    answer();
+    await service.settled();
+    const purchase = store.purchases.get(request!.requestId)!;
+    assert.equal(purchase.state, 'buying', "the admin's own timeout leaves the purchase to be read");
+    assert.ok(purchase.relayed_at, 'marked asked, so it is read by its id rather than asked again');
+
+    manager.late = null;
+    manager.statuses.set(request!.requestId, {
+      requestId: request!.requestId,
+      state: 'confirmed',
+      batchId: NEW_BATCH,
+      txHash: `0x${'f'.repeat(64)}`,
+      usable: true,
+      error: null,
+    });
+    catalogue.batches = [...catalogue.batches, archiveBatch(NEW_BATCH, { depth })];
+    await service.act(TEST_OPERATOR, jobId(), { action: 'resume' });
+    await service.settled();
+    assert.equal((await job()).state, 'done');
+    assert.equal(store.purchases.get(request!.requestId)!.state, 'usable');
+    assert.equal(manager.requests.length, 1, 'bought once');
   });
 
   it('refuses a confirm whose cost the price no longer gives, with the new cost, and keeps waiting for one', async () => {
