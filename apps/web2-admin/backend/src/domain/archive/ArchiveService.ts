@@ -353,6 +353,8 @@ export class ArchiveService {
   private readonly advancing = new Map<string, Promise<void>>();
   /** What the chequebook could pay as last read, for the widget, which reads the job every few seconds. */
   private lastChequebook: string | null = null;
+  /** The purchases the manager refused while another operation was under way on the node, until they are answered. */
+  private readonly nodeBusy = new Set<string>();
   /** Why the last funds check was skipped, or null, so a skip is logged once until its reason changes. */
   private fundsSkipped: string | null = null;
   private readonly watchIntervalMs: number;
@@ -797,10 +799,11 @@ export class ArchiveService {
     const relay = this.advancePurchase(id);
     await Promise.race([relay, new Promise((resolve) => setTimeout(resolve, this.purchaseAnswerWaitMs).unref())]);
     const row = (await this.store.getPurchase(id))!;
+    const busy = this.nodeBusy.delete(id);
     if (row.state !== 'failed') return row;
     const error = row.error ?? 'The purchase failed.';
     if (error === ARCHIVE_PURCHASES_NOT_OFFERED) throw new ArchiveRefusedError('purchases_not_offered', error);
-    if (error === NODE_BUSY) throw new ArchiveRefusedError('not_now', error);
+    if (busy) throw new ArchiveRefusedError('not_now', error);
     throw new ArchiveRefusedError('purchase_refused', error);
   }
 
@@ -1771,7 +1774,12 @@ export class ArchiveService {
           label: row.label,
         });
         if (answer.state === 'failed') {
-          await this.settlePurchase(row, { state: 'failed', error: 'The node did not buy the stamp.' });
+          // The answer carries no reason; the status route carries Bee's words, when there are any.
+          const words = await this.manager
+            .stampPurchaseStatus(id)
+            .then((status) => status.error?.trim() || null)
+            .catch(() => null);
+          await this.settlePurchase(row, { state: 'failed', error: words ?? 'The node did not buy the stamp.' });
           return;
         }
         if (answer.batchId) {
@@ -1783,18 +1791,21 @@ export class ArchiveService {
         }
       } catch (error) {
         // A refusal the manager answered with: nothing was bought. A lost answer is read on the status route. A
-        // manager older than archive stamps has no purchase route, and another operation on the node answers 409.
+        // manager older than archive stamps has no purchase route, and another operation on the node answers 409, in
+        // the manager's own sentence when it gives one.
         if (
           error instanceof ManagerFundingError &&
           error.status !== null &&
           error.status >= 400 &&
           error.status < 500
         ) {
+          const busy = error.code === 'conflict';
+          if (busy) this.nodeBusy.add(id);
           const why =
             error.status === 404 && error.code !== 'unknown_node'
               ? ARCHIVE_PURCHASES_NOT_OFFERED
-              : error.code === 'conflict'
-                ? NODE_BUSY
+              : busy
+                ? error.message.trim() || NODE_BUSY
                 : error.message;
           await this.settlePurchase(row, { state: 'failed', error: why });
           return;
