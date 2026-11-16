@@ -524,7 +524,9 @@ batch, and that moving it is its own action. Top up stays offered on it
 
 `pnpm -C frontend dev:mock` seeds a `catalogue-node` deployment with two
 immutable batches and a mutable one, so a designation, a move and a release can
-be tried.
+be tried. It also holds a third immutable batch, labelled `spare-archive`, to
+adopt as an archive batch, and an expired one that is an archive batch already,
+`Last season`, to remove.
 
 ### Archive batches
 

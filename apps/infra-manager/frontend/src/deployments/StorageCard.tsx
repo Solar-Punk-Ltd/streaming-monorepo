@@ -74,6 +74,7 @@ export function StorageCard({
   defaultDepth,
   rung,
   catalogueBatchId = null,
+  archiveBatchIds = [],
   uploaders,
   onChanged,
 }: {
@@ -87,6 +88,8 @@ export function StorageCard({
   rung?: string | null;
   /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
   catalogueBatchId?: string | null;
+  /** The brand's archive batches this node holds, which the stamps table marks. */
+  archiveBatchIds?: readonly string[];
   /** The stream uploaders that pay with this node's batches: the deployment's own, or the stages a rung feeds. */
   uploaders: BatchUploadersLoad;
   onChanged: () => void;
@@ -326,6 +329,7 @@ export function StorageCard({
           currentStampId={profile.stamp_id}
           uploaders={uploaders.uploaders}
           pinnedBatchId={catalogueBatchId}
+          archiveBatchIds={archiveBatchIds}
           busy={busy}
           onUse={(batchID) => void handleUse(batchID)}
           onTopUp={(stamp) => openChange('top-up', stamp)}

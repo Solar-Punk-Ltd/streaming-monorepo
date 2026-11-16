@@ -20,6 +20,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import { useEditors } from '../app/EditorsContext';
+import { useArchiveBatches } from '../archiveBatches/useArchiveBatches';
 import { useCatalogueNode } from '../catalogueNode/useCatalogueNode';
 import { navigate, routes, type DeploymentFocus } from '../app/router';
 import { useActions } from '../app/useDeploymentActions';
@@ -162,6 +163,8 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
   const rung = group ? rungFromMemberName(group.name, profile.name) : null;
   // Only a node that could be the catalogue's asks whether it is.
   const catalogue = useCatalogueNode({ enabled: shape === 'bee-node' });
+  // A node that could be the catalogue's could hold archive batches too, left there by an earlier designation.
+  const archive = useArchiveBatches({ enabled: shape === 'bee-node', poll: false });
   const stampHealth = stampHealthFrom(profile.stamp_id, bee?.stamps ?? null, bee?.stampsFailure);
   const chequebookHealth: ChequebookHealth | null = bee?.chequebook
     ? chequebookHealthFromPayload(bee.chequebook.health)
@@ -323,6 +326,9 @@ function DeploymentBody({ profile, focus, bee }: { profile: Profile; focus: Depl
                   ? catalogue.answer.designation.batchId
                   : null
               }
+              archiveBatchIds={(archive.answer?.batches ?? [])
+                .filter((batch) => batch.profileName === profile.name)
+                .map((batch) => batch.batchId)}
               uploaders={batchUploaders}
               onChanged={reload}
             />

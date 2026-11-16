@@ -18,6 +18,7 @@ import {
   catalogueReleaseFirstRefusal,
   CATALOGUE_NO_MOVE_REFUSAL,
   CATALOGUE_NOT_HELD_REFUSAL,
+  catalogueIsArchiveBatchRefusal,
   fullestBucketFillRatio,
   stampHealthFrom,
 } from '@streaming-infra-manager/common';
@@ -120,8 +121,9 @@ const refuse = (res, reason) => send(res, 400, { error: 'validation_error', erro
  * @param deps.groups every group the mock holds
  * @param deps.stamps the batches one deployment's node holds
  * @param deps.userFor the signed-in user of a request
+ * @param deps.isArchiveBatch whether a batch is an archive batch, which is refused
  */
-export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFor }) {
+export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFor, isArchiveBatch = () => false }) {
   const noStore = { 'cache-control': 'no-store' };
 
   async function designate(req, res) {
@@ -134,6 +136,7 @@ export function catalogueNodeRoutes({ readBody, profiles, groups, stamps, userFo
     const moving = pinned !== null && pinned !== batchId;
     if (moving && movingFrom && movingFrom !== batchId) return refuse(res, catalogueReleaseFirstRefusal(movingFrom));
     if (moving && body.move !== true) return refuse(res, catalogueMoveRefusal(pinned, batchId));
+    if (isArchiveBatch(batchId)) return refuse(res, catalogueIsArchiveBatchRefusal(batchId));
     const profile = profiles().find((entry) => entry.name === body.profileName);
     if (!profile) return refuse(res, `There is no deployment called ${body.profileName}.`);
     const groupKind = groups().find((group) => group.id === profile.group_id)?.kind ?? null;
