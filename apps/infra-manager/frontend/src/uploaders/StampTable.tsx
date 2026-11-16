@@ -45,6 +45,7 @@ export function StampTable({
   currentStampId,
   uploaders = [],
   pinnedBatchId = null,
+  archiveBatchIds = [],
   busy,
   ...handlers
 }: {
@@ -57,6 +58,8 @@ export function StampTable({
   uploaders?: readonly BatchUploader[];
   /** The batch pinned for the brand's catalogue, when this node is the catalogue node. */
   pinnedBatchId?: string | null;
+  /** The brand's archive batches this node holds, 64 hex digits in lower case. */
+  archiveBatchIds?: readonly string[];
   busy: boolean;
 } & BatchHandlers) {
   return (
@@ -96,6 +99,7 @@ export function StampTable({
                   stamp={stamp}
                   use={batchUseOf(stamp.batchID, currentStampId, uploaders)}
                   isPinned={pinnedBatchId != null && sameBatchId(pinnedBatchId, stamp.batchID.toLowerCase())}
+                  isArchive={archiveBatchIds.some((id) => sameBatchId(id, stamp.batchID.toLowerCase()))}
                   busy={busy}
                   {...handlers}
                 />
@@ -119,6 +123,7 @@ function BatchRows({
   stamp,
   use,
   isPinned,
+  isArchive,
   busy,
   onUse,
   onTopUp,
@@ -127,6 +132,7 @@ function BatchRows({
   stamp: BeeStamp;
   use: BatchUse | null;
   isPinned: boolean;
+  isArchive: boolean;
   busy: boolean;
 } & BatchHandlers) {
   const expired = isStampExpired(stamp);
@@ -150,6 +156,7 @@ function BatchRows({
             <span>{shortHex(stamp.batchID)}</span>
             <CopyButton value={stamp.batchID} label="batch id" />
             {isPinned && <Chip size="small" color="primary" label="catalogue" data-catalogue-pinned />}
+            {isArchive && <Chip size="small" color="secondary" label="archive" data-archive-batch-chip />}
           </Stack>
         </TableCell>
         <TableCell align="right">{stamp.depth}</TableCell>

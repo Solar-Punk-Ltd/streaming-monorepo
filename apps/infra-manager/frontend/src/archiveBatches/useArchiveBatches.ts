@@ -16,8 +16,14 @@ export interface ArchiveBatchesLoad {
   replace: (answer: ArchiveBatchesAnswer) => void;
 }
 
-/** The brand's archive batches, read when the page opens and every ten seconds after. */
-export function useArchiveBatches(): ArchiveBatchesLoad {
+/**
+ * The brand's archive batches, read when the page opens and, with `poll`, every ten seconds after. Off, it reads
+ * nothing: a deployment page asks only for a node that could hold one.
+ */
+export function useArchiveBatches({
+  enabled = true,
+  poll = true,
+}: { enabled?: boolean; poll?: boolean } = {}): ArchiveBatchesLoad {
   const [answer, setAnswer] = useState<ArchiveBatchesAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,10 +37,12 @@ export function useArchiveBatches(): ArchiveBatchesLoad {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     void reload();
+    if (!poll) return undefined;
     const timer = setInterval(() => void reload(), ARCHIVE_BATCHES_POLL_MS);
     return () => clearInterval(timer);
-  }, [reload]);
+  }, [enabled, poll, reload]);
 
   return { answer, error, reload, replace: setAnswer };
 }

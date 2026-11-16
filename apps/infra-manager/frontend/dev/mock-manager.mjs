@@ -42,6 +42,7 @@ import {
 import { authRoutes, DEV_PASSWORD, DEV_USERNAME, refuseRequest, seedAuth, userFor } from './mock-auth.mjs';
 import { attemptRefusal, attemptRoutes, openAttempt, resolveAttempt, seedAttempts } from './mock-attempts.mjs';
 import { adminLinkRoutes } from './mock-admin-link.mjs';
+import { archiveBatchRoutes, isArchiveBatch } from './mock-archive-batches.mjs';
 import { catalogueNodeRoutes, catalogueRemovalRefusal } from './mock-catalogue-node.mjs';
 import {
   copyStoredSettings,
@@ -918,6 +919,13 @@ const ROUTES = [
     readBody,
     profiles: () => state.profiles,
     groups: () => state.groups,
+    stamps: (name) => node(name).stamps,
+    userFor,
+    isArchiveBatch,
+  }),
+  ...archiveBatchRoutes({
+    readBody,
+    profiles: () => state.profiles,
     stamps: (name) => node(name).stamps,
     userFor,
   }),

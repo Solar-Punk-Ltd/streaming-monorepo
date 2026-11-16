@@ -10,6 +10,7 @@ import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 
 import { DEFAULT_RPC_ENDPOINT_SOURCE, PLUR_PER_BZZ, stampBucketCapacity } from '@streaming-infra-manager/common';
 
+import { archiveBatches } from './mock-archive-batches.mjs';
 import { commitOfVersion, labelOfVersion } from './mock-versions.mjs';
 
 /** The hostname this fake manager publishes its deployments on. */
@@ -448,6 +449,8 @@ export function seed() {
 
   // A Bee-only deployment of its own, which the Manager settings page's catalogue node card can designate: one
   // immutable batch it takes, one mutable batch it refuses, and a second immutable batch to move the catalogue to.
+  // Then a third immutable batch for the archive batches card to adopt, and an expired one that is an archive batch
+  // already, for it to remove.
   const catalogueNode = makeProfile({
     name: 'catalogue-node',
     kind: 'custom',
@@ -464,8 +467,24 @@ export function seed() {
     makeStamp({ depth: 18, ttl: 30 * DAY, immutable: false }),
     makeStamp({ depth: 21, ttl: 180 * DAY, immutable: true }),
   ];
+  const spareArchiveBatch = makeStamp({ depth: 22, ttl: 30 * DAY, immutable: true });
+  spareArchiveBatch.label = 'spare-archive';
+  const expiredArchiveBatch = makeStamp({ depth: 22, ttl: 0, usable: false, immutable: true });
+  catalogueEntry.stamps.push(spareArchiveBatch, expiredArchiveBatch);
   catalogueNode.stamp_id = catalogueBatch.batchID;
   state.profiles.push(catalogueNode);
+  archiveBatches.rows = [
+    {
+      batchId: expiredArchiveBatch.batchID.replace(/^0x/, '').toLowerCase(),
+      profileName: catalogueNode.name,
+      label: 'Last season',
+      source: 'adopted',
+      purchaseRequestId: null,
+      designatedAt: '2026-09-28T09:00:00Z',
+      designatedBy: 'operator',
+    },
+  ];
+  archiveBatches.revision = 1;
 
   for (const profile of state.profiles) {
     if (profile.status === 'RUNNING') {
