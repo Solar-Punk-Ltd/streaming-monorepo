@@ -122,12 +122,19 @@ class FakeManager {
       throw new ManagerFundingError('timeout', null, 'The manager did not answer in time.');
     }
     if (this.refusal) throw this.refusal;
-    return { requestId: request.requestId, state: 'unknown', batchId: null, txHash: null };
+    return { requestId: request.requestId, state: this.answerState, batchId: null, txHash: null };
   }
+
+  /** The state a purchase is answered with, and the words the status route then gives for one that failed. */
+  answerState: FundingStampPurchaseAnswer['state'] = 'unknown';
+  statusError: string | null = null;
 
   async stampPurchaseStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
     const status = this.statuses.get(requestId);
     if (status === 'unknown_request') throw new ManagerFundingError('unknown_request', 404, 'No such purchase.');
+    if (status === undefined && this.answerState === 'failed') {
+      return { requestId, state: 'failed', batchId: null, txHash: null, usable: null, error: this.statusError };
+    }
     return status ?? { requestId, state: 'unknown', batchId: null, txHash: null, usable: null, error: null };
   }
 
@@ -723,6 +730,28 @@ describe('ArchiveService', () => {
     assert.equal(store.purchases.get(requestId)!.state, 'failed');
   });
 
+  it("says Bee's words from the status route for a purchase the manager answers as failed", async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
+    await service.settled();
+    const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
+    manager.answerState = 'failed';
+    manager.statusError = 'insufficient balance for the batch';
+    await assert.rejects(
+      () => service.buy(TEST_OPERATOR, choice(depth)),
+      (error) =>
+        error instanceof ArchiveRefusedError &&
+        error.problem === 'purchase_refused' &&
+        /insufficient balance for the batch/.test(error.message),
+    );
+    manager.statusError = null;
+    await assert.rejects(
+      () => service.buy(TEST_OPERATOR, choice(depth)),
+      (error) => error instanceof ArchiveRefusedError && error.message === 'The node did not buy the stamp.',
+      'without words, the plain sentence',
+    );
+  });
+
   it('follows a purchase the manager answers late: never failed by the wait, a pause not held up, bought once', async () => {
     recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
@@ -797,13 +826,23 @@ describe('ArchiveService', () => {
     assert.equal(store.job!.state, 'awaiting_purchase');
     assert.equal(store.job!.purchase_id, null);
 
-    manager.refusal = new ManagerFundingError('conflict', 409, 'Another operation is under way.');
+    manager.refusal = new ManagerFundingError('conflict', 409, 'The node is depositing into its chequebook.');
+    await assert.rejects(
+      () => service.buy(TEST_OPERATOR, choice(depth)),
+      (error) =>
+        error instanceof ArchiveRefusedError &&
+        error.problem === 'not_now' &&
+        error.message === 'The node is depositing into its chequebook.',
+      "the manager's own sentence",
+    );
+    manager.refusal = new ManagerFundingError('conflict', 409, ' ');
     await assert.rejects(
       () => service.buy(TEST_OPERATOR, choice(depth)),
       (error) =>
         error instanceof ArchiveRefusedError &&
         error.problem === 'not_now' &&
         /under way on the catalogue node/.test(error.message),
+      'without one, the busy sentence',
     );
     assert.ok(
       [...store.purchases.values()].every((row) => row.state === 'failed'),

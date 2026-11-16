@@ -1912,8 +1912,10 @@ under the id the manager knows it by, so asking again never buys twice
 (`POST /api/admin-funding/stamp-purchases`). The route waits a moment for the
 manager's first answer: a manager with no purchase route is answered as
 `purchases_not_offered`, another operation under way on the catalogue node as
-`not_now`, and a check of the manager's as `purchase_refused`, each leaving the
-purchase failed and nothing bought. A purchase the manager takes is followed in
+`not_now`, in the manager's own sentence when its 409 carries one, and a check
+of the manager's as `purchase_refused`, each leaving the purchase failed and
+nothing bought. A purchase the manager answers as failed is failed in Bee's
+words, read from the status route, when it gives any. A purchase the manager takes is followed in
 the background: its status is read until the batch is usable, and a status read
 that answers `unknown_request` says the manager never received it, so the next
 look asks again under the same id.

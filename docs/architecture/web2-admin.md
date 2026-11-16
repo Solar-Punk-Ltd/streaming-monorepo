@@ -205,10 +205,11 @@ The dialog works like this:
 | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | The wallet lacks xBZZ or xDAI                     | refused before the node is asked, with the amount missing                                                        |
 | The node does not answer                          | the purchase fails, and nothing was spent                                                                        |
+| The node does not buy the stamp                   | the purchase fails, in Bee's words from the manager's status route when it gives any                             |
 | The manager stops between asking and the answer   | the manager finds the batch on the node by the purchase's own label and settles it, or fails it after 30 minutes |
 | The price moved since the dialog priced the stamp | refused with the cost now, to confirm again                                                                      |
 | The batch does not become usable in 30 minutes    | an archive job waiting for it pauses with the reason                                                             |
-| Another operation is under way on the node        | refused, to try again once it has ended                                                                          |
+| Another operation is under way on the node        | refused in the manager's own sentence when it sends one, to try again once it has ended                          |
 | The manager offers no purchases                   | the dialog says so, as a manager older than archive stamps answers                                               |
 
 ### The job
