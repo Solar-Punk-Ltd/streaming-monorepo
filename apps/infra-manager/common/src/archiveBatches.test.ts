@@ -119,6 +119,13 @@ describe('taking an archive batch off the list', () => {
   it('is refused while the node did not say', () => {
     assert.equal(archiveRemoveProblem('unknown'), ARCHIVE_REMOVE_UNREAD_REFUSAL);
     assert.equal(archiveRemoveProblem(null), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+    assert.equal(archiveRemoveProblem('unknown', { deploymentGone: false }), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+  });
+
+  it('is for a batch whose deployment is gone, whatever its last reading said', () => {
+    for (const state of [null, 'unknown', 'active', 'full', 'expired'] as const) {
+      assert.equal(archiveRemoveProblem(state, { deploymentGone: true }), null, String(state));
+    }
   });
 });
 

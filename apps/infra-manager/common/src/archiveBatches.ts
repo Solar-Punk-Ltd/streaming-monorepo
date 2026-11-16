@@ -142,9 +142,14 @@ export const ARCHIVE_REMOVE_UNREAD_REFUSAL =
 
 /**
  * Why an archive batch cannot be taken off the list, one sentence, or null. Only one the node reports as expired, or
- * as gone from it, is removed. `state` is the manager's last reading of the batch, or null before any.
+ * as gone from it, is removed, and one whose deployment is gone, which has no node left to say: its recordings stay on
+ * Swarm until the batch expires. `state` is the manager's last reading of the batch, or null before any.
  */
-export function archiveRemoveProblem(state: StampState | null): string | null {
+export function archiveRemoveProblem(
+  state: StampState | null,
+  { deploymentGone = false }: { deploymentGone?: boolean } = {},
+): string | null {
+  if (deploymentGone) return null;
   if (state === 'expired' || state === 'gone') return null;
   if (state === null || state === 'unknown') return ARCHIVE_REMOVE_UNREAD_REFUSAL;
   return ARCHIVE_REMOVE_LIVE_REFUSAL;

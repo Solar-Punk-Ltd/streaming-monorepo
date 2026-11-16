@@ -1,6 +1,7 @@
 import {
   type ArchiveBatchCandidate,
   type ArchiveBatchRow,
+  archiveRemoveProblem,
   formatDateTime,
   formatTtl,
   shortHex,
@@ -25,7 +26,6 @@ export const ARCHIVE_SAVE_RACE =
   'Another change reached the archive batches after this page read them. They are shown as they stand now. Make the change again.';
 export const ARCHIVE_REMOVE_TITLE = 'Remove the archive batch?';
 export const ARCHIVE_REMOVE_CONFIRM = 'Remove';
-export const ARCHIVE_REMOVE_LATER = 'Remove it once it has expired.';
 
 /** One archive batch's first line: its label or its id, and the deployment whose node holds it. */
 export function archiveBatchTitle(row: ArchiveBatchRow): string {
@@ -54,17 +54,21 @@ export function archiveBatchWritableLine(row: ArchiveBatchRow, catalogueProfileN
 }
 
 /**
- * Whether the card offers Remove: for a batch whose last reading says it expired or was dropped, or whose node did
- * not answer. The manager reads the batch again before it takes it off.
+ * Why the card does not offer Remove for a batch, the manager's own sentence, or null when it does: for a batch whose
+ * last reading says it expired or was dropped, and for one whose deployment is gone. The manager reads the batch
+ * again before it takes it off.
  */
-export function archiveBatchRemovable(row: ArchiveBatchRow): boolean {
-  const state = row.reading?.state;
-  return state === undefined || state === 'expired' || state === 'gone' || state === 'unknown';
+export function archiveBatchRemoveProblem(row: ArchiveBatchRow, deploymentGone: boolean): string | null {
+  return archiveRemoveProblem(row.reading?.state ?? null, { deploymentGone });
 }
 
 /** What the removal's confirm says. */
-export function archiveRemoveConfirmText(row: ArchiveBatchRow): string {
-  return `Take batch ${shortHex(row.batchId)} on ${row.profileName} off the archive batches? The manager then stops listing it, pushing it to the web2 admin and funding it. The manager checks with its node first, and keeps a batch that still has life left.`;
+export function archiveRemoveConfirmText(row: ArchiveBatchRow, deploymentGone: boolean): string {
+  const batch = `batch ${shortHex(row.batchId)}`;
+  if (deploymentGone) {
+    return `Take ${batch} off the archive batches? Its deployment, ${row.profileName}, is gone, so no node can top it up. Its recordings stay on Swarm until the batch expires, and the web2 admin shows them as expired once it is off the list.`;
+  }
+  return `Take ${batch} on ${row.profileName} off the archive batches? The manager then stops listing it, pushing it to the web2 admin and funding it. It checks with the node first, and keeps a batch that has not expired.`;
 }
 
 /** One candidate as the adopt picker lists it: its label on the node, depth, life left and why it is refused. */

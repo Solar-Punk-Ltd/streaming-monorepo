@@ -1,15 +1,22 @@
 /**
  * What the archive batches card says and offers: each batch's title, how it became one and whether the web2 admin
- * copies onto it, Remove only for a batch whose last reading lets it go, and the adopt picker's line per candidate.
+ * copies onto it, Remove only for a batch whose last reading or gone deployment lets it go, and the adopt picker's
+ * line per candidate.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { ArchiveBatchCandidate, ArchiveBatchRow, CatalogueReading } from '@streaming-infra-manager/common';
+import {
+  ARCHIVE_REMOVE_LIVE_REFUSAL,
+  ARCHIVE_REMOVE_UNREAD_REFUSAL,
+  type ArchiveBatchCandidate,
+  type ArchiveBatchRow,
+  type CatalogueReading,
+} from '@streaming-infra-manager/common';
 
 import {
   archiveBatchOrigin,
-  archiveBatchRemovable,
+  archiveBatchRemoveProblem,
   archiveBatchTitle,
   archiveBatchWritableLine,
   archiveCandidateLabel,
@@ -77,18 +84,32 @@ describe('an archive batch on the card', () => {
     );
   });
 
-  it('offers Remove for an expired or dropped batch, or one not read, and not for one with life left', () => {
-    for (const state of ['expired', 'gone', 'unknown'] as const) {
-      assert.equal(archiveBatchRemovable(row({ reading: reading(state) })), true, state);
+  it('offers Remove for an expired or dropped batch, and for one whose deployment is gone', () => {
+    for (const state of ['expired', 'gone'] as const) {
+      assert.equal(archiveBatchRemoveProblem(row({ reading: reading(state) }), false), null, state);
     }
-    assert.equal(archiveBatchRemovable(row({ reading: null })), true);
-    for (const state of ['active', 'full', 'pending'] as const) {
-      assert.equal(archiveBatchRemovable(row({ reading: reading(state) })), false, state);
+    for (const state of ['active', 'unknown'] as const) {
+      assert.equal(archiveBatchRemoveProblem(row({ reading: reading(state) }), true), null, state);
     }
   });
 
-  it('confirms a removal naming the batch and its node', () => {
-    assert.match(archiveRemoveConfirmText(row()), /^Take batch abababab.* on catalogue off the archive batches\?/);
+  it('says why it does not offer Remove, in the manager’s words', () => {
+    for (const state of ['active', 'full', 'pending'] as const) {
+      assert.equal(archiveBatchRemoveProblem(row({ reading: reading(state) }), false), ARCHIVE_REMOVE_LIVE_REFUSAL);
+    }
+    assert.equal(archiveBatchRemoveProblem(row({ reading: reading('unknown') }), false), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+    assert.equal(archiveBatchRemoveProblem(row({ reading: null }), false), ARCHIVE_REMOVE_UNREAD_REFUSAL);
+  });
+
+  it('confirms a removal naming the batch and its node, and for a deployment that is gone says the recordings stay', () => {
+    assert.match(
+      archiveRemoveConfirmText(row(), false),
+      /^Take batch abababab.* on catalogue off the archive batches\?/,
+    );
+    assert.match(
+      archiveRemoveConfirmText(row(), true),
+      /Its deployment, catalogue, is gone.*recordings stay on Swarm until the batch expires/,
+    );
   });
 });
 
