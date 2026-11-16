@@ -11,10 +11,10 @@ import { needsDecision, percentRead, widgetLine } from './exportText';
 import { useExport } from './ExportProvider';
 
 /**
- * The export on the server, floating in the top right of every page for every signed-in user, from the moment it
- * starts, the panel open or not. Clicking it opens the panel, and so does its open button, which a keyboard reaches:
- * the widget itself is a status line, not a button, since Save file and Close live inside it. Once the export is done
- * it says so, with Save file, and stays until each user closes it for themselves.
+ * The export on the server, among the job widgets in the top right of every page for every signed-in user, from the
+ * moment it starts, the panel open or not. Clicking it opens the panel, and so does its open button, which a keyboard
+ * reaches: the widget itself is a status line, not a button, since Save file and Close live inside it. Once the export
+ * is done it says so, with Save file, and stays until each user closes it for themselves.
  */
 export function ExportWidget() {
   const { current, openPanel, act } = useExport();
@@ -32,14 +32,8 @@ export function ExportWidget() {
       aria-label="export"
       onClick={() => openPanel(null)}
       sx={{
-        position: 'fixed',
-        top: 72,
-        right: 16,
-        width: 300,
-        maxWidth: 'calc(100vw - 32px)',
         p: 1.5,
         cursor: 'pointer',
-        zIndex: (theme) => theme.zIndex.snackbar,
         borderLeft: 4,
         borderColor: decision ? 'warning.main' : active ? 'primary.main' : 'success.main',
       }}

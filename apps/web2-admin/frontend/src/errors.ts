@@ -86,6 +86,8 @@ const FRIENDLY: Record<string, string> = {
   // An export action on an export that is no longer the one on the server: another user cleared it, or a new export
   // replaced it. The export's timed read brings in what is there now.
   export_not_found: 'This export is no longer on the server. The page shows what is there now.',
+  // The same for an archive: another user cancelled it, or a new archive replaced a finished one.
+  archive_not_found: 'This archive is no longer on the server. The page shows what is there now.',
   internal_error: 'The server hit an unexpected error.',
 };
 

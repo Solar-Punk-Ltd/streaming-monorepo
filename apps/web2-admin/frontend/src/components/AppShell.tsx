@@ -6,10 +6,10 @@ import type { ReactNode } from 'react';
 
 import { useAuth } from '../auth';
 import { useThemeMenuItems } from '../theme/themeMenuItems';
+import { ArchivePanel } from './archive/ArchivePanel';
 import { BuildVersion } from './BuildVersion';
 import { ExportPanel } from './export/ExportPanel';
-import { ExportProvider } from './export/ExportProvider';
-import { ExportWidget } from './export/ExportWidget';
+import { JobProviders, JobWidgets } from './Jobs';
 import { useSnackbar } from './Snackbar';
 
 export const APP_NAME = 'Stream Admin';
@@ -40,8 +40,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    // The export on the server, its widget and its panel belong to every page, for every signed-in user.
-    <ExportProvider>
+    // The export and the archive on the server, their widgets and their panels belong to every page, for every
+    // signed-in user.
+    <JobProviders>
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
         <AppBar position="static" color="default" enableColorOnDark>
           <Toolbar>
@@ -79,11 +80,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Container>
         {user ? (
           <>
-            <ExportWidget />
+            <JobWidgets />
             <ExportPanel />
+            <ArchivePanel />
           </>
         ) : null}
       </Box>
-    </ExportProvider>
+    </JobProviders>
   );
 }

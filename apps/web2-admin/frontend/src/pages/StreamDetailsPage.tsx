@@ -38,6 +38,7 @@ import { errorMessage, FINALIZE_WHILE_LIVE } from '../errors';
 import { ApiError } from '../http';
 import { formatDateTime } from '../dateUtil';
 import { formatDuration, shortHex } from '../format';
+import { ArchiveCard } from '../components/archive/ArchiveCard';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { IngestPanel } from '../components/IngestPanel';
 import { useExport } from '../components/export/ExportProvider';
@@ -657,6 +658,9 @@ export function StreamDetailsPage() {
           </Alert>
         ) : null}
       </Paper>
+
+      {/* Each quality's archive, the action that starts one, and the "List only archived qualities" switch. */}
+      <ArchiveCard stream={stream} onChanged={load} />
 
       {/* The file exported from this stream and kept on the server, above the OBS details. */}
       <KeptExportCard streamId={stream.id} />
