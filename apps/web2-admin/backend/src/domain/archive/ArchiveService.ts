@@ -1312,11 +1312,21 @@ export class ArchiveService {
         counters,
       };
 
+      // The slots are posted on every pass, since the playlist names the segments, and counted under the tag each time.
+      // What they hold is counted once: saved counters with chunks in them were saved with a segment, slots included.
+      const slotsCounted = counters.chunks > 0;
+      const held = { ...counters };
       // The master playlist's slot, with the first quality: it names every quality, and stays as the stage signed it.
       if (item.position === 0 && rungs.length > 0 && stream.manifest_index !== null) {
         await this.copier.copySlot(ctx, { owner: stream.owner, topic: stream.topic, index: stream.manifest_index });
       }
       const payload = await this.copier.copySlot(ctx, feed);
+      if (slotsCounted) {
+        counters.chunks = held.chunks;
+        counters.bytes = held.bytes;
+        counters.rebuilt = held.rebuilt;
+        counters.parityMissing = held.parityMissing;
+      }
       const segments = [...new Set(parseRecordingPlaylist(payload).segments.map((segment) => segment.reference))];
       const done = await this.store.segmentsDone(job.id, item.rendition);
       let segmentsDone = done.size;

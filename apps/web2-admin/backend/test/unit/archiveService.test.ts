@@ -530,6 +530,26 @@ describe('ArchiveService', () => {
     }
   });
 
+  it('counts the playlist and master slots once across a pause, though Resume posts them again', async () => {
+    recorded();
+    node.holdAfter = 30;
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p'], target: { batchId: BATCH } });
+    await until(() => node.held, 'copying');
+    const pausing = service.act(TEST_OPERATOR, jobId(), { action: 'pause' });
+    node.release();
+    await pausing;
+    assert.ok((await store.segmentsDone(jobId(), '720p')).size > 0);
+    await service.act(TEST_OPERATOR, jobId(), { action: 'resume' });
+    await service.settled();
+
+    const item = (await store.items(jobId()))[0]!;
+    const underTag = node.posts.filter((post) => post.tag === item.tag_uid);
+    const distinct = new Set(underTag.map((post) => post.address));
+    assert.ok(underTag.length > distinct.size, 'Resume posted something again');
+    assert.equal(item.chunks_copied, distinct.size, 'each chunk counted once');
+    assert.equal(item.posts_under_tag, node.tags.get(item.tag_uid!)!.split, 'every post counted under the tag');
+  });
+
   it('carries on after a restart from its ledger, taking the posts the stopped process made from the tag', async () => {
     recorded();
     node.holdAfter = 25;
