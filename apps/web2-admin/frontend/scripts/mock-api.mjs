@@ -62,6 +62,14 @@
  * export started from the panel pauses the same way part-way; `done` is a kept
  * file; `off` seeds none. Save file answers a stand-in file, not a video.
  *
+ * Archiving a recording works as the API holds it: one archive at a time,
+ * which shares the place a job has with the export. It measures for 6 seconds,
+ * copies for 60 and verifies for 8; a new stamp is bought in 6 and usable 6
+ * later. MOCK_ARCHIVE decides the archive seeded at start, of the first seeded
+ * recording, with the values of `src/components/archive/archiveSeams.ts`: `off`,
+ * the default, seeds none. Four more recordings are seeded whichever is set, so
+ * the recordings carry an archive of each state the stream list tells apart.
+ *
  * No dependencies: plain node:http, plain node:crypto.
  */
 
@@ -1154,11 +1162,14 @@ const RESTART_WINDOW_MS = 30 * 60 * 1000;
 
 function publicStream(row) {
   const { thumbnail, thumbnailMime, editsNotOnFeed, ...rest } = row;
+  // Absent on a stream with nothing copied, as the API answers it.
+  const archive = streamArchiveSummaryOf(row);
   return {
     ...rest,
     hasThumbnail: thumbnail !== null && thumbnailMime !== null,
     hasUnpublishedEdits: editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
     restartUntil: restartUntil(row),
+    ...(archive ? { archive } : {}),
   };
 }
 
@@ -1573,6 +1584,13 @@ function exportRefusal(row) {
       message: `The export of "${title}" (${mockExport.quality}) is not finished, started by ${mockExport.startedBy}. One export runs at a time.`,
     };
   }
+  if (archiveJobHoldsPlace(mockArchive)) {
+    const title = streams.get(mockArchive.streamId)?.title ?? 'a stream';
+    return {
+      problem: 'busy',
+      message: `The archive of "${title}" is under way, started by ${mockArchive.startedBy}. One job runs at a time, an export or an archive.`,
+    };
+  }
   return null;
 }
 
@@ -1608,6 +1626,760 @@ function exportOptions(row, user) {
   } else if (recording && MOCK_EXPORT !== 'off') {
     mockExport = newExport(recording, '720p', EXPORT_OTHER_USER);
   }
+}
+
+// --- archiving a recording ---------------------------------------------------
+
+const MOCK_ARCHIVE = process.env.MOCK_ARCHIVE ?? 'off';
+/** How long the mock archive measures, copies and verifies, and how long a new stamp takes to buy, then to be usable. */
+const ARCHIVE_JOB_MEASURE_MS = 6_000;
+const ARCHIVE_JOB_COPY_MS = 60_000;
+const ARCHIVE_JOB_VERIFY_MS = 8_000;
+const ARCHIVE_JOB_BUY_MS = 6_000;
+const ARCHIVE_JOB_USABLE_MS = 6_000;
+/** Parity's share on top of a recording's bytes, at the erasure level its segments are uploaded with. */
+const ARCHIVE_JOB_PARITY = 1.1;
+/** What copying one chunk costs the catalogue node's chequebook, low and high, in PLUR. */
+const ARCHIVE_JOB_PLUR_PER_CHUNK = [7_700_000_000n, 11_500_000_000n];
+/** The room a stamp is sized with beside the chunks it is sized for: 5%. */
+const ARCHIVE_JOB_MARGIN = 1.05;
+/** What the catalogue node's chequebook can pay, and what it holds under the floor, in PLUR. */
+const ARCHIVE_JOB_CHEQUEBOOK_PLUR = '20000000000000000';
+const ARCHIVE_JOB_THIN_CHEQUEBOOK_PLUR = '4000000000000000';
+/** What an immutable batch of each depth holds, in bytes: the capacity table of `packages/contracts`. */
+const ARCHIVE_JOB_CAPACITY_BYTES = {
+  17: 44_700,
+  18: 6_660_000,
+  19: 112_060_000,
+  20: 687_620_000,
+  21: 2_600_000_000,
+  22: 7_730_000_000,
+  23: 19_940_000_000,
+  24: 47_060_000_000,
+  25: 105_510_000_000,
+  26: 227_980_000_000,
+  27: 476_680_000_000,
+  28: 993_650_000_000,
+  29: 2_040_000_000_000,
+  30: 4_170_000_000_000,
+  31: 8_450_000_000_000,
+  32: 17_070_000_000_000,
+  33: 34_360_000_000_000,
+  34: 69_040_000_000_000,
+  35: 138_540_000_000_000,
+  36: 277_720_000_000_000,
+  37: 556_350_000_000_000,
+  38: 1_110_000_000_000_000,
+  39: 2_230_000_000_000_000,
+  40: 4_460_000_000_000_000,
+  41: 8_930_000_000_000_000,
+};
+/** The best a quality's copy can be, then down to none, as the stream list ranks them. */
+const ARCHIVE_JOB_STATE_RANK = { complete: 5, reduced: 4, outdated: 3, expired: 2, partial: 1, none: 0 };
+
+function archiveJobChunksAt(depth) {
+  const bytes = ARCHIVE_JOB_CAPACITY_BYTES[depth];
+  return bytes === undefined ? 0 : Math.floor(bytes / 4096);
+}
+
+function archiveJobStamp(label, depth, chunksStamped, daysLeft) {
+  return {
+    batchId: hex(32),
+    label,
+    depth,
+    effectiveChunks: archiveJobChunksAt(depth),
+    chunksStamped,
+    expiresAt: Date.now() + daysLeft * DAY_MS,
+  };
+}
+
+/**
+ * The catalogue node's archive stamps as the archive panel offers them: one with room, one nearly full that expires
+ * within the 30-day warning, and one expired, which holds a recording's only copy.
+ */
+const archiveJobStamps = [
+  archiveJobStamp('Archive 2026', 22, 640_000, 200),
+  archiveJobStamp('Short talks', 20, 158_000, 20),
+  archiveJobStamp('Old archive', 20, 90_000, -3),
+];
+
+/** Each stream's copies, by quality, as `stream_archives` holds them. */
+const archiveCopies = new Map();
+/** The streams whose catalogue entry lists their archived qualities only. */
+const archivedOnlyStreams = new Set();
+/** The stream whose other qualities' stage batch has expired, which its archive card hints at. */
+let archiveHintStreamId = null;
+/** The one archive on the server, or null, as the API holds it. */
+let mockArchive = null;
+
+/** A stream's archive as the stream list and the stream's own answer carry it, or undefined with nothing copied. */
+function streamArchiveSummaryOf(row) {
+  const copies = archiveCopies.get(row.id);
+  if (!copies || copies.size === 0) return undefined;
+  let state = 'none';
+  const archived = [];
+  for (const copy of copies.values()) {
+    if (ARCHIVE_JOB_STATE_RANK[copy.state] > ARCHIVE_JOB_STATE_RANK[state]) state = copy.state;
+    if (copy.state === 'complete' || copy.state === 'reduced') archived.push(copy.rendition);
+  }
+  return { state, archived, archivedOnly: archivedOnlyStreams.has(row.id) };
+}
+
+/** What copying a quality of a recording this long is expected to need, parity included. */
+function archiveJobEstimate(quality, seconds) {
+  const bytes = Math.round(((quality.bitrate * seconds) / 8) * ARCHIVE_JOB_PARITY);
+  const chunks = Math.ceil(bytes / 4096);
+  return {
+    bytes,
+    chunks,
+    segments: Math.ceil(seconds / 2),
+    bzzLowPlur: (BigInt(chunks) * ARCHIVE_JOB_PLUR_PER_CHUNK[0]).toString(),
+    bzzHighPlur: (BigInt(chunks) * ARCHIVE_JOB_PLUR_PER_CHUNK[1]).toString(),
+    // The pace of the mock's own clock, so the estimate matches what a start shows.
+    seconds: Math.round(ARCHIVE_JOB_MEASURE_MS / 1000 + ARCHIVE_JOB_COPY_MS / 1000 + ARCHIVE_JOB_VERIFY_MS / 1000),
+  };
+}
+
+function archiveJobQuality(rendition) {
+  return EXPORT_QUALITIES.find((q) => q.rendition === rendition) ?? EXPORT_QUALITIES[0];
+}
+
+/** One quality's copy, whole or partial, on a stamp. */
+function archiveCopy(row, rendition, state, stamp, completedBy, extra = {}) {
+  const estimate = archiveJobEstimate(archiveJobQuality(rendition), row.durationSeconds ?? 3600);
+  const share = state === 'partial' ? 0.4 : 1;
+  return {
+    rendition,
+    state,
+    batchId: stamp.batchId,
+    batchLabel: stamp.label,
+    chunks: Math.round(estimate.chunks * share),
+    bytes: Math.round(estimate.bytes * share),
+    parityMissing: 0,
+    completedAt: state === 'partial' ? null : (row.endedAt ?? row.updatedAt),
+    completedBy: state === 'partial' ? null : completedBy,
+    ...extra,
+  };
+}
+
+function setArchiveCopies(row, copies) {
+  archiveCopies.set(row.id, new Map(copies.map((copy) => [copy.rendition, copy])));
+}
+
+function archiveJobStampAnswer(stamp, now = Date.now()) {
+  const expired = stamp.expiresAt <= now;
+  const ttlSeconds = expired ? 0 : Math.round((stamp.expiresAt - now) / 1000);
+  let held = 0;
+  for (const copies of archiveCopies.values()) {
+    for (const copy of copies.values()) if (copy.batchId === stamp.batchId) held += 1;
+  }
+  return {
+    batchId: stamp.batchId,
+    label: stamp.label,
+    nodeId: null,
+    nodeLabel: null,
+    depth: stamp.depth,
+    immutable: true,
+    state: expired ? 'expired' : 'active',
+    ttlSeconds,
+    fillRatio: Number(Math.min(1, stamp.chunksStamped / stamp.effectiveChunks).toFixed(2)),
+    writable: !expired,
+    designatedAt: '2026-11-01T10:00:00.000Z',
+    effectiveChunks: stamp.effectiveChunks,
+    chunksStamped: stamp.chunksStamped,
+    roomChunks: Math.max(0, stamp.effectiveChunks - stamp.chunksStamped),
+    qualitiesArchived: held,
+    expiresSoon: !expired && ttlSeconds < 30 * 86_400,
+  };
+}
+
+/** What a new stamp is priced with: the funding mock's price of postage and a catalogue node wallet of 10 xBZZ. */
+function archiveJobBuyTerms() {
+  return {
+    postage: FUNDING_POSTAGE,
+    walletXbzzPlur: (10n * XBZZ).toString(),
+    walletXdaiWei: '2000000000000000000',
+    defaultDays: 30,
+    minimumDays: 2,
+  };
+}
+
+/** The price of every block of `days`, the blocks rounded up, for one chunk, in PLUR. */
+function archiveJobAmountPerChunk(days) {
+  const blockSeconds = BigInt(FUNDING_POSTAGE.blockSeconds);
+  const blocks = (BigInt(days) * 86_400n + blockSeconds - 1n) / blockSeconds;
+  return blocks * BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur);
+}
+
+function archiveJobCost(depth, days) {
+  return (archiveJobAmountPerChunk(days) << BigInt(depth)).toString();
+}
+
+function archiveJobChunks(job) {
+  return job.items.reduce((sum, item) => sum + item.chunks, 0);
+}
+
+function newArchiveJob(row, renditions, target, startedBy, extra = {}) {
+  const seconds = row.durationSeconds ?? 3600;
+  return {
+    id: randomUUID(),
+    streamId: row.id,
+    items: renditions.map((rendition) => {
+      const quality = archiveJobQuality(rendition);
+      return {
+        rendition: quality.rendition,
+        ...archiveJobEstimate(quality, seconds),
+        rebuilt: quality.rendition === '1080p' ? 14 : 0,
+        parityMissing: 0,
+      };
+    }),
+    target,
+    state: 'measuring',
+    measured: false,
+    since: Date.now(),
+    copyMs: 0,
+    resumeTo: null,
+    pauseReason: null,
+    pauseMessage: null,
+    pausedAt: null,
+    chequebookPlur: ARCHIVE_JOB_CHEQUEBOOK_PLUR,
+    startedBy: startedBy.username,
+    startedByUserId: startedBy.id,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    dismissedBy: new Set(),
+    ...extra,
+  };
+}
+
+/** Whether the archive holds the place a job has, as the API's `archiveHoldsPlace` says. */
+function archiveJobHoldsPlace(job) {
+  if (!job || job.state === 'done' || job.state === 'awaiting_purchase') return false;
+  if (job.state === 'paused') return job.pauseReason !== 'user';
+  return true;
+}
+
+function archiveJobCopied(job, now = Date.now()) {
+  return Math.min(1, (job.copyMs + (job.state === 'copying' ? now - job.since : 0)) / ARCHIVE_JOB_COPY_MS);
+}
+
+function pauseArchiveJob(job, reason, message, now = Date.now()) {
+  if (job.state === 'copying') job.copyMs += now - job.since;
+  job.resumeTo = job.state;
+  Object.assign(job, {
+    state: 'paused',
+    pauseReason: reason,
+    pauseMessage: message,
+    pausedAt: new Date(now).toISOString(),
+    since: now,
+  });
+}
+
+/** Each quality's copy goes on the stream once the archive is done: complete, or reduced with parity left out. */
+function finishArchiveJob(job, now = Date.now()) {
+  job.state = 'done';
+  job.finishedAt = new Date(now).toISOString();
+  const row = streams.get(job.streamId);
+  if (!row) return;
+  const copies = archiveCopies.get(row.id) ?? new Map();
+  const stamp = archiveJobStamps.find((candidate) => candidate.batchId === job.target.batchId);
+  for (const item of job.items) {
+    copies.set(item.rendition, {
+      rendition: item.rendition,
+      state: item.parityMissing > 0 ? 'reduced' : 'complete',
+      batchId: job.target.batchId ?? null,
+      batchLabel: job.target.label ?? null,
+      chunks: item.chunks,
+      bytes: item.bytes,
+      parityMissing: item.parityMissing,
+      completedAt: job.finishedAt,
+      completedBy: job.startedBy,
+    });
+    if (stamp) stamp.chunksStamped += item.chunks;
+  }
+  archiveCopies.set(row.id, copies);
+}
+
+/** Moves the archive on by the clock: measuring, a purchase, copying, verifying, then done. */
+function settleArchiveJob(now = Date.now()) {
+  const job = mockArchive;
+  if (!job) return;
+  for (let step = 0; step < 6; step += 1) {
+    const elapsed = now - job.since;
+    if (job.state === 'measuring' && elapsed >= ARCHIVE_JOB_MEASURE_MS) {
+      job.measured = true;
+      job.state = job.target.kind === 'purchase' && job.target.purchase === null ? 'awaiting_purchase' : 'copying';
+      job.since = now;
+    } else if (job.state === 'buying' && elapsed >= ARCHIVE_JOB_BUY_MS) {
+      Object.assign(job.target.purchase, { state: 'waiting_usable', batchId: hex(32) });
+      Object.assign(job, { state: 'waiting_usable', since: now });
+    } else if (job.state === 'waiting_usable' && elapsed >= ARCHIVE_JOB_USABLE_MS) {
+      const purchase = job.target.purchase;
+      purchase.state = 'usable';
+      archiveJobStamps.push({
+        batchId: purchase.batchId,
+        label: purchase.label,
+        depth: purchase.depth,
+        effectiveChunks: archiveJobChunksAt(purchase.depth),
+        chunksStamped: 0,
+        expiresAt: now + purchase.days * DAY_MS,
+      });
+      job.target = { kind: 'stamp', batchId: purchase.batchId, label: purchase.label };
+      Object.assign(job, { state: 'copying', since: now });
+    } else if (job.state === 'copying' && archiveJobCopied(job, now) >= 1) {
+      Object.assign(job, { copyMs: ARCHIVE_JOB_COPY_MS, state: 'verifying', since: now });
+    } else if (job.state === 'verifying' && elapsed >= ARCHIVE_JOB_VERIFY_MS) {
+      finishArchiveJob(job, now);
+    } else {
+      return;
+    }
+  }
+}
+
+/** Each chosen quality, copied one after another in the order chosen. */
+function archiveJobItems(job, now = Date.now()) {
+  const count = job.items.length;
+  const copied = archiveJobCopied(job, now);
+  const verified = job.state === 'verifying' ? Math.min(1, (now - job.since) / ARCHIVE_JOB_VERIFY_MS) : 0;
+  return job.items.map((item, index) => {
+    const share = Math.max(0, Math.min(1, copied * count - index));
+    let state = 'waiting';
+    if (job.state === 'done') state = 'done';
+    else if (!job.measured) state = job.state === 'measuring' ? 'measuring' : 'waiting';
+    else if (job.state === 'verifying') state = index === count - 1 ? 'verifying' : 'done';
+    else if (share >= 1) state = 'done';
+    else if (share > 0) state = 'copying';
+    const whole = state === 'done' || state === 'verifying';
+    const chunksCopied = whole ? item.chunks : Math.round(share * item.chunks);
+    let chunksSynced = Math.round(chunksCopied * 0.9);
+    if (state === 'done') chunksSynced = item.chunks;
+    if (state === 'verifying') chunksSynced = Math.round(item.chunks * (0.9 + 0.1 * verified));
+    return {
+      rendition: item.rendition,
+      label: item.rendition,
+      state,
+      result: state === 'done' ? (item.parityMissing > 0 ? 'reduced' : 'complete') : null,
+      segmentsTotal: job.measured ? item.segments : null,
+      segmentsDone: whole ? item.segments : Math.round(share * item.segments),
+      chunksTotal: job.measured ? item.chunks : null,
+      chunksCopied,
+      chunksRebuilt: chunksCopied > 0 ? item.rebuilt : 0,
+      parityMissing: state === 'done' ? item.parityMissing : 0,
+      chunksSynced,
+      postsMade: chunksCopied,
+      bytesCopied: Math.round((chunksCopied / item.chunks) * item.bytes),
+    };
+  });
+}
+
+/** What was copied stays: a quality done is complete, one begun is partial, and one archived before keeps its copy. */
+function cancelArchiveJob(job, now = Date.now()) {
+  const row = streams.get(job.streamId);
+  if (row && job.target.kind === 'stamp') {
+    const copies = archiveCopies.get(row.id) ?? new Map();
+    for (const item of archiveJobItems(job, now)) {
+      const before = copies.get(item.rendition);
+      if (item.chunksCopied === 0 || before?.state === 'complete' || before?.state === 'reduced') continue;
+      copies.set(item.rendition, {
+        rendition: item.rendition,
+        state: item.state === 'done' ? 'complete' : 'partial',
+        batchId: job.target.batchId,
+        batchLabel: job.target.label,
+        chunks: item.chunksCopied,
+        bytes: item.bytesCopied,
+        parityMissing: 0,
+        completedAt: item.state === 'done' ? new Date(now).toISOString() : null,
+        completedBy: item.state === 'done' ? job.startedBy : null,
+      });
+    }
+    if (copies.size > 0) archiveCopies.set(row.id, copies);
+  }
+  mockArchive = null;
+}
+
+function archiveJobActions(job, dismissed) {
+  switch (job.state) {
+    case 'measuring':
+    case 'buying':
+    case 'waiting_usable':
+    case 'copying':
+    case 'verifying':
+      return ['pause', 'cancel'];
+    case 'awaiting_purchase':
+      return ['use_stamp', 'cancel'];
+    case 'waiting':
+      return ['cancel'];
+    case 'paused':
+      if (job.pauseReason === 'live') return ['wait', 'cancel'];
+      if (job.pauseReason === 'batch') return ['resume', 'use_stamp', 'buy_new', 'cancel'];
+      return ['resume', 'cancel'];
+    default:
+      return dismissed ? [] : ['dismiss'];
+  }
+}
+
+/** The stamp the buy dialog opens on: the smallest depth that holds the recording with the margin, for 30 days. */
+function archiveJobProposal(job) {
+  const chunkCount = archiveJobChunks(job);
+  const needed = Math.ceil(chunkCount * ARCHIVE_JOB_MARGIN);
+  const depth = Object.keys(ARCHIVE_JOB_CAPACITY_BYTES)
+    .map(Number)
+    .find((candidate) => archiveJobChunksAt(candidate) >= needed);
+  const terms = archiveJobBuyTerms();
+  const costPlur = depth === undefined ? null : archiveJobCost(depth, terms.defaultDays);
+  const missing = costPlur === null ? 0n : BigInt(costPlur) - BigInt(terms.walletXbzzPlur);
+  return {
+    chunkCount,
+    depth: depth ?? null,
+    days: terms.defaultDays,
+    costPlur,
+    shortfallPlur: missing > 0n ? missing.toString() : null,
+    terms,
+  };
+}
+
+/** Why a confirmed stamp cannot be bought, as the API's `archiveBuyProblem` words it, or null. */
+function archiveJobPurchaseRefusal(job, choice) {
+  const depth = Number(choice.depth);
+  const days = Number(choice.days);
+  const holds = archiveJobChunksAt(depth);
+  const needed = Math.ceil(archiveJobChunks(job) * ARCHIVE_JOB_MARGIN);
+  if (holds === 0) return { problem: 'purchase_refused', message: "An archive stamp's depth is 17 to 41." };
+  if (holds < needed) {
+    return {
+      problem: 'purchase_refused',
+      message: `A stamp of depth ${depth} holds ${holds} chunks, and this recording needs ${needed}.`,
+    };
+  }
+  if (!Number.isSafeInteger(days) || days < 2) {
+    return { problem: 'purchase_refused', message: 'A new archive stamp lasts 2 days or more.' };
+  }
+  const cost = archiveJobCost(depth, days);
+  if (cost !== String(choice.costPlur)) {
+    return {
+      problem: 'price_moved',
+      message: `The price of postage moved, and this stamp now costs ${cost} PLUR. Confirm it again at that cost.`,
+    };
+  }
+  return null;
+}
+
+function archiveJobSummary(job, user, now = Date.now()) {
+  const row = job ? streams.get(job.streamId) : null;
+  if (!job || !row) return null;
+  const items = archiveJobItems(job, now);
+  const chunksTotal = job.measured ? archiveJobChunks(job) : null;
+  const chunksCopied = items.reduce((sum, item) => sum + item.chunksCopied, 0);
+  const estimate = (key) =>
+    job.measured ? job.items.reduce((sum, item) => sum + BigInt(item[key]), 0n).toString() : null;
+  const dismissed = job.dismissedBy.has(user.id);
+  let secondsLeft = null;
+  if (job.state === 'copying')
+    secondsLeft = Math.round(((1 - archiveJobCopied(job, now)) * ARCHIVE_JOB_COPY_MS) / 1000);
+  if (job.state === 'verifying')
+    secondsLeft = Math.max(0, Math.round((ARCHIVE_JOB_VERIFY_MS - (now - job.since)) / 1000));
+  return {
+    id: job.id,
+    streamId: job.streamId,
+    streamTitle: row.title,
+    state: job.state,
+    pauseReason: job.pauseReason,
+    pauseMessage: job.pauseMessage,
+    pausedAt: job.pausedAt,
+    holdsPlace: archiveJobHoldsPlace(job),
+    target: job.target,
+    proposal: job.state === 'awaiting_purchase' ? archiveJobProposal(job) : null,
+    items,
+    chunksTotal,
+    chunksCopied,
+    bytesCopied: items.reduce((sum, item) => sum + item.bytesCopied, 0),
+    // The pace of the mock's own clock, which copies a recording in a minute.
+    chunksPerSecond:
+      job.state === 'copying' && chunksTotal !== null ? chunksTotal / (ARCHIVE_JOB_COPY_MS / 1000) : null,
+    secondsLeft,
+    bzzEstimateLowPlur: estimate('bzzLowPlur'),
+    bzzEstimateHighPlur: estimate('bzzHighPlur'),
+    chequebookAvailablePlur: job.chequebookPlur,
+    bzzSpentPlur: job.state === 'done' ? estimate('bzzLowPlur') : null,
+    startedBy: job.startedBy,
+    startedByYou: user.id === job.startedByUserId,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    dismissed,
+    actions: archiveJobActions(job, dismissed),
+  };
+}
+
+/** Why no archive of this stream can start now, or null: a stream that is not a finished recording, or a busy place. */
+function archiveJobRefusal(row) {
+  if (!((row.status === 'vod' || row.status === 'draft') && row.manifestIndex !== null)) {
+    return {
+      problem: 'not_finished',
+      message: `Only a finished recording can be archived, and this stream is ${row.status}.`,
+    };
+  }
+  if (mockArchive && mockArchive.state !== 'done') {
+    const title = streams.get(mockArchive.streamId)?.title ?? 'a stream';
+    return {
+      problem: 'busy',
+      message: `The archive of "${title}" is not finished, started by ${mockArchive.startedBy}. One archive exists at a time.`,
+    };
+  }
+  if (mockExport && mockExport.state !== 'done') {
+    const title = streams.get(mockExport.streamId)?.title ?? 'a stream';
+    return {
+      problem: 'busy',
+      message: `The export of "${title}" (${mockExport.quality}) is under way, started by ${mockExport.startedBy}. One job runs at a time, an export or an archive.`,
+    };
+  }
+  return null;
+}
+
+function archiveJobOptions(row, user, now = Date.now()) {
+  const seconds = row.durationSeconds ?? null;
+  const copies = archiveCopies.get(row.id) ?? new Map();
+  const summary = streamArchiveSummaryOf(row) ?? { state: 'none', archived: [], archivedOnly: false };
+  return {
+    streamId: row.id,
+    title: row.title,
+    date: (row.liveSince ?? row.scheduledStartTime ?? '').slice(0, 10) || null,
+    qualities: EXPORT_QUALITIES.map((q) => {
+      const copy = copies.get(q.rendition) ?? null;
+      const estimate = seconds ? archiveJobEstimate(q, seconds) : null;
+      const archived = copy?.state === 'complete' || copy?.state === 'reduced';
+      return {
+        rendition: q.rendition,
+        label: q.rendition,
+        width: q.width,
+        height: q.height,
+        durationSeconds: seconds,
+        state: copy?.state ?? 'none',
+        batchId: copy?.batchId ?? null,
+        batchLabel: copy?.batchLabel ?? null,
+        chunks: copy?.chunks ?? null,
+        bytes: copy?.bytes ?? null,
+        parityMissing: copy?.parityMissing ?? 0,
+        completedAt: copy?.completedAt ?? null,
+        completedBy: copy?.completedBy ?? null,
+        estimatedChunks: estimate?.chunks ?? null,
+        estimatedBytes: estimate?.bytes ?? null,
+        estimatedBzzLowPlur: estimate?.bzzLowPlur ?? null,
+        estimatedBzzHighPlur: estimate?.bzzHighPlur ?? null,
+        estimatedSeconds: estimate?.seconds ?? null,
+        unavailable: archived ? 'Archived already, at the recording it holds now.' : null,
+      };
+    }),
+    stamps: archiveJobStamps.map((stamp) => archiveJobStampAnswer(stamp, now)).filter((stamp) => stamp.writable),
+    buy: archiveJobBuyTerms(),
+    summary,
+    canListArchivedOnly: summary.archived.length > 0,
+    archivedOnlyHint:
+      row.id === archiveHintStreamId && !summary.archivedOnly
+        ? 'The stage batch that holds 480p and 360p has expired, so those qualities no longer play. Turn on "List only archived qualities" so the catalogue offers only the qualities that do.'
+        : null,
+    refusal: archiveJobRefusal(row),
+    current: archiveJobSummary(mockArchive, user, now),
+  };
+}
+
+/** The Archive page: the streams that have a copy, newest copy first. */
+function archivedStreamsAnswer(now = Date.now()) {
+  const list = [];
+  for (const [streamId, copies] of archiveCopies) {
+    const row = streams.get(streamId);
+    if (!row || copies.size === 0) continue;
+    const qualities = [...copies.values()].map((copy) => {
+      const stamp = archiveJobStamps.find((candidate) => candidate.batchId === copy.batchId);
+      return {
+        rendition: copy.rendition,
+        label: copy.rendition,
+        state: copy.state,
+        batchId: copy.batchId,
+        batchLabel: copy.batchLabel,
+        bytes: copy.bytes,
+        parityMissing: copy.parityMissing,
+        batchTtlSeconds: stamp ? archiveJobStampAnswer(stamp, now).ttlSeconds : null,
+      };
+    });
+    const archived = [...copies.values()].filter((copy) => copy.state === 'complete' || copy.state === 'reduced');
+    const newest = [...copies.values()]
+      .filter((copy) => copy.completedAt !== null)
+      .sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0];
+    list.push({
+      streamId,
+      title: row.title,
+      date: (row.liveSince ?? row.scheduledStartTime ?? '').slice(0, 10) || null,
+      summary: streamArchiveSummaryOf(row),
+      qualities,
+      bytes: archived.reduce((sum, copy) => sum + copy.bytes, 0),
+      archivedAt: newest?.completedAt ?? null,
+      archivedBy: newest?.completedBy ?? null,
+    });
+  }
+  list.sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''));
+  return { streams: list };
+}
+
+/** A recording that ended `endedMinutesAgo` before the start, finalized as the boot run would have. */
+function seedArchivedRecording(title, description, endedMinutesAgo) {
+  seedStream(
+    { title, description, scheduledStartTime: minutesBefore(endedMinutesAgo + 65) },
+    {
+      status: 'vod',
+      publishedAt: minutesBefore(endedMinutesAgo + 70),
+      liveSince: minutesBefore(endedMinutesAgo + 65),
+      endedAt: minutesBefore(endedMinutesAgo),
+      durationSeconds: 3600,
+      manifestIndex: 360,
+      createdAt: minutesBefore(endedMinutesAgo + 80),
+      updatedAt: minutesBefore(endedMinutesAgo),
+    },
+  );
+  const row = [...streams.values()].at(-1);
+  finish(row, minutesBefore(endedMinutesAgo - 30));
+  return row;
+}
+
+// Every recording carries an archive of its own, whichever MOCK_ARCHIVE is: the first none, as the job's stream; the
+// second archived, with a hint to list only its archived qualities; and four more, seeded here, one of each other state.
+{
+  const [roomy, nearlyFull, expired] = archiveJobStamps;
+  const [, archivedRecording] = [...streams.values()].filter((r) => r.status === 'vod' && r.manifestIndex !== null);
+  const by = EXPORT_OTHER_USER.username;
+  const DAY = 24 * 60;
+  if (archivedRecording) {
+    setArchiveCopies(archivedRecording, [
+      archiveCopy(archivedRecording, '1080p', 'complete', roomy, by),
+      archiveCopy(archivedRecording, '720p', 'complete', roomy, by),
+    ]);
+    archiveHintStreamId = archivedRecording.id;
+  }
+  const workshop = seedArchivedRecording(
+    'Workshop recording',
+    'Seeded with an archive whose 1080p lost parity chunks before the copy: archived, with reduced protection.',
+    5 * DAY,
+  );
+  setArchiveCopies(workshop, [archiveCopy(workshop, '1080p', 'reduced', roomy, by, { parityMissing: 12 })]);
+  const panel = seedArchivedRecording(
+    'Panel discussion',
+    'Seeded with an archive of 720p that stopped before it was complete.',
+    8 * DAY,
+  );
+  setArchiveCopies(panel, [archiveCopy(panel, '720p', 'partial', nearlyFull, by)]);
+  const keynote = seedArchivedRecording(
+    'Keynote, recorded twice',
+    'Seeded with an archive of 1080p made before the stream recorded again: the copy is outdated.',
+    12 * DAY,
+  );
+  setArchiveCopies(keynote, [archiveCopy(keynote, '1080p', 'outdated', roomy, by)]);
+  const meetup = seedArchivedRecording(
+    "Last year's meetup",
+    'Seeded with an archive of 1080p on a stamp that has expired.',
+    40 * DAY,
+  );
+  setArchiveCopies(meetup, [archiveCopy(meetup, '1080p', 'expired', expired, by)]);
+}
+
+// The archive seeded at start, of the first seeded recording, MOCK_ARCHIVE deciding which.
+{
+  const recording = [...streams.values()].find((r) => r.status === 'vod' && r.manifestIndex !== null);
+  const seeded = [...users.values()][0] ?? EXPORT_OTHER_USER;
+  const [roomy, nearlyFull] = archiveJobStamps;
+  const onStamp = (stamp) => ({ kind: 'stamp', batchId: stamp.batchId, label: stamp.label });
+  const both = ['1080p', '720p'];
+  const copied = (fraction) => ({ measured: true, copyMs: fraction * ARCHIVE_JOB_COPY_MS, state: 'copying' });
+  const paused = (reason, message, fraction = 0.4) => ({
+    ...copied(fraction),
+    state: 'paused',
+    resumeTo: 'copying',
+    pauseReason: reason,
+    pauseMessage: message,
+    pausedAt: new Date().toISOString(),
+  });
+  const seeds = {
+    measuring: () => newArchiveJob(recording, both, onStamp(roomy), EXPORT_OTHER_USER),
+    copying: () => newArchiveJob(recording, both, onStamp(roomy), EXPORT_OTHER_USER, copied(0.3)),
+    verifying: () =>
+      newArchiveJob(recording, both, onStamp(roomy), EXPORT_OTHER_USER, { ...copied(1), state: 'verifying' }),
+    awaiting_purchase: () =>
+      newArchiveJob(recording, both, { kind: 'purchase', purchase: null }, seeded, {
+        measured: true,
+        state: 'awaiting_purchase',
+      }),
+    buying: () => {
+      const job = newArchiveJob(recording, both, { kind: 'purchase', purchase: null }, seeded, { measured: true });
+      const depth = archiveJobProposal(job).depth ?? 22;
+      job.target.purchase = {
+        id: randomUUID(),
+        depth,
+        days: 30,
+        amountPerChunkPlur: archiveJobAmountPerChunk(30).toString(),
+        costPlur: archiveJobCost(depth, 30),
+        label: 'Keynotes 2026',
+        state: 'buying',
+        batchId: null,
+        error: null,
+        startedBy: seeded.username,
+        startedAt: new Date().toISOString(),
+      };
+      job.state = 'buying';
+      return job;
+    },
+    paused_user: () =>
+      newArchiveJob(recording, both, onStamp(roomy), seeded, paused('user', `Paused by ${seeded.username}.`)),
+    paused_unreadable: () =>
+      newArchiveJob(
+        recording,
+        both,
+        onStamp(roomy),
+        seeded,
+        paused(
+          'unreadable',
+          'A data chunk of segment 212 of 1080p was neither read nor rebuilt from its parity, after 3 tries.',
+        ),
+      ),
+    paused_batch: () =>
+      newArchiveJob(
+        recording,
+        both,
+        onStamp(nearlyFull),
+        seeded,
+        paused(
+          'batch',
+          'The archive stamp “Short talks” lacks room for what is left. Use another stamp, buy a new one, or dilute this one and try again.',
+          0.1,
+        ),
+      ),
+    paused_funds: () =>
+      newArchiveJob(recording, both, onStamp(roomy), seeded, {
+        ...paused(
+          'funds',
+          "The catalogue node's chequebook holds 0.40 xBZZ, under the floor of 1 xBZZ. Fund it on the Funding page's Chequebooks tab, then try again.",
+        ),
+        chequebookPlur: ARCHIVE_JOB_THIN_CHEQUEBOOK_PLUR,
+      }),
+    paused_node: () =>
+      newArchiveJob(
+        recording,
+        both,
+        onStamp(roomy),
+        seeded,
+        paused('node', 'The catalogue node does not answer. Try again once it does.'),
+      ),
+    waiting: () => newArchiveJob(recording, both, onStamp(roomy), seeded, { ...copied(0.5), state: 'waiting' }),
+    done: () => {
+      const job = newArchiveJob(recording, both, onStamp(roomy), EXPORT_OTHER_USER, copied(1));
+      finishArchiveJob(job);
+      return job;
+    },
+    done_reduced: () => {
+      const job = newArchiveJob(recording, both, onStamp(roomy), EXPORT_OTHER_USER, copied(1));
+      job.items[0].parityMissing = 12;
+      finishArchiveJob(job);
+      return job;
+    },
+  };
+  if (recording && Object.hasOwn(seeds, MOCK_ARCHIVE)) mockArchive = seeds[MOCK_ARCHIVE]();
 }
 
 const server = createServer((req, res) => {
@@ -1739,6 +2511,87 @@ async function handle(req, res) {
       if (action === 'cancel' || action === 'clear') mockExport = null;
       return send(res, 200, { export: exportSummary(mockExport, user) });
     }
+  }
+
+  // Archiving a recording: the archive on the server, what can be done to it, and the streams that have one.
+  if (path === '/api/archive' || path.startsWith('/api/archive/')) settleArchiveJob();
+  if (path === '/api/archive' && method === 'GET') {
+    return send(res, 200, { archive: archiveJobSummary(mockArchive, user) }, { 'cache-control': 'no-store' });
+  }
+  if (path === '/api/archive/streams' && method === 'GET') return send(res, 200, archivedStreamsAnswer());
+  // No password: the catalogue node pays from its own wallet, as for a top-up.
+  if (path === '/api/archive/current/confirm-purchase' && method === 'POST') {
+    const job = mockArchive;
+    if (!job || job.state !== 'awaiting_purchase') {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'not_now',
+        message: 'No archive waits for a new stamp to be confirmed.',
+      });
+    }
+    const choice = await readJson(req);
+    const refusal = archiveJobPurchaseRefusal(job, choice);
+    if (refusal) return send(res, 409, { error: 'archive_refused', ...refusal });
+    const label = typeof choice.label === 'string' && choice.label.trim() !== '' ? choice.label.trim() : null;
+    job.target = {
+      kind: 'purchase',
+      purchase: {
+        id: randomUUID(),
+        depth: Number(choice.depth),
+        days: Number(choice.days),
+        amountPerChunkPlur: archiveJobAmountPerChunk(Number(choice.days)).toString(),
+        costPlur: String(choice.costPlur),
+        label,
+        state: 'buying',
+        batchId: null,
+        error: null,
+        startedBy: user.username,
+        startedAt: new Date().toISOString(),
+      },
+    };
+    Object.assign(job, { state: 'buying', since: Date.now() });
+    return send(res, 200, { archive: archiveJobSummary(job, user) });
+  }
+  const archiveRoute = /^\/api\/archive\/([^/]+)\/actions$/.exec(path);
+  if (archiveRoute && method === 'POST') {
+    const job = mockArchive;
+    if (!job || job.id !== archiveRoute[1]) return send(res, 404, { error: 'archive_not_found', id: archiveRoute[1] });
+    const body = await readJson(req);
+    const action = body.action;
+    if (!archiveJobActions(job, job.dismissedBy.has(user.id)).includes(action)) {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'not_now',
+        message: `The archive cannot ${action} now.`,
+      });
+    }
+    const now = Date.now();
+    const cleared = { pauseReason: null, pauseMessage: null, pausedAt: null };
+    if (action === 'use_stamp') {
+      const stamp = archiveJobStamps.find((candidate) => candidate.batchId === body.batchId);
+      if (!stamp || stamp.expiresAt <= now) {
+        return send(res, 409, {
+          error: 'archive_refused',
+          problem: 'stamp_unusable',
+          message: 'That archive stamp cannot be written. Pick another, or buy a new one.',
+        });
+      }
+      const target = { kind: 'stamp', batchId: stamp.batchId, label: stamp.label };
+      Object.assign(job, { target, state: job.measured ? 'copying' : 'measuring', since: now, ...cleared });
+    }
+    if (action === 'pause') pauseArchiveJob(job, 'user', `Paused by ${user.username}.`, now);
+    if (action === 'resume') {
+      const state = job.resumeTo ?? 'copying';
+      Object.assign(job, { state, since: now, chequebookPlur: ARCHIVE_JOB_CHEQUEBOOK_PLUR, ...cleared });
+    }
+    if (action === 'wait') Object.assign(job, { state: 'waiting', since: now, ...cleared });
+    if (action === 'buy_new') {
+      const target = { kind: 'purchase', purchase: null };
+      Object.assign(job, { target, state: 'awaiting_purchase', since: now, ...cleared });
+    }
+    if (action === 'dismiss') job.dismissedBy.add(user.id);
+    if (action === 'cancel') cancelArchiveJob(job, now);
+    return send(res, 200, { archive: archiveJobSummary(mockArchive, user) });
   }
 
   if (path === '/api/auth/users' && method === 'GET') {
@@ -2094,6 +2947,67 @@ async function handle(req, res) {
     return send(res, 201, exportSummary(mockExport, user));
   }
 
+  if (sub === '/archive' && method === 'GET') {
+    settleArchiveJob();
+    return send(res, 200, archiveJobOptions(row, user), { 'cache-control': 'no-store' });
+  }
+
+  if (sub === '/archive' && method === 'POST') {
+    settleArchiveJob();
+    const refusal = archiveJobRefusal(row);
+    if (refusal) return send(res, 409, { error: 'archive_refused', ...refusal });
+    const { renditions, target } = await readJson(req);
+    const copies = archiveCopies.get(row.id);
+    const picked = Array.isArray(renditions)
+      ? renditions.filter((rendition) => EXPORT_QUALITIES.some((q) => q.rendition === rendition))
+      : [];
+    const open = picked.filter((rendition) => {
+      const state = copies?.get(rendition)?.state;
+      return state !== 'complete' && state !== 'reduced';
+    });
+    if (open.length === 0) {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'nothing_to_archive',
+        message: 'Every quality picked is archived already, at the recording it holds now.',
+      });
+    }
+    let jobTarget = { kind: 'purchase', purchase: null };
+    if (target?.buyNew !== true) {
+      const stamp = archiveJobStamps.find((candidate) => candidate.batchId === target?.batchId);
+      if (!stamp || stamp.expiresAt <= Date.now()) {
+        return send(res, 409, {
+          error: 'archive_refused',
+          problem: 'no_stamp',
+          message: 'That archive stamp cannot be written. Pick another, or buy a new one.',
+        });
+      }
+      jobTarget = { kind: 'stamp', batchId: stamp.batchId, label: stamp.label };
+    }
+    mockArchive = newArchiveJob(row, open, jobTarget, user);
+    return send(res, 202, { archive: archiveJobSummary(mockArchive, user) });
+  }
+
+  if (sub === '/archive/listing' && method === 'PUT') {
+    const { archivedOnly } = await readJson(req);
+    const archived = streamArchiveSummaryOf(row)?.archived ?? [];
+    if (archivedOnly === true && archived.length === 0) {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'not_now',
+        message: 'The switch is offered once one quality plays from an archive stamp.',
+      });
+    }
+    if (archivedOnly === true) archivedOnlyStreams.add(row.id);
+    else archivedOnlyStreams.delete(row.id);
+    // The catalogue entry is written again, as a republish writes it.
+    if (ON_FEED_STATUSES.includes(row.status)) {
+      feedIndex += 1;
+      row.publishedFeedIndex = feedIndex;
+    }
+    return send(res, 200, archiveJobOptions(row, user));
+  }
+
   if (sub === '' && method === 'PUT') {
     if (row.status === 'publishing') return send(res, 409, { error: 'stream_busy' });
     const input = await readJson(req);
@@ -2125,8 +3039,11 @@ async function handle(req, res) {
       return send(res, 409, { error: 'stream_published' });
     }
     streams.delete(row.id);
-    // Its export goes with it, as the API's foreign key takes it.
+    // Its export goes with it, as the API's foreign key takes it, and so do its archive and its copies' records.
     if (mockExport?.streamId === row.id) mockExport = null;
+    if (mockArchive?.streamId === row.id) mockArchive = null;
+    archiveCopies.delete(row.id);
+    archivedOnlyStreams.delete(row.id);
     res.writeHead(204);
     return res.end();
   }
