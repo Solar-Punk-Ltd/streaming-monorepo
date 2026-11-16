@@ -169,6 +169,14 @@ function settledOnChain(answer: FundingChequebookOperationsAnswer): void {
 }
 
 describe('a request, answered at once', () => {
+  it("moves the catalogue node's chequebook, which no stage lists", async () => {
+    const answer = await requested(toTarget(item(NODE_CATALOGUE, xbzz('1'))));
+    assert.deepEqual(
+      answer.items.map((one) => [one.nodeId, one.nodeLabel, one.direction, one.amountPlur]),
+      [[NODE_CATALOGUE, 'Catalogue node', 'deposit', xbzz('1')]],
+    );
+  });
+
   it('answers the bulk id and every item queued before the manager has answered any', async () => {
     let release!: () => void;
     manager.chequebookGate = new Promise<void>((resolve) => {
@@ -437,14 +445,7 @@ describe('refusing a request, nothing journalled', () => {
     assert.equal(error.message, 'The manager has no node stage-9:gone, so nothing was sent.');
   });
 
-  it("refuses the catalogue node, which no stage lists, and takes a stage's node that is the catalogue node too", async () => {
-    const catalogue = await refused(toTarget(item(NODE_CATALOGUE, xbzz('1'))));
-    assert.equal(catalogue.problem, 'node');
-    assert.equal(
-      catalogue.message,
-      'Catalogue node (catalogue:uploader) is the catalogue node, which no stage lists: the Chequebooks tab leaves its chequebook alone. Nothing was sent.',
-    );
-
+  it("takes a stage's node that is the catalogue node too", async () => {
     const inventory = chequebookInventory();
     inventory.catalogue = { ...inventory.stages[0]!.nodes[0]!, label: 'Main stage catalogue node' };
     manager.inventoryAnswer = inventory;
