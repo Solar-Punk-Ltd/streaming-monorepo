@@ -20,10 +20,13 @@ import {
  *
  * - A tree is walked by span, level by level. Its data and intermediate chunks are opened, its parity chunks copied
  *   and never opened, which ones are parity following from the erasure level in each span.
- * - A data or intermediate chunk that cannot be read is brought back by reading its file whole through `/bytes`,
- *   which makes Bee restore it from its parity, then read again. One that still cannot be read stops the copy with
- *   {@link UnreadableChunkError}.
- * - A parity chunk that cannot be read is counted and left out, and the quality completes with reduced protection.
+ * - A data or intermediate chunk the node answers not found for is brought back by reading its file whole through
+ *   `/bytes`, which makes Bee restore it from its parity, then read again. One that still cannot be read stops the copy
+ *   with {@link UnreadableChunkError}.
+ * - A parity chunk the node answers not found for is tried once more after the tree's walk, then counted and left out,
+ *   and the quality completes with reduced protection.
+ * - A read the node does not answer, on any chunk, stops the copy with the node's {@link ArchiveNodeError}: an outage
+ *   is no sign a chunk is lost.
  * - Before every post the copy asks its push window, which holds it while the tag's posts run too far ahead of what
  *   Bee has pushed.
  */
@@ -131,7 +134,12 @@ export function sleep(ms: number, signal: AbortSignal): Promise<void> {
 
 /** Whether a read failure is worth another try: a chunk not found, or a node that did not answer. */
 function retryable(error: unknown): boolean {
-  return error instanceof ChunkMissingError || (error instanceof ArchiveNodeError && error.problem === 'node');
+  return error instanceof ChunkMissingError || isNodeFailure(error);
+}
+
+/** A node that did not answer, or not in time. */
+function isNodeFailure(error: unknown): boolean {
+  return error instanceof ArchiveNodeError && error.problem === 'node';
 }
 
 export class ChunkCopier {
@@ -266,6 +274,7 @@ export class ChunkCopier {
   ): Promise<void> {
     let level: Array<{ address: string; open: boolean }> = [];
     const seen = new Set<string>([root]);
+    const notFound: string[] = [];
     const enqueue = (from: Uint8Array) => {
       const { data, parity } = splitReferences(from);
       for (const address of data) {
@@ -294,20 +303,36 @@ export class ChunkCopier {
           try {
             bytes = await this.read(ctx.readers, address, ctx.signal);
           } catch (error) {
-            if (ctx.signal.aborted || !retryable(error)) throw error;
-            // A parity chunk the network lost costs the recording some protection, never its playback.
-            ctx.counters.parityMissing += 1;
+            // Only a chunk the node answered not found for is lost; a node that did not answer stops the copy.
+            if (ctx.signal.aborted || !(error instanceof ChunkMissingError)) throw error;
+            notFound.push(address);
             return;
           }
         }
-        await this.post(ctx, address, () =>
-          this.node.postChunk(ctx.writer, ctx.batchId, ctx.tagUid, bytes, ctx.signal),
-        );
-        ctx.counters.chunks += 1;
-        ctx.counters.bytes += bytes.length;
+        await this.postCounted(ctx, address, bytes);
       });
       for (const intermediate of opened) enqueue(intermediate);
     }
+    // Each parity chunk not found is tried once more before the tree counts as copied.
+    await pool(notFound, ctx.parallel, async (address) => {
+      let bytes: Uint8Array;
+      try {
+        bytes = await this.read(ctx.readers, address, ctx.signal);
+      } catch (error) {
+        if (ctx.signal.aborted || !(error instanceof ChunkMissingError)) throw error;
+        // A parity chunk the network lost costs the recording some protection, never its playback.
+        ctx.counters.parityMissing += 1;
+        return;
+      }
+      await this.postCounted(ctx, address, bytes);
+    });
+  }
+
+  /** A chunk posted under the stamp and the tag, and counted. */
+  private async postCounted(ctx: CopyContext, address: string, bytes: Uint8Array): Promise<void> {
+    await this.post(ctx, address, () => this.node.postChunk(ctx.writer, ctx.batchId, ctx.tagUid, bytes, ctx.signal));
+    ctx.counters.chunks += 1;
+    ctx.counters.bytes += bytes.length;
   }
 
   /**
@@ -318,7 +343,8 @@ export class ChunkCopier {
     try {
       return await this.read(ctx.readers, address, ctx.signal);
     } catch (error) {
-      if (ctx.signal.aborted || !retryable(error)) throw error;
+      // A node that did not answer is no sign the chunk is lost: the copy stops with the node.
+      if (ctx.signal.aborted || !(error instanceof ChunkMissingError)) throw error;
       if (address === root) throw new UnreadableChunkError(address, root, error);
       for (const reader of ctx.readers) {
         try {
@@ -327,7 +353,7 @@ export class ChunkCopier {
           ctx.counters.rebuilt += 1;
           return rebuilt;
         } catch (rebuildError) {
-          if (ctx.signal.aborted) throw rebuildError;
+          if (ctx.signal.aborted || isNodeFailure(rebuildError)) throw rebuildError;
         }
       }
       throw new UnreadableChunkError(address, root, error);
@@ -337,6 +363,8 @@ export class ChunkCopier {
   /** A chunk read on the readers in turn, each try after the wait before it. */
   private async read(readers: readonly string[], address: string, signal: AbortSignal): Promise<Uint8Array> {
     let last: unknown = new Error('There is no node to read through.');
+    // A try the node did not answer outweighs a not-found: the chunk counts as lost only when every try said so.
+    let unanswered: unknown = null;
     for (let attempt = 0; attempt <= this.retryDelaysMs.length; attempt++) {
       if (attempt > 0) await sleep(this.retryDelaysMs[attempt - 1]!, signal);
       const reader = readers[attempt % readers.length];
@@ -346,9 +374,10 @@ export class ChunkCopier {
       } catch (error) {
         if (signal.aborted || !retryable(error)) throw error;
         last = error;
+        if (isNodeFailure(error)) unanswered = error;
       }
     }
-    throw last;
+    throw unanswered ?? last;
   }
 
   /**

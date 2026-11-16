@@ -174,6 +174,10 @@ export class FakeArchiveNode implements ArchiveNode {
   readonly misstored = new Set<string>();
   /** Stamps a batch used before the test, beside what it stamped here. */
   readonly used = new Map<string, number>();
+  /** Chunks whose reads the node does not answer, as during an outage. */
+  readonly unreachable = new Set<string>();
+  /** Chunks the network gives only after this many reads answered not found. */
+  readonly missingFor = new Map<string, number>();
   autoPush = true;
   nextTag = 1;
   /** Runs after each post is answered. */
@@ -202,6 +206,12 @@ export class FakeArchiveNode implements ArchiveNode {
 
   async readChunk(_url: string, address: string): Promise<Uint8Array> {
     this.reads.push(address);
+    if (this.unreachable.has(address)) throw new ArchiveNodeError('node', 'The node did not answer.');
+    const late = this.missingFor.get(address) ?? 0;
+    if (late > 0) {
+      this.missingFor.set(address, late - 1);
+      throw new ChunkMissingError(address);
+    }
     const chunk = this.network.get(address);
     if (!chunk) throw new ChunkMissingError(address);
     return chunk;

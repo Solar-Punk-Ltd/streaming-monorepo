@@ -1,7 +1,8 @@
 /**
  * The archive's chunk copy against a node in memory: every chunk of a tree read and posted under the batch and the
- * tag, parity copied and never opened, a lost data chunk rebuilt from its file, a lost parity chunk counted and left
- * out, a feed slot posted with its signature and its wrapped root, and a post stored elsewhere refused. `pnpm test`.
+ * tag, parity copied and never opened, a lost data chunk rebuilt from its file, a lost parity chunk tried once more,
+ * then counted and left out, a read the node does not answer stopping the copy with the node, a feed slot posted with
+ * its signature and its wrapped root, and a post stored elsewhere refused. `pnpm test`.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
@@ -101,6 +102,38 @@ describe('copying chunks onto an archive stamp', () => {
     for (const address of file.chunks.keys()) {
       if (address !== lost) assert.ok(node.posts.some((post) => post.address === address));
     }
+  });
+
+  it('stops with the node when a parity read goes unanswered, counting no parity lost', async () => {
+    const file = segment(600, 'f');
+    node.unreachable.add(file.parity[0]!);
+    const ctx = await context();
+    await assert.rejects(
+      () => copier.copyTree(ctx, file.root),
+      (error) => error instanceof ArchiveNodeError && error.problem === 'node',
+    );
+    assert.equal(ctx.counters.parityMissing, 0);
+  });
+
+  it('tries a parity chunk not found once more before the tree is done, and copies it when it comes', async () => {
+    const file = segment(600, 'g');
+    const late = file.parity[0]!;
+    // Not found on every try of the walk (two, with one retry), found on the try after it.
+    node.missingFor.set(late, 2);
+    const copy = await copier.copyTree(await context(), file.root);
+    assert.equal(copy.parityMissing, 0);
+    assert.ok(node.posts.some((post) => post.address === late));
+  });
+
+  it('stops with the node, not as unreadable, when a data chunk read goes unanswered', async () => {
+    const file = segment(600, 'h');
+    node.unreachable.add(file.data[2]!);
+    const ctx = await context();
+    await assert.rejects(
+      () => copier.copyTree(ctx, file.root),
+      (error) => error instanceof ArchiveNodeError && error.problem === 'node',
+    );
+    assert.deepEqual(node.fileReads, [], 'no rebuild is tried while the node does not answer');
   });
 
   it('posts a feed slot with its signature, and a wrapped playlist root with the tree under it', async () => {
