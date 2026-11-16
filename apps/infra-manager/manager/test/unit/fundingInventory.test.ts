@@ -902,6 +902,7 @@ function designation(batchId: string, over: Partial<ArchiveBatchDesignation> = {
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: 'Autumn event',
     source: 'purchase',
     purchaseRequestId: '9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f',

@@ -477,6 +477,7 @@ export function seed() {
     {
       batchId: expiredArchiveBatch.batchID.replace(/^0x/, '').toLowerCase(),
       profileName: catalogueNode.name,
+      depth: expiredArchiveBatch.depth,
       label: 'Last season',
       source: 'adopted',
       purchaseRequestId: null,

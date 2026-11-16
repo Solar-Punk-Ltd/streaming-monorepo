@@ -22,6 +22,7 @@ import {
   ARCHIVE_KIND_UNKNOWN_REFUSAL,
   ARCHIVE_MUTABLE_REFUSAL,
   ARCHIVE_NO_CATALOGUE_NODE_REFUSAL,
+  ARCHIVE_NO_DEPTH_REFUSAL,
   ARCHIVE_NOT_HELD_REFUSAL,
   ARCHIVE_REMOVE_LIVE_REFUSAL,
   ARCHIVE_REMOVE_UNREAD_REFUSAL,
@@ -102,6 +103,7 @@ function archiveRow(batchId: string, over: Partial<ArchiveBatchDesignation> = {}
   return {
     batchId,
     profileName: 'catalogue',
+    depth: 22,
     label: null,
     source: 'adopted',
     purchaseRequestId: null,
@@ -318,6 +320,7 @@ describe('PUT /manager-settings/archive-batches/:batchId', () => {
       {
         batchId: BATCH,
         profileName: 'catalogue',
+        depth: 22,
         label: 'Spring archive',
         source: 'adopted',
         purchaseRequestId: null,
@@ -344,6 +347,7 @@ describe('PUT /manager-settings/archive-batches/:batchId', () => {
       ['disowned', { exists: false }, ARCHIVE_NOT_HELD_REFUSAL],
       ['not held', new StampNotFoundError('catalogue', BATCH), ARCHIVE_NOT_HELD_REFUSAL],
       ['on a node that does not answer', new Error('connect ECONNREFUSED'), ARCHIVE_UNREACHABLE_REFUSAL],
+      ['of no depth a batch can have', { depth: 0 }, ARCHIVE_NO_DEPTH_REFUSAL],
     ];
     for (const [name, answer, sentence] of cases) {
       const api = await testApi(t, {
@@ -489,6 +493,7 @@ describe('the ports the funding API calls', () => {
   const bought = {
     batchId: BATCH.toUpperCase(),
     profileName: 'catalogue',
+    depth: 22,
     label: 'Bought',
     designatedBy: null,
     purchaseRequestId: REQUEST_ID.toUpperCase(),
@@ -502,6 +507,7 @@ describe('the ports the funding API calls', () => {
       {
         batchId: BATCH,
         profileName: 'catalogue',
+        depth: 22,
         label: 'Bought',
         source: 'purchase',
         purchaseRequestId: REQUEST_ID,

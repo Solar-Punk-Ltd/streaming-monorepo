@@ -419,17 +419,17 @@ API are refused the same way.
 it, and `catalogueRequest.ts` checks it against `catalogueStampRecordSchema`
 before it leaves:
 
-| Field                                           | Where the manager reads it                                                                                                                                                                                                                                                                                |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `managerId`                                     | the manager's own id                                                                                                                                                                                                                                                                                      |
-| `nodeName`                                      | the designated deployment's name                                                                                                                                                                                                                                                                          |
-| `beeApiUrl`                                     | the node's Bee API as the web2 admin dials it, from another process or container: the address a pool string carries (`publishedBeeApiUrl`, `beePublisherUrlFor`), the bridge address in a container and `host.docker.internal` natively for a node on this host, and a declared remote host's own address |
-| `batchId`, `designatedAt`                       | the designation row                                                                                                                                                                                                                                                                                       |
-| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it. A node that does not answer is `unknown`                                                                                                                                                                |
-| `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                                                                                                                                                                               |
-| `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                                                                                                                                                                                         |
-| `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it. Null otherwise                                                                                                                                                                                   |
-| `archiveBatches`                                | every row of `archive_batches`, in the order they were designated: the batch, its label, the same readings of it, when it was designated, and `writable`, true only for a usable, unexpired batch on the designated catalogue node ([Archive batches](#archive-batches))                                  |
+| Field                                           | Where the manager reads it                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `managerId`                                     | the manager's own id                                                                                                                                                                                                                                                                                                                                      |
+| `nodeName`                                      | the designated deployment's name                                                                                                                                                                                                                                                                                                                          |
+| `beeApiUrl`                                     | the node's Bee API as the web2 admin dials it, from another process or container: the address a pool string carries (`publishedBeeApiUrl`, `beePublisherUrlFor`), the bridge address in a container and `host.docker.internal` natively for a node on this host, and a declared remote host's own address                                                 |
+| `batchId`, `designatedAt`                       | the designation row                                                                                                                                                                                                                                                                                                                                       |
+| `state`, `ttlSeconds`, `fillRatio`, `immutable` | `StampService.batchReadingFor`, the node's `GET /stamps/{id}` read as `stampHealthFrom` reads it. A node that does not answer is `unknown`                                                                                                                                                                                                                |
+| `depth`                                         | the same reading, or the last one the node gave, or the depth at designation while the node does not answer                                                                                                                                                                                                                                               |
+| `observedAt`                                    | the moment the designation row was read, before the node is asked                                                                                                                                                                                                                                                                                         |
+| `previous`                                      | while a move is pending, the batch moved from: its node's name and Bee API, and the same readings of it. Null otherwise                                                                                                                                                                                                                                   |
+| `archiveBatches`                                | every row of `archive_batches`, up to the first 200, in the order they were designated: the batch, its label, the same readings of it with the depth the row keeps while its node does not answer, when it was designated, and `writable`, true only for a usable, unexpired batch on the designated catalogue node ([Archive batches](#archive-batches)) |
 
 `previous` is there because the admin keeps writing with the batch moved from
 until its own move runs. Without it the admin would hold readings of that batch
@@ -543,8 +543,8 @@ the revision and pushes the catalogue stamp record. A batch that is an archive
 batch already changes nothing.
 
 `archive_batches` holds one row per batch: the batch id (64 hex digits, lower
-case, no `0x`), the deployment whose node holds it, its label, whether it was
-bought or adopted, the purchase's request id, and when and by whom it was
+case, no `0x`), the deployment whose node holds it, its depth, its label, whether
+it was bought or adopted, the purchase's request id, and when and by whom it was
 designated. `archive_batches_revision` is the one row an adopt and a removal
 check and raise, so a save made against a list another operator changed is
 refused.
@@ -580,10 +580,12 @@ state.
   batches with it. The rows stay, and are pushed again with the next
   designation.
 - Each archive batch is read on its own deployment's node, on the catalogue
-  batch's schedule. One whose node does not answer is carried as `unknown`, with
-  the depth its node last reported. One whose depth no node has reported since
-  the manager started is left out of the record until its node answers, with a
-  line in the log.
+  batch's schedule. The record carries every archive batch, up to the first 200
+  in the order they were designated, with a line in the log when there are more.
+  The row keeps the batch's depth: the one a purchase bought or an adopt read,
+  then each reading's, so a dilution reaches it. A batch whose node does not
+  answer, or whose deployment is gone, is carried as `unknown`, not `writable`,
+  with that depth.
 
 Every adopt, removal and purchase pushes the catalogue stamp record, and the
 manager's reading schedule of the catalogue batch reads the archive batches with

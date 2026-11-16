@@ -504,6 +504,7 @@ export class FundingStampPurchaseService {
       await this.deps.designator.designateArchiveBatch({
         batchId: row.batchId.slice(2),
         profileName,
+        depth: row.depth,
         label: row.label,
         designatedBy: null,
         purchaseRequestId: row.requestId,

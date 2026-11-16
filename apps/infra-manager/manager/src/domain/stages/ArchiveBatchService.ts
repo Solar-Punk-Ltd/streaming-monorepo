@@ -1,6 +1,7 @@
 import {
   ARCHIVE_ALREADY_REFUSAL,
   ARCHIVE_NO_CATALOGUE_NODE_REFUSAL,
+  ARCHIVE_NO_DEPTH_REFUSAL,
   ARCHIVE_NOT_HELD_REFUSAL,
   ARCHIVE_UNREACHABLE_REFUSAL,
   type ArchiveBatchAdopt,
@@ -154,9 +155,17 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     }
     const problem = archiveBatchProblem(stamp, context);
     if (problem) throw new ArchiveBatchRefusedError(problem);
+    if (!isArchiveDepth(stamp.depth)) throw new ArchiveBatchRefusedError(ARCHIVE_NO_DEPTH_REFUSAL);
 
     const written = await this.designate(
-      { batchId, profileName: row.profileName, label, designatedBy: username, purchaseRequestId: null },
+      {
+        batchId,
+        profileName: row.profileName,
+        depth: stamp.depth,
+        label,
+        designatedBy: username,
+        purchaseRequestId: null,
+      },
       adopt.expectedRevision,
     );
     if (written.outcome === 'changed') throw new ManagerSettingsChangedError();
@@ -218,6 +227,7 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
       {
         batchId,
         profileName: batch.profileName,
+        depth: batch.depth,
         label,
         source: purchaseRequestId === null ? 'adopted' : 'purchase',
         purchaseRequestId,
@@ -288,6 +298,11 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     }
     return { candidates, candidatesError: null };
   }
+}
+
+/** A depth an archive batch can have, as `archive_batches.batch_depth` keeps one: 17 to 64. */
+export function isArchiveDepth(depth: unknown): depth is number {
+  return typeof depth === 'number' && Number.isInteger(depth) && depth >= 17 && depth <= 64;
 }
 
 /** A batch id in the form the table keeps: 64 hex digits, lower case, no `0x`. Refuses any other spelling. */

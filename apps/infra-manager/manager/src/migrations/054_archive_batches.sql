@@ -15,6 +15,12 @@
 -- the node that bought it, so a batch whose deployment is the catalogue node no
 -- longer is still listed and topped up, and nothing is copied onto it.
 --
+-- batch_depth is the batch's depth as its node last reported it: the depth a
+-- purchase bought, or the one the node reported at an adopt, and then each
+-- reading's, so a dilution reaches it. The catalogue stamp record carries it
+-- when the node does not answer, so every archive batch is in the record
+-- whether its node answers or not.
+--
 -- label is the name its buyer or adopter gave it, 1 to 64 characters, or null.
 -- source is 'purchase' or 'adopted'. purchase_request_id is the funding API
 -- request that bought it, set for a purchase and only then, and unique, so one
@@ -41,6 +47,7 @@
 CREATE TABLE archive_batches (
   batch_id             TEXT PRIMARY KEY CHECK (batch_id ~ '^[0-9a-f]{64}$'),
   profile_name         TEXT NOT NULL CHECK (profile_name <> ''),
+  batch_depth          INTEGER NOT NULL CHECK (batch_depth BETWEEN 17 AND 64),
   label                TEXT CHECK (label IS NULL OR (label <> '' AND char_length(label) <= 64)),
   source               TEXT NOT NULL CHECK (source IN ('purchase', 'adopted')),
   purchase_request_id  UUID UNIQUE,

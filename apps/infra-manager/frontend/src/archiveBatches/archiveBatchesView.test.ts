@@ -41,6 +41,7 @@ function row(over: Partial<ArchiveBatchRow> = {}): ArchiveBatchRow {
   return {
     batchId: BATCH,
     profileName: 'catalogue',
+    depth: 22,
     label: 'Spring archive',
     source: 'adopted',
     purchaseRequestId: null,
