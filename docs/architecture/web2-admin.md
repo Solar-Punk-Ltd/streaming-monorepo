@@ -145,7 +145,9 @@ Per quality, one row of `stream_renditions` or the stream itself for a single-qu
    chunks. A parity chunk is copied and never opened. Which references are parity follows from the
    erasure level in the chunk's span and Bee's parity tables (`pkg/file/redundancy/level.go`).
    Segments are level 1 and playlists level 0, and the level is read from each chunk.
-5. **The master playlist slot**, at the stream's own topic and `manifest_index`, as it is.
+
+Once per job, with its first quality and under that quality's tag, **the master playlist slot**, at
+the stream's own topic and `manifest_index`, as it is.
 
 Every post must answer the address the job expected, and any other answer stops the quality.
 
@@ -268,8 +270,10 @@ Chunks already copied stay on Swarm whatever the user chooses, and the quality s
   still waits is counted in `seen`, and the first post syncs. After a restart the job takes the
   tag's `split` as the posts it made, since Bee counted every post it answered.
 - **Complete.** A quality is complete when no data or tree chunk failed, the tag's `split` equals
-  the posts the job made under it, and its `synced` and `seen` together equal its `split`. A
-  complete row in `stream_archives` is what "archived" means.
+  the posts the job made under it, and its `synced` and `seen` together equal its `split`. The
+  posts the job made are the larger of the count it saved and the tag's `split`, which a restart
+  reads, and a `split` below the saved count means the node lost count, so the quality restarts
+  under a new tag. A complete row in `stream_archives` is what "archived" means.
 - **A tag the node no longer knows.** The quality takes a new tag and is posted again from its
   first segment, which costs pushes and no room.
 - **Room.** Room on a stamp is its capacity less the sum of the node's `GET /stamps/{id}/buckets`.
