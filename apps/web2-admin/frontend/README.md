@@ -404,7 +404,8 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   its icon, a button a keyboard reaches. It turns orange and says "Paused: needs a decision" when a
   pause asks for one. A finished export turns green and says it is ready to save, with Save file
   and a close button, and each user closes it for themselves. On a screen narrower than a tablet it
-  is its icon alone, with an orange dot when it needs a decision and a green one when it is ready.
+  is its icon, with an orange dot when it needs a decision and a green one when it is ready; a
+  finished export keeps its close button beside the icon, and Save file is in the panel.
 - **Coming to front.** When an export pauses for a decision, the panel opens by itself for the user
   who started it, if they are signed in, once per pause. Everyone else sees its indicator say so.
 - **Saving.** Save file is a plain link to the file, which the browser saves under the name the API
@@ -451,8 +452,8 @@ and every signed-in user sees it
   bar while it moves. It turns orange with "Paused: needs a decision" when a pause asks for one,
   and with "Confirm the new archive stamp" while a new stamp waits for its confirm. A finished
   archive turns green and stays until each user closes it for themselves. On a screen
-  narrower than a tablet each is its icon alone, with an orange dot when it needs a decision and a
-  green one when it is done.
+  narrower than a tablet each is its icon, with an orange dot when it needs a decision and a
+  green one when it is done, and a finished job keeps its close button beside the icon.
 - **Coming to front.** When the archive pauses for a decision, or waits for a new stamp to be
   confirmed, the panel opens by itself for the user who started it, once each time, and with a new
   stamp to confirm the buy dialog opens with it. Everyone else sees its indicator say so.
