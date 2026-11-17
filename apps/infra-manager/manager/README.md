@@ -641,6 +641,9 @@ checks and broadcasts. The transaction is decoded and held to the request, and e
 exactly `transfer(to, amount)`. A gas limit from 21000 to three times the suggestion, a fee cap
 within three times the suggested one, and a tip no higher than the fee cap. An amount of at most
 2^256 - 1. `to` must be the wallet of `nodeId` in the inventory read now, or 404 `unknown_node`.
+That is a stage's node or the designated catalogue node. A former catalogue node, which the
+inventory lists only as the holder of an archive batch, is refused as well: its wallet is funded
+outside the web2 admin.
 
 The row is written to `funding_transfers` as `unknown` before the broadcast. A broadcast the chain
 takes is `submitted`, one it refuses `failed` with the kind of refusal in a sentence, and one whose
