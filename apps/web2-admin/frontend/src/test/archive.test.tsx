@@ -19,6 +19,7 @@ import { ArchivePanel, CANCEL_ARCHIVE_PROMPT } from '../components/archive/Archi
 import { ARCHIVE_POLL_IDLE_MS, decisionKey, useArchive } from '../components/archive/ArchiveProvider';
 import { archiveActionLabel, estimateLine, estimateOf, formatXbzzRange } from '../components/archive/archiveJobText';
 import { ExportPanel } from '../components/export/ExportPanel';
+import { STREAM_PAGE_LINK_LABEL } from '../components/export/exportText';
 import { JobProviders, JobWidgets } from '../components/Jobs';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
@@ -816,6 +817,33 @@ describe('archiving a quality from a finished export', () => {
     const panel = await screen.findByRole('dialog', { name: 'Archive “Opening keynote”' });
     expect(await within(panel).findByRole('checkbox', { name: /720p/ })).toBeChecked();
     expect(within(panel).getByRole('checkbox', { name: /1080p/ })).not.toBeChecked();
+  });
+});
+
+describe("the job dialog's title", () => {
+  it('links to the stream’s page, which a plain click opens and closes the dialog, and a modifier click leaves open', async () => {
+    mockFetch(jobRoutes(batchPause(), makeOptions()));
+    renderWithProviders(
+      <JobProviders>
+        <Routes>
+          <Route path="/" element={<p>The stream list</p>} />
+          <Route path="/streams/:id" element={<p>The stream page</p>} />
+        </Routes>
+        <ArchivePanel />
+      </JobProviders>,
+    );
+
+    // The dialog is named by its title alone, without the link beside it.
+    const panel = await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' });
+    const link = within(panel).getByRole('link', { name: STREAM_PAGE_LINK_LABEL });
+    expect(link).toHaveAttribute('href', `/streams/${ID}`);
+
+    fireEvent.click(link, { ctrlKey: true });
+    expect(screen.getByRole('dialog', { name: 'Archive of “Opening keynote”' })).toBeInTheDocument();
+
+    fireEvent.click(link);
+    expect(await screen.findByText('The stream page')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });
 
