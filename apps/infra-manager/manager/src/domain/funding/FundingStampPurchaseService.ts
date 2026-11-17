@@ -20,6 +20,7 @@ import {
 import type { Profile } from '../../types/index.js';
 import type { BeeStamp, BuyStampInput } from '../BeeClient.js';
 import { BeeHttpError } from '../errors/BeeHttpError.js';
+import { ArchiveBatchRefusedError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
 import { type CatalogueDesignationRow, isDesignated, isMoving } from '../stages/CatalogueDesignationRepository.js';
@@ -182,6 +183,8 @@ export class FundingStampPurchaseService {
   private readonly now: () => number;
   /** When each request id's node was last read for its batch, for {@link FUNDING_STATUS_READ_MS}. */
   private readonly lastSettleRead = new Map<string, number>();
+  /** The request ids whose batch the archive batches refused, logged once each while the manager runs. */
+  private readonly refusalLogged = new Set<string>();
 
   constructor(private readonly deps: FundingStampPurchaseDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -496,7 +499,8 @@ export class FundingStampPurchaseService {
    * Makes the batch a confirmed purchase bought an archive batch through `designateArchiveBatch`, which writes its row,
    * raises the revision and pushes the catalogue stamp record, and marks the purchase `recorded_at` once it did. A
    * purchase marked already is never designated again, so a batch taken off the list stays off it. A designation that
-   * fails leaves the purchase `confirmed` and unmarked, and the next status call designates it again. Never throws.
+   * fails leaves the purchase `confirmed` and unmarked, and the next status call designates it again. One refused
+   * because the batch has become the catalogue's own is left the same way, and logged once. Never throws.
    */
   private async designate(row: FundingStampPurchaseRow, profileName: string): Promise<void> {
     if (row.batchId === null || row.recordedAt !== null) return;
@@ -510,6 +514,14 @@ export class FundingStampPurchaseService {
         purchaseRequestId: row.requestId,
       });
     } catch (err) {
+      if (err instanceof ArchiveBatchRefusedError) {
+        if (this.refusalLogged.has(row.requestId)) return;
+        this.refusalLogged.add(row.requestId);
+        logger.warn(
+          `[Funding] stamp purchase ${row.requestId} bought ${row.batchId}, which is not made an archive batch: ${err.message} The purchase stays confirmed and unrecorded.`,
+        );
+        return;
+      }
       logger.warn(
         `[Funding] stamp purchase ${row.requestId} bought ${row.batchId}, which could not be made an archive batch yet: ${getErrorMessage(err)}`,
       );

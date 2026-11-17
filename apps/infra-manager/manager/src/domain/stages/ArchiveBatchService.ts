@@ -22,6 +22,7 @@ import {
   stampHealthFrom,
 } from '@streaming-infra-manager/common';
 
+import { AsyncLock } from '../AsyncLock.js';
 import type { BeeStamp } from '../BeeClient.js';
 import {
   ArchiveBatchNotFoundError,
@@ -77,6 +78,12 @@ export interface ArchiveBatchServiceDeps {
   status(): ArchiveBatchStatus;
   /** Tells the catalogue publisher the archive batches changed, so it pushes now. */
   changed(): void;
+  /**
+   * The lock the catalogue designation takes too, under which the catalogue's batches are read again and the row
+   * written, so a batch is never both the catalogue's and an archive batch. Without it the service holds one of its
+   * own.
+   */
+  lock?: AsyncLock;
   now?: () => number;
 }
 
@@ -95,9 +102,11 @@ export interface ArchiveBatchServiceDeps {
  */
 export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesignator {
   private readonly now: () => number;
+  private readonly lock: AsyncLock;
 
   constructor(private readonly deps: ArchiveBatchServiceDeps) {
     this.now = deps.now ?? (() => Date.now());
+    this.lock = deps.lock ?? new AsyncLock();
   }
 
   list(): Promise<ArchiveBatchDesignation[]> {
@@ -157,17 +166,15 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     if (problem) throw new ArchiveBatchRefusedError(problem);
     if (!isArchiveDepth(stamp.depth)) throw new ArchiveBatchRefusedError(ARCHIVE_NO_DEPTH_REFUSAL);
 
-    const written = await this.designate(
-      {
-        batchId,
-        profileName: row.profileName,
-        depth: stamp.depth,
-        label,
-        designatedBy: username,
-        purchaseRequestId: null,
-      },
-      adopt.expectedRevision,
-    );
+    const depth = stamp.depth;
+    const written = await this.lock.run(async () => {
+      // The catalogue may have been designated or moved onto this batch while the node was asked.
+      await this.refuseCatalogueBatch(batchId);
+      return this.designate(
+        { batchId, profileName: row.profileName, depth, label, designatedBy: username, purchaseRequestId: null },
+        adopt.expectedRevision,
+      );
+    });
     if (written.outcome === 'changed') throw new ManagerSettingsChangedError();
     if (written.outcome === 'conflict') throw new ArchiveBatchRefusedError(ARCHIVE_ALREADY_REFUSAL);
     return this.read();
@@ -202,11 +209,16 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
 
   /**
    * Makes a batch an archive batch: what the funding API calls once a purchase is confirmed. A batch that is an archive
-   * batch already, or a purchase recorded already, changes nothing and resolves, without a push. Rejects only when the
-   * row could not be written.
+   * batch already, or a purchase recorded already, changes nothing and resolves, without a push. Rejects with
+   * {@link ArchiveBatchRefusedError} for the catalogue's own batch, the pinned one or the one a pending move left, and
+   * otherwise only when the row could not be written.
    */
   async designateArchiveBatch(batch: ArchiveBatchToDesignate): Promise<void> {
-    await this.designate(batch, null);
+    const batchId = normalBatchId(batch.batchId);
+    await this.lock.run(async () => {
+      await this.refuseCatalogueBatch(batchId);
+      await this.designate(batch, null);
+    });
   }
 
   /** Whether a batch is an archive batch: the catalogue designation refuses one. */
@@ -246,6 +258,13 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     );
     this.deps.changed();
     return written;
+  }
+
+  /** Refuses the catalogue's own batch as it stands now, read under the lock: a batch is never both. */
+  private async refuseCatalogueBatch(batchId: string): Promise<void> {
+    if (catalogueBatchIdsOf(await this.deps.designation.read()).includes(batchId)) {
+      throw new ArchiveBatchRefusedError(archiveIsCatalogueBatchRefusal(batchId));
+    }
   }
 
   /**

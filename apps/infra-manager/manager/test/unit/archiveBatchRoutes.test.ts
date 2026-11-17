@@ -41,9 +41,10 @@ import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
 import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
 import { createArchiveBatchesRouter } from '../../src/api/routes/archiveBatches.js';
+import { AsyncLock } from '../../src/domain/AsyncLock.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
-import { ProfileNotFoundError, StampNotFoundError } from '../../src/domain/errors/index.js';
+import { ArchiveBatchRefusedError, ProfileNotFoundError, StampNotFoundError } from '../../src/domain/errors/index.js';
 import { ArchiveBatchService, archiveBatchWritable } from '../../src/domain/stages/ArchiveBatchService.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
 import { InMemoryArchiveBatches } from '../support/InMemoryArchiveBatches.js';
@@ -126,6 +127,8 @@ interface Setup {
   /** What a node answers for one batch, or throws. */
   held?: (name: string, batchId: string) => Promise<BeeStamp>;
   readings?: CatalogueReading[];
+  /** The lock the service takes, shared with a catalogue designation in a test that races the two. */
+  lock?: AsyncLock;
 }
 
 async function testApi(t: TestContext, setup: Setup = {}) {
@@ -175,6 +178,7 @@ async function testApi(t: TestContext, setup: Setup = {}) {
       lastPush: { kind: 'store', outcome: 'stored', at: new Date(NOW).toISOString() },
     }),
     changed: () => void (changes += 1),
+    lock: setup.lock,
     now: () => NOW,
   });
 
@@ -211,6 +215,7 @@ async function testApi(t: TestContext, setup: Setup = {}) {
 
   return {
     store,
+    designation,
     asked,
     changes: () => changes,
     service,
@@ -605,5 +610,109 @@ describe('whether an archive batch is writable', () => {
     assert.equal(archiveBatchWritable('catalogue', 'catalogue', null), false);
     assert.equal(archiveBatchWritable('catalogue-old', 'catalogue', 'active'), false);
     assert.equal(archiveBatchWritable('catalogue', null, 'active'), false);
+  });
+});
+
+/** A promise and the function that resolves it. */
+function gate(): { opened: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => (open = resolve));
+  return { opened, open };
+}
+
+/** Lets every callback already queued run. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+}
+
+describe("a batch is never both the catalogue's and an archive batch", () => {
+  /**
+   * An adopt of BATCH and a catalogue move onto BATCH, started together, each past its own checks and waiting on its
+   * node; the gates say which node answers first.
+   */
+  async function race(t: TestContext, first: 'adopt' | 'move') {
+    const lock = new AsyncLock();
+    const adoptNode = gate();
+    const moveNode = gate();
+    const api = await testApi(t, {
+      lock,
+      held: async (_name, batchId) => {
+        await adoptNode.opened;
+        return stampOf({ batchID: batchId });
+      },
+    });
+    const catalogue = new CatalogueDesignationService({
+      store: api.designation,
+      profiles: {
+        findByName: async (name) => makeProfile({ name, kind: 'custom', components: ['bee-uploader'] }),
+        list: async () => [],
+      },
+      groupKindOf: async () => null,
+      heldBatch: async (_name, batchId) => {
+        await moveNode.opened;
+        return stampOf({ batchID: batchId });
+      },
+      status: () => ({ reading: null, previousReading: null, lastPush: null }),
+      changed: () => undefined,
+      isArchiveBatch: (batchId) => api.service.isArchiveBatch(batchId),
+      lock,
+    });
+    const adopted = api.service.adopt(BATCH, { expectedRevision: 0, label: null }, 'operator').then(
+      () => 'adopted',
+      (err: Error) => err.message,
+    );
+    const moved = catalogue
+      .designate({ expectedRevision: 1, profileName: 'catalogue', batchId: BATCH, move: true }, 'operator')
+      .then(
+        () => 'moved',
+        (err: Error & { reasons?: string[] }) => err.reasons?.[0] ?? err.message,
+      );
+    await settle();
+    const [one, two] = first === 'adopt' ? [adoptNode, moveNode] : [moveNode, adoptNode];
+    one.open();
+    await settle();
+    two.open();
+    return { api, outcomes: { adopt: await adopted, move: await moved } };
+  }
+
+  it('refuses a catalogue move onto a batch an adopt made an archive batch while the node was asked', async (t) => {
+    const { api, outcomes } = await race(t, 'adopt');
+    assert.deepEqual(outcomes, { adopt: 'adopted', move: catalogueIsArchiveBatchRefusal(BATCH) });
+    assert.deepEqual(
+      api.store.rows.map((row) => row.batchId),
+      [BATCH],
+    );
+    assert.equal(api.designation.row.batchId, CATALOGUE_BATCH);
+  });
+
+  it('refuses an adopt of a batch a catalogue move pinned while the node was asked', async (t) => {
+    const { api, outcomes } = await race(t, 'move');
+    assert.deepEqual(outcomes, { adopt: archiveIsCatalogueBatchRefusal(BATCH), move: 'moved' });
+    assert.deepEqual(api.store.rows, []);
+    assert.equal(api.designation.row.batchId, BATCH);
+  });
+
+  it("refuses a bought batch that is the catalogue's pinned batch or the one a move left, and writes nothing", async (t) => {
+    const api = await testApi(t, { moving: true });
+    for (const batchId of [CATALOGUE_BATCH, MOVED_FROM_BATCH]) {
+      await assert.rejects(
+        api.service.designateArchiveBatch({
+          batchId,
+          profileName: 'catalogue',
+          depth: 22,
+          label: null,
+          designatedBy: null,
+          purchaseRequestId: REQUEST_ID,
+        }),
+        (err: unknown) => {
+          assert.ok(err instanceof ArchiveBatchRefusedError);
+          assert.equal(err.message, archiveIsCatalogueBatchRefusal(batchId));
+          return true;
+        },
+      );
+    }
+    assert.deepEqual(api.store.rows, []);
+    assert.equal(api.store.currentRevision, 0);
+    assert.equal(api.changes(), 0);
   });
 });
