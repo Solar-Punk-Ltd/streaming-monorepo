@@ -21,20 +21,24 @@ import {
   DialogTitle,
   FormControlLabel,
   FormGroup,
+  IconButton,
   LinearProgress,
   Radio,
   RadioGroup,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { useEffect, useRef, useState } from 'react';
+import ArrowOutwardIcon from '@mui/icons-material/ArrowOutward';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router';
 
 import { fetchArchiveOptions } from '../../api';
 import { errorMessage } from '../../errors';
 import { formatTimeLeft, shortHex } from '../../format';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { useSnackbar } from '../Snackbar';
-import { formatUtc } from '../export/exportText';
+import { formatUtc, isPlainClick, STREAM_PAGE_LINK_LABEL } from '../export/exportText';
 import { dayCount } from '../funding/stamps';
 import {
   archiveActionLabel,
@@ -573,8 +577,24 @@ export function ArchivePanel() {
           </>
         ) : (
           <>
-            <DialogTitle id="archive-panel-title">
-              {current ? `Archive of “${current.streamTitle}”` : 'Archive'}
+            {/* The dialog is named by the title's text alone, so the link beside it keeps an id of its own. */}
+            <DialogTitle id="archive-panel-title-row" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <span id="archive-panel-title">{current ? `Archive of “${current.streamTitle}”` : 'Archive'}</span>
+              {current ? (
+                <Tooltip title={STREAM_PAGE_LINK_LABEL}>
+                  <IconButton
+                    component={RouterLink}
+                    to={`/streams/${current.streamId}`}
+                    size="small"
+                    aria-label={STREAM_PAGE_LINK_LABEL}
+                    onClick={(event: MouseEvent) => {
+                      if (isPlainClick(event)) closePanel();
+                    }}
+                  >
+                    <ArrowOutwardIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
             </DialogTitle>
             <DialogContent>
               {current ? (

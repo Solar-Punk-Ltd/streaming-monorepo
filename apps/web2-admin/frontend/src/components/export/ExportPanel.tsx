@@ -5,6 +5,7 @@ import {
   type ExportOptionsResponse,
   type ExportSummary,
 } from '@streaming-monorepo/web2-admin-common';
+import ArrowOutwardIcon from '@mui/icons-material/ArrowOutward';
 import DownloadIcon from '@mui/icons-material/Download';
 import {
   Alert,
@@ -16,13 +17,16 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
+  IconButton,
   LinearProgress,
   Radio,
   RadioGroup,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
-import { useEffect, useRef, useState } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { Link as RouterLink } from 'react-router';
 
 import { fetchExportOptions } from '../../api';
 import { errorMessage } from '../../errors';
@@ -34,9 +38,11 @@ import {
   formatBytes,
   formatLength,
   formatUtc,
+  isPlainClick,
   needsDecision,
   percentRead,
   statusLine,
+  STREAM_PAGE_LINK_LABEL,
 } from './exportText';
 import { useExport } from './ExportProvider';
 
@@ -286,7 +292,25 @@ export function ExportPanel() {
           </>
         ) : (
           <>
-            <DialogTitle id="export-panel-title">{current ? `“${current.streamTitle}”` : 'Download'}</DialogTitle>
+            {/* The dialog is named by the title's text alone, so the link beside it keeps an id of its own. */}
+            <DialogTitle id="export-panel-title-row" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <span id="export-panel-title">{current ? `“${current.streamTitle}”` : 'Download'}</span>
+              {current ? (
+                <Tooltip title={STREAM_PAGE_LINK_LABEL}>
+                  <IconButton
+                    component={RouterLink}
+                    to={`/streams/${current.streamId}`}
+                    size="small"
+                    aria-label={STREAM_PAGE_LINK_LABEL}
+                    onClick={(event: MouseEvent) => {
+                      if (isPlainClick(event)) closePanel();
+                    }}
+                  >
+                    <ArrowOutwardIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : null}
+            </DialogTitle>
             <DialogContent>
               {current ? (
                 <Stack spacing={2}>

@@ -393,6 +393,7 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   included, or "0 s from cache" under half a second, when the node had every segment already, with
   Save file and Clear, and Archive this quality, which opens the archive panel on that stream with
   the exported quality ticked: the catalogue node has just read the recording whole.
+  The panel's title links to the stream's page with ↗, which closes the panel.
 - **The widget.** From the moment an export starts, it floats in the top right of every page for
   every signed-in user, above or under the archive's, the panel open or not, with its stream,
   quality and progress. Clicking it
@@ -434,6 +435,7 @@ and every signed-in user sees it
   and Buy a new archive stamp, when the stamp lacks room; and Cancel archive, which asks first,
   since what was copied stays on Swarm and its qualities show as "Archive incomplete". Once it is
   done, each quality's result, how long it took and what the chequebook went down by.
+  The panel's title links to the stream's page with ↗, which closes the panel.
 - **A new stamp.** Once the recording is measured, the panel shows the stamp it proposes, its depth,
   days and cost, and what the catalogue node's wallet lacks, with Choose the stamp, which opens the
   buy dialog. The dialog's confirm goes to the archive, which buys the stamp, waits until it is
