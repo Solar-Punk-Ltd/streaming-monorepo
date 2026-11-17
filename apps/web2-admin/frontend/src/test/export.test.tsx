@@ -11,7 +11,7 @@ import {
 
 import { CLEAR_EXPORT_PROMPT, ExportPanel } from '../components/export/ExportPanel';
 import { EXPORT_POLL_IDLE_MS, ExportProvider } from '../components/export/ExportProvider';
-import { formatTook, formatUtc, statusLine } from '../components/export/exportText';
+import { formatTook, formatUtc, STREAM_PAGE_LINK_LABEL, statusLine } from '../components/export/exportText';
 import { ExportWidget } from '../components/export/ExportWidget';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
@@ -543,6 +543,48 @@ describe('an export that is no longer on the server', () => {
     const widget = await screen.findByRole('status', { name: 'export' });
     fireEvent.click(within(widget).getByRole('button', { name: 'close the export' }));
     await expectGoneSaid();
+  });
+});
+
+describe("the export dialog's title", () => {
+  it('links to the stream’s page, which a plain click opens and closes the dialog, and a modifier click leaves open', async () => {
+    mockFetch([
+      {
+        path: '/api/export',
+        respond: () =>
+          jsonOk({
+            export: makeExport({
+              state: 'paused',
+              pauseReason: 'unreadable',
+              pauseMessage: '3 of 100 segments could not be read from Swarm.',
+              pausedAt: '2026-11-10T10:05:00.000Z',
+              startedByYou: true,
+              actions: ['resume', 'save', 'cancel'],
+            }),
+          }),
+      },
+    ]);
+    renderWithProviders(
+      <ExportProvider>
+        <Routes>
+          <Route path="/" element={<p>The stream list</p>} />
+          <Route path="/streams/:id" element={<p>The stream page</p>} />
+        </Routes>
+        <ExportPanel />
+      </ExportProvider>,
+    );
+
+    // The dialog is named by its title alone, without the link beside it.
+    const panel = await screen.findByRole('dialog', { name: '“Opening keynote”' });
+    const link = within(panel).getByRole('link', { name: STREAM_PAGE_LINK_LABEL });
+    expect(link).toHaveAttribute('href', `/streams/${ID}`);
+
+    fireEvent.click(link, { ctrlKey: true });
+    expect(screen.getByRole('dialog', { name: '“Opening keynote”' })).toBeInTheDocument();
+
+    fireEvent.click(link);
+    expect(await screen.findByText('The stream page')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });
 

@@ -113,3 +113,20 @@ export function actionLabel(action: ExportAction, current: ExportSummary): strin
       return 'Clear';
   }
 }
+
+/** The name of the ↗ link after a job dialog's title, which opens the stream's page. */
+export const STREAM_PAGE_LINK_LABEL = 'Open the stream’s page';
+
+/**
+ * A plain left click, which follows a link in the same tab, so the job dialog closes. A click with a modifier opens the
+ * link in another tab or window, and the dialog stays open.
+ */
+export function isPlainClick(event: {
+  button: number;
+  metaKey: boolean;
+  altKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+}): boolean {
+  return event.button === 0 && !event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey;
+}
