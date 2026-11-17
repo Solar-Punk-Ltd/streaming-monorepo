@@ -14,19 +14,21 @@ import {
   type Stream,
 } from '@streaming-monorepo/web2-admin-common';
 
+import { AppShell } from '../components/AppShell';
 import type { BuyStampDialogProps } from '../components/archive/archiveSeams';
 import { ArchivePanel, CANCEL_ARCHIVE_PROMPT } from '../components/archive/ArchivePanel';
 import { ARCHIVE_POLL_IDLE_MS, decisionKey, useArchive } from '../components/archive/ArchiveProvider';
 import { archiveActionLabel, estimateLine, estimateOf, formatXbzzRange } from '../components/archive/archiveJobText';
 import { ExportPanel } from '../components/export/ExportPanel';
 import { STREAM_PAGE_LINK_LABEL } from '../components/export/exportText';
-import { JobProviders, JobWidgets } from '../components/Jobs';
+import { JobIndicators, JobProviders } from '../components/Jobs';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
   jsonError,
   jsonOk,
   makeIngest,
   makeStream,
+  makeUser,
   mockFetch,
   renderWithProviders,
   type Route as MockRoute,
@@ -53,6 +55,12 @@ vi.mock('../components/archive/BuyStampDialog', async () => {
     ),
   };
 });
+
+// The shell shows its header, and the job indicators in it, to a signed-in user: here one the session check found.
+vi.mock('../auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../auth')>()),
+  useAuth: () => ({ user: makeUser({ username: 'ada' }), logOut: vi.fn() }),
+}));
 
 const ID = '7d3c0e5a-2a8b-4f61-9c1e-3b2a1f0e9d8c';
 const JOB_ID = '1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
@@ -272,12 +280,12 @@ function Opener({ streamId, preselect }: { streamId: string | null; preselect?: 
   );
 }
 
-/** The panels and the widgets as the shell holds them, with a button that opens the archive panel. */
+/** The panels and the job indicators as the shell holds them, with a button that opens the archive panel. */
 function renderPanels(opener: { streamId: string | null; preselect?: string[] } = { streamId: ID }) {
   return renderWithProviders(
     <JobProviders>
       <Opener {...opener} />
-      <JobWidgets />
+      <JobIndicators />
       <ExportPanel />
       <ArchivePanel />
     </JobProviders>,
@@ -295,7 +303,7 @@ function recorded(overrides: Partial<Stream> = {}): Stream {
   });
 }
 
-/** The stream's page as the shell shows it, with the widgets and both panels. */
+/** The stream's page as the shell shows it, with the job indicators and both panels. */
 function renderPage(stream: Stream, extra: MockRoute[]) {
   const fetchMock = mockFetch([
     ...extra,
@@ -314,7 +322,7 @@ function renderPage(stream: Stream, extra: MockRoute[]) {
           element={
             <>
               <StreamDetailsPage />
-              <JobWidgets />
+              <JobIndicators />
               <ExportPanel />
               <ArchivePanel />
             </>
@@ -603,7 +611,7 @@ describe('the archive panel', () => {
     );
   });
 
-  it('leaves the panel closed for everyone else, whose widget says the archive needs a decision', async () => {
+  it('leaves the panel closed for everyone else, whose indicator says the archive needs a decision', async () => {
     mockFetch(jobRoutes(batchPause({ startedByYou: false, startedBy: 'other-operator' })));
     renderPanels({ streamId: null });
 
@@ -732,8 +740,34 @@ describe('the archive panel', () => {
   });
 });
 
-describe('the job widgets', () => {
-  it('show the running export, and a paused archive under it', async () => {
+/** The console as a signed-in user sees it: the shell, with its header, around a page. */
+function renderShell() {
+  return renderWithProviders(
+    <AppShell>
+      <p>The page under the header.</p>
+    </AppShell>,
+  );
+}
+
+/** A screen narrower than `sm`, a phone's, as MUI's media queries read it. */
+function narrowScreen() {
+  vi.spyOn(window, 'matchMedia').mockImplementation(
+    (query: string) =>
+      ({
+        matches: query.includes('max-width'),
+        media: query,
+        onchange: null,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList,
+  );
+}
+
+describe('the job indicators in the header', () => {
+  it('sit in the header, which stays at the top, the running export before a paused archive', async () => {
     mockFetch(
       jobRoutes(
         makeJob({ state: 'paused', pauseReason: 'user', pauseMessage: 'Paused by alice.', holdsPlace: false }),
@@ -741,16 +775,31 @@ describe('the job widgets', () => {
         makeExport(),
       ),
     );
-    renderPanels();
+    renderShell();
 
-    const exported = await screen.findByRole('status', { name: 'export' });
-    const archive = await screen.findByRole('status', { name: 'archive' });
+    const header = screen.getByRole('banner');
+    expect(getComputedStyle(header).position).toBe('sticky');
+    const exported = await within(header).findByRole('status', { name: 'export' });
+    const archive = await within(header).findByRole('status', { name: 'archive' });
+    expect(exported.compareDocumentPosition(archive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(exported).getByText('Opening keynote · 720p')).toBeInTheDocument();
+    expect(within(exported).getByRole('progressbar', { hidden: true })).toHaveAttribute('aria-valuenow', '25');
     expect(within(archive).getByText('Opening keynote · 1080p')).toBeInTheDocument();
     expect(within(archive).getByText('Paused')).toBeInTheDocument();
-    expect(exported.compareDocumentPosition(archive) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A paused archive stands still, so it has no bar.
+    expect(within(archive).queryByRole('progressbar', { hidden: true })).not.toBeInTheDocument();
+    // Nothing floats over the page: no box around an indicator is fixed, as the cards' box was, over the user menu.
+    for (const indicator of [exported, archive]) {
+      for (let box: HTMLElement | null = indicator; box; box = box.parentElement) {
+        expect(getComputedStyle(box).position).not.toBe('fixed');
+      }
+    }
+
+    fireEvent.click(archive);
+    expect(await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' })).toBeInTheDocument();
   });
 
-  it('show a running archive above a kept export file', async () => {
+  it('show a running archive before a kept export file, which offers Save file and close', async () => {
     mockFetch(
       jobRoutes(
         makeJob(),
@@ -767,8 +816,51 @@ describe('the job widgets', () => {
 
     const archive = await screen.findByRole('status', { name: 'archive' });
     const exported = await screen.findByRole('status', { name: 'export' });
-    expect(within(archive).getByText('25% copied')).toBeInTheDocument();
     expect(archive.compareDocumentPosition(exported) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(archive).getByText('25% copied')).toBeInTheDocument();
+    expect(within(archive).getByRole('progressbar', { hidden: true })).toHaveAttribute('aria-valuenow', '25');
+    expect(within(archive).queryByRole('button', { name: 'close the archive' })).not.toBeInTheDocument();
+    expect(within(exported).getByText('Ready to save, 1.0 GB')).toBeInTheDocument();
+    expect(within(exported).queryByRole('progressbar', { hidden: true })).not.toBeInTheDocument();
+    expect(within(exported).getByRole('link', { name: 'Save file' })).toHaveAttribute(
+      'href',
+      `/api/export/${EXPORT_ID}/file`,
+    );
+    expect(within(exported).getByRole('button', { name: 'close the export' })).toBeInTheDocument();
+  });
+
+  it('shrink to their icons on a narrow screen, with a dot when one needs a decision or is done', async () => {
+    narrowScreen();
+    mockFetch(
+      jobRoutes(
+        batchPause({ startedByYou: false, startedBy: 'other-operator' }),
+        makeOptions(),
+        makeExport({
+          state: 'done',
+          fileName: 'opening-keynote-720p.mp4',
+          sizeBytes: 1_000_000_000,
+          actions: ['dismiss', 'clear'],
+        }),
+      ),
+    );
+    renderShell();
+
+    const header = screen.getByRole('banner');
+    const archive = await within(header).findByRole('status', { name: 'archive' });
+    const exported = await within(header).findByRole('status', { name: 'export' });
+    // The icon alone, whose label gives the stream and where the job stands.
+    const open = within(archive).getByRole('button', { name: 'Opening keynote · 1080p: Paused: needs a decision' });
+    expect(
+      within(exported).getByRole('button', { name: 'Opening keynote · 720p: Ready to save, 1.0 GB' }),
+    ).toBeInTheDocument();
+    expect(within(archive).queryByText('Paused: needs a decision')).not.toBeInTheDocument();
+    expect(within(exported).queryByRole('link', { name: 'Save file' })).not.toBeInTheDocument();
+    // An orange dot for the decision, a green one for the file ready to save.
+    expect(archive.querySelector('.MuiBadge-dot.MuiBadge-colorWarning:not(.MuiBadge-invisible)')).not.toBeNull();
+    expect(exported.querySelector('.MuiBadge-dot.MuiBadge-colorSuccess:not(.MuiBadge-invisible)')).not.toBeNull();
+
+    fireEvent.click(open);
+    expect(await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' })).toBeInTheDocument();
   });
 
   it('close a finished archive for the user who asks', async () => {

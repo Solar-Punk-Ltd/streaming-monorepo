@@ -12,7 +12,7 @@ import {
 import { CLEAR_EXPORT_PROMPT, ExportPanel } from '../components/export/ExportPanel';
 import { EXPORT_POLL_IDLE_MS, ExportProvider } from '../components/export/ExportProvider';
 import { formatTook, formatUtc, STREAM_PAGE_LINK_LABEL, statusLine } from '../components/export/exportText';
-import { ExportWidget } from '../components/export/ExportWidget';
+import { JobIndicators } from '../components/Jobs';
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
 import {
   jsonError,
@@ -99,7 +99,7 @@ function pageRoutes(stream: Stream, current: ExportSummary | null, extra: MockRo
   ];
 }
 
-/** The details page as the shell shows it: inside the export's provider, with the widget and the panel. */
+/** The details page as the shell shows it: inside the export's provider, with the job indicators and the panel. */
 function renderPage() {
   return renderWithProviders(
     <ExportProvider>
@@ -109,7 +109,7 @@ function renderPage() {
           element={
             <>
               <StreamDetailsPage />
-              <ExportWidget />
+              <JobIndicators />
               <ExportPanel />
             </>
           }
@@ -233,7 +233,7 @@ describe('exporting a recording', () => {
     expect(within(panel).getByRole('button', { name: 'Cancel export' })).toBeInTheDocument();
   });
 
-  it('leaves the panel closed for everyone else, whose widget says the export needs a decision', async () => {
+  it('leaves the panel closed for everyone else, whose indicator says the export needs a decision', async () => {
     mockFetch(
       pageRoutes(
         recorded(),
@@ -289,11 +289,16 @@ describe('exporting a recording', () => {
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'clear' });
   });
 
-  it('opens the panel from the widget with a button a keyboard reaches, while an export runs', async () => {
+  it('opens the panel from its indicator with a button a keyboard reaches, while an export runs', async () => {
     mockFetch(pageRoutes(recorded(), makeExport()));
     renderPage();
 
     const widget = await screen.findByRole('status', { name: 'export' });
+    expect(within(widget).getByText('Opening keynote · 1080p')).toBeInTheDocument();
+    expect(within(widget).getByText('25% read')).toBeInTheDocument();
+    // A thin bar while it runs, for the eye: the line says the same in words.
+    expect(within(widget).getByRole('progressbar', { hidden: true })).toHaveAttribute('aria-valuenow', '25');
+    expect(within(widget).queryByRole('link', { name: 'Save file' })).not.toBeInTheDocument();
     const open = within(widget).getByRole('button', { name: 'open the export' });
     open.focus();
     expect(open).toHaveFocus();
@@ -323,7 +328,7 @@ describe('exporting a recording', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows the kept file above the OBS details and in the widget, to save, and closes the widget on request', async () => {
+  it('shows the kept file above the OBS details and in its indicator, to save, and closes the indicator on request', async () => {
     const done = makeExport({
       state: 'done',
       fileName: 'opening-keynote-2026-11-05-1080p.mp4',
@@ -354,6 +359,10 @@ describe('exporting a recording', () => {
 
     const widget = screen.getByRole('status', { name: 'export' });
     expect(within(widget).getByText('Ready to save, 2.1 GB')).toBeInTheDocument();
+    expect(within(widget).queryByRole('progressbar', { hidden: true })).not.toBeInTheDocument();
+    const save = within(widget).getByRole('link', { name: 'Save file' });
+    expect(save).toHaveAttribute('href', `/api/export/${EXPORT_ID}/file`);
+    expect(save).toHaveAttribute('download', 'opening-keynote-2026-11-05-1080p.mp4');
     fireEvent.click(within(widget).getByRole('button', { name: 'close the export' }));
     await waitFor(() => expect(screen.queryByRole('status', { name: 'export' })).not.toBeInTheDocument());
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST');
@@ -537,7 +546,7 @@ describe('an export that is no longer on the server', () => {
     await expectGoneSaid();
   });
 
-  it("says so in words when the widget's close acts on it", async () => {
+  it("says so in words when the indicator's close acts on it", async () => {
     renderGone(done());
 
     const widget = await screen.findByRole('status', { name: 'export' });
