@@ -1,5 +1,6 @@
 import {
   ARCHIVE_PURCHASE_SETTLE_MS,
+  ARCHIVE_SLOTS_FULL_REFUSAL,
   type ArchivePurchaseSettleContext,
   archivePurchaseNodeLabel,
   formatTtl,
@@ -9,6 +10,7 @@ import {
 } from '@streaming-infra-manager/common';
 import {
   archiveBatchCostPlur,
+  CATALOGUE_ARCHIVE_BATCHES_MAX,
   type FundingInventory,
   type FundingNode,
   type FundingStampPurchaseAnswer,
@@ -18,6 +20,7 @@ import {
 } from '@streaming-monorepo/contracts';
 
 import type { Profile } from '../../types/index.js';
+import { AsyncLock } from '../AsyncLock.js';
 import type { BeeStamp, BuyStampInput } from '../BeeClient.js';
 import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { ArchiveBatchRefusedError } from '../errors/index.js';
@@ -67,6 +70,17 @@ export interface FundingStampPurchaseDeps {
   catalogue: { read(): Promise<CatalogueDesignationRow> };
   /** What makes a bought batch an archive batch, and pushes the catalogue stamp record. */
   designator: ArchiveBatchDesignator;
+  /**
+   * How many places on the catalogue stamp record's list of archive batches are held, `ArchiveBatchService.slotsTaken`:
+   * a purchase is refused once it reaches the record's maximum. Without it none is refused for it.
+   */
+  archiveSlotsTaken?(): Promise<number>;
+  /**
+   * The lock the archive batches and the catalogue designation take, under which the places are counted again and the
+   * purchase journalled, so two purchases or a purchase and an adopt never both take the last place. Without it the
+   * service holds one of its own.
+   */
+  lock?: AsyncLock;
   now?: () => number;
 }
 
@@ -161,7 +175,10 @@ function answerOf(row: FundingStampPurchaseRow): FundingStampPurchaseAnswer {
  * The funding API's stamp purchases: a new immutable batch on the catalogue node, an archive stamp, which that node
  * buys through its Bee API and pays for from its own wallet.
  *
- * A purchase is checked before anything is written, against the inventory read now: the node is the catalogue node
+ * A purchase is refused first, before the node is read, once the archive batches with life left and the purchases
+ * still being bought or recorded hold every place on the catalogue stamp record's list, `stamp_refused` with
+ * `ARCHIVE_SLOTS_FULL_REFUSAL`; that count is made again under the archive batches' lock as the purchase is journalled.
+ * Then it is checked before anything is written, against the inventory read now: the node is the catalogue node
  * (404 `unknown_node` for one this manager does not run, and 422 `stamp_refused` for any other of its nodes), the cost
  * in xBZZ, `amountPerChunkPlur × 2^depth`, is in its wallet with some xDAI for the gas, and the amount buys the postage
  * contract's floor of life or more at the price read now. Each of those refusals is `stamp_refused` with a sentence. A
@@ -181,6 +198,7 @@ function answerOf(row: FundingStampPurchaseRow): FundingStampPurchaseAnswer {
  */
 export class FundingStampPurchaseService {
   private readonly now: () => number;
+  private readonly lock: AsyncLock;
   /** When each request id's node was last read for its batch, for {@link FUNDING_STATUS_READ_MS}. */
   private readonly lastSettleRead = new Map<string, number>();
   /** The request ids whose batch the archive batches refused, logged once each while the manager runs. */
@@ -188,11 +206,13 @@ export class FundingStampPurchaseService {
 
   constructor(private readonly deps: FundingStampPurchaseDeps) {
     this.now = deps.now ?? (() => Date.now());
+    this.lock = deps.lock ?? new AsyncLock();
   }
 
   async purchase(request: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
     const known = await this.deps.journal.find(request.requestId);
     if (known) return this.repeat(known, request);
+    await this.refuseFull();
 
     const inventory = await this.deps.inventory.inventory();
     const node = this.buyer(inventory, request);
@@ -221,7 +241,11 @@ export class FundingStampPurchaseService {
       updatedAt: at,
       recordedAt: null,
     };
-    const inserted = await this.deps.journal.insert(row);
+    const inserted = await this.lock.run(async () => {
+      // Another purchase or an adopt may have taken the last place while the node was asked.
+      await this.refuseFull();
+      return this.deps.journal.insert(row);
+    });
     if (inserted === 'node_busy') throw busy();
     if (inserted === 'label_taken') throw new FundingApiError('conflict', LABEL_TAKEN);
     if (inserted === 'request_taken') {
@@ -276,6 +300,17 @@ export class FundingStampPurchaseService {
       usable,
       error: current.error,
     };
+  }
+
+  /**
+   * Refuses a purchase once the archive batches not spent and the purchases neither recorded nor failed hold every
+   * place on the catalogue stamp record's list: the record would leave out a batch with life left.
+   */
+  private async refuseFull(): Promise<void> {
+    if (!this.deps.archiveSlotsTaken) return;
+    if ((await this.deps.archiveSlotsTaken()) >= CATALOGUE_ARCHIVE_BATCHES_MAX) {
+      throw refused(ARCHIVE_SLOTS_FULL_REFUSAL);
+    }
   }
 
   /** A request id journalled already: its state for the same body, a conflict for another. */

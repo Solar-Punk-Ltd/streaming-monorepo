@@ -179,6 +179,30 @@ describe(
       assert.deepEqual((await journal.find(REQUEST))?.recordedAt, RECORDED_AT);
     });
 
+    it('lists the purchases neither recorded nor failed, oldest first', async () => {
+      await journal.insert(purchase({ requestId: THIRD_REQUEST, nodeId: OTHER_NODE }));
+      await journal.update(THIRD_REQUEST, 'unknown', settledAs('failed'));
+      await journal.insert(purchase({ createdAt: ANSWERED_AT }));
+      await journal.update(REQUEST, 'unknown', settledAs('confirmed'));
+      assert.deepEqual(
+        (await journal.unrecorded()).map((row) => [row.requestId, row.state]),
+        [[REQUEST, 'confirmed']],
+      );
+      await journal.insert(purchase({ requestId: OTHER_REQUEST, createdAt: JOURNALLED_AT }));
+      assert.deepEqual(
+        (await journal.unrecorded()).map((row) => [row.requestId, row.state]),
+        [
+          [OTHER_REQUEST, 'unknown'],
+          [REQUEST, 'confirmed'],
+        ],
+      );
+      await journal.markRecorded(REQUEST, RECORDED_AT);
+      assert.deepEqual(
+        (await journal.unrecorded()).map((row) => row.requestId),
+        [OTHER_REQUEST],
+      );
+    });
+
     it('lets exactly one of two purchases racing for one node in', async () => {
       const outcomes = await Promise.all([
         journal.insert(purchase()),

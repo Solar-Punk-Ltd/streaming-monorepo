@@ -69,6 +69,11 @@ export interface FundingStampPurchaseJournal {
   update(requestId: string, from: FundingTransferState, patch: FundingStampPurchasePatch): Promise<boolean>;
   /** Marks a confirmed purchase's batch as made an archive batch, once, and answers whether it did. */
   markRecorded(requestId: string, at: Date): Promise<boolean>;
+  /**
+   * The purchases neither recorded nor failed: still open, or confirmed with a batch not made an archive batch yet.
+   * Each holds a place on the catalogue stamp record's list of archive batches.
+   */
+  unrecorded(): Promise<FundingStampPurchaseRow[]>;
 }
 
 interface Row {
@@ -213,5 +218,14 @@ export class PostgresFundingStampPurchaseJournal implements FundingStampPurchase
       [requestId, at],
     );
     return result.rowCount === 1;
+  }
+
+  async unrecorded(): Promise<FundingStampPurchaseRow[]> {
+    const result = await this.pool.query<Row>(
+      `SELECT ${COLUMNS} FROM funding_stamp_purchases
+        WHERE state <> 'failed' AND recorded_at IS NULL
+        ORDER BY created_at, request_id`,
+    );
+    return result.rows.map(rowOf);
   }
 }

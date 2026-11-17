@@ -271,11 +271,13 @@ export type CatalogueArchiveBatch = z.infer<typeof catalogueArchiveBatchSchema>;
  * catalogue is moving from, null or absent when no move is pending or the manager could not read it; a manager older
  * than the field sends none.
  *
- * `archiveBatches` is every archive batch the manager keeps, in the order they were designated, and the admin replaces
- * its whole list with it. The admin copies recordings through the same Bee API address. A manager older than the field
- * sends none, which the admin reads as no archive batches, and an admin older than the field drops it. While no
- * catalogue node is designated the record is cleared, the list with it; the manager keeps its archive batches and
- * sends them again with the next designation.
+ * `archiveBatches` is the archive batches the manager keeps, up to `CATALOGUE_ARCHIVE_BATCHES_MAX`: those not expired
+ * or gone from their node first, in the order they were designated, then the expired and gone ones. The admin replaces
+ * its whole list with it. The manager refuses a purchase and an adopt once the batches with life left, and the
+ * purchases still being bought, number the maximum, so only expired and gone ones are ever left out. The admin copies
+ * recordings through the same Bee API address. A manager older than the field sends none, which the admin reads as no
+ * archive batches, and an admin older than the field drops it. While no catalogue node is designated the record is
+ * cleared, the list with it; the manager keeps its archive batches and sends them again with the next designation.
  */
 export const catalogueStampRecordSchema = z.object({
   schemaVersion: z.literal(STAGE_RECORD_SCHEMA_VERSION),

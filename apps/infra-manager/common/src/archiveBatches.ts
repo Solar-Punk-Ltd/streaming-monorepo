@@ -1,3 +1,5 @@
+import { CATALOGUE_ARCHIVE_BATCHES_MAX } from '@streaming-monorepo/contracts';
+
 import type { CatalogueBatchLike, CataloguePushState, CatalogueReading } from './catalogueNode.js';
 import { shortHex } from './displayFormat.js';
 import type { StampState } from './stampHealth.js';
@@ -16,7 +18,8 @@ import type { StampState } from './stampHealth.js';
  * - `GET /manager-settings/archive-batches` answers {@link ArchiveBatchesAnswer}.
  * - `PUT /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchAdopt}, adopts a batch the catalogue
  *   node holds, and answers {@link ArchiveBatchesAnswer}. It answers 422 with the sentence of
- *   {@link archiveBatchProblem} when the batch cannot be one, and 409 when `expectedRevision` is behind.
+ *   {@link archiveBatchProblem} when the batch cannot be one, or {@link ARCHIVE_SLOTS_FULL_REFUSAL} once every place
+ *   on the record's list is held, and 409 when `expectedRevision` is behind.
  * - `DELETE /manager-settings/archive-batches/:batchId` takes {@link ArchiveBatchRemove}, takes off the list an
  *   expired batch, one its node no longer holds, or one whose deployment is gone, and answers
  *   {@link ArchiveBatchesAnswer}, with the same 409. It answers 422 with the sentence of {@link archiveRemoveProblem}
@@ -157,10 +160,25 @@ export function archiveRemoveProblem(
   { deploymentGone = false }: { deploymentGone?: boolean } = {},
 ): string | null {
   if (deploymentGone) return null;
-  if (state === 'expired' || state === 'gone') return null;
+  if (isArchiveBatchSpent(state)) return null;
   if (state === null || state === 'unknown') return ARCHIVE_REMOVE_UNREAD_REFUSAL;
   return ARCHIVE_REMOVE_LIVE_REFUSAL;
 }
+
+/**
+ * Whether an archive batch is spent by the manager's last reading of it: expired, or gone from its node. A spent batch
+ * can be removed, holds no place on the catalogue stamp record's list, and goes after the others there. One not read
+ * yet, or whose node did not answer, is not spent.
+ */
+export function isArchiveBatchSpent(state: StampState | null): boolean {
+  return state === 'expired' || state === 'gone';
+}
+
+/**
+ * Why no other archive batch can be bought or adopted: the batches not spent and the purchases still being bought or
+ * recorded fill every place on the catalogue stamp record's list.
+ */
+export const ARCHIVE_SLOTS_FULL_REFUSAL = `There are already ${CATALOGUE_ARCHIVE_BATCHES_MAX} archive batches with life left or still being bought, as many as the catalogue stamp record carries, so another can be added once one of them expires.`;
 
 /** Why an archive batch cannot be designated as the catalogue's own batch. */
 export function catalogueIsArchiveBatchRefusal(batchId: string): string {

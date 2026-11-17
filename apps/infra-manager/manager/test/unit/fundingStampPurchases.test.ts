@@ -16,11 +16,13 @@ import { describe, it, type TestContext } from 'node:test';
 
 import {
   ARCHIVE_PURCHASE_SETTLE_MS,
+  ARCHIVE_SLOTS_FULL_REFUSAL,
   type ArchiveBatchDesignation,
   archivePurchaseNodeLabel,
   plurToBzzExact,
 } from '@streaming-infra-manager/common';
 import {
+  CATALOGUE_ARCHIVE_BATCHES_MAX,
   type FundingInventory,
   type FundingNode,
   type FundingNodeRole,
@@ -205,6 +207,8 @@ interface SetupOptions {
   archived?: ArchiveBatchDesignation[];
   /** The catalogue node's deployment gone. */
   gone?: boolean;
+  /** How many places on the catalogue stamp record's list are held, each time it is asked. */
+  slotsTaken?: () => Promise<number>;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -240,6 +244,7 @@ function setup(options: SetupOptions = {}) {
     archiveBatches: { list: async () => options.archived ?? [] },
     catalogue: { read: async () => designation },
     designator,
+    archiveSlotsTaken: options.slotsTaken,
     now: () => now,
   });
   return {
@@ -406,6 +411,30 @@ describe('POST /api/admin-funding/stamp-purchases', () => {
     const { bee, service } = setup({ edit: (answer) => void (answer.chain.postage = null) });
     await refusedWith(service.purchase(request()), 'stamp_refused', /^No node answered the price of postage/);
     assert.equal(bee.bought.length, 0);
+  });
+
+  it('refuses a purchase once every place on the catalogue stamp record is held, before the node is read', async () => {
+    const { bee, journal, service, inventoryReads } = setup({
+      slotsTaken: async () => CATALOGUE_ARCHIVE_BATCHES_MAX,
+    });
+    await refusedWith(service.purchase(request()), 'stamp_refused', ARCHIVE_SLOTS_FULL_REFUSAL);
+    assert.equal(inventoryReads(), 0);
+    assert.equal(journal.rows.size, 0);
+    assert.deepEqual(bee.bought, []);
+  });
+
+  it('refuses a purchase whose last place another took while the node was read, and journals nothing', async () => {
+    const counts = [CATALOGUE_ARCHIVE_BATCHES_MAX - 1, CATALOGUE_ARCHIVE_BATCHES_MAX];
+    const { bee, journal, service } = setup({ slotsTaken: async () => counts.shift() ?? 0 });
+    await refusedWith(service.purchase(request()), 'stamp_refused', ARCHIVE_SLOTS_FULL_REFUSAL);
+    assert.deepEqual(counts, [], 'counted before the node and again as it is journalled');
+    assert.equal(journal.rows.size, 0);
+    assert.deepEqual(bee.bought, []);
+  });
+
+  it('buys while a place is left', async () => {
+    const { service } = setup({ slotsTaken: async () => CATALOGUE_ARCHIVE_BATCHES_MAX - 1 });
+    assert.equal((await service.purchase(request())).state, 'confirmed');
   });
 
   it('answers 409 conflict while another purchase on the node is still being settled, asking the node nothing', async () => {

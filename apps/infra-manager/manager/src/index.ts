@@ -471,6 +471,9 @@ async function main(): Promise<void> {
   // The catalogue designation and the archive batches each check the other's batches again, and write, under this one
   // lock, so a batch is never both the catalogue's and an archive batch.
   const batchDesignationLock = new AsyncLock();
+  // The funding API's stamp purchases, journalled before the node is asked. Each one neither recorded nor failed holds
+  // a place on the catalogue stamp record's list of archive batches.
+  const stampPurchaseJournal = new PostgresFundingStampPurchaseJournal(database.pool);
   const archiveBatchService = new ArchiveBatchService({
     store: archiveBatchStore,
     designation: catalogueDesignation,
@@ -479,6 +482,10 @@ async function main(): Promise<void> {
     status: () => catalogue.archiveStatus(),
     changed: () => void catalogue.pushNow(),
     lock: batchDesignationLock,
+    pendingPurchases: async () =>
+      (await stampPurchaseJournal.unrecorded()).map((row) =>
+        row.batchId === null ? null : row.batchId.replace(/^0x/i, '').toLowerCase(),
+      ),
   });
   const catalogueService = new CatalogueDesignationService({
     store: catalogueDesignation,
@@ -539,7 +546,7 @@ async function main(): Promise<void> {
   // the inventory read now, journalled in funding_stamp_purchases before the node is asked, paid from the node's own
   // wallet, and recorded as an archive batch once bought.
   const fundingPurchases = new FundingStampPurchaseService({
-    journal: new PostgresFundingStampPurchaseJournal(database.pool),
+    journal: stampPurchaseJournal,
     inventory: fundingInventory,
     deployment: fundingNodeDeployment({ profiles: profileRepository }),
     uploaderApiUrl: beeApiUrlFor,
@@ -548,6 +555,8 @@ async function main(): Promise<void> {
     archiveBatches: archiveBatchPorts,
     catalogue: catalogueDesignation,
     designator: archiveBatchPorts,
+    archiveSlotsTaken: () => archiveBatchService.slotsTaken(),
+    lock: batchDesignationLock,
   });
   // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
   // node, a rung or the catalogue node, checked against the inventory read now, then carried out by the manager's own
