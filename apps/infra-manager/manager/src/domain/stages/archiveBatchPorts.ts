@@ -43,8 +43,10 @@ export interface ArchiveBatchDesignator {
    * Makes a batch an archive batch: writes its row, raises the revision and pushes the catalogue stamp record. The
    * funding API calls it once a purchase is `confirmed`, from the `POST` and from the `GET` that settles one. It is
    * idempotent on `batchId`: a batch that is an archive batch already changes nothing and resolves, without a second
-   * push, so a settle that runs twice records one row. It rejects only when the row could not be written, and the
-   * purchase then stays `confirmed`: the next `GET` calls it again.
+   * push, so a settle that runs twice records one row. It rejects when the row could not be written, and the purchase
+   * then stays `confirmed`: the next `GET` calls it again. It rejects too, with `ArchiveBatchRefusedError`, for a
+   * batch that is the catalogue's own, pinned or left by a pending move, since a batch is never both; the purchase
+   * stays `confirmed` and unrecorded then as well.
    */
   designateArchiveBatch(batch: ArchiveBatchToDesignate): Promise<void>;
 }

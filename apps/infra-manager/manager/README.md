@@ -763,7 +763,10 @@ batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive
   through `designateArchiveBatch`, which pushes the catalogue stamp record, and marks the purchase
   `recorded_at`. A designation that fails leaves the purchase `confirmed` and unmarked, and the
   next `GET` designates it again. A marked purchase is never designated again, so a batch removed
-  from the list stays removed.
+  from the list stays removed. A batch that has become the catalogue's own, pinned or left by a
+  pending move, is refused (`archiveIsCatalogueBatchRefusal`), since a batch is never both: the
+  purchase stays `confirmed` and unmarked, and the manager logs a warning naming the purchase and
+  the batch once while it runs.
 - **The `GET`** settles an `unknown` purchase from the node's own list of batches: the batch with
   exactly the purchase's label, its depth and the immutable flag, that is neither the catalogue's
   batch nor an archive batch already, makes it `confirmed`, with the same designation. None thirty

@@ -31,6 +31,7 @@ import {
 
 import { BeeClient, type BeeStamp, type BuyStampInput } from '../../src/domain/BeeClient.js';
 import { BeeHttpError } from '../../src/domain/errors/BeeHttpError.js';
+import { ArchiveBatchRefusedError } from '../../src/domain/errors/index.js';
 import { FundingApiError } from '../../src/domain/funding/FundingApiError.js';
 import { FUNDING_STATUS_READ_MS } from '../../src/domain/funding/FundingChainService.js';
 import { FUNDING_BZZ_TOKEN } from '../../src/domain/funding/FundingInventoryService.js';
@@ -40,6 +41,7 @@ import {
   type FundingStampPurchaseReads,
   FundingStampPurchaseService,
 } from '../../src/domain/funding/FundingStampPurchaseService.js';
+import { Logger } from '../../src/domain/Logger.js';
 import type { ArchiveBatchToDesignate } from '../../src/domain/stages/archiveBatchPorts.js';
 import type { Profile } from '../../src/types/index.js';
 import { emptyCatalogueDesignationRow } from '../support/InMemoryCatalogueDesignation.js';
@@ -486,6 +488,23 @@ describe('a confirmed purchase made an archive batch', () => {
     assert.ok(journal.rows.get(REQUEST)?.recordedAt, 'and marked');
     await restarted.service.status(REQUEST);
     assert.equal(designator.asked.length, 2, 'and never again once marked');
+  });
+
+  it("whose batch has become the catalogue's stays confirmed and unrecorded, logged once", async (t) => {
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, 'warn', (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const designator = new FakeDesignator();
+    designator.failure = new ArchiveBatchRefusedError('Batch 0x… holds the catalogue.');
+    const { journal, service } = setup({ designator });
+    assert.equal((await service.purchase(request())).state, 'confirmed');
+    await service.status(REQUEST);
+    await service.status(REQUEST);
+    assert.equal(designator.asked.length, 3, 'asked again on each call');
+    assert.equal(journal.rows.get(REQUEST)?.state, 'confirmed');
+    assert.equal(journal.rows.get(REQUEST)?.recordedAt, null);
+    const logged = lines.filter((line) => line.includes('is not made an archive batch'));
+    assert.equal(logged.length, 1);
+    assert.ok(logged[0]?.includes(REQUEST) && logged[0].includes(BOUGHT), logged[0]);
   });
 });
 

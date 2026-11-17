@@ -31,6 +31,7 @@ import { StagePoolStrings } from './domain/stages/StagePoolStrings.js';
 import { beeApiUrlFor, beePublisherUrlFor, StampService } from './domain/StampService.js';
 import { localPublisherHost } from './domain/localHost.js';
 import { ArchiveBatchRepository } from './domain/stages/ArchiveBatchRepository.js';
+import { AsyncLock } from './domain/AsyncLock.js';
 import { ArchiveBatchService } from './domain/stages/ArchiveBatchService.js';
 import { CatalogueDesignationRepository } from './domain/stages/CatalogueDesignationRepository.js';
 import { CatalogueDesignationService } from './domain/stages/CatalogueDesignationService.js';
@@ -467,6 +468,9 @@ async function main(): Promise<void> {
     managerId,
   });
   const catalogue = cataloguePublisher;
+  // The catalogue designation and the archive batches each check the other's batches again, and write, under this one
+  // lock, so a batch is never both the catalogue's and an archive batch.
+  const batchDesignationLock = new AsyncLock();
   const archiveBatchService = new ArchiveBatchService({
     store: archiveBatchStore,
     designation: catalogueDesignation,
@@ -474,6 +478,7 @@ async function main(): Promise<void> {
     heldBatch: (name, batchId) => stampService.heldBatch(name, batchId),
     status: () => catalogue.archiveStatus(),
     changed: () => void catalogue.pushNow(),
+    lock: batchDesignationLock,
   });
   const catalogueService = new CatalogueDesignationService({
     store: catalogueDesignation,
@@ -484,6 +489,7 @@ async function main(): Promise<void> {
     changed: () => void catalogue.pushNow(),
     nodeUrls: async (profile) => [beeApiUrlFor(profile), beePublisherUrlFor(profile, await localPublisherHost())],
     isArchiveBatch: (batchId) => archiveBatchService.isArchiveBatch(batchId),
+    lock: batchDesignationLock,
   });
   // The archive batches meet the funding API through two ports (domain/stages/archiveBatchPorts.ts), both answered by
   // the archive batches' own service: the inventory lists them, and a purchase the funding API confirms is made one.
