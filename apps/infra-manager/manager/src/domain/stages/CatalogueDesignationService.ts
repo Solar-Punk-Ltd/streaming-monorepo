@@ -30,6 +30,7 @@ import {
   ManagerSettingsChangedError,
   StampNotFoundError,
 } from '../errors/index.js';
+import { AsyncLock } from '../AsyncLock.js';
 import { Logger } from '../Logger.js';
 
 import {
@@ -83,6 +84,11 @@ export interface CatalogueDesignationDeps {
   nodeUrls?(profile: Profile): Promise<string[]>;
   /** Whether a batch is an archive batch, `ArchiveBatchService.isArchiveBatch`, which is refused. Without it none is. */
   isArchiveBatch?(batchId: string): Promise<boolean>;
+  /**
+   * The lock the archive batches take too, under which the archive check is made again and the row written, so a batch
+   * is never both the catalogue's and an archive batch. Without it the service holds one of its own.
+   */
+  lock?: AsyncLock;
   now?: () => number;
 }
 
@@ -130,9 +136,11 @@ function moveOf(row: CatalogueDesignationRow, reading: CatalogueReading | null):
  */
 export class CatalogueDesignationService {
   private readonly now: () => number;
+  private readonly lock: AsyncLock;
 
   constructor(private readonly deps: CatalogueDesignationDeps) {
     this.now = deps.now ?? (() => Date.now());
+    this.lock = deps.lock ?? new AsyncLock();
   }
 
   async read(): Promise<CatalogueNodeAnswer> {
@@ -193,9 +201,15 @@ export class CatalogueDesignationService {
     }
 
     const write = { profileName: profile.name, batchId, batchDepth: stamp.depth, at: new Date(this.now()) };
-    const saved = moving
-      ? await this.deps.store.move(write, save.expectedRevision, username)
-      : await this.deps.store.designate(write, save.expectedRevision, username);
+    const saved = await this.lock.run(async () => {
+      // An adopt or a purchase may have made it an archive batch while the node was asked.
+      if (await this.deps.isArchiveBatch?.(batchId)) {
+        throw new CatalogueNodeInputError([catalogueIsArchiveBatchRefusal(batchId)]);
+      }
+      return moving
+        ? this.deps.store.move(write, save.expectedRevision, username)
+        : this.deps.store.designate(write, save.expectedRevision, username);
+    });
     if (!saved) throw new ManagerSettingsChangedError();
     if (moving) {
       const back = stored.movingFromBatchId === batchId ? ' back' : '';

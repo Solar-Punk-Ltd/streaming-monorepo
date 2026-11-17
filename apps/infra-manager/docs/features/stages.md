@@ -565,6 +565,14 @@ that is already an archive batch. With no catalogue node designated nothing is
 adopted. The other way round, designating the catalogue's batch refuses a batch
 that is an archive batch (`catalogueIsArchiveBatchRefusal`).
 
+A batch is never both. The catalogue designation and the archive batches share
+one lock in the manager: once the node has answered, each reads the other's
+batches again under it and writes its row there, so an adopt and a catalogue
+designation of the same batch at once end with one of them refused. A purchase
+is checked the same way when its batch is made an archive batch: one whose batch
+has become the catalogue's own is refused (`archiveIsCatalogueBatchRefusal`), and
+stays `confirmed` and unrecorded.
+
 **Remove** takes an expired batch off the list, after a confirm. A batch with
 life left is refused (`archiveRemoveProblem`): the admin shows the recordings of
 a batch that left the list as expired, and these are paid for and on Swarm. An
