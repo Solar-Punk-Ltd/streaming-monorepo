@@ -91,7 +91,7 @@ and the settings.
   so it carries no Bee address of its own.
 - **One export at a time, for the whole admin.** One node reads it, and a second export would only
   halve the speed of both. While one is reading, paused or waiting, nobody can start another, and
-  every signed-in user sees it in a widget in the top right of every page. An archive takes the
+  every signed-in user sees it in the header of every page. An archive takes the
   same place, so neither starts while the other holds it ([Archiving a recording](#archiving-a-recording)).
   A finished export's panel offers "Archive this quality", since the recording is on the node then.
 - **The last file is kept.** The finished MP4 stays until it is cleared or the next export starts
