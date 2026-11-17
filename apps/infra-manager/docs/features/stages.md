@@ -581,6 +581,11 @@ state.
 - A batch stays with the node that bought it. When the catalogue node is
   designated anew on another deployment, the archive batches of the old one stay
   listed and can be topped up through their own node, and are not `writable`.
+  That node pays from its own wallet, and the funding API sends it no xBZZ or
+  xDAI: a transfer goes only to a stage's node or the designated catalogue node.
+  Its wallet is funded outside the web2 admin. Before moving the catalogue to
+  another deployment, top up the old node's archive batches for as long as
+  their recordings are needed.
 - Removing the deployment that holds archive batches leaves them without a node
   that can top them up. They stay listed with the state `unknown`, not
   `writable`.

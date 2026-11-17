@@ -96,7 +96,10 @@ its block is in and Confirmed once that block is final, about 3 minutes later on
 | Move chequebooks     | the node                       | the node's wallet           | the manager, through each node's Bee API          |
 
 An archive stamp stays with the node that bought it: one left on a former catalogue node is topped
-up and diluted by that node, from its own wallet.
+up and diluted by that node, from its own wallet. The admin sends that node no transfer, since
+transfers go only to the stages' nodes and the designated catalogue node, so its wallet is funded
+outside the admin. Before the catalogue moves to another node, top up the archive stamps it leaves
+behind for as long as their recordings are needed.
 
 The brand wallet's key never leaves the admin. For a transfer the admin builds and signs the
 transaction itself, and the manager supplies the nonce and the fee, sends it and reports the
