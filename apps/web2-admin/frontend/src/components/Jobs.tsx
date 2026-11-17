@@ -31,7 +31,8 @@ export function JobProviders({ children }: { children: ReactNode }) {
 /**
  * The jobs on the server as indicators in the header of every page, for every signed-in user: the export's and the
  * archive's, side by side. The one that holds the place a job has comes first, so a running archive shows before a
- * kept export file, and a running export before an archive a user paused. Below `sm` each is its icon alone.
+ * kept export file, and a running export before an archive a user paused. Below `sm` each is its icon, with its close
+ * button once the job is done.
  */
 export function JobIndicators() {
   const { current: archive } = useArchive();
@@ -45,7 +46,7 @@ export function JobIndicators() {
       sx={{
         display: 'flex',
         alignItems: 'center',
-        gap: narrow ? 0 : 1,
+        gap: narrow ? 0.5 : 1,
         minWidth: 0,
         flexShrink: narrow ? 0 : 1,
         ml: narrow ? 1 : 2,
@@ -77,32 +78,26 @@ function ExportIndicator({ narrow }: { narrow: boolean }) {
       progress={active ? percentRead(current) : undefined}
       narrow={narrow}
       onOpen={() => openPanel(null)}
-      actions={
+      onClose={
+        current.state === 'done'
+          ? () => {
+              act('dismiss').catch((error: unknown) => snackbar.error(errorMessage(error, 'It could not be closed.')));
+            }
+          : undefined
+      }
+      save={
         current.state === 'done' ? (
-          <>
-            <IconButton
-              size="small"
-              component="a"
-              href={exportFilePath(current.id)}
-              download={current.fileName ?? true}
-              aria-label="Save file"
-              onClick={(event: MouseEvent) => event.stopPropagation()}
-            >
-              <SaveAltIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              size="small"
-              aria-label="close the export"
-              onClick={stopThen(() => {
-                act('dismiss').catch((error: unknown) =>
-                  snackbar.error(errorMessage(error, 'It could not be closed.')),
-                );
-              })}
-            >
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </>
-        ) : null
+          <IconButton
+            size="small"
+            component="a"
+            href={exportFilePath(current.id)}
+            download={current.fileName ?? true}
+            aria-label="Save file"
+            onClick={(event: MouseEvent) => event.stopPropagation()}
+          >
+            <SaveAltIcon fontSize="small" />
+          </IconButton>
+        ) : undefined
       }
     />
   );
@@ -126,20 +121,14 @@ function ArchiveIndicator({ narrow }: { narrow: boolean }) {
       progress={archiveMoving(current) ? archivePercent(current) : undefined}
       narrow={narrow}
       onOpen={() => openPanel(null)}
-      actions={
-        done ? (
-          <IconButton
-            size="small"
-            aria-label="close the archive"
-            onClick={stopThen(() => {
+      onClose={
+        done
+          ? () => {
               act({ action: 'dismiss' }).catch((error: unknown) =>
                 snackbar.error(errorMessage(error, 'It could not be closed.')),
               );
-            })}
-          >
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        ) : null
+            }
+          : undefined
       }
     />
   );
@@ -161,24 +150,39 @@ interface JobIndicatorProps {
   progress: number | null | undefined;
   narrow: boolean;
   onOpen: () => void;
-  /** What a finished job offers: Save file, close. */
-  actions: ReactNode;
+  /** Closes a finished job for this user, from a close button on either width; undefined while it is unfinished. */
+  onClose?: () => void;
+  /** Save file, for a finished export. Only the wide indicator shows it: on a narrow one the panel offers it. */
+  save?: ReactNode;
 }
 
 /**
  * One job in the header. Clicking it opens the job's panel, and so does its icon, a button a keyboard reaches. Below
- * `sm` it is the icon alone, with a dot when the job needs a decision or is done, and a label that gives the stream
- * and where it stands.
+ * `sm` it is the icon, with a dot when the job needs a decision or is done and a label that gives the stream and where
+ * it stands, and a finished job keeps its close button beside it.
  */
-function JobIndicator({ job, Icon, tone, name, line, progress, narrow, onOpen, actions }: JobIndicatorProps) {
+function JobIndicator({ job, Icon, tone, name, line, progress, narrow, onOpen, onClose, save }: JobIndicatorProps) {
+  const close = onClose ? (
+    // Narrow, it sits close to its own icon, so it reads as that job's and not the next one's.
+    <IconButton
+      size="small"
+      aria-label={`close the ${job}`}
+      onClick={stopThen(onClose)}
+      sx={narrow ? { ml: -0.5 } : undefined}
+    >
+      <CloseIcon fontSize="small" />
+    </IconButton>
+  ) : null;
+
   if (narrow) {
     return (
-      <Box role="status" aria-label={job} sx={{ flexShrink: 0 }}>
+      <Box role="status" aria-label={job} sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <IconButton aria-label={`${name}: ${line}`} onClick={onOpen} sx={{ color: `${tone}.main` }}>
           <Badge variant="dot" color={tone} invisible={tone === 'primary'}>
             <Icon />
           </Badge>
         </IconButton>
+        {close}
       </Box>
     );
   }
@@ -232,7 +236,8 @@ function JobIndicator({ job, Icon, tone, name, line, progress, narrow, onOpen, a
           />
         )}
       </Box>
-      {actions}
+      {save}
+      {close}
     </Box>
   );
 }

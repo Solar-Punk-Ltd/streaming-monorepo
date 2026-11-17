@@ -848,7 +848,7 @@ describe('the job indicators in the header', () => {
     const header = screen.getByRole('banner');
     const archive = await within(header).findByRole('status', { name: 'archive' });
     const exported = await within(header).findByRole('status', { name: 'export' });
-    // The icon alone, whose label gives the stream and where the job stands.
+    // The icon, whose label gives the stream and where the job stands.
     const open = within(archive).getByRole('button', { name: 'Opening keynote · 1080p: Paused: needs a decision' });
     expect(
       within(exported).getByRole('button', { name: 'Opening keynote · 720p: Ready to save, 1.0 GB' }),
@@ -861,6 +861,50 @@ describe('the job indicators in the header', () => {
 
     fireEvent.click(open);
     expect(await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' })).toBeInTheDocument();
+  });
+
+  it('keep the close button of a finished job on a narrow screen, without Save file, and close it there', async () => {
+    narrowScreen();
+    const done = makeJob({
+      state: 'done',
+      holdsPlace: false,
+      items: [makeItem({ state: 'done', result: 'complete', chunksCopied: 544_000 })],
+      finishedAt: '2026-11-10T11:04:14.000Z',
+      actions: ['dismiss'],
+    });
+    const fetchMock = mockFetch([
+      ...jobRoutes(
+        done,
+        makeOptions(),
+        makeExport({
+          state: 'done',
+          fileName: 'opening-keynote-720p.mp4',
+          sizeBytes: 1_000_000_000,
+          actions: ['dismiss', 'clear'],
+        }),
+      ),
+      {
+        path: `/api/archive/${JOB_ID}/actions`,
+        method: 'POST',
+        respond: () => jsonOk({ archive: { ...done, dismissed: true, actions: [] } }),
+      },
+    ]);
+    renderShell();
+
+    const header = screen.getByRole('banner');
+    const archive = await within(header).findByRole('status', { name: 'archive' });
+    const exported = await within(header).findByRole('status', { name: 'export' });
+    expect(within(archive).getByRole('button', { name: 'Opening keynote · 1080p: Archived' })).toBeInTheDocument();
+    expect(within(exported).getByRole('button', { name: 'close the export' })).toBeInTheDocument();
+    // Save file stays in the panel on a narrow screen.
+    expect(within(exported).queryByRole('link', { name: 'Save file' })).not.toBeInTheDocument();
+
+    fireEvent.click(within(archive).getByRole('button', { name: 'close the archive' }));
+    await waitFor(() => expect(within(header).queryByRole('status', { name: 'archive' })).not.toBeInTheDocument());
+    expect(bodyOf(fetchMock, 'POST', `/api/archive/${JOB_ID}/actions`)).toEqual({ action: 'dismiss' });
+    // The close is the button's own click: it opens no panel.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(within(header).getByRole('status', { name: 'export' })).toBeInTheDocument();
   });
 
   it('say to confirm the new archive stamp while the archive waits for it, with no bar', async () => {
