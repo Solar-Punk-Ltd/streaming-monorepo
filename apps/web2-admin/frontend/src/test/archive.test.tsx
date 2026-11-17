@@ -863,6 +863,18 @@ describe('the job indicators in the header', () => {
     expect(await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' })).toBeInTheDocument();
   });
 
+  it('say to confirm the new archive stamp while the archive waits for it, with no bar', async () => {
+    mockFetch(jobRoutes(makeJob({ state: 'awaiting_purchase', holdsPlace: false, actions: ['use_stamp', 'cancel'] })));
+    renderPanels({ streamId: null });
+
+    const archive = await screen.findByRole('status', { name: 'archive' });
+    expect(within(archive).getByText('Confirm the new archive stamp')).toBeInTheDocument();
+    // It waits for a person, not for the node, so nothing moves.
+    expect(within(archive).queryByRole('progressbar', { hidden: true })).not.toBeInTheDocument();
+    // Another user started it, so the panel stays closed for this one.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('close a finished archive for the user who asks', async () => {
     const done = makeJob({
       state: 'done',
