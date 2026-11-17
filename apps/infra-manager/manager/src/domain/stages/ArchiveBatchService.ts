@@ -3,6 +3,7 @@ import {
   ARCHIVE_NO_CATALOGUE_NODE_REFUSAL,
   ARCHIVE_NO_DEPTH_REFUSAL,
   ARCHIVE_NOT_HELD_REFUSAL,
+  ARCHIVE_SLOTS_FULL_REFUSAL,
   ARCHIVE_UNREACHABLE_REFUSAL,
   type ArchiveBatchAdopt,
   type ArchiveBatchCandidate,
@@ -17,10 +18,12 @@ import {
   type CataloguePushState,
   type CatalogueReading,
   getErrorMessage,
+  isArchiveBatchSpent,
   shortHex,
   type StampState,
   stampHealthFrom,
 } from '@streaming-infra-manager/common';
+import { CATALOGUE_ARCHIVE_BATCHES_MAX } from '@streaming-monorepo/contracts';
 
 import { AsyncLock } from '../AsyncLock.js';
 import type { BeeStamp } from '../BeeClient.js';
@@ -84,6 +87,12 @@ export interface ArchiveBatchServiceDeps {
    * own.
    */
   lock?: AsyncLock;
+  /**
+   * The batches of the archive stamp purchases journalled and neither recorded nor failed, each 64 hex digits without
+   * `0x` in lower case, or null while the purchase has none yet: each holds a place on the record's list.
+   * `FundingStampPurchaseJournal.unrecorded`. Without it there are none.
+   */
+  pendingPurchases?(): Promise<Array<string | null>>;
   now?: () => number;
 }
 
@@ -153,6 +162,7 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     if (context.catalogueBatchIds.includes(batchId)) {
       throw new ArchiveBatchRefusedError(archiveIsCatalogueBatchRefusal(batchId));
     }
+    await this.refuseFull();
 
     let stamp: BeeStamp;
     try {
@@ -168,8 +178,9 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
 
     const depth = stamp.depth;
     const written = await this.lock.run(async () => {
-      // The catalogue may have been designated or moved onto this batch while the node was asked.
+      // The catalogue may have been designated or moved onto this batch, or the list filled, while the node was asked.
       await this.refuseCatalogueBatch(batchId);
+      await this.refuseFull();
       return this.designate(
         { batchId, profileName: row.profileName, depth, label, designatedBy: username, purchaseRequestId: null },
         adopt.expectedRevision,
@@ -221,6 +232,28 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     });
   }
 
+  /**
+   * How many places on the catalogue stamp record's list are held: every archive batch its last reading does not call
+   * spent (`isArchiveBatchSpent`), one not read yet among them, and every purchase journalled and neither recorded nor
+   * failed, but for one whose batch is listed already or is the catalogue's own. A purchase and an adopt are refused
+   * once it reaches the record's maximum, so the record never has to leave out a batch with life left.
+   */
+  async slotsTaken(): Promise<number> {
+    const [batches, pending, row] = await Promise.all([
+      this.deps.store.list(),
+      this.deps.pendingPurchases?.() ?? Promise.resolve([]),
+      this.deps.designation.read(),
+    ]);
+    const { readings } = this.deps.status();
+    const listed = new Set(batches.map((batch) => batch.batchId));
+    const catalogueBatchIds = catalogueBatchIdsOf(row);
+    const live = batches.filter((batch) => !isArchiveBatchSpent(readings.get(batch.batchId)?.state ?? null)).length;
+    const buying = pending.filter(
+      (batchId) => batchId === null || (!listed.has(batchId) && !catalogueBatchIds.includes(batchId)),
+    ).length;
+    return live + buying;
+  }
+
   /** Whether a batch is an archive batch: the catalogue designation refuses one. */
   async isArchiveBatch(batchId: string): Promise<boolean> {
     const id = batchId.replace(/^0x/, '').toLowerCase();
@@ -258,6 +291,13 @@ export class ArchiveBatchService implements ArchiveBatchReader, ArchiveBatchDesi
     );
     this.deps.changed();
     return written;
+  }
+
+  /** Refuses another archive batch once every place on the record's list is held, {@link slotsTaken}. */
+  private async refuseFull(): Promise<void> {
+    if ((await this.slotsTaken()) >= CATALOGUE_ARCHIVE_BATCHES_MAX) {
+      throw new ArchiveBatchRefusedError(ARCHIVE_SLOTS_FULL_REFUSAL);
+    }
   }
 
   /** Refuses the catalogue's own batch as it stands now, read under the lock: a batch is never both. */

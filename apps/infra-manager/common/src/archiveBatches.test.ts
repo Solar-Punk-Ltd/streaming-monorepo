@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ARCHIVE_BATCH_LABEL_MAX_LENGTH } from '@streaming-monorepo/contracts';
+import { ARCHIVE_BATCH_LABEL_MAX_LENGTH, CATALOGUE_ARCHIVE_BATCHES_MAX } from '@streaming-monorepo/contracts';
 
 import {
   ARCHIVE_ALREADY_REFUSAL,
@@ -16,12 +16,14 @@ import {
   ARCHIVE_PURCHASE_SETTLE_MS,
   ARCHIVE_REMOVE_LIVE_REFUSAL,
   ARCHIVE_REMOVE_UNREAD_REFUSAL,
+  ARCHIVE_SLOTS_FULL_REFUSAL,
   archiveBatchProblem,
   archiveIsCatalogueBatchRefusal,
   archiveLabelProblem,
   archivePurchaseNodeLabel,
   archiveRemoveProblem,
   catalogueIsArchiveBatchRefusal,
+  isArchiveBatchSpent,
   isPurchasedArchiveBatch,
 } from './archiveBatches.js';
 
@@ -126,6 +128,24 @@ describe('taking an archive batch off the list', () => {
     for (const state of [null, 'unknown', 'active', 'full', 'expired'] as const) {
       assert.equal(archiveRemoveProblem(state, { deploymentGone: true }), null, String(state));
     }
+  });
+});
+
+describe('a spent archive batch', () => {
+  it('is one the last reading calls expired or gone, the ones a removal takes', () => {
+    for (const state of [null, 'unknown', 'none', 'pending', 'active', 'full', 'expired', 'gone'] as const) {
+      const spent = state === 'expired' || state === 'gone';
+      assert.equal(isArchiveBatchSpent(state), spent, String(state));
+      assert.equal(archiveRemoveProblem(state) === null, spent, String(state));
+    }
+  });
+
+  it('is what frees a place once the record holds as many as it carries', () => {
+    assert.match(
+      ARCHIVE_SLOTS_FULL_REFUSAL,
+      new RegExp(`^There are already ${CATALOGUE_ARCHIVE_BATCHES_MAX} archive batches`),
+    );
+    assert.match(ARCHIVE_SLOTS_FULL_REFUSAL, /\.$/);
   });
 });
 

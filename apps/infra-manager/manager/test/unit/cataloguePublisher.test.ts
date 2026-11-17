@@ -825,9 +825,57 @@ describe('the archive batches on the catalogue stamp record', () => {
     const carried = lastRecord(p.sent).archiveBatches ?? [];
     assert.equal(carried.length, CATALOGUE_ARCHIVE_BATCHES_MAX);
     assert.equal(carried[0]?.batchId, many[0]?.batchId);
-    const truncations = lines.filter((line) => line.includes('carries the first'));
+    const truncations = lines.filter((line) => line.includes('those not expired or gone first'));
     assert.deepEqual(truncations.length, 1);
     assert.match(truncations[0] ?? '', new RegExp(`there are ${CATALOGUE_ARCHIVE_BATCHES_MAX + 2} archive batches`));
+    p.publisher.stop();
+  });
+
+  it('carries the batches with life left first, in the order they were designated, then the expired and gone ones', async () => {
+    const live = archiveRow(ARCHIVE_BATCH, { designatedAt: '2026-10-03T09:00:00.000Z' });
+    const expired = archiveRow(OLD_NODE_ARCHIVE_BATCH, { designatedAt: '2026-10-01T09:00:00.000Z' });
+    const gone = archiveRow('a1'.repeat(32), { designatedAt: '2026-10-02T09:00:00.000Z' });
+    const unread = archiveRow('a2'.repeat(32), { designatedAt: '2026-10-04T09:00:00.000Z' });
+    const t = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: [expired, gone, live, unread] });
+    t.state.byBatch.set(OLD_NODE_ARCHIVE_BATCH, archiveReadingOf(OLD_NODE_ARCHIVE_BATCH, { ttl: 0 }));
+    t.state.byBatch.set(gone.batchId, { health: stampHealthFrom(gone.batchId, []), depth: null });
+    t.state.byBatch.set(ARCHIVE_BATCH, archiveReadingOf(ARCHIVE_BATCH));
+    t.state.byBatch.set(unread.batchId, { health: stampHealthFrom(unread.batchId, null), depth: null });
+    t.publisher.start();
+    await settle();
+    assert.deepEqual(
+      (lastRecord(t.sent).archiveBatches ?? []).map((batch) => [batch.batchId, batch.state]),
+      [
+        [ARCHIVE_BATCH, 'active'],
+        [unread.batchId, 'unknown'],
+        [OLD_NODE_ARCHIVE_BATCH, 'expired'],
+        [gone.batchId, 'gone'],
+      ],
+    );
+    t.publisher.stop();
+  });
+
+  it('reads every archive batch past its maximum, and gives a spent batch’s place to the newest with life left', async () => {
+    const many = Array.from({ length: CATALOGUE_ARCHIVE_BATCHES_MAX + 3 }, (_, index) =>
+      archiveRow(index.toString(16).padStart(64, '0'), {
+        designatedAt: new Date(Date.UTC(2026, 9, 1, 0, index)).toISOString(),
+      }),
+    );
+    const p = await publisherFor({ profiles: ARCHIVE_PROFILES, archive: many });
+    // The three oldest have expired, and every other has life left.
+    for (const row of many) {
+      const expired = many.indexOf(row) < 3;
+      p.state.byBatch.set(row.batchId, archiveReadingOf(row.batchId, expired ? { ttl: 0 } : {}));
+    }
+    p.publisher.start();
+    await settle();
+    const carried = (lastRecord(p.sent).archiveBatches ?? []).map((batch) => batch.batchId);
+    assert.deepEqual(
+      carried,
+      many.slice(3).map((row) => row.batchId),
+    );
+    assert.equal(p.publisher.archiveStatus().readings.size, CATALOGUE_ARCHIVE_BATCHES_MAX + 3);
+    assert.equal(p.publisher.archiveStatus().readings.get(many.at(-1)!.batchId)?.state, 'active');
     p.publisher.stop();
   });
 

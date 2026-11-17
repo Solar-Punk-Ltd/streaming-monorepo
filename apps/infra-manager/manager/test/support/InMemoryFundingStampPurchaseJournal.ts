@@ -54,4 +54,10 @@ export class InMemoryFundingStampPurchaseJournal implements FundingStampPurchase
     this.rows.set(requestId, { ...row, recordedAt: at });
     return true;
   }
+
+  async unrecorded(): Promise<FundingStampPurchaseRow[]> {
+    return [...this.rows.values()]
+      .filter((row) => row.state !== 'failed' && row.recordedAt === null)
+      .map((row) => ({ ...row }));
+  }
 }

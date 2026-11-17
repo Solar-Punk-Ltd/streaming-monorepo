@@ -26,6 +26,7 @@ import {
   ARCHIVE_NOT_HELD_REFUSAL,
   ARCHIVE_REMOVE_LIVE_REFUSAL,
   ARCHIVE_REMOVE_UNREAD_REFUSAL,
+  ARCHIVE_SLOTS_FULL_REFUSAL,
   ARCHIVE_UNKNOWN_REFUSAL,
   ARCHIVE_UNREACHABLE_REFUSAL,
   type ArchiveBatchDesignation,
@@ -36,6 +37,7 @@ import {
   REQUESTED_WITH_VALUE,
   SESSION_COOKIE_NAME,
 } from '@streaming-infra-manager/common';
+import { CATALOGUE_ARCHIVE_BATCHES_MAX } from '@streaming-monorepo/contracts';
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
@@ -129,6 +131,8 @@ interface Setup {
   readings?: CatalogueReading[];
   /** The lock the service takes, shared with a catalogue designation in a test that races the two. */
   lock?: AsyncLock;
+  /** The batches of the purchases neither recorded nor failed, null for one with no batch yet. */
+  pending?: () => Promise<Array<string | null>>;
 }
 
 async function testApi(t: TestContext, setup: Setup = {}) {
@@ -179,6 +183,7 @@ async function testApi(t: TestContext, setup: Setup = {}) {
     }),
     changed: () => void (changes += 1),
     lock: setup.lock,
+    pendingPurchases: setup.pending,
     now: () => NOW,
   });
 
@@ -714,5 +719,72 @@ describe("a batch is never both the catalogue's and an archive batch", () => {
     assert.deepEqual(api.store.rows, []);
     assert.equal(api.store.currentRevision, 0);
     assert.equal(api.changes(), 0);
+  });
+});
+
+/** `count` archive batches on the catalogue node, each with a batch id of its own. */
+function manyRows(count: number, from = 0): ArchiveBatchDesignation[] {
+  return Array.from({ length: count }, (_, index) => archiveRow((from + index + 1).toString(16).padStart(64, '0')));
+}
+
+describe('the places on the catalogue stamp record', () => {
+  it('are held by every batch not spent, one not read yet among them, and every purchase still being bought', async (t) => {
+    const rows = manyRows(4);
+    const api = await testApi(t, {
+      moving: true,
+      rows,
+      readings: [
+        readingOf(rows[0]!.batchId, { state: 'expired' }),
+        readingOf(rows[1]!.batchId, { state: 'gone' }),
+        readingOf(rows[2]!.batchId, { state: 'unknown' }),
+      ],
+      // One with no batch yet, one listed already, the catalogue's own two, and one more.
+      pending: async () => [null, rows[3]!.batchId, CATALOGUE_BATCH, MOVED_FROM_BATCH, OTHER_BATCH],
+    });
+    assert.equal(await api.service.slotsTaken(), 2 + 2);
+  });
+
+  it('refuses an adopt once every place is held, before the node is asked, and adopts once a batch is spent', async (t) => {
+    const rows = manyRows(CATALOGUE_ARCHIVE_BATCHES_MAX - 1);
+    let pending: Array<string | null> = [null];
+    const readings: CatalogueReading[] = [];
+    const api = await testApi(t, { rows, pending: async () => pending, readings });
+    assert.equal(refusalOf(await api.adopt(BATCH, { expectedRevision: 0, label: null })), ARCHIVE_SLOTS_FULL_REFUSAL);
+    assert.deepEqual(api.asked, []);
+    pending = [];
+    readings.push(readingOf(rows[0]!.batchId, { state: 'expired' }));
+    assert.equal((await api.adopt(BATCH, { expectedRevision: 0, label: null })).status, 200);
+  });
+
+  it('refuses an adopt whose last place a purchase took while the node was asked', async (t) => {
+    const node = gate();
+    let pending: Array<string | null> = [];
+    const api = await testApi(t, {
+      rows: manyRows(CATALOGUE_ARCHIVE_BATCHES_MAX - 1),
+      pending: async () => pending,
+      held: async (_name, batchId) => {
+        await node.opened;
+        return stampOf({ batchID: batchId });
+      },
+    });
+    const adopting = api.adopt(BATCH, { expectedRevision: 0, label: null });
+    await settle();
+    pending = [null];
+    node.open();
+    assert.equal(refusalOf(await adopting), ARCHIVE_SLOTS_FULL_REFUSAL);
+    assert.equal(api.store.rows.length, CATALOGUE_ARCHIVE_BATCHES_MAX - 1);
+  });
+
+  it('never refuses a purchase that was bought to be made an archive batch', async (t) => {
+    const api = await testApi(t, { rows: manyRows(CATALOGUE_ARCHIVE_BATCHES_MAX), pending: async () => [BATCH] });
+    await api.service.designateArchiveBatch({
+      batchId: BATCH,
+      profileName: 'catalogue',
+      depth: 22,
+      label: null,
+      designatedBy: null,
+      purchaseRequestId: REQUEST_ID,
+    });
+    assert.equal(api.store.rows.length, CATALOGUE_ARCHIVE_BATCHES_MAX + 1);
   });
 });
