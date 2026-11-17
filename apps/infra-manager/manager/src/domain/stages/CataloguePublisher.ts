@@ -226,12 +226,13 @@ export class CataloguePublisher {
     // Every batch is read at once, so the push waits for the slowest of the nodes, whose reads are bounded.
     const previous = this.readPrevious(row, readAt);
     const archive = this.readArchive(row, readAt);
+    // Handled from the moment each read starts: the push reaches them only after the link, the node and its reading,
+    // and a rejection left alone that long would stop the manager. The push still awaits each and reports a failure.
+    const settled = Promise.all([previous.catch(() => undefined), archive.catch(() => undefined)]);
     try {
       await this.pushFor(row, urge, readAt, previous, archive);
     } finally {
-      await previous;
-      // A failed read of the list was the push's to report, and with no designation nothing waited for it.
-      await archive.catch(() => undefined);
+      await settled;
     }
   }
 

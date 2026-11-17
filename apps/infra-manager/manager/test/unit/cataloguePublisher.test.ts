@@ -122,6 +122,8 @@ async function publisherFor(setup: Setup = {}) {
     /** A reading per batch, where a test sets one; `reading` for any other. */
     byBatch: Map<string, Reading>;
     readingDelayMs: number;
+    /** While set, every node reading waits for it. */
+    readingGate: Promise<void> | null;
     readings: number;
     /** The archive batches the list answers, or an error it rejects with. */
     archive: ArchiveBatchDesignation[] | Error;
@@ -131,6 +133,7 @@ async function publisherFor(setup: Setup = {}) {
     reading: readingOf(),
     byBatch: new Map(),
     readingDelayMs: 0,
+    readingGate: null,
     readings: 0,
     archive: (setup.archive ?? []).map((row) => ({ ...row })),
     depthsRecorded: [],
@@ -153,6 +156,7 @@ async function publisherFor(setup: Setup = {}) {
       : undefined,
     profiles: { findByName: async (name) => profiles.find((profile) => profile.name === name) ?? null },
     reading: async (_profile, batchId) => {
+      if (state.readingGate) await state.readingGate;
       // A slow node: the record still says the moment its row was read.
       clock.time += state.readingDelayMs;
       state.readings += 1;
@@ -853,6 +857,30 @@ describe('the archive batches on the catalogue stamp record', () => {
     await t.clock.advance(3 * CATALOGUE_CHECK_MS);
     assert.equal(stores(t.sent).length, 1);
     t.publisher.stop();
+  });
+
+  it('reports a list it cannot read while the node is read as a failed push, and leaves no rejection unhandled', async (t) => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => void unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    t.after(() => void process.off('unhandledRejection', onUnhandled));
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, 'warn', (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    const p = await publisherFor({ archive: [archiveRow(ARCHIVE_BATCH)] });
+    p.state.archive = new Error('the database went away');
+    let answer!: () => void;
+    p.state.readingGate = new Promise<void>((resolve) => (answer = resolve));
+    p.publisher.start();
+    await settle();
+    answer();
+    await settle();
+    assert.deepEqual(unhandled, []);
+    assert.equal(stores(p.sent).length, 0);
+    assert.ok(
+      lines.some((line) => line.includes('the push failed (the database went away)')),
+      lines.join('\n'),
+    );
+    p.publisher.stop();
   });
 
   it('reads the archive batches for the settings page with no designation, and pushes nothing', async () => {
