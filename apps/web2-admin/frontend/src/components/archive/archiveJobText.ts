@@ -204,13 +204,13 @@ export function archiveStatusLine(job: ArchiveJobSummary): string {
   }
 }
 
-/** A short line for the widget. */
+/** A short line for the archive's indicator in the header. */
 export function archiveWidgetLine(job: ArchiveJobSummary): string {
   switch (job.state) {
     case 'measuring':
       return 'Measuring the recording';
     case 'awaiting_purchase':
-      return 'Waiting for a new stamp to be confirmed';
+      return 'Confirm the new archive stamp';
     case 'buying':
       return 'Buying the archive stamp';
     case 'waiting_usable':

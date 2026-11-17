@@ -448,8 +448,9 @@ and every signed-in user sees it
 - **The indicators.** The export's and the archive's sit side by side in the header, which stays at
   the top of every page, the one that holds the place first, so a paused archive shows after a
   running export. The archive's shows its stream, its qualities and where it stands, with a thin
-  bar while it moves. It turns orange with "Paused: needs a decision" when a pause asks for one. A
-  finished archive turns green and stays until each user closes it for themselves. On a screen
+  bar while it moves. It turns orange with "Paused: needs a decision" when a pause asks for one,
+  and with "Confirm the new archive stamp" while a new stamp waits for its confirm. A finished
+  archive turns green and stays until each user closes it for themselves. On a screen
   narrower than a tablet each is its icon alone, with an orange dot when it needs a decision and a
   green one when it is done.
 - **Coming to front.** When the archive pauses for a decision, or waits for a new stamp to be
