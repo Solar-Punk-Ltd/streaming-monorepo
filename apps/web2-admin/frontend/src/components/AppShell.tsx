@@ -9,7 +9,7 @@ import { useThemeMenuItems } from '../theme/themeMenuItems';
 import { ArchivePanel } from './archive/ArchivePanel';
 import { BuildVersion } from './BuildVersion';
 import { ExportPanel } from './export/ExportPanel';
-import { JobProviders, JobWidgets } from './Jobs';
+import { JobIndicators, JobProviders } from './Jobs';
 import { useSnackbar } from './Snackbar';
 
 export const APP_NAME = 'Stream Admin';
@@ -40,24 +40,33 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    // The export and the archive on the server, their widgets and their panels belong to every page, for every
-    // signed-in user.
+    // The export and the archive on the server, their indicators in the header and their panels belong to every page,
+    // for every signed-in user. The header stays at the top while the page scrolls, and on one line: on a phone the
+    // console's name gives way before it would wrap or scroll sideways.
     <JobProviders>
       <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-        <AppBar position="static" color="default" enableColorOnDark>
+        <AppBar position="sticky" color="default" enableColorOnDark>
           <Toolbar>
             <Typography
               variant="h6"
               component={RouterLink}
               to="/"
-              sx={{ flexGrow: 1, color: 'inherit', textDecoration: 'none' }}
+              noWrap
+              sx={{ flexGrow: 1, flexShrink: { xs: 1, sm: 0 }, minWidth: 0, color: 'inherit', textDecoration: 'none' }}
             >
               {APP_NAME}
             </Typography>
             {user ? (
               <>
+                <JobIndicators />
                 <BuildVersion />
-                <Button color="inherit" startIcon={<AccountCircleIcon />} onClick={open} aria-haspopup="menu">
+                <Button
+                  color="inherit"
+                  startIcon={<AccountCircleIcon />}
+                  onClick={open}
+                  aria-haspopup="menu"
+                  sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                >
                   {user.username}
                 </Button>
                 <Menu anchorEl={anchor} open={anchor !== null} onClose={close} variant="menu">
@@ -80,7 +89,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Container>
         {user ? (
           <>
-            <JobWidgets />
             <ExportPanel />
             <ArchivePanel />
           </>

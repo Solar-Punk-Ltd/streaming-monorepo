@@ -125,10 +125,10 @@ keeps the file until the next export starts. Every quality is offered, 1080p to 
 estimated from the recording's length. `MOCK_EXPORT` decides the export seeded at start, of the first
 seeded recording:
 
-- `running`, unset: a 720p export another user started, so the widget shows one moving at once.
+- `running`, unset: a 720p export another user started, so the header shows one moving at once.
 - `paused`: one the seeded user started, which pauses on segments it could not read, so the panel
   comes to front. Every export started from the panel then pauses the same way part-way.
-- `done`: a kept file, above the OBS panel of its stream and in the widget.
+- `done`: a kept file, above the OBS panel of its stream and in the header.
 - `off`: none.
 
 Save file answers a stand-in file under the export's name, not a video.
@@ -173,6 +173,10 @@ until it is done, as the API keeps one job at a time: set `MOCK_EXPORT=off` to s
 ## Pages
 
 The router is a `HashRouter`, so every route starts with `#/`.
+
+Every page after sign-in has the same header, and it stays at the top while the page scrolls: the
+console's name, which leads to the streams, the indicators of the export and the archive on the
+server, the build line, and the user menu.
 
 ### Sign in, `#/login`
 
@@ -394,15 +398,15 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   Save file and Clear, and Archive this quality, which opens the archive panel on that stream with
   the exported quality ticked: the catalogue node has just read the recording whole.
   The panel's title links to the stream's page with ↗, which closes the panel.
-- **The widget.** From the moment an export starts, it floats in the top right of every page for
-  every signed-in user, above or under the archive's, the panel open or not, with its stream,
-  quality and progress. Clicking it
-  opens the panel, and so does its open button, which a keyboard reaches. It says "Paused: needs a
-  decision" when a pause asks for one. A finished export
-  shows that it is ready, with Save file and a close button, and each user closes it for
-  themselves.
+- **The indicator.** From the moment an export starts, it shows in the header of every page for
+  every signed-in user, before or after the archive's, the panel open or not: its stream and
+  quality, where it stands, and a thin bar while it runs. Clicking it opens the panel, and so does
+  its icon, a button a keyboard reaches. It turns orange and says "Paused: needs a decision" when a
+  pause asks for one. A finished export turns green and says it is ready to save, with Save file
+  and a close button, and each user closes it for themselves. On a screen narrower than a tablet it
+  is its icon alone, with an orange dot when it needs a decision and a green one when it is ready.
 - **Coming to front.** When an export pauses for a decision, the panel opens by itself for the user
-  who started it, if they are signed in, once per pause. Everyone else sees the widget say so.
+  who started it, if they are signed in, once per pause. Everyone else sees its indicator say so.
 - **Saving.** Save file is a plain link to the file, which the browser saves under the name the API
   gives it, such as `opening-keynote-2026-11-05-1080p.mp4`. Saving reads nothing from Swarm.
 
@@ -441,13 +445,16 @@ and every signed-in user sees it
   buy dialog. The dialog's confirm goes to the archive, which buys the stamp, waits until it is
   usable, then copies onto it. A cost that moved since the dialog priced the stamp is refused, and
   the dialog says the cost now.
-- **The widgets.** The export's and the archive's float one under the other in the top right of
-  every page, the one that holds the place first, so a paused archive shows under a running export.
-  The archive's shows its stream, its qualities and where it stands, with "Paused: needs a decision"
-  when a pause asks for one. A finished archive stays until each user closes it for themselves.
+- **The indicators.** The export's and the archive's sit side by side in the header, which stays at
+  the top of every page, the one that holds the place first, so a paused archive shows after a
+  running export. The archive's shows its stream, its qualities and where it stands, with a thin
+  bar while it moves. It turns orange with "Paused: needs a decision" when a pause asks for one. A
+  finished archive turns green and stays until each user closes it for themselves. On a screen
+  narrower than a tablet each is its icon alone, with an orange dot when it needs a decision and a
+  green one when it is done.
 - **Coming to front.** When the archive pauses for a decision, or waits for a new stamp to be
   confirmed, the panel opens by itself for the user who started it, once each time, and with a new
-  stamp to confirm the buy dialog opens with it. Everyone else sees the widget say so.
+  stamp to confirm the buy dialog opens with it. Everyone else sees its indicator say so.
 
 The console reads the archive every two seconds while one is unfinished, and every ten seconds
 otherwise.
