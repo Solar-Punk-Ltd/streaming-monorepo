@@ -4,6 +4,7 @@ import {
   type CataloguePushState,
   type CatalogueReading,
   getErrorMessage,
+  isArchiveBatchSpent,
   isLoopbackIngestHost,
   shortHex,
   type StampHealth,
@@ -125,9 +126,9 @@ const ANSWERED_CLEAR: readonly CataloguePushOutcome[] = ['cleared', 'not-cleared
  * an address that reaches the dialling host alone, is left out, so the admin keeps the last one it had.
  *
  * Every archive batch is read on the same cadence, each on the node of its own deployment, and the record carries
- * them all as `archiveBatches`, up to its maximum, a batch whose node does not answer with the depth the manager
- * keeps for it, each `writable` only while its deployment is the designated catalogue node and its node calls it
- * usable. A change in their readings, or in the list, is pushed as one in the pinned batch's is.
+ * them as `archiveBatches`, up to its maximum, the expired and gone ones last, a batch whose node does not answer with
+ * the depth the manager keeps for it, each `writable` only while its deployment is the designated catalogue node and
+ * its node calls it usable. A change in their readings, or in the list, is pushed as one in the pinned batch's is.
  *
  * The last outcome and the last readings are kept in memory for the Manager settings card. The log says the outcome
  * when it changes, and never what the admin answered, its address or a token.
@@ -238,24 +239,29 @@ export class CataloguePublisher {
 
   /**
    * Reads every archive batch on its own node, for the settings page and for the record, whether or not a catalogue
-   * node is designated, and answers what the record carries of them: every one, up to the record's maximum. A batch
-   * whose node did not answer, or whose deployment is gone, is carried as `unknown` with the depth the manager keeps
-   * for it, which each reading that reports another one refreshes. Rejects only when the list itself could not be
-   * read, so no push says the admin has no archive batches when it has.
+   * node is designated, and answers what the record carries of them, up to its maximum: the ones not spent first, in
+   * the order they were designated, then the expired and gone ones (`isArchiveBatchSpent`), so a spent batch gives
+   * its place to one with life left. A batch whose node did not answer, or whose deployment is gone, is carried as
+   * `unknown`, which is not spent, with the depth the manager keeps for it, which each reading that reports another
+   * one refreshes. Rejects only when the list itself could not be read, so no push says the admin has no archive
+   * batches when it has.
    */
   private async readArchive(row: CatalogueDesignationRow, readAt: number): Promise<CatalogueArchiveBatch[] | null> {
     const archive = this.deps.archiveBatches;
     if (!archive) return null;
     const listed = await archive.list();
     this.logArchiveTruncation(listed.length);
-    const batches = listed.slice(0, CATALOGUE_ARCHIVE_BATCHES_MAX);
     const catalogueProfileName = isDesignated(row) ? row.profileName : null;
     const read = await Promise.all(
-      batches.map(async (batch) => ({ batch, reading: await this.readArchiveBatch(batch, readAt) })),
+      listed.map(async (batch) => ({ batch, reading: await this.readArchiveBatch(batch, readAt) })),
     );
     this.archiveReadings = new Map(read.map(({ batch, reading }) => [batch.batchId, reading]));
+    const carried = [
+      ...read.filter(({ reading }) => !isArchiveBatchSpent(reading.state)),
+      ...read.filter(({ reading }) => isArchiveBatchSpent(reading.state)),
+    ].slice(0, CATALOGUE_ARCHIVE_BATCHES_MAX);
 
-    return read.map(({ batch, reading }) => ({
+    return carried.map(({ batch, reading }) => ({
       batchId: batch.batchId,
       label: batch.label,
       // Adopted only as immutable, and bought only as immutable, and a batch's kind never changes.
@@ -269,7 +275,7 @@ export class CataloguePublisher {
     }));
   }
 
-  /** Says once per count that the record carries only the first archive batches. */
+  /** Says once per count that the record carries only some of the archive batches. */
   private logArchiveTruncation(count: number): void {
     if (count <= CATALOGUE_ARCHIVE_BATCHES_MAX) {
       this.archiveTruncationLogged = null;
@@ -277,7 +283,7 @@ export class CataloguePublisher {
     }
     if (this.archiveTruncationLogged === count) return;
     logger.warn(
-      `[Catalogue] there are ${count} archive batches, and the catalogue stamp record carries the first ${CATALOGUE_ARCHIVE_BATCHES_MAX} of them`,
+      `[Catalogue] there are ${count} archive batches, and the catalogue stamp record carries ${CATALOGUE_ARCHIVE_BATCHES_MAX} of them, those not expired or gone first`,
     );
     this.archiveTruncationLogged = count;
   }

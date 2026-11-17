@@ -591,8 +591,17 @@ state.
   batches with it. The rows stay, and are pushed again with the next
   designation.
 - Each archive batch is read on its own deployment's node, on the catalogue
-  batch's schedule. The record carries every archive batch, up to the first 200
-  in the order they were designated, with a line in the log when there are more.
+  batch's schedule, and the settings page shows each one's reading. The record
+  carries up to 200: the batches with life left first, in the order they were
+  designated, then the expired ones and the ones gone from their node, with a
+  line in the log when there are more than 200. A batch not read yet, or whose
+  node did not answer, counts as having life left.
+- The archive batches with life left and the purchases still being bought, or
+  bought and not yet made archive batches, hold the record's 200 places. Once
+  they are all held, a purchase is refused before its node is asked, and so is an
+  adopt (`ARCHIVE_SLOTS_FULL_REFUSAL`); the count and the write are made under
+  the same lock as above, so two of them never take the last place. A batch that
+  expires frees its place.
   The row keeps the batch's depth: the one a purchase bought or an adopt read,
   then each reading's, so a dilution reaches it. A batch whose node does not
   answer, or whose deployment is gone, is carried as `unknown`, not `writable`,
