@@ -104,7 +104,9 @@ export function useArchiveStamps(version: unknown, onPurchaseSettled: () => void
  * Under the archive stamps: why they could not be read, the purchases still running, and "Buy archive stamp", which
  * opens the buy dialog with every depth, since no recording is being sized here. The button stays on whatever the
  * admin answered: when no stamp can be bought now it says why instead of opening the dialog, and a purchase the manager
- * does not offer is said in the dialog. A purchase started here is followed in the list until it is usable.
+ * does not offer is said in the dialog. A refused purchase reads the stamps again, so the dialog, still open with the
+ * refusal, prices the stamp at the terms the admin answers now, such as a price of postage that moved. A purchase
+ * started here is followed in the list until it is usable.
  */
 export function ArchiveStampsFooter({ read, onBought }: { read: ArchiveStampsRead; onBought: () => void }) {
   const { stamps, error, reload } = read;
@@ -135,6 +137,8 @@ export function ArchiveStampsFooter({ read, onBought }: { read: ArchiveStampsRea
       onBought();
     } catch (e: unknown) {
       setRefusal(purchaseRefusal(e));
+      // The terms may have changed since they were read, the price among them: the dialog prices with the new ones.
+      reload();
     } finally {
       setBusy(false);
     }
