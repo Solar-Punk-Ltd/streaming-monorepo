@@ -212,6 +212,12 @@ export class FakeJoiner implements Joiner {
 
   async join(runs: JoinRun[], output: string, workDir: string, signal?: AbortSignal): Promise<void> {
     this.joins.push(runs);
+    // As FfmpegJoiner: a join whose signal was aborted before it started ends at once. `during` then never runs, since
+    // one that waits for the abort event would wait for an event that has already fired.
+    if (signal?.aborted) {
+      this.stopped += 1;
+      throw new Error('the join was stopped before it started');
+    }
     if (this.during) await this.during(signal);
     if (signal?.aborted) {
       this.stopped += 1;
