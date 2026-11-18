@@ -254,7 +254,10 @@ function ArchiveLines({
 }: {
   stamp: ArchiveStamp;
   holder: AdminFundingNode;
-  /** Whether the stamp can take an operation at all, so "Top-ups only" is worth saying. */
+  /**
+   * Whether the stamp can take an operation at all, so "Top-ups only" is worth saying: its batch can, and it is not on
+   * a node that is the catalogue node no longer, which the admin neither tops up nor dilutes.
+   */
   operable: boolean;
   warningDays: number | null;
 }) {
@@ -325,7 +328,12 @@ function BatchRowView({
         <Stack spacing={0.5} sx={{ minWidth: 0 }}>
           <BatchLine batch={batch} />
           {row.archive ? (
-            <ArchiveLines stamp={row.archive} holder={node} operable={operableBatch(batch)} warningDays={warningDays} />
+            <ArchiveLines
+              stamp={row.archive}
+              holder={node}
+              operable={operableBatch(batch) && !row.formerCatalogue}
+              warningDays={warningDays}
+            />
           ) : (
             <NodeCard node={node} group={group.nodes} />
           )}

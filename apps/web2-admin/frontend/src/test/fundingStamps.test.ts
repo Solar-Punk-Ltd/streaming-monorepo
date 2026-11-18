@@ -8,6 +8,7 @@ import {
   checkStamps,
   DAYS_PROBLEM,
   EXPIRED_TEXT,
+  FORMER_CATALOGUE_NODE_TEXT,
   hasTickBox,
   NO_PRICE_PROBLEM,
   NOT_READ_IN_FULL_TEXT,
@@ -15,6 +16,7 @@ import {
   readDays,
   reportsBatches,
   tickableBatches,
+  TOP_UP_ONLY_TEXT,
   WALLET_UNREAD_TEXT,
   whyNoTickBox,
   whyNotOperable,
@@ -85,6 +87,39 @@ describe('the batches, grouped', () => {
     expect(pending?.node.label).toBe('Unknown node');
     expect(pending?.batch.usable).toBe(false);
     expect(pending && whyNoTickBox(pending)).toBe(NOT_USABLE_TEXT);
+  });
+
+  it("says a stamp on a node the view lists nowhere is on a former catalogue node, but not one naming no node or a stage's", () => {
+    const groups = batchGroups({
+      ...makeStampView(),
+      archiveStamps: [
+        makeArchiveStamp({ batchId: ARCHIVE.old.slice(2), nodeId: 'gone:bee', nodeLabel: 'old-node', writable: false }),
+        makeArchiveStamp({ nodeId: null, nodeLabel: null }),
+        makeArchiveStamp({
+          batchId: '9c'.repeat(32),
+          nodeId: 'stage-1:bee',
+          nodeLabel: 'stage-1-uploader',
+          writable: false,
+        }),
+      ],
+    });
+    const [gone, unnamed, onStage] = groups.find((group) => group.kind === 'archive')?.rows ?? [];
+    expect([gone?.formerCatalogue, unnamed?.formerCatalogue, onStage?.formerCatalogue]).toEqual([true, false, false]);
+    for (const operation of ['topup', 'dilute'] as const) {
+      expect(gone && hasTickBox(gone, operation)).toBe(false);
+      expect(gone && whyNoTickBox(gone, operation)).toBe(FORMER_CATALOGUE_NODE_TEXT);
+      // The manager's inventory was not read, so the stamp names no node: nothing says it left the catalogue.
+      expect(unnamed && whyNoTickBox(unnamed, operation)).toBe(WALLET_UNREAD_TEXT);
+    }
+    // A former catalogue node that is a stage's node is listed, its wallet read: its stamp keeps its tick box.
+    expect(onStage && hasTickBox(onStage, 'topup')).toBe(true);
+    expect(onStage && whyNoTickBox(onStage, 'dilute')).toBe(TOP_UP_ONLY_TEXT);
+    // What is wrong with the batch comes first.
+    const expired = gone && { ...gone, batch: { ...gone.batch, usable: false, ttlSeconds: 0 } };
+    expect(expired && whyNoTickBox(expired)).toBe(EXPIRED_TEXT);
+    expect(FORMER_CATALOGUE_NODE_TEXT).toBe(
+      "Its node is the catalogue node no longer: that node's wallet is funded outside the admin, so the admin does not top it up or dilute it.",
+    );
   });
 
   it('keeps a stage with no batch, and a catalogue node without one, as a group with no rows', () => {
