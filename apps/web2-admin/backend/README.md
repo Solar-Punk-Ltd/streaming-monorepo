@@ -1425,8 +1425,9 @@ Either way every send is refused as not set up, and a pin needs the manager.
 
 ### Stamp operations
 
-The Stamps tab tops up and dilutes the batches the nodes upload with. Each
-node pays for its own operations from its own wallet: a top-up in xBZZ, and
+The Stamps tab tops up and dilutes the batches the nodes upload with, and
+the archive stamps, each named with the `nodeId` of the node that holds it as
+the manager's inventory lists it in `archiveBatches`. Each node pays for its own operations from its own wallet: a top-up in xBZZ, and
 the gas of either kind in xDAI. The admin signs nothing for them and nothing
 leaves the brand wallet, so a stamp request takes the page's confirm dialog
 and no password. `src/domain/funding/FundingStampService.ts` is the service,
@@ -1458,8 +1459,12 @@ it is refused, in this order, nothing journalled:
    inventory cannot be read is `502 manager_unavailable`.
 3. each item in turn, against the manager's inventory, read fresh:
    `409 funding_refused` with the sentence, `problem: "node"` for a node the
-   manager does not hold. `problem: "batch"` for a batch the node does not
-   upload with, one that could not be read, is not usable or has expired (an
+   manager does not hold, and for an archive stamp whose node is neither a
+   stage's node nor the designated catalogue node, a former catalogue node,
+   whose wallet is funded outside the admin. `problem: "batch"` for a batch
+   the node neither uploads with nor holds as an archive stamp, a dilution of
+   an archive stamp not `writable` any more, which takes top-ups only, one
+   that could not be read, is not usable or has expired (an
    operation goes only to a batch read whole, usable and not expired,
    `operableBatch`), one no longer at the depth the page showed, or a dilution
    that would leave it under 7 days or take it past depth 40, the manager's
@@ -1470,8 +1475,8 @@ it is refused, in this order, nothing journalled:
    holds no xDAI for the gas, or less xBZZ than the top-ups it pays for
    (`problem: "insufficient_funds"`, naming each shortfall). A wallet is
    counted once: a node is listed once for each batch it uploads with, as a
-   stage's own node and as the catalogue node, say, and pays for both from one
-   wallet.
+   stage's own node and as the catalogue node, say, and pays for both, and for
+   the archive stamps it holds, from one wallet.
 5. an item of an earlier stamp bulk that still holds up a new one, after the
    latest such bulks were refreshed, or another stamp request at that moment:
    `409 { "error": "conflict" }`. A send does not hold a stamp bulk up, nor a

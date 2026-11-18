@@ -52,12 +52,14 @@ operation runs, because each node pays from its own wallet and nothing leaves th
   onto ([web2-admin.md](web2-admin.md#archiving-a-recording)). They have a group of their own,
   "Archive stamps", under the catalogue batch and above the stages. The group lists each with its
   label, the node that holds it, depth, time left, room and the qualities on it, and tops them up
-  and dilutes them like any other, through the node that holds it, whose wallet pays.
+  and dilutes them like any other, through the node that holds it, whose wallet pays. A stamp
+  that is not written any more takes top-ups only.
   **Buy archive stamp** opens the buy dialog: a depth with what it holds, the days it lasts and
   what it costs, then a confirm without the password, since the catalogue node pays. A stamp being
   bought shows in the group until it is usable. With a manager that offers no purchases the dialog
   says so. A stamp left on a node that is the catalogue node no
-  longer is listed for top-ups alone.
+  longer is not topped up or diluted here unless that node is a stage's node, since its wallet is
+  funded outside the admin.
 
 ### Chequebooks tab
 
@@ -107,9 +109,10 @@ its block is in and Confirmed once that block is final, about 3 minutes later on
 | Move chequebooks     | the node                       | the node's wallet           | the manager, through each node's Bee API          |
 
 An archive stamp stays with the node that bought it: one left on a former catalogue node is topped
-up and diluted by that node, from its own wallet. The admin sends that node no transfer, since
-transfers go only to the stages' nodes and the designated catalogue node, so its wallet is funded
-outside the admin. Before the catalogue moves to another node, top up the archive stamps it leaves
+up by that node, from its own wallet, and never diluted, since nothing is written to it any more.
+The admin sends that node no transfer, since transfers go only to the stages' nodes and the
+designated catalogue node, so its wallet is funded outside the admin, and the admin refuses to top
+up or dilute its stamps, unless that node is also a stage's node. Before the catalogue moves to another node, top up the archive stamps it leaves
 behind for as long as their recordings are needed.
 
 The brand wallet's key never leaves the admin. For a transfer the admin builds and signs the
@@ -152,6 +155,8 @@ host.
   a changed one needs an operator's confirmation before the admin sends to it.
 - A dilution takes at most two steps, leaves at least 7 days, and is refused if the batch's depth
   moved since it was read.
+- An archive stamp is named with the node that holds it, which pays for it. One not written any
+  more is topped up only.
 - A purchase buys an immutable batch on the catalogue node and nowhere else, of depth 17 to 41, with
   the postage contract's floor of life or more. Its cost is within the node's wallet, which only a
   transfer from the brand wallet fills. One purchase runs on the node at a time.
