@@ -87,6 +87,26 @@ async function folderNames(): Promise<string[]> {
   return (await readdir(dir)).sort();
 }
 
+/** Where the export stands, for a wait that gave up. */
+async function exportNow(): Promise<string> {
+  const row = await store.get();
+  if (!row) return 'no export';
+  const pause = row.pause_reason ? `, paused as ${row.pause_reason}: ${row.pause_message ?? 'no message'}` : '';
+  return `state ${row.state}${pause}, ${row.segments_read} of ${row.segments_total ?? '?'} segments read, ${row.segments_missing} missing`;
+}
+
+/**
+ * Polls `seen` every 5 ms until it answers true, and fails after `ms` saying what it waited for and where the export
+ * stood, so a wait that is never met ends the test instead of polling on after the runner gave up on it.
+ */
+async function until(seen: () => Promise<boolean>, what: string, ms = 5_000): Promise<void> {
+  const deadline = Date.now() + ms;
+  while (!(await seen())) {
+    if (Date.now() > deadline) assert.fail(`waited ${ms} ms for ${what}; the export: ${await exportNow()}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 beforeEach(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'export-service-test-'));
   streams = new FakeStreams();
@@ -323,7 +343,7 @@ describe('ExportService', () => {
     joiner.during = (signal) =>
       new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
     await service.start(TEST_OPERATOR, stream.id, '1080p');
-    while ((await store.get())?.state !== 'joining') await new Promise((resolve) => setTimeout(resolve, 5));
+    await until(async () => (await store.get())?.state === 'joining', 'the join');
     await service.shutdown();
     assert.equal((await store.get())?.state, 'joining');
 
@@ -566,7 +586,7 @@ describe('ExportService', () => {
     let open!: () => void;
     source.gate = new Promise((resolve) => (open = resolve));
     const started = await service.start(TEST_OPERATOR, stream.id, '1080p');
-    while ((await folderNames()).length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+    await until(async () => (await folderNames()).length > 0, "the export's folder");
 
     streams.rows.delete(stream.id);
     await store.remove(started.id);
