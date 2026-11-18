@@ -2,7 +2,9 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ARCHIVE_PURCHASES_NOT_OFFERED,
+  type ArchiveBuyChoice,
   type ArchiveStampsResponse,
+  type FundingPostage,
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -294,6 +296,52 @@ describe('buying an archive stamp from the Stamps tab', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Buy for/ }));
     expect(await screen.findByText(ARCHIVE_PURCHASES_NOT_OFFERED)).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Buy this archive stamp?' })).toBeInTheDocument();
+  });
+
+  it('reads the stamps again after a refusal, so the next confirm sends the cost at the new price', async () => {
+    // The price of postage moves before the first purchase reaches the API, from 24000 PLUR to 30000.
+    const moved: FundingPostage = { ...POSTAGE, pricePerChunkPerBlockPlur: '30000' };
+    /** What 30 days cost a batch of depth 20 at the moved price, in PLUR: 1.631 xBZZ. */
+    const movedCost = '16307453952000000';
+    let postage = POSTAGE;
+    const terms = makeArchiveStamps().buy;
+    const fetchMock = serve(archiveView, () => archiveStamps({ buy: terms && { ...terms, postage } }), [
+      {
+        path: PURCHASES,
+        method: 'POST',
+        respond: (init) => {
+          postage = moved;
+          const choice = JSON.parse(String(init?.body)) as ArchiveBuyChoice;
+          if (choice.costPlur === movedCost) return jsonOk(makeArchivePurchase({ costPlur: movedCost }), 202);
+          return jsonError(409, {
+            error: 'archive_refused',
+            problem: 'price_moved',
+            message: `The price of postage moved, and this stamp now costs ${movedCost} PLUR. Confirm it again at that cost.`,
+          });
+        },
+      },
+    ]);
+    await openStamps();
+    await screen.findByText('On catalogue-node · Room for 4.1 GB · 3 qualities on it');
+    fireEvent.click(screen.getByRole('button', { name: 'Buy archive stamp' }));
+    const choose = within(await screen.findByRole('dialog', { name: 'Buy an archive stamp' }));
+    fireEvent.click(choose.getByRole('radio', { name: 'Depth 20' }));
+    fireEvent.click(choose.getByRole('button', { name: 'Next: 1.305 xBZZ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Buy for 1.305 xBZZ' }));
+
+    const refused = /this stamp now costs 16307453952000000 PLUR/;
+    expect(await screen.findByText(refused)).toBeInTheDocument();
+    const buy = await screen.findByRole('button', { name: 'Buy for 1.631 xBZZ' });
+    expect(screen.getByRole('dialog', { name: 'Buy this archive stamp?' })).toBeInTheDocument();
+    expect(screen.getByText(refused)).toBeInTheDocument();
+
+    fireEvent.click(buy);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const bodies = callsTo(fetchMock, PURCHASES, 'POST').map(([, init]) => JSON.parse(String(init?.body)) as unknown);
+    expect(bodies).toEqual([
+      { depth: 20, days: 30, label: null, costPlur: THIRTY_DAYS_DEPTH_20 },
+      { depth: 20, days: 30, label: null, costPlur: movedCost },
+    ]);
   });
 
   it('keeps Buy on and says why when no stamp can be bought now', async () => {

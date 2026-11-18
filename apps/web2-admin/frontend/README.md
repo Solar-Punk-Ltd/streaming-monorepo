@@ -341,7 +341,9 @@ wallet, so there is no password, only a confirm dialog.
   password: the node pays. A purchase still running is listed under the group as being bought, then
   waiting to be usable, read again every 10 seconds, and the batches are read again once it is
   done. When no stamp can be priced the button says why. The dialog shows the API's refusal, such as
-  a manager that offers no purchases, or the new cost when the price moved.
+  a manager that offers no purchases, or the new cost when the price moved. After a refusal the
+  stamps are read again, so the dialog, still open, prices the stamp at the new terms, and the next
+  confirm sends the new cost.
 - Select all, Clear, and a tick box per group. Switching between Top up and Dilute clears the ticks.
 - Top up takes days on a slider from 1 to 365, presets of 7, 30 and 90, or any whole number from 1.
   Each ticked row shows its time left after, its cost in xBZZ, and its node's xBZZ after. Dilute
