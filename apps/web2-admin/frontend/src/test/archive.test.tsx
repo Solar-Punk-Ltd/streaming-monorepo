@@ -151,6 +151,7 @@ function makeOptions(overrides: Partial<ArchiveOptionsResponse> = {}): ArchiveOp
     date: '2026-11-05',
     qualities: [makeQuality(), q720()],
     stamps: [makeStamp(), springStamp()],
+    holdingStamps: [],
     buy: TERMS,
     chequebookAvailablePlur: null,
     summary: { state: 'none', archived: [], archivedOnly: false },
@@ -371,9 +372,24 @@ describe('the archive in words', () => {
   });
 });
 
+/** A copy of 1080p, whole, on "Talks". */
+function onTalks(overrides: Partial<ArchiveQuality> = {}): ArchiveQuality {
+  return makeQuality({
+    state: 'complete',
+    batchId: TALKS,
+    batchLabel: 'Talks',
+    chunks: 540_000,
+    bytes: 2_200_000_000,
+    completedAt: '2026-11-12T09:51:10.000Z',
+    completedBy: 'alice',
+    ...overrides,
+  });
+}
+
 describe("the stream page's archive card", () => {
   it('shows each quality with its state, the stamps that run out soon, and the switch where it is offered', async () => {
     const hint = 'The stage batch that holds 720p has expired, so 720p no longer plays.';
+    const expiring = makeStamp({ expiresSoon: true, ttlSeconds: 20 * 86_400 });
     const archived = makeOptions({
       qualities: [
         makeQuality({
@@ -387,7 +403,8 @@ describe("the stream page's archive card", () => {
         }),
         q720(),
       ],
-      stamps: [makeStamp({ expiresSoon: true, ttlSeconds: 20 * 86_400 })],
+      stamps: [expiring],
+      holdingStamps: [expiring],
       summary: { state: 'complete', archived: ['1080p'], archivedOnly: false },
       canListArchivedOnly: true,
       archivedOnlyHint: hint,
@@ -418,6 +435,65 @@ describe("the stream page's archive card", () => {
     expect(bodyOf(fetchMock, 'PUT', `/api/streams/${ID}/archive/listing`)).toEqual({ archivedOnly: true });
     // Once it is on, the hint to turn it on is said no more.
     expect(within(card).queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it('warns of a full stamp that holds a copy and runs out soon, though no new copy can go onto it', async () => {
+    const full = makeStamp({
+      state: 'full',
+      fillRatio: 1,
+      chunksStamped: 1_887_207,
+      roomChunks: 0,
+      expiresSoon: true,
+      ttlSeconds: 20 * 86_400,
+    });
+    const options = makeOptions({
+      qualities: [onTalks(), q720()],
+      stamps: [springStamp()],
+      holdingStamps: [full],
+      summary: { state: 'complete', archived: ['1080p'], archivedOnly: false },
+      canListArchivedOnly: true,
+    });
+    renderPage(recorded({ archive: options.summary }), jobRoutes(null, options));
+
+    const card = await screen.findByRole('region', { name: 'archive' });
+    expect(
+      await within(card).findByText(
+        "“Talks” has 20 days left. Top it up on the Funding page's Stamps tab, or what it holds goes when it expires.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says a stamp left on a former catalogue node is topped up outside the admin, and warns of none that ran out', async () => {
+    const options = makeOptions({
+      qualities: [
+        onTalks(),
+        q720({ state: 'expired', batchId: SPRING, batchLabel: 'Spring', chunks: 300_000, bytes: 1_200_000_000 }),
+      ],
+      stamps: [],
+      holdingStamps: [
+        makeStamp({ writable: false, expiresSoon: true, ttlSeconds: 20 * 86_400 }),
+        makeStamp({
+          batchId: SPRING,
+          label: 'Spring',
+          state: 'expired',
+          writable: false,
+          expiresSoon: true,
+          ttlSeconds: 0,
+        }),
+      ],
+      summary: { state: 'complete', archived: ['1080p'], archivedOnly: false },
+      canListArchivedOnly: true,
+    });
+    renderPage(recorded({ archive: options.summary }), jobRoutes(null, options));
+
+    const card = await screen.findByRole('region', { name: 'archive' });
+    expect(
+      await within(card).findByText(
+        '“Talks” has 20 days left. Its node is the catalogue node no longer, so the admin does not top it up, and what it holds goes when it expires unless it is topped up outside the admin.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(card).queryByText(/“Spring” has/)).not.toBeInTheDocument();
+    expect(within(card).getByText(/The stamp has expired\./)).toBeInTheDocument();
   });
 
   it('says of a copy on a stamp the manager no longer lists that it cannot be topped up and stays until it expires', async () => {

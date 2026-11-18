@@ -2172,6 +2172,10 @@ function archiveJobOptions(row, user, now = Date.now()) {
       };
     }),
     stamps: archiveJobStamps.map((stamp) => archiveJobStampAnswer(stamp, now)).filter((stamp) => stamp.writable),
+    // Every listed stamp a copy of this stream is on, whatever its state, for the card's warnings.
+    holdingStamps: archiveJobStamps
+      .filter((stamp) => [...copies.values()].some((copy) => copy.batchId === stamp.batchId))
+      .map((stamp) => archiveJobStampAnswer(stamp, now)),
     buy: archiveJobBuyTerms(),
     chequebookAvailablePlur: mockArchive?.chequebookPlur ?? ARCHIVE_JOB_CHEQUEBOOK_PLUR,
     summary,
