@@ -331,7 +331,10 @@ export function ArchivePanel() {
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [pickStamp, setPickStamp] = useState(false);
-  const [buyOpen, setBuyOpen] = useState(false);
+  // The archive the buy dialog was opened for, null while it is closed. Its confirm names that archive, never the one
+  // current at the click: another user may have cancelled it and started a new one meanwhile.
+  const [buyFor, setBuyFor] = useState<string | null>(null);
+  const buyOpen = buyFor !== null;
   const [buying, setBuying] = useState(false);
   const [buyRefusal, setBuyRefusal] = useState<string | null>(null);
   const unfinished = current !== null && current.state !== 'done';
@@ -377,13 +380,13 @@ export function ArchivePanel() {
   useEffect(() => {
     if (awaitingId === null) {
       buyOffered.current = null;
-      setBuyOpen(false);
+      setBuyFor(null);
       setBuyRefusal(null);
       return;
     }
     if (panel.open && awaitingMine && buyOffered.current !== awaitingId) {
       buyOffered.current = awaitingId;
-      setBuyOpen(true);
+      setBuyFor(awaitingId);
     }
   }, [awaitingId, awaitingMine, panel.open]);
 
@@ -421,11 +424,12 @@ export function ArchivePanel() {
     }, 'The archive could not start.');
 
   const confirm = async (choice: ArchiveBuyChoice) => {
+    if (buyFor === null) return;
     setBuying(true);
     setBuyRefusal(null);
     try {
-      await confirmPurchase(choice);
-      setBuyOpen(false);
+      await confirmPurchase(buyFor, choice);
+      setBuyFor(null);
     } catch (error) {
       setBuyRefusal(errorMessage(error, 'The stamp could not be bought.'));
     } finally {
@@ -435,10 +439,11 @@ export function ArchivePanel() {
 
   const buyNew = () =>
     run(async () => {
+      const jobId = current?.id ?? null;
       await act({ action: 'buy_new' });
       // Whoever asked for the new stamp confirms it: the dialog opens as soon as the archive proposes it.
       buyOffered.current = null;
-      setBuyOpen(true);
+      setBuyFor(jobId);
     }, 'The archive did not take that.');
 
   const useStamp = (batchId: string) =>
@@ -647,7 +652,7 @@ export function ArchivePanel() {
                       ) : null}
                       {buyRefusal && !buyOpen ? <Alert severity="error">{buyRefusal}</Alert> : null}
                       <Box>
-                        <Button variant="contained" onClick={() => setBuyOpen(true)}>
+                        <Button variant="contained" onClick={() => setBuyFor(awaitingId)}>
                           Choose the stamp
                         </Button>
                       </Box>
@@ -713,7 +718,7 @@ export function ArchivePanel() {
           busy={buying}
           refusal={buyRefusal}
           onConfirm={(choice) => void confirm(choice)}
-          onClose={() => setBuyOpen(false)}
+          onClose={() => setBuyFor(null)}
         />
       ) : null}
       <ConfirmDialog

@@ -39,9 +39,10 @@ import { SECONDS_PER_DAY } from './stampQuote.js';
  *   and answers 202 {@link ArchiveStampPurchase}, or 409 {@link ArchiveRefusedAnswer}. The API forwards it to the
  *   manager's funding API.
  * - `GET archiveStampPurchasePath(id)` answers {@link ArchiveStampPurchase}.
- * - `POST {@link ARCHIVE_CONFIRM_PURCHASE_PATH}` takes {@link ArchiveBuyChoice}, the confirm of the stamp an archive
- *   waits to buy, and answers {@link ArchiveCurrentResponse}, or 409 {@link ArchiveRefusedAnswer}. The job owns that
- *   purchase: the API asks the manager, and the job goes through `buying` and `waiting_usable` to `copying`.
+ * - `POST archiveConfirmPurchasePath(id)` takes {@link ArchiveBuyChoice}, the confirm of the stamp the archive `id`
+ *   waits to buy, and answers {@link ArchiveCurrentResponse}, or 409 {@link ArchiveRefusedAnswer}: `not_now` when `id`
+ *   is not the current archive's. The job owns that purchase: the API asks the manager, and the job goes through
+ *   `buying` and `waiting_usable` to `copying`.
  * - `GET {@link ARCHIVE_STREAMS_PATH}` answers {@link ArchiveStreamsResponse}, the Archive page.
  *
  * The stream list and a stream's own answer carry `archive`, a {@link StreamArchiveSummary}, for the badge.
@@ -58,9 +59,6 @@ export const ARCHIVE_STAMP_PURCHASES_PATH = `${ARCHIVE_PATH}/stamp-purchases`;
 
 /** The streams that have an archive, for the Archive page. */
 export const ARCHIVE_STREAMS_PATH = `${ARCHIVE_PATH}/streams`;
-
-/** Where the stamp the current archive waits to buy is confirmed. `current` is no job's id, which is a UUID. */
-export const ARCHIVE_CONFIRM_PURCHASE_PATH = `${ARCHIVE_PATH}/current/confirm-purchase`;
 
 /** One purchase, by its id. */
 export function archiveStampPurchasePath(purchaseId: string): string {
@@ -80,6 +78,11 @@ export function streamArchiveListingPath(streamId: string): string {
 /** POST an `ArchiveActionRequest`. */
 export function archiveActionPath(jobId: string): string {
   return `${ARCHIVE_PATH}/${encodeURIComponent(jobId)}/actions`;
+}
+
+/** POST an `ArchiveBuyChoice`: the confirm of the stamp the archive `jobId` waits to buy. */
+export function archiveConfirmPurchasePath(jobId: string): string {
+  return `${ARCHIVE_PATH}/${encodeURIComponent(jobId)}/confirm-purchase`;
 }
 
 // What a stream shows
@@ -428,7 +431,7 @@ export interface ArchiveStampPurchase {
  * - `measuring`: each segment's root is read, which gives the chunks to copy and proves that root is on Swarm. A
  *   chunk deeper in a segment that cannot be read shows while copying, as the `unreadable` pause.
  * - `awaiting_purchase`: the user chose to buy a new stamp, the size is known, and the buy dialog waits for a confirm,
- *   which is a POST to {@link ARCHIVE_CONFIRM_PURCHASE_PATH}.
+ *   which is a POST to `archiveConfirmPurchasePath(id)`.
  * - `buying`, `waiting_usable`: the purchase runs, then the batch becomes usable.
  * - `copying`: chunks are read through the catalogue node and posted to it under the archive stamp.
  * - `verifying`: every chunk was posted, and the job waits for Bee to report each one synced.

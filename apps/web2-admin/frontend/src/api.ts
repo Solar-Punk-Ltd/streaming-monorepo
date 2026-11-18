@@ -22,9 +22,9 @@ import type {
   VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
 import {
-  ARCHIVE_CONFIRM_PURCHASE_PATH,
   ARCHIVE_PATH,
   archiveActionPath,
+  archiveConfirmPurchasePath,
   streamArchiveListingPath,
   streamArchivePath,
   type ArchiveActionRequest,
@@ -521,9 +521,12 @@ export async function actOnArchive(jobId: string, request: ArchiveActionRequest)
   return (await sendJson<ArchiveCurrentResponse>('POST', archiveActionPath(jobId), request)).archive;
 }
 
-/** Confirms the new stamp the archive waits to buy, at the cost the buy dialog showed. */
-export async function confirmArchivePurchase(choice: ArchiveBuyChoice): Promise<ArchiveJobSummary | null> {
-  return (await sendJson<ArchiveCurrentResponse>('POST', ARCHIVE_CONFIRM_PURCHASE_PATH, choice)).archive;
+/** Confirms the new stamp the archive `jobId` waits to buy, at the cost the buy dialog showed. */
+export async function confirmArchivePurchase(
+  jobId: string,
+  choice: ArchiveBuyChoice,
+): Promise<ArchiveJobSummary | null> {
+  return (await sendJson<ArchiveCurrentResponse>('POST', archiveConfirmPurchasePath(jobId), choice)).archive;
 }
 
 /** The "List only archived qualities" switch of one stream; the answer is the stream's archive as it now stands. */

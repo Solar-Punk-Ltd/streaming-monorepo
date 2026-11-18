@@ -7,7 +7,6 @@ import {
   ARCHIVE_ACTIONS,
   ARCHIVE_BADGE_TEXT,
   ARCHIVE_BUY_MIN_DAYS,
-  ARCHIVE_CONFIRM_PURCHASE_PATH,
   ARCHIVE_PATH,
   ARCHIVE_PURCHASES_NOT_OFFERED,
   ARCHIVE_STAMP_PURCHASES_PATH,
@@ -18,6 +17,7 @@ import {
   archiveBuyAmountPerChunkPlur,
   archiveBuyProblem,
   archiveBuyQuote,
+  archiveConfirmPurchasePath,
   archiveHoldsPlace,
   archivePauseNeedsDecision,
   archiveStampFits,
@@ -45,8 +45,9 @@ describe('the archive paths', () => {
     assert.equal(ARCHIVE_STREAMS_PATH, '/api/archive/streams');
   });
 
-  it('confirms the stamp the current archive waits to buy at a path no job id can be', () => {
-    assert.equal(ARCHIVE_CONFIRM_PURCHASE_PATH, '/api/archive/current/confirm-purchase');
+  it("confirms the stamp an archive waits to buy at a path under the job's id, beside its actions", () => {
+    assert.equal(archiveConfirmPurchasePath(STREAM_ID), `/api/archive/${STREAM_ID}/confirm-purchase`);
+    assert.equal(archiveConfirmPurchasePath('../x'), '/api/archive/..%2Fx/confirm-purchase');
   });
 
   it("builds a stream's paths and a job's, each id escaped", () => {

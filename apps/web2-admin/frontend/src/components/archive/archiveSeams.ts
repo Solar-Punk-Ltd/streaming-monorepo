@@ -15,7 +15,7 @@ import type {
  * - The buy dialog, `BuyStampDialog.tsx`, is one component for two places: the Stamps tab's "Buy archive stamp" and
  *   the archive panel's "Buy a new archive stamp". It takes {@link BuyStampDialogProps} and sends nothing itself: the
  *   caller's `onConfirm` does. On the Stamps tab that is a POST to `ARCHIVE_STAMP_PURCHASES_PATH`, in the archive
- *   panel a POST to `ARCHIVE_CONFIRM_PURCHASE_PATH`, each with the choice.
+ *   panel a POST to `archiveConfirmPurchasePath(id)` for the archive it was opened for, each with the choice.
  * - The badge, `ArchiveBadge.tsx`, takes {@link ArchiveBadgeProps}. The stream list, the Archive page and the stream
  *   page show it.
  * - The provider, `ArchiveProvider.tsx`, offers {@link ArchiveContextValue} through `useArchive()` to every page, as
@@ -81,8 +81,11 @@ export interface ArchiveContextValue {
   start: (streamId: string, request: ArchiveStartRequest) => Promise<void>;
   /** Acts on the current archive. Rejects with the API's sentence when it is refused. */
   act: (request: ArchiveActionRequest) => Promise<void>;
-  /** Confirms the stamp the current archive waits to buy. Rejects with the API's sentence when it is refused. */
-  confirmPurchase: (choice: ArchiveBuyChoice) => Promise<void>;
+  /**
+   * Confirms the stamp the archive `jobId` waits to buy: the one the buy dialog was opened for. Rejects with the API's
+   * sentence when it is refused, as when that archive is no longer the current one.
+   */
+  confirmPurchase: (jobId: string, choice: ArchiveBuyChoice) => Promise<void>;
 }
 
 /**

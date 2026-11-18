@@ -1930,9 +1930,12 @@ look asks again under the same id.
 An archive that waits in `awaiting_purchase` proposes a stamp in its summary:
 the measured chunks, the smallest depth that holds them with the margin, the
 default days, the cost now and what the wallet lacks of it. A user confirms
-one at `POST /api/archive/current/confirm-purchase`, which takes the place and
-asks the manager; a refusal in that moment leaves the archive waiting for a
-confirm. The job copies onto its new stamp once the stamp is usable and the
+one at `POST /api/archive/:id/confirm-purchase`, naming the archive the buy
+dialog was opened for, which takes the place and asks the manager; a refusal in
+that moment leaves the archive waiting for a confirm. A confirm that names
+another archive than the current one, as when another user cancelled it and
+started a new one meanwhile, is refused as `not_now` before anything is
+recorded or asked of the manager. The job copies onto its new stamp once the stamp is usable and the
 manager lists it as writable. The manager may list a new stamp while Bee still
 has it pending, and then the job keeps waiting. After thirty minutes without,
 it pauses as `batch`, saying why when the manager's record has a reason, such
@@ -1951,18 +1954,18 @@ record without `archiveBatches` reads no copy as expired or unlisted.
 
 ### Routes
 
-| Method | Path                                    | Answer                                                                                                                                                                                                                                  |
-| ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/archive`                          | `ArchiveCurrentResponse`: the archive on the server, as the user asking sees it, or null                                                                                                                                                |
-| POST   | `/api/archive/:id/actions`              | `ArchiveActionRequest` in (`pause`, `resume`, `wait`, `use_stamp`, `buy_new`, `cancel`, `dismiss`), `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, `busy`, `stamp_unusable`) when it does not apply now, 404 when gone |
-| POST   | `/api/archive/current/confirm-purchase` | `ArchiveBuyChoice` in, `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, `busy`, `price_moved`, `purchase_refused`, `purchases_not_offered`)                                                                              |
-| GET    | `/api/archive/stamps`                   | `ArchiveStampsResponse`: the archive stamps with their room, the purchases, and what a buy needs                                                                                                                                        |
-| POST   | `/api/archive/stamp-purchases`          | `ArchiveBuyChoice` in, 202 `ArchiveStampPurchase` out; `409 archive_refused` (`not_now`, `price_moved`, `purchase_refused`, `purchases_not_offered`) when it cannot start                                                               |
-| GET    | `/api/archive/stamp-purchases/:id`      | `ArchiveStampPurchase`                                                                                                                                                                                                                  |
-| GET    | `/api/archive/streams`                  | `ArchiveStreamsResponse`: the streams with an archive, for the Archive page                                                                                                                                                             |
-| GET    | `/api/streams/:id/archive`              | `ArchiveOptionsResponse`: the qualities with their state and estimates, the stamps that fit, what the catalogue chequebook can pay now (null unread), why none can start now, and the archive on the server                             |
-| POST   | `/api/streams/:id/archive`              | `ArchiveStartRequest` in, 202 `{ archive }` out; `409 archive_refused` (`busy`, `not_finished`, `no_node`, `no_stamp`, `stamp_unusable`, `nothing_to_archive`, `purchase_refused`)                                                      |
-| PUT    | `/api/streams/:id/archive/listing`      | `ArchiveListingRequest` in, `ArchiveOptionsResponse` out                                                                                                                                                                                |
+| Method | Path                                | Answer                                                                                                                                                                                                                                  |
+| ------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/archive`                      | `ArchiveCurrentResponse`: the archive on the server, as the user asking sees it, or null                                                                                                                                                |
+| POST   | `/api/archive/:id/actions`          | `ArchiveActionRequest` in (`pause`, `resume`, `wait`, `use_stamp`, `buy_new`, `cancel`, `dismiss`), `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, `busy`, `stamp_unusable`) when it does not apply now, 404 when gone |
+| POST   | `/api/archive/:id/confirm-purchase` | `ArchiveBuyChoice` in, `ArchiveCurrentResponse` out; `409 archive_refused` (`not_now`, also when `:id` is not the current archive, `busy`, `price_moved`, `purchase_refused`, `purchases_not_offered`)                                  |
+| GET    | `/api/archive/stamps`               | `ArchiveStampsResponse`: the archive stamps with their room, the purchases, and what a buy needs                                                                                                                                        |
+| POST   | `/api/archive/stamp-purchases`      | `ArchiveBuyChoice` in, 202 `ArchiveStampPurchase` out; `409 archive_refused` (`not_now`, `price_moved`, `purchase_refused`, `purchases_not_offered`) when it cannot start                                                               |
+| GET    | `/api/archive/stamp-purchases/:id`  | `ArchiveStampPurchase`                                                                                                                                                                                                                  |
+| GET    | `/api/archive/streams`              | `ArchiveStreamsResponse`: the streams with an archive, for the Archive page                                                                                                                                                             |
+| GET    | `/api/streams/:id/archive`          | `ArchiveOptionsResponse`: the qualities with their state and estimates, the stamps that fit, what the catalogue chequebook can pay now (null unread), why none can start now, and the archive on the server                             |
+| POST   | `/api/streams/:id/archive`          | `ArchiveStartRequest` in, 202 `{ archive }` out; `409 archive_refused` (`busy`, `not_finished`, `no_node`, `no_stamp`, `stamp_unusable`, `nothing_to_archive`, `purchase_refused`)                                                      |
+| PUT    | `/api/streams/:id/archive/listing`  | `ArchiveListingRequest` in, `ArchiveOptionsResponse` out                                                                                                                                                                                |
 
 The stream list and a stream's own answer carry `archive`, a
 `StreamArchiveSummary`, for a stream with anything copied.

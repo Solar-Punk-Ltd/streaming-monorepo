@@ -1,6 +1,6 @@
 /**
- * The archive's purchase confirm as the console calls it, over HTTP: POST /api/archive/current/confirm-purchase for an
- * archive waiting for a stamp. A price that moved is refused with the new cost and nothing recorded, a manager with no
+ * The archive's purchase confirm as the console calls it, over HTTP: POST /api/archive/:id/confirm-purchase for an
+ * archive waiting for a stamp. A confirm that names another archive is refused with nothing recorded, a price that moved is refused with the new cost and nothing recorded, a manager with no
  * purchase route is answered as such, and a confirm the manager takes records the purchase and takes the place. Sign-in
  * is stood in for by a middleware that signs every request in as the test operator; the node, the store and the
  * manager are in memory.
@@ -18,11 +18,11 @@ import {
   type FundingStampPurchaseStatus,
 } from '@streaming-monorepo/contracts';
 import {
-  ARCHIVE_CONFIRM_PURCHASE_PATH,
   ARCHIVE_PATH,
   ARCHIVE_PURCHASES_NOT_OFFERED,
   REQUESTED_WITH_HEADER,
   REQUESTED_WITH_VALUE,
+  archiveConfirmPurchasePath,
   type ArchiveCurrentResponse,
 } from '@streaming-monorepo/web2-admin-common';
 import express, { type RequestHandler } from 'express';
@@ -107,8 +107,9 @@ const signedIn: RequestHandler = (req, _res, next) => {
   next();
 };
 
-function confirm(body: unknown): Promise<Response> {
-  return fetch(`${url}${ARCHIVE_CONFIRM_PURCHASE_PATH}`, {
+/** Confirms for the archive waiting for a stamp, or for the job named. */
+function confirm(body: unknown, jobId: string = store.job!.id): Promise<Response> {
+  return fetch(`${url}${archiveConfirmPurchasePath(jobId)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', [REQUESTED_WITH_HEADER]: REQUESTED_WITH_VALUE },
     body: JSON.stringify(body),
@@ -177,7 +178,31 @@ after(async () => {
   await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
 });
 
-describe('POST /api/archive/current/confirm-purchase', () => {
+describe('POST /api/archive/:id/confirm-purchase', () => {
+  it('refuses a confirm that names another archive, recording nothing and asking nothing of the manager', async () => {
+    const costPlur = archiveBatchCostPlur(depth, thirtyDays(24_000n));
+    const res = await confirm({ depth, days: 30, label: null, costPlur }, '0f1e2d3c-4b5a-4968-8776-655443322110');
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), {
+      error: 'archive_refused',
+      problem: 'not_now',
+      message: 'The archive moved on, so it cannot buy a stamp now.',
+    });
+    assert.equal(store.purchases.size, 0, 'nothing recorded');
+    assert.equal(manager.requests.length, 0, 'nothing asked of the manager');
+    assert.equal(store.job?.state, 'awaiting_purchase');
+  });
+
+  it('refuses a path whose id is no job id', async () => {
+    const costPlur = archiveBatchCostPlur(depth, thirtyDays(24_000n));
+    const res = await confirm({ depth, days: 30, label: null, costPlur }, 'current');
+
+    assert.equal(res.status, 400);
+    assert.equal(store.purchases.size, 0, 'nothing recorded');
+    assert.equal(manager.requests.length, 0, 'nothing asked of the manager');
+  });
+
   it('refuses a cost the price no longer gives, with the new cost, recording nothing', async () => {
     const oldCost = archiveBatchCostPlur(depth, thirtyDays(24_000n));
     const newCost = archiveBatchCostPlur(depth, thirtyDays(25_000n));
