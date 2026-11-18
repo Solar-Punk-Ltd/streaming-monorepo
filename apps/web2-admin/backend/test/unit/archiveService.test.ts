@@ -703,6 +703,69 @@ describe('ArchiveService', () => {
     assert.equal(store.purchases.get(requestId)!.state, 'usable');
   });
 
+  it('waits while the manager lists the new stamp as pending and not writable, then copies once it is writable', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
+    await service.settled();
+    const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
+    await service.confirmPurchase(TEST_OPERATOR, choice(depth, 'Alps archive'));
+    await until(() => manager.requests.length === 1, 'the manager asked');
+    const { requestId } = manager.requests[0]!;
+    const pending = archiveBatch(NEW_BATCH, { label: 'Alps archive', depth, state: 'pending', writable: false });
+    catalogue.batches = [...catalogue.batches, pending];
+    manager.statuses.set(requestId, {
+      requestId,
+      state: 'confirmed',
+      batchId: NEW_BATCH,
+      txHash: `0x${'f'.repeat(64)}`,
+      error: null,
+      usable: true,
+    });
+    await until(async () => store.purchases.get(requestId)?.state === 'usable', 'the purchase reads usable');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const waiting = await job();
+    assert.equal(waiting.state, 'waiting_usable', 'not paused while the record has the stamp pending');
+    assert.equal(waiting.pauseReason, null);
+    assert.equal(node.posts.length, 0);
+
+    catalogue.batches = catalogue.batches.map((batch) =>
+      batch.batchId === NEW_BATCH ? { ...batch, state: 'active' as const, writable: true } : batch,
+    );
+    await service.settled();
+    assert.equal((await job()).state, 'done');
+    assert.equal(store.archives.get('stream-1:360p')!.batch_id, NEW_BATCH);
+  });
+
+  it("pauses as batch with the record's reason when the new stamp is still pending at the purchase timeout", async () => {
+    let clock = Date.now();
+    service = makeService({ now: () => clock });
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
+    await service.settled();
+    const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
+    await service.confirmPurchase(TEST_OPERATOR, choice(depth));
+    await until(() => manager.requests.length === 1, 'the manager asked');
+    const { requestId } = manager.requests[0]!;
+    catalogue.batches = [...catalogue.batches, archiveBatch(NEW_BATCH, { depth, state: 'pending', writable: false })];
+    manager.statuses.set(requestId, {
+      requestId,
+      state: 'confirmed',
+      batchId: NEW_BATCH,
+      txHash: `0x${'f'.repeat(64)}`,
+      error: null,
+      usable: true,
+    });
+    await until(async () => store.purchases.get(requestId)?.state === 'usable', 'the purchase reads usable');
+    assert.equal((await job()).state, 'waiting_usable');
+    clock += 2 * 60_000;
+    await service.settled();
+    const current = await job();
+    assert.equal(current.state, 'paused');
+    assert.equal(current.pauseReason, 'batch');
+    assert.match(current.pauseMessage!, /The archive stamp is not usable yet\. Try again later/);
+    assert.doesNotMatch(current.pauseMessage!, /catalogue node no longer/);
+  });
+
   it('pauses on a purchase that failed, and on Resume waits for a user to confirm another', async () => {
     recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });

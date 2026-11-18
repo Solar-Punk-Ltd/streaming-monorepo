@@ -1186,7 +1186,10 @@ export class ArchiveService {
     });
   }
 
-  /** Follows the job's purchase until its batch is usable and listed, then copies onto it. */
+  /**
+   * Follows the job's purchase until its batch is usable and the manager lists it as writable, then copies onto it. The
+   * manager may list a new batch while Bee still has it pending, so a listed batch alone is not enough.
+   */
   private async purchasePass(job: ArchiveJobRow, signal: AbortSignal): Promise<void> {
     const gone = 'The purchase for this archive is gone. Choose a stamp, or buy a new one.';
     const purchaseId = job.purchase_id;
@@ -1204,10 +1207,11 @@ export class ArchiveService {
           `The stamp could not be bought: ${purchase.error ?? 'the purchase failed'} Choose a stamp, or buy a new one.`,
         );
       }
-      const listed =
-        purchase.batch_id !== null &&
-        (heldStamps(await this.catalogue.get())?.batches.some((batch) => batch.batchId === purchase.batch_id) ?? false);
-      if (purchase.state === 'usable' && listed) {
+      const held = purchase.batch_id === null ? null : heldStamps(await this.catalogue.get());
+      const batch = held?.batches.find((candidate) => candidate.batchId === purchase.batch_id);
+      // What the record says against the batch, or null while it does not list it yet.
+      const problem = held && batch ? stampProblem(batch, held.observedAt, this.now()) : null;
+      if (purchase.state === 'usable' && batch && problem === null) {
         const moved = await this.store.transition(job.id, ['buying', 'waiting_usable'], {
           state: 'copying',
           batchId: purchase.batch_id,
@@ -1223,9 +1227,10 @@ export class ArchiveService {
         job = moved;
       }
       if (this.now() - purchase.started_at.getTime() > this.purchaseTimeoutMs) {
+        const minutes = Math.round(this.purchaseTimeoutMs / 60_000);
         throw new ArchivePause(
           'batch',
-          `The new stamp is not usable ${Math.round(this.purchaseTimeoutMs / 60_000)} minutes after it was asked for. Try again later, choose another stamp, or cancel.`,
+          `The new stamp is not usable ${minutes} minutes after it was asked for.${problem ? ` ${problem}` : ''} Try again later, choose another stamp, or cancel.`,
         );
       }
       await sleep(this.pollMs, signal);

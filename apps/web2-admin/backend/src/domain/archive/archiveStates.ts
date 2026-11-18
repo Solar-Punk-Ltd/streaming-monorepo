@@ -141,18 +141,25 @@ export function toArchiveStamp(
   };
 }
 
-/** Why a copy cannot be written onto this stamp now, or null: listed writable, immutable, and not run out. */
+/**
+ * Why a copy cannot be written onto this stamp now, or null: listed writable, immutable, and not run out. The state the
+ * manager read comes first, since the manager calls a stamp not writable in every state but `active` and `full`; only a
+ * stamp read as one of those and still not writable sits on a node that is the catalogue node no longer.
+ */
 export function stampProblem(batch: CatalogueArchiveBatch | undefined, observedAt: string, now: number): string | null {
   if (!batch) return 'The archive stamp is no longer listed by the manager.';
+  if (batch.state === 'pending') return 'The archive stamp is not usable yet.';
+  if (batch.state === 'expired' || batch.state === 'gone') return `The archive stamp is ${batch.state}.`;
+  if (batch.state === 'unknown' || batch.state === 'none') {
+    return 'The manager could not read the archive stamp from its node.';
+  }
   if (!batch.writable) {
     return 'The archive stamp is on a node that is the catalogue node no longer, so it can be topped up and never written.';
   }
   if (!batch.immutable) {
     return 'The archive stamp is mutable, and a mutable batch overwrites its oldest chunks once it fills.';
   }
-  if (batch.state === 'expired' || batch.state === 'gone') return `The archive stamp is ${batch.state}.`;
   if (batch.state === 'full') return 'The archive stamp is full. Dilute it on the Stamps tab to give it room.';
-  if (batch.state === 'pending') return 'The archive stamp is not usable yet.';
   if (expiredByClock({ ttlSeconds: batch.ttlSeconds, observedAt }, now)) return 'The archive stamp has expired.';
   return null;
 }
