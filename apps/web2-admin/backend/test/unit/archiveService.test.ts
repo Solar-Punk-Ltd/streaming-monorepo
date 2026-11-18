@@ -986,6 +986,42 @@ describe('ArchiveService', () => {
     assert.ok(options.qualities.length > 0, 'the options answer all the same');
   });
 
+  it('answers each stamp that holds a copy of the stream once, whatever its state, beside the stamps a copy can go onto', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p', '360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const roomy = archiveBatch(OTHER_BATCH, { label: 'archive two' });
+    catalogue.batches = [archiveBatch(BATCH, { state: 'full', fillRatio: 1, ttlSeconds: 10 * 86_400 }), roomy];
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.deepEqual(
+      options.stamps.map((stamp) => stamp.batchId),
+      [OTHER_BATCH],
+      'a full stamp takes no new copy',
+    );
+    assert.deepEqual(
+      options.holdingStamps.map((stamp) => [stamp.batchId, stamp.state, stamp.expiresSoon]),
+      [[BATCH, 'full', true]],
+      'the full stamp holds both qualities, once, and runs out soon',
+    );
+
+    for (const holding of [
+      archiveBatch(BATCH, { writable: false }),
+      archiveBatch(BATCH, { state: 'expired', ttlSeconds: 0, writable: false }),
+    ]) {
+      catalogue.batches = [holding, roomy];
+      const again = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+      assert.deepEqual(
+        again.stamps.map((stamp) => stamp.batchId),
+        [OTHER_BATCH],
+      );
+      assert.deepEqual(
+        again.holdingStamps.map((stamp) => [stamp.batchId, stamp.state, stamp.writable]),
+        [[BATCH, holding.state, false]],
+        `a stamp ${holding.state === 'expired' ? 'that expired' : 'left on a node that is the catalogue node no longer'}`,
+      );
+    }
+  });
+
   it('asks the manager again, under the same id, for a purchase it never received', async () => {
     const purchase = await service.buy(TEST_OPERATOR, choice(17));
     await service.settled();

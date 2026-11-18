@@ -456,8 +456,10 @@ export class ArchiveService {
     const now = this.now();
     const held = heldStamps(catalogueRow);
     const qualities = this.qualitiesOf(stream, rungs, copies, held, now, await this.store.lastRate());
+    // One reading of the listed stamps answers both lists: where a new copy can go, and what holds a copy already.
+    const read = held ? await this.stampsOf(catalogueRow, held, copies) : [];
     const stamps = held
-      ? (await this.stampsOf(catalogueRow, held, copies)).filter(
+      ? read.filter(
           (stamp) =>
             stampProblem(
               held.batches.find((batch) => batch.batchId === stamp.batchId),
@@ -466,6 +468,7 @@ export class ArchiveService {
             ) === null,
         )
       : [];
+    const copiedOnto = new Set(copies.map((copy) => copy.batch_id));
     const summary = streamArchiveSummary(stream, copies, currentIndexes(stream, rungs), held, now) ?? {
       state: 'none' as const,
       archived: [],
@@ -477,6 +480,7 @@ export class ArchiveService {
       date: broadcastDay(stream),
       qualities,
       stamps,
+      holdingStamps: read.filter((stamp) => copiedOnto.has(stamp.batchId)),
       buy: (await this.buyTerms()).terms,
       // The reading the job's funds check makes, read now: null without funding or when the manager cannot be read.
       chequebookAvailablePlur: await this.readChequebook().catch(() => null),

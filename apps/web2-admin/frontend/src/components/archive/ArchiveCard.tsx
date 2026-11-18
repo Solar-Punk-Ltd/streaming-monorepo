@@ -74,10 +74,29 @@ export function copyLine(quality: ArchiveQuality): string {
   return line.charAt(0).toUpperCase() + line.slice(1);
 }
 
-/** The stamps holding a copy of this stream that run out soon, each once. */
+/** Whether a stamp has run out: read expired or gone, or its time left gone by since the reading. */
+function ranOut(stamp: ArchiveStamp): boolean {
+  return stamp.state === 'expired' || stamp.state === 'gone' || stamp.ttlSeconds === 0;
+}
+
+/**
+ * The stamps holding a copy of this stream that run out soon, each once, whatever else their state: full, or left on
+ * a node that is the catalogue node no longer. One that has run out already is not among them: its copies say so.
+ */
 function stampsRunningOut(options: ArchiveOptionsResponse): ArchiveStamp[] {
-  const held = new Set(options.qualities.map((quality) => quality.batchId).filter((id): id is string => id !== null));
-  return options.stamps.filter((stamp) => stamp.expiresSoon && held.has(stamp.batchId));
+  return options.holdingStamps.filter((stamp) => stamp.expiresSoon && !ranOut(stamp));
+}
+
+/**
+ * The warning for a stamp that runs out soon: its time left, and where it is topped up, on the Funding page's Stamps
+ * tab or, for a stamp left on a node that is the catalogue node no longer (read, and not written), outside the admin.
+ */
+function runningOutText(stamp: ArchiveStamp): string {
+  const left = !stamp.writable && (stamp.state === 'active' || stamp.state === 'full');
+  const where = left
+    ? 'Its node is the catalogue node no longer, so the admin does not top it up, and what it holds goes when it expires unless it is topped up outside the admin.'
+    : "Top it up on the Funding page's Stamps tab, or what it holds goes when it expires.";
+  return `“${stamp.label ?? shortHex(stamp.batchId)}” has ${formatTimeLeft(stamp.ttlSeconds)} left. ${where}`;
 }
 
 /**
@@ -192,8 +211,7 @@ export function ArchiveCard({ stream, onChanged }: { stream: Stream; onChanged?:
           </Stack>
           {stampsRunningOut(options).map((stamp) => (
             <Alert key={stamp.batchId} severity="warning">
-              “{stamp.label ?? shortHex(stamp.batchId)}” has {formatTimeLeft(stamp.ttlSeconds)} left. Top it up on the
-              Funding page's Stamps tab, or what it holds goes when it expires.
+              {runningOutText(stamp)}
             </Alert>
           ))}
           {holdsFinishedRecording(stream) ? (
