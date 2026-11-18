@@ -434,8 +434,8 @@ and every signed-in user sees it
 - **Following an archive.** Where it stands, with a bar for the whole and one for each quality as it
   copies and verifies, the rate and the time left, what it is expected to cost the chequebook and
   what the chequebook can pay, with a warning when it holds less, who started it and when, in UTC,
-  and the buttons for what it allows now: Pause; Resume, or Try again, Try again after a dilution
-  and Try again after funding it, after the pauses that ask for them; Wait until it finishes, when
+  and the buttons for what it allows now: Pause; Resume, or Try again and Try again after
+  funding it, after the pauses that ask for them; Wait until it finishes, when
   the stream went live again; Use another stamp, which lists the other stamps that can be written,
   and Buy a new archive stamp, when the stamp lacks room; and Cancel archive, which asks first,
   since what was copied stays on Swarm and its qualities show as "Archive incomplete". Once it is

@@ -224,7 +224,7 @@ recording is already on the node and every chunk of it is readable.
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `measuring`                | reads each segment root's span and level, which gives the bytes and an upper bound of the chunks, and proves each segment's root is on Swarm before any postage is spent. A chunk deeper in a segment that cannot be read shows while copying, as the `unreadable` pause |
 | `awaiting_purchase`        | with "Buy a new archive stamp": the buy dialog comes to front with the sized stamp, its cost and what the wallet lacks, for the user's confirm                                                                                                                           |
-| `buying`, `waiting_usable` | the purchase runs, then the batch becomes usable                                                                                                                                                                                                                         |
+| `buying`, `waiting_usable` | the purchase runs, then the job waits until the batch is usable and the manager lists it as writable, which can come later, since the manager may list a new batch while Bee still has it pending. Thirty minutes after the purchase it pauses as `batch`, saying why    |
 | `copying`                  | chunks are read through the catalogue node and posted to it under the archive stamp                                                                                                                                                                                      |
 | `verifying`                | waits for Bee to report every posted chunk synced                                                                                                                                                                                                                        |
 | `paused`                   | stopped, with a reason                                                                                                                                                                                                                                                   |
@@ -234,15 +234,15 @@ recording is already on the node and every chunk of it is readable.
 It never fails, it pauses, and a user decides. The panel comes to front once per pause for the user
 who started it.
 
-| Reason       | When                                                     | Choices                                                      |
-| ------------ | -------------------------------------------------------- | ------------------------------------------------------------ |
-| `user`       | a user paused it                                         | Resume, Cancel                                               |
-| `unreadable` | a data or tree chunk was neither read nor rebuilt        | Try again, Cancel                                            |
-| `live`       | the stream went live again                               | Wait, Cancel                                                 |
-| `batch`      | the stamp is full, expired, removed or lacks room        | another stamp, a new one, Try again after a dilution, Cancel |
-| `node`       | the catalogue node does not answer or is designated anew | Try again, Cancel                                            |
-| `funds`      | the catalogue node's chequebook is under the floor       | Try again after funding it, Cancel                           |
-| `problem`    | anything else, such as a tag that stopped moving         | Try again, Cancel                                            |
+| Reason       | When                                                                      | Choices                                     |
+| ------------ | ------------------------------------------------------------------------- | ------------------------------------------- |
+| `user`       | a user paused it                                                          | Resume, Cancel                              |
+| `unreadable` | a data or tree chunk was neither read nor rebuilt                         | Try again, Cancel                           |
+| `live`       | the stream went live again                                                | Wait, Cancel                                |
+| `batch`      | the stamp is not usable yet, expired, unread, full, removed or lacks room | another stamp, a new one, Try again, Cancel |
+| `node`       | the catalogue node does not answer or is designated anew                  | Try again, Cancel                           |
+| `funds`      | the catalogue node's chequebook is under the floor                        | Try again after funding it, Cancel          |
+| `problem`    | anything else, such as a tag that stopped moving                          | Try again, Cancel                           |
 
 Chunks already copied stay on Swarm whatever the user chooses, and the quality shows as partial.
 

@@ -354,7 +354,7 @@ describe('the archive in words', () => {
   });
 
   it('names Resume after the reason the archive paused for', () => {
-    expect(archiveActionLabel('resume', batchPause())).toBe('Try again after a dilution');
+    expect(archiveActionLabel('resume', batchPause())).toBe('Try again');
     expect(archiveActionLabel('resume', batchPause({ pauseReason: 'funds' }))).toBe('Try again after funding it');
     expect(archiveActionLabel('resume', batchPause({ pauseReason: 'unreadable' }))).toBe('Try again');
     expect(archiveActionLabel('resume', batchPause({ pauseReason: 'user' }))).toBe('Resume');
@@ -592,7 +592,7 @@ describe('the archive panel', () => {
 
     const panel = await screen.findByRole('dialog', { name: 'Archive of “Opening keynote”' });
     expect(within(panel).getByText('The archive stamp “Talks” lacks room for what is left.')).toBeInTheDocument();
-    expect(within(panel).getByRole('button', { name: 'Try again after a dilution' })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Try again' })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: 'Buy a new archive stamp' })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: 'Cancel archive' })).toBeInTheDocument();
 
