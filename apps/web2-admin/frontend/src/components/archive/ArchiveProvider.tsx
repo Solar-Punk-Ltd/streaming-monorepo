@@ -115,9 +115,9 @@ export function ArchiveProvider({ children }: { children: ReactNode }) {
     [current, refresh],
   );
   const confirmPurchase = useCallback(
-    async (choice: ArchiveBuyChoice) => {
+    async (jobId: string, choice: ArchiveBuyChoice) => {
       try {
-        setCurrent(await confirmArchivePurchase(choice));
+        setCurrent(await confirmArchivePurchase(jobId, choice));
       } catch (error) {
         await refresh();
         throw error;
