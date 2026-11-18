@@ -53,6 +53,14 @@ export const NOT_READ_IN_FULL_TEXT = 'The node did not say enough about it to to
 export const WALLET_UNREAD_TEXT = "Its node's wallet could not be read, so it cannot be topped up or diluted.";
 
 /**
+ * Said in place of the tick box of an archive stamp on a node the Funding view lists nowhere, neither a stage's node nor
+ * the catalogue node: one that is the catalogue node no longer. The admin sends that node no transfer, so its wallet is
+ * funded outside the admin, and the API refuses to top the stamp up or dilute it.
+ */
+export const FORMER_CATALOGUE_NODE_TEXT =
+  "Its node is the catalogue node no longer: that node's wallet is funded outside the admin, so the admin does not top it up or dilute it.";
+
+/**
  * Said in place of the tick box of an archive stamp, on a dilution, that is not written any more, such as one left on a
  * node that is the catalogue node no longer: nothing is copied onto it again, so it is kept alive and never made bigger.
  */
@@ -80,6 +88,11 @@ export interface BatchRow {
   node: AdminFundingNode;
   batch: FundingBatch;
   archive?: ArchiveStamp;
+  /**
+   * True for an archive stamp on a node the Funding view lists nowhere, which is the catalogue node no longer and no
+   * stage's: the admin does not top it up or dilute it, and its row says so in place of a tick box.
+   */
+  formerCatalogue?: boolean;
 }
 
 /** Said in an archive stamp's row when the manager did not read it, so it is not known what it is worth now. */
@@ -102,23 +115,31 @@ function archiveBatchOf(stamp: ArchiveStamp): FundingBatch {
 }
 
 /**
- * The node an archive stamp names as its holder, as the Funding view lists it, or, for one the view lists nowhere, such
- * as a node that is the catalogue node no longer and no stage's, the node with its name and no wallet read: its stamp
- * then says why it has no tick box.
+ * The node an archive stamp names as its holder, as the Funding view lists it, or, for one the view lists nowhere, the
+ * node with its name and no wallet read: its stamp then says why it has no tick box. `formerCatalogue` is true for a
+ * node the stamp names and the view lists nowhere, since a node that holds an archive stamp and is neither a stage's
+ * nor the catalogue node is the catalogue node no longer. A stamp that names no node, as when the manager's inventory
+ * was not read, is not known to be on one.
  */
-function holderOf(stamp: ArchiveStamp, nodes: readonly AdminFundingNode[]): AdminFundingNode {
+function holderOf(
+  stamp: ArchiveStamp,
+  nodes: readonly AdminFundingNode[],
+): { node: AdminFundingNode; formerCatalogue: boolean } {
   const listed = stamp.nodeId === null ? undefined : nodes.find((node) => node.nodeId === stamp.nodeId);
-  if (listed) return listed;
+  if (listed) return { node: listed, formerCatalogue: false };
   return {
-    nodeId: stamp.nodeId ?? `archive:${stamp.batchId}`,
-    label: stamp.nodeLabel ?? 'Unknown node',
-    role: 'uploader',
-    walletAddress: null,
-    xdaiWei: null,
-    xbzzPlur: null,
-    readError: null,
-    pin: 'new',
-    pinnedAddress: null,
+    node: {
+      nodeId: stamp.nodeId ?? `archive:${stamp.batchId}`,
+      label: stamp.nodeLabel ?? 'Unknown node',
+      role: 'uploader',
+      walletAddress: null,
+      xdaiWei: null,
+      xbzzPlur: null,
+      readError: null,
+      pin: 'new',
+      pinnedAddress: null,
+    },
+    formerCatalogue: stamp.nodeId !== null,
   };
 }
 
@@ -140,12 +161,13 @@ function takesOperation(row: BatchRow, operation: FundingStampOperationKind): bo
 
 /**
  * Whether a row has a tick box for `operation`: its batch read whole, usable and not expired, the common
- * `operableBatch` the backend checks too, its node's wallet read, and, on a dilution, not an archive stamp that is
- * written no more. Select all, the group's tick box and the operation follow the same rule, so a tick left on a row
- * that has lost its tick box since is neither counted nor asked for.
+ * `operableBatch` the backend checks too, not an archive stamp on a node that is the catalogue node no longer, its
+ * node's wallet read, and, on a dilution, not an archive stamp that is written no more. Select all, the group's tick
+ * box and the operation follow the same rule, so a tick left on a row that has lost its tick box since is neither
+ * counted nor asked for.
  */
 export function hasTickBox(row: BatchRow, operation: FundingStampOperationKind = 'topup'): row is TickableRow {
-  return operableBatch(row.batch) && walletRead(row.node) && takesOperation(row, operation);
+  return operableBatch(row.batch) && !row.formerCatalogue && walletRead(row.node) && takesOperation(row, operation);
 }
 
 /**
@@ -173,11 +195,10 @@ export const ARCHIVE_GROUP_TITLE = 'Archive stamps';
 export function batchGroups(view: Inventory): BatchGroup[] {
   const stamps = view.archiveStamps ?? [];
   const nodes = allNodes(view);
-  const archiveRows: BatchRow[] = stamps.map((stamp) => ({
-    node: holderOf(stamp, nodes),
-    batch: archiveBatchOf(stamp),
-    archive: stamp,
-  }));
+  const archiveRows: BatchRow[] = stamps.map((stamp) => {
+    const holder = holderOf(stamp, nodes);
+    return { node: holder.node, batch: archiveBatchOf(stamp), archive: stamp, formerCatalogue: holder.formerCatalogue };
+  });
   const archiveGroup: BatchGroup = {
     key: 'archive',
     kind: 'archive',
@@ -237,11 +258,13 @@ export function whyNotOperable(batch: FundingBatch): string | null {
 
 /**
  * Why a row has no tick box for `operation`, said in its row instead, or null when it has one: what is wrong with its
- * batch first, then that its node's wallet was not read, then that an archive stamp written no more takes top-ups only.
+ * batch first, then that its node is the catalogue node no longer, or that its node's wallet was not read, then that an
+ * archive stamp written no more takes top-ups only.
  */
 export function whyNoTickBox(row: BatchRow, operation: FundingStampOperationKind = 'topup'): string | null {
   const why = whyNotOperable(row.batch);
   if (why !== null) return why;
+  if (row.formerCatalogue) return FORMER_CATALOGUE_NODE_TEXT;
   if (!walletRead(row.node)) return WALLET_UNREAD_TEXT;
   return takesOperation(row, operation) ? null : TOP_UP_ONLY_TEXT;
 }

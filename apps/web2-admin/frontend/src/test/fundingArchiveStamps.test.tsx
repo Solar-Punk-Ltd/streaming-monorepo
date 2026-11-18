@@ -10,7 +10,12 @@ import {
 
 import { archiveReadFailed, PURCHASE_POLL_MS } from '../components/funding/ArchiveStamps';
 import { NO_ARCHIVE_STAMPS } from '../components/funding/BatchTable';
-import { ARCHIVE_STAMP_UNREAD_TEXT, TOP_UP_ONLY_TEXT, WALLET_UNREAD_TEXT } from '../components/funding/stamps';
+import {
+  ARCHIVE_STAMP_UNREAD_TEXT,
+  FORMER_CATALOGUE_NODE_TEXT,
+  TOP_UP_ONLY_TEXT,
+  WALLET_UNREAD_TEXT,
+} from '../components/funding/stamps';
 import { FundingPage } from '../pages/FundingPage';
 import {
   ARCHIVE,
@@ -202,24 +207,70 @@ describe('the archive stamps on the Stamps tab', () => {
     expect(screen.getByRole('table', { name: 'Catalogue batch' })).toBeInTheDocument();
   });
 
-  it("names the node a stamp is on, and says why one on a node the view lists nowhere, or one not read, can't be ticked", async () => {
+  it("names the node a stamp is on, and says why one whose node's wallet was not read, or one not read, can't be ticked", async () => {
+    serve(
+      () => {
+        const view = makeStampView();
+        const [uploader, ...rest] = view.stages[0]?.nodes ?? [];
+        if (view.stages[0] && uploader) {
+          view.stages[0].nodes = [
+            { ...uploader, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError: 'The node did not answer.' },
+            ...rest,
+          ];
+        }
+        return view;
+      },
+      () =>
+        makeArchiveStamps({
+          stamps: [
+            makeArchiveStamp({
+              batchId: ARCHIVE.old.slice(2),
+              label: 'Old',
+              nodeId: 'stage-1:bee',
+              nodeLabel: 'stage-1-uploader',
+              writable: false,
+            }),
+            makeArchiveStamp({ state: 'unknown', ttlSeconds: null, fillRatio: null, writable: false }),
+          ],
+        }),
+    );
+    await openStamps();
+    const old = rowOf('Old');
+    expect(old.getByText(/^On stage-1-uploader/)).toBeInTheDocument();
+    expect(old.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(old.getByText(WALLET_UNREAD_TEXT)).toBeInTheDocument();
+    expect(old.getByText('Top-ups only')).toBeInTheDocument();
+    const unread = rowOf('Talks');
+    expect(unread.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(unread.getByText(ARCHIVE_STAMP_UNREAD_TEXT)).toBeInTheDocument();
+    expect(unread.queryByText('Top-ups only')).not.toBeInTheDocument();
+  });
+
+  it('says a stamp on a node that is the catalogue node no longer is not topped up or diluted here, with no Top-ups only', async () => {
     serve(archiveView, () =>
       makeArchiveStamps({
         stamps: [
-          makeArchiveStamp({ batchId: ARCHIVE.old.slice(2), label: 'Gone', nodeId: 'gone:bee', nodeLabel: 'old-node' }),
-          makeArchiveStamp({ state: 'unknown', ttlSeconds: null, fillRatio: null, writable: false }),
+          makeArchiveStamp({
+            batchId: ARCHIVE.old.slice(2),
+            label: 'Gone',
+            nodeId: 'gone:bee',
+            nodeLabel: 'old-node',
+            writable: false,
+          }),
         ],
       }),
     );
     await openStamps();
     const gone = rowOf('Gone');
     expect(gone.getByText(/^On old-node/)).toBeInTheDocument();
+    expect(gone.queryByText('Top-ups only')).not.toBeInTheDocument();
+    expect(gone.queryByText(WALLET_UNREAD_TEXT)).not.toBeInTheDocument();
+    expect(gone.getByText(FORMER_CATALOGUE_NODE_TEXT)).toBeInTheDocument();
     expect(gone.queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(gone.getByText(WALLET_UNREAD_TEXT)).toBeInTheDocument();
-    const unread = rowOf('Talks');
-    expect(unread.queryByRole('checkbox')).not.toBeInTheDocument();
-    expect(unread.getByText(ARCHIVE_STAMP_UNREAD_TEXT)).toBeInTheDocument();
-    expect(unread.queryByText('Top-ups only')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dilute' }));
+    expect(rowOf('Gone').getByText(FORMER_CATALOGUE_NODE_TEXT)).toBeInTheDocument();
+    expect(rowOf('Gone').queryByRole('checkbox')).not.toBeInTheDocument();
   });
 
   it('lists the stamps first while no catalogue node is designated, since they still need their top-ups', async () => {

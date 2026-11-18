@@ -329,10 +329,13 @@ wallet, so there is no password, only a confirm dialog.
   that holds it, its room and the qualities on it, and a warning when its time left is under
   `ARCHIVE_TTL_WARNING_DAYS`. The holding node pays for it, the catalogue node for every stamp
   bought here, so that node's one wallet pays for its stamps and for the catalogue batch, and its
-  xBZZ after counts them all. A stamp that is not written any more, such as one left on a node that
-  is the catalogue node no longer, is marked Top-ups only and has no tick box on Dilute. A stamp on a
-  node the Funding view lists nowhere has no tick box, since its wallet is not known. With no stamp,
-  the group says "No archive stamps yet." With no catalogue node designated, the group comes first.
+  xBZZ after counts them all. A stamp that is not written any more, such as one left on a stage's
+  node that was the catalogue node, is marked Top-ups only and has no tick box on Dilute. A stamp on
+  a node the Funding view lists nowhere, which is the catalogue node no longer and no stage's, has no
+  tick box and no such mark: its row says that node's wallet is funded outside the admin, so the
+  admin does not top it up or dilute it. One whose node the manager did not name says its node's
+  wallet could not be read. With no stamp, the group says "No archive stamps yet." With no
+  catalogue node designated, the group comes first.
 - **Buy archive stamp**, under the group, opens the buy dialog
   (`components/archive/BuyStampDialog.tsx`, which the archive panel shares): a row per depth from
   17 to 41, each with what it holds and costs for the days typed, 30 by default and 2 at least, an
