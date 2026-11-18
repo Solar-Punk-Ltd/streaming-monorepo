@@ -1973,9 +1973,15 @@ reads no copy as expired or unlisted.
 | POST   | `/api/archive/stamp-purchases`      | `ArchiveBuyChoice` in, 202 `ArchiveStampPurchase` out; `409 archive_refused` (`not_now`, `price_moved`, `purchase_refused`, `purchases_not_offered`) when it cannot start                                                               |
 | GET    | `/api/archive/stamp-purchases/:id`  | `ArchiveStampPurchase`                                                                                                                                                                                                                  |
 | GET    | `/api/archive/streams`              | `ArchiveStreamsResponse`: the streams with an archive, for the Archive page                                                                                                                                                             |
-| GET    | `/api/streams/:id/archive`          | `ArchiveOptionsResponse`: the qualities with their state and estimates, the stamps that fit, what the catalogue chequebook can pay now (null unread), why none can start now, and the archive on the server                             |
+| GET    | `/api/streams/:id/archive`          | `ArchiveOptionsResponse`: the qualities with their state and estimates, the stamps that fit and those holding a copy, what the catalogue chequebook can pay now (null unread), why none can start now, and the archive on the server    |
 | POST   | `/api/streams/:id/archive`          | `ArchiveStartRequest` in, 202 `{ archive }` out; `409 archive_refused` (`busy`, `not_finished`, `no_node`, `no_stamp`, `stamp_unusable`, `nothing_to_archive`, `purchase_refused`)                                                      |
 | PUT    | `/api/streams/:id/archive/listing`  | `ArchiveListingRequest` in, `ArchiveOptionsResponse` out                                                                                                                                                                                |
+
+A stream's options answer two lists of archive stamps from one reading:
+`stamps`, those a new copy can go onto, and `holdingStamps`, every listed stamp
+that holds a copy of the stream, whole or not, each once, whatever its state,
+such as full, left on a node that is the catalogue node no longer, or expired.
+The stream's archive card warns from the second when one runs out soon.
 
 The stream list and a stream's own answer carry `archive`, a
 `StreamArchiveSummary`, for a stream with anything copied.

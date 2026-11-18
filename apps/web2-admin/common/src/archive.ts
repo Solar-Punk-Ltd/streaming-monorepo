@@ -631,8 +631,14 @@ export interface ArchiveOptionsResponse {
   /** The day the broadcast started, in UTC: `YYYY-MM-DD`. */
   date: string | null;
   qualities: ArchiveQuality[];
-  /** The archive stamps that can be written, with their room. */
+  /** The archive stamps that can be written, with their room: where a new copy can go. */
   stamps: ArchiveStamp[];
+  /**
+   * The archive stamps that hold a copy of this stream, whole or not, each once and whatever their state: a full one, one
+   * left on a node that is the catalogue node no longer, one that expired. The card warns from these when one runs out
+   * soon. A stamp the manager no longer lists is in neither list.
+   */
+  holdingStamps: ArchiveStamp[];
   /** What buying a new stamp needs, or null when none can be bought now. */
   buy: ArchiveBuyTerms | null;
   /**

@@ -265,8 +265,10 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   listed", "Archive incomplete", "Archive outdated", "Archive expired" or "Not archived", and what
   its copy holds, on which stamp, completed when and by whom, or else its estimate; a copy on a stamp
   the manager no longer lists also says it cannot be topped up here and stays on Swarm until the
-  stamp expires. A stamp that holds a copy and runs out soon is
-  named with its time left. "Archive this recording", "Archive more qualities" or "Archive again"
+  stamp expires. Every stamp that holds a copy and runs out soon, a full one included, is named
+  with its time left and where it is topped up: on the Funding page's Stamps tab, or outside the
+  admin for a stamp left on a node that is the catalogue node no longer. A stamp that has run out
+  is not, as its copy says it expired. "Archive this recording", "Archive more qualities" or "Archive again"
   opens the archive panel on the stream, described below. Once one quality plays from an archive
   stamp, the "List only archived qualities" switch: on, the catalogue lists only those qualities,
   and turning it on or off writes the catalogue entry again. When the stage batch of a quality with
