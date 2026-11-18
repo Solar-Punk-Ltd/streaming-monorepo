@@ -13,7 +13,7 @@ export const archiveIdParamSchema = object({
 }).strict();
 
 /**
- * `POST /api/archive/stamp-purchases` and `POST /api/archive/current/confirm-purchase`: an `ArchiveBuyChoice`, the
+ * `POST /api/archive/stamp-purchases` and `POST /api/archive/:id/confirm-purchase`: an `ArchiveBuyChoice`, the
  * depth, the days, a label and the cost the dialog showed.
  */
 export const archiveBuySchema = object({

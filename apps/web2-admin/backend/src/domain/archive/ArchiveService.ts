@@ -263,7 +263,7 @@ export function archiveActionsFor(
     case 'verifying':
       return ['pause', 'cancel'];
     case 'awaiting_purchase':
-      // The purchase is confirmed on its own route, with the choice: ARCHIVE_CONFIRM_PURCHASE_PATH.
+      // The purchase is confirmed on its own route, with the choice: archiveConfirmPurchasePath(id).
       return ['use_stamp', 'cancel'];
     case 'waiting':
       return ['cancel'];
@@ -743,13 +743,21 @@ export class ArchiveService {
   }
 
   /**
-   * Confirms the stamp the archive waiting in `awaiting_purchase` is to buy: the choice is priced again, the purchase
-   * recorded, the place taken and the manager asked. A refusal the manager answers at once puts the archive back to
-   * waiting for a confirm, and is answered here. Otherwise the job follows the purchase through `buying` and
-   * `waiting_usable` to `copying`.
+   * Confirms the stamp the archive `jobId`, waiting in `awaiting_purchase`, is to buy: the choice is priced again, the
+   * purchase recorded, the place taken and the manager asked. A `jobId` that is not the current archive's is refused
+   * before anything is recorded: the archive the buy dialog was opened for is gone. A refusal the manager answers at
+   * once puts the archive back to waiting for a confirm, and is answered here. Otherwise the job follows the purchase
+   * through `buying` and `waiting_usable` to `copying`.
    */
-  async confirmPurchase(actor: OperatorActor, choice: ArchiveBuyChoice): Promise<ArchiveJobSummary | null> {
+  async confirmPurchase(
+    actor: OperatorActor,
+    jobId: string,
+    choice: ArchiveBuyChoice,
+  ): Promise<ArchiveJobSummary | null> {
     const view = await this.store.viewJob(actor.userId);
+    if (view && view.id !== jobId) {
+      throw new ArchiveRefusedError('not_now', 'The archive moved on, so it cannot buy a stamp now.');
+    }
     if (!view || view.state !== 'awaiting_purchase' || view.chunks_total === null) {
       throw new ArchiveRefusedError(
         'not_now',

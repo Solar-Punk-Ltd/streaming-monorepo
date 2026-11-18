@@ -27,9 +27,9 @@ export interface ArchiveRoutesDeps {
  * - `GET /api/archive/stamps` answers the archive stamps with their room, the purchases, and what a buy needs.
  * - `POST /api/archive/stamp-purchases` starts a purchase from the Stamps tab, 202; 409 with the sentence when it
  *   cannot. `GET /api/archive/stamp-purchases/:id` answers one.
- * - `POST /api/archive/current/confirm-purchase` confirms the stamp the archive waiting in `awaiting_purchase` buys,
- *   with the choice, and answers the job; 409 with the sentence when it cannot, `price_moved` with the new cost when
- *   the price moved since the dialog priced it.
+ * - `POST /api/archive/:id/confirm-purchase` confirms the stamp the archive `:id`, waiting in `awaiting_purchase`,
+ *   buys, with the choice, and answers the job; 409 with the sentence when it cannot, `not_now` when `:id` is not the
+ *   current archive, `price_moved` with the new cost when the price moved since the dialog priced it.
  * - `GET /api/archive/streams` answers the streams with an archive, for the Archive page.
  *
  * Starting an archive, a stream's options and its listing switch are under the stream: `/api/streams/:id/archive`.
@@ -83,11 +83,16 @@ export function createArchiveRouter(deps: ArchiveRoutesDeps): Router {
   );
 
   router.post(
-    '/current/confirm-purchase',
+    '/:id/confirm-purchase',
+    validateParams(archiveIdParamSchema),
     validateBody(archiveBuySchema),
     asyncHandler(async (req: Request, res: Response) => {
       const response: ArchiveCurrentResponse = {
-        archive: await archiveService.confirmPurchase(actorOf(req), req.body as ArchiveBuyChoice),
+        archive: await archiveService.confirmPurchase(
+          actorOf(req),
+          String(req.params.id),
+          req.body as ArchiveBuyChoice,
+        ),
       };
       res.json(response);
     }),

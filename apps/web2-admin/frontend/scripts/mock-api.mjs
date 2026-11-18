@@ -2531,8 +2531,17 @@ async function handle(req, res) {
   }
   if (path === '/api/archive/streams' && method === 'GET') return send(res, 200, archivedStreamsAnswer());
   // No password: the catalogue node pays from its own wallet, as for a top-up.
-  if (path === '/api/archive/current/confirm-purchase' && method === 'POST') {
+  // The confirm names the archive the buy dialog was opened for, and is refused once another is current.
+  const confirmRoute = /^\/api\/archive\/([^/]+)\/confirm-purchase$/.exec(path);
+  if (confirmRoute && method === 'POST') {
     const job = mockArchive;
+    if (job && job.id !== confirmRoute[1]) {
+      return send(res, 409, {
+        error: 'archive_refused',
+        problem: 'not_now',
+        message: 'The archive moved on, so it cannot buy a stamp now.',
+      });
+    }
     if (!job || job.state !== 'awaiting_purchase') {
       return send(res, 409, {
         error: 'archive_refused',

@@ -676,7 +676,7 @@ describe('ArchiveService', () => {
     await service.settled();
     const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
     assert.ok(archiveChunksWithMargin(store.job!.chunks_total!) > 10, 'more than the shallowest stamp holds');
-    const confirmed = await service.confirmPurchase(TEST_OPERATOR, choice(depth, 'Alps archive'));
+    const confirmed = await service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth, 'Alps archive'));
     assert.equal(confirmed?.state, 'buying');
     await until(() => manager.requests.length === 1, 'the manager asked');
     const { requestId } = manager.requests[0]!;
@@ -708,7 +708,7 @@ describe('ArchiveService', () => {
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
     await service.settled();
     const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
-    await service.confirmPurchase(TEST_OPERATOR, choice(depth, 'Alps archive'));
+    await service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth, 'Alps archive'));
     await until(() => manager.requests.length === 1, 'the manager asked');
     const { requestId } = manager.requests[0]!;
     const pending = archiveBatch(NEW_BATCH, { label: 'Alps archive', depth, state: 'pending', writable: false });
@@ -743,7 +743,7 @@ describe('ArchiveService', () => {
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
     await service.settled();
     const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
-    await service.confirmPurchase(TEST_OPERATOR, choice(depth));
+    await service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth));
     await until(() => manager.requests.length === 1, 'the manager asked');
     const { requestId } = manager.requests[0]!;
     catalogue.batches = [...catalogue.batches, archiveBatch(NEW_BATCH, { depth, state: 'pending', writable: false })];
@@ -771,7 +771,7 @@ describe('ArchiveService', () => {
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
     await service.settled();
     const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
-    await service.confirmPurchase(TEST_OPERATOR, choice(depth));
+    await service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth));
     await until(() => manager.requests.length === 1, 'the manager asked');
     const { requestId } = manager.requests[0]!;
     manager.statuses.set(requestId, {
@@ -823,7 +823,7 @@ describe('ArchiveService', () => {
     let answer!: () => void;
     manager.late = new Promise<void>((resolve) => (answer = resolve));
 
-    const confirmed = await service.confirmPurchase(TEST_OPERATOR, choice(depth, 'Alps archive'));
+    const confirmed = await service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth, 'Alps archive'));
     assert.equal(confirmed?.state, 'buying', 'no answer yet is no refusal');
     const [request] = manager.requests;
     assert.equal(store.purchases.get(request!.requestId)!.state, 'buying');
@@ -856,6 +856,26 @@ describe('ArchiveService', () => {
     assert.equal(manager.requests.length, 1, 'bought once');
   });
 
+  it('refuses a confirm that names another archive, recording nothing and asking nothing of the manager', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
+    await service.settled();
+    const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
+    const another = '0f1e2d3c-4b5a-4968-8776-655443322110';
+    assert.notEqual(store.job!.id, another);
+    await assert.rejects(
+      () => service.confirmPurchase(TEST_OPERATOR, another, choice(depth)),
+      (error) =>
+        error instanceof ArchiveRefusedError &&
+        error.problem === 'not_now' &&
+        error.message === 'The archive moved on, so it cannot buy a stamp now.',
+    );
+    assert.equal(store.job!.state, 'awaiting_purchase');
+    assert.equal(store.job!.purchase_id, null);
+    assert.equal(store.purchases.size, 0, 'nothing recorded');
+    assert.equal(manager.requests.length, 0, 'nothing asked of the manager');
+  });
+
   it('refuses a confirm whose cost the price no longer gives, with the new cost, and keeps waiting for one', async () => {
     recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { buyNew: true } });
@@ -864,7 +884,7 @@ describe('ArchiveService', () => {
     manager.inventoryValue.chain.postage!.pricePerChunkPerBlockPlur = '25000';
     const newCost = archiveBatchCostPlur(depth, (518_400n * 25_000n).toString());
     await assert.rejects(
-      () => service.confirmPurchase(TEST_OPERATOR, choice(depth)),
+      () => service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth)),
       (error) =>
         error instanceof ArchiveRefusedError && error.problem === 'price_moved' && error.message.includes(newCost),
     );
@@ -880,7 +900,7 @@ describe('ArchiveService', () => {
     const depth = smallestArchiveDepthFor(store.job!.chunks_total!)!;
     manager.refusal = new ManagerFundingError('bad_answer', 404, 'The manager answered with status 404.');
     await assert.rejects(
-      () => service.confirmPurchase(TEST_OPERATOR, choice(depth)),
+      () => service.confirmPurchase(TEST_OPERATOR, store.job!.id, choice(depth)),
       (error) =>
         error instanceof ArchiveRefusedError &&
         error.problem === 'purchases_not_offered' &&

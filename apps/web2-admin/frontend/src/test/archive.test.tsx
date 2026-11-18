@@ -649,7 +649,7 @@ describe('the archive panel', () => {
       { path: '/api/archive', respond: () => jsonOk({ archive: job }) },
       { path: '/api/export', respond: () => jsonOk({ export: null }) },
       {
-        path: '/api/archive/current/confirm-purchase',
+        path: `/api/archive/${JOB_ID}/confirm-purchase`,
         method: 'POST',
         respond: () => {
           confirms += 1;
@@ -687,7 +687,7 @@ describe('the archive panel', () => {
     expect(within(buy).getByText('Sized for 544000 chunks')).toBeInTheDocument();
     fireEvent.click(within(buy).getByRole('button', { name: 'Confirm the stamp' }));
     expect(await within(buy).findByText(moved)).toBeInTheDocument();
-    expect(bodyOf(fetchMock, 'POST', '/api/archive/current/confirm-purchase')).toEqual(CHOICE);
+    expect(bodyOf(fetchMock, 'POST', `/api/archive/${JOB_ID}/confirm-purchase`)).toEqual(CHOICE);
 
     fireEvent.click(within(buy).getByRole('button', { name: 'Confirm the stamp' }));
     await waitFor(() =>
@@ -698,6 +698,59 @@ describe('the archive panel', () => {
       within(panel).getByText("Buying the archive stamp: the catalogue node's transaction is not mined yet."),
     ).toBeInTheDocument();
     expect(within(panel).getByText(/The new stamp: depth 22 for 30 days/)).toBeInTheDocument();
+  });
+
+  it('confirms for the archive the buy dialog was opened for, never for a new one read meanwhile', async () => {
+    const OTHER_JOB_ID = '9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b';
+    const awaitingPurchase = (overrides: Partial<ArchiveJobSummary>) =>
+      makeJob({
+        state: 'awaiting_purchase',
+        holdsPlace: false,
+        target: { kind: 'purchase', purchase: null },
+        proposal: {
+          chunkCount: 544_000,
+          depth: 22,
+          days: 30,
+          costPlur: '100663296000000000',
+          shortfallPlur: null,
+          terms: TERMS,
+        },
+        items: [makeItem({ state: 'waiting', chunksCopied: 0 })],
+        actions: ['use_stamp', 'cancel'],
+        ...overrides,
+      });
+    let job = awaitingPurchase({ startedByYou: true, startedBy: 'test-operator' });
+    const movedOn = 'The archive moved on, so it cannot buy a stamp now.';
+    const fetchMock = mockFetch([
+      { path: '/api/archive', respond: () => jsonOk({ archive: job }) },
+      { path: '/api/export', respond: () => jsonOk({ export: null }) },
+      {
+        path: `/api/archive/${JOB_ID}/confirm-purchase`,
+        method: 'POST',
+        respond: () => {
+          // Meanwhile another user cancelled this archive and started one of another recording, waiting for a stamp.
+          job = awaitingPurchase({ id: OTHER_JOB_ID, streamTitle: 'Closing talk', startedBy: 'other-operator' });
+          return jsonError(409, { error: 'archive_refused', problem: 'not_now', message: movedOn });
+        },
+      },
+      {
+        path: `/api/archive/${OTHER_JOB_ID}/confirm-purchase`,
+        method: 'POST',
+        respond: () => jsonOk({ archive: job }),
+      },
+    ]);
+    renderPanels({ streamId: null });
+
+    const buy = await screen.findByRole('dialog', { name: 'buy a new archive stamp' });
+    fireEvent.click(within(buy).getByRole('button', { name: 'Confirm the stamp' }));
+    expect(await within(buy).findByText(movedOn)).toBeInTheDocument();
+    // The console has read the new archive by now; a second confirm still names the one the dialog was opened for.
+    expect(await screen.findByText('Archive of “Closing talk”')).toBeInTheDocument();
+    fireEvent.click(within(buy).getByRole('button', { name: 'Confirm the stamp' }));
+    const posts = (path: string) =>
+      fetchMock.mock.calls.filter(([input, init]) => String(input) === path && init?.method === 'POST').length;
+    await waitFor(() => expect(posts(`/api/archive/${JOB_ID}/confirm-purchase`)).toBe(2));
+    expect(posts(`/api/archive/${OTHER_JOB_ID}/confirm-purchase`)).toBe(0);
   });
 
   it('asks before cancelling, and Keep it sends nothing', async () => {
