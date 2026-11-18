@@ -916,7 +916,9 @@ when something arrived, so the two hosts' clocks never need to agree.
     record was observed after it, so a first push that arrives late does not
     register a deployment that is gone.
 - **`PUT /catalogue-stamp`** takes a `catalogueStampRecordSchema` record and
-  answers `{ stored }`, with the same ordering rule.
+  answers `{ stored }`, with the same ordering rule. A record stored also gives
+  every archived copy on each archive stamp it lists that stamp's end, in the
+  same statement ([List only archived qualities](#list-only-archived-qualities)).
 - **`DELETE /catalogue-stamp`** takes `catalogueStampClearRequestSchema`,
   `{ observedAt }`, and answers `{ cleared }`
   (`catalogueStampClearAnswerSchema`) under the same rules as a retirement:
@@ -1949,8 +1951,16 @@ for it after keeps to that (`PublishService.listArchivedOnlyWith`). It is
 offered for a recording with several qualities once one is archived. Turning it
 rewrites a listed stream's entry. With no quality archived any more, the entry
 lists every rung, as with the switch off, and never none. A copy on a stamp the
-manager no longer lists is `unlisted` and counts as archived; a catalogue stamp
-record without `archiveBatches` reads no copy as expired or unlisted.
+manager no longer lists is `unlisted` and counts as archived, until the end last
+read for its stamp passes, and then it is `expired` and counts as archived no
+more. That end is `stream_archives.stamp_expires_at` (migration 029): each
+catalogue stamp record stored gives every copy on each archive stamp it lists
+the record's `observedAt` plus the stamp's `ttlSeconds`, or its `observedAt`
+for a stamp read expired or gone, so the latest reading wins, later after a
+top-up and sooner after a dilution. A stamp whose time to live was not read
+keeps the end it had, and a copy made again onto another stamp has none until
+a record lists that stamp. A catalogue stamp record without `archiveBatches`
+reads no copy as expired or unlisted.
 
 ### Routes
 
@@ -2015,6 +2025,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `026_streams_archived_only.sql`         | `streams.archived_only`, the "List only archived qualities" switch                                                                                                                                |
 | `027_archive_stamp_purchases.sql`       | `archive_stamp_purchases`, each archive stamp asked of the manager, written before it is asked, one under way at a time                                                                           |
 | `028_archive_jobs.sql`                  | `archive_jobs`, the one archive on the server, with `archive_job_items`, `archive_job_segments` (the resume ledger), `archive_job_dismissals` and `archive_rate`, the last rate a job measured    |
+| `029_stream_archives_stamp_end.sql`     | `stream_archives.stamp_expires_at`, when a copy's stamp runs out as the latest catalogue stamp record that listed it read it ([List only archived qualities](#list-only-archived-qualities))      |
 
 ## Audit log
 

@@ -308,22 +308,28 @@ network and its peers. The panel estimates from the rate the last job measured.
 
 ### What a stream shows
 
-| State    | Meaning                                            | Badge in the stream list     |
-| -------- | -------------------------------------------------- | ---------------------------- |
-| none     | nothing copied                                     | none                         |
-| partial  | a copy stopped before it was complete              | Archive incomplete           |
-| complete | at least one quality complete at its current index | Archived                     |
-| reduced  | complete, with parity chunks missing               | Archived, reduced protection |
-| unlisted | complete, on a stamp the manager no longer lists   | Archive stamp not listed     |
-| outdated | the stream recorded again after the copy           | Archive outdated             |
-| expired  | the stamp's reading says expired                   | Archive expired              |
+| State    | Meaning                                                                                        | Badge in the stream list     |
+| -------- | ---------------------------------------------------------------------------------------------- | ---------------------------- |
+| none     | nothing copied                                                                                 | none                         |
+| partial  | a copy stopped before it was complete                                                          | Archive incomplete           |
+| complete | at least one quality complete at its current index                                             | Archived                     |
+| reduced  | complete, with parity chunks missing                                                           | Archived, reduced protection |
+| unlisted | complete, on a stamp the manager no longer lists, before the end last read for it              | Archive stamp not listed     |
+| outdated | the stream recorded again after the copy                                                       | Archive outdated             |
+| expired  | the stamp's reading says expired, or the end last read for a stamp no longer listed has passed | Archive expired              |
 
-A stamp the manager no longer lists, once removed in the manager or with its deployment gone, is
-`unlisted`, not expired: nothing says when it runs out, and its recordings stay on Swarm until it
-does. It counts as archived, for the badge and for the switch, and the card and the Archive page say
-it cannot be topped up from the admin. A catalogue stamp record without `archiveBatches`, from a
-manager older than the field, tells nothing of the archive stamps, so no copy reads as expired or
-unlisted from it.
+A stamp the manager no longer lists, once removed in the manager, with its deployment gone, or left
+out of a full record, where the expired ones go first, is `unlisted` while the end the admin last
+read for it is still ahead, and `expired` once it has passed. Each catalogue stamp record that
+arrives gives every copy on each archive stamp it lists that stamp's end, its `observedAt` plus its
+time to live, or its `observedAt` once it reads expired or gone, so the latest reading wins: later
+after a top-up, sooner after a dilution. The admin keeps it with the copy, so it outlives the
+stamp's place in the record. With no end read, a copy whose stamp is not listed stays `unlisted`: its
+recordings stay on Swarm until the stamp runs out. `unlisted` counts as archived, for the badge and
+for the switch, and the card and the Archive page say it cannot be topped up from the admin;
+`expired` does not, and the quality can be archived again. A catalogue stamp record without
+`archiveBatches`, from a manager older than the field, tells nothing of the archive stamps, so no
+copy reads as expired or unlisted from it.
 
 - **Archive page.** Only streams with an archive: title, date, qualities, size, stamp label, the
   stamp's time left, archived at and by. A user archives more qualities there, and archives again
@@ -340,15 +346,15 @@ unlisted from it.
 
 ### What it keeps
 
-| Table                     | Holds                                                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `stream_archives`         | one row per stream and quality: the stamp, the playlist slot copied, partial or complete, what the copy holds |
-| `streams.archived_only`   | the "List only archived qualities" switch                                                                     |
-| `archive_jobs`            | at most one row: the stream, the stamp or the purchase, the state, the pause, who started it                  |
-| `archive_job_items`       | one per picked quality: its state, its counters and its tag                                                   |
-| `archive_job_segments`    | the segments done, which is the resume ledger                                                                 |
-| `archive_stamp_purchases` | each purchase, written before the manager is asked                                                            |
-| `archive_rate`            | the rate the last job measured                                                                                |
+| Table                     | Holds                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream_archives`         | one row per stream and quality: the stamp, the playlist slot copied, partial or complete, what the copy holds, and when its stamp runs out as last read |
+| `streams.archived_only`   | the "List only archived qualities" switch                                                                                                               |
+| `archive_jobs`            | at most one row: the stream, the stamp or the purchase, the state, the pause, who started it                                                            |
+| `archive_job_items`       | one per picked quality: its state, its counters and its tag                                                                                             |
+| `archive_job_segments`    | the segments done, which is the resume ledger                                                                                                           |
+| `archive_stamp_purchases` | each purchase, written before the manager is asked                                                                                                      |
+| `archive_rate`            | the rate the last job measured                                                                                                                          |
 
 Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), the chunks read and posted at once,
 `ARCHIVE_PUSH_WINDOW_CHUNKS` (2000), `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30)

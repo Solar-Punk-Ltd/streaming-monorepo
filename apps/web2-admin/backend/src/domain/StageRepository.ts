@@ -3,6 +3,8 @@ import { Pool, type PoolClient } from 'pg';
 
 import type { CatalogueStampRow, StageRow, StageSecretsRow, StoredStageRecord } from '../types/index.js';
 
+import { archiveStampEnds } from './archive/archiveStates.js';
+
 /**
  * Every column a list may read. The passphrase and the token hash are not among them: a list says whether there is a
  * passphrase and which kind of token the uploader presents, and nothing more.
@@ -235,11 +237,16 @@ export class CatalogueStampRepository {
    * whose `previous`, the batch the manager's move is from, is the pinned one: its node, address and readings, as of
    * the record's `observedAt`, replace those of `active_record`, and its designation moment stays. Either is taken
    * only when it was observed at or after the reading it replaces. Any other record leaves them as they were.
+   *
+   * A record stored also gives every archived copy on each archive batch it lists that batch's end
+   * (`archiveStampEnds`, migration 029), in the same statement, so the end is kept from the latest reading even once a
+   * later record lists the batch no longer. A record kept out changes no copy.
    */
   async upsert(record: CatalogueStampRecord): Promise<CatalogueStampRow | null> {
     const pinnedReading = pinnedReadingOf(record);
     const result = await this.pool.query<CatalogueStampRow>(
-      `INSERT INTO catalogue_stamp AS c (id, manager_id, batch_id, record, observed_at, received_at)
+      `WITH stored AS (
+       INSERT INTO catalogue_stamp AS c (id, manager_id, batch_id, record, observed_at, received_at)
        VALUES (TRUE, $1, $2, $3::jsonb, $4, NOW())
        ON CONFLICT (id) DO UPDATE
           SET manager_id = EXCLUDED.manager_id,
@@ -265,8 +272,24 @@ export class CatalogueStampRepository {
               END
         WHERE c.observed_at <= EXCLUDED.observed_at
           AND (c.record IS NOT NULL OR EXCLUDED.observed_at > c.cleared_observed_at)
-       RETURNING ${CATALOGUE_COLUMNS}`,
-      [record.managerId, record.batchId, JSON.stringify(record), record.observedAt, pinnedReading],
+       RETURNING ${CATALOGUE_COLUMNS}
+       ), ends AS (
+         UPDATE stream_archives AS a
+            SET stamp_expires_at = e.expires_at
+           FROM jsonb_to_recordset($6::jsonb) AS e(batch_id TEXT, expires_at TIMESTAMPTZ)
+          WHERE a.batch_id = e.batch_id
+            AND a.stamp_expires_at IS DISTINCT FROM e.expires_at
+            AND EXISTS (SELECT 1 FROM stored)
+       )
+       SELECT * FROM stored`,
+      [
+        record.managerId,
+        record.batchId,
+        JSON.stringify(record),
+        record.observedAt,
+        pinnedReading,
+        JSON.stringify(archiveStampEnds(record).map((end) => ({ batch_id: end.batchId, expires_at: end.expiresAt }))),
+      ],
     );
     return result.rows[0] ?? null;
   }
