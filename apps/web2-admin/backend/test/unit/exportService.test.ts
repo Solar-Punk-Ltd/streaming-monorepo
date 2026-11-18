@@ -632,3 +632,34 @@ describe('ExportService', () => {
     assert.equal((await service.current(null))?.state, 'done');
   });
 });
+
+describe('FakeJoiner', () => {
+  it(
+    'ends at once a join whose signal was aborted before it started, as FfmpegJoiner does',
+    { timeout: 2_000 },
+    async () => {
+      const fake = new FakeJoiner();
+      let ran = false;
+      fake.during = (signal) => {
+        ran = true;
+        return new Promise<void>((resolve) => signal?.addEventListener('abort', () => resolve(), { once: true }));
+      };
+      const controller = new AbortController();
+      controller.abort();
+      let timer: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        fake.join([], path.join(dir, 'export.tmp.mp4'), dir, controller.signal).then(
+          () => 'joined',
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        ),
+        new Promise<string>((resolve) => {
+          timer = setTimeout(() => resolve('still waiting after 500 ms'), 500);
+        }),
+      ]);
+      clearTimeout(timer);
+      assert.equal(outcome, 'the join was stopped before it started');
+      assert.equal(ran, false, 'during never runs');
+      assert.equal(fake.stopped, 1);
+    },
+  );
+});
