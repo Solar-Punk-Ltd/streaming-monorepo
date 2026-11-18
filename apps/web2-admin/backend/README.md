@@ -1875,27 +1875,27 @@ export holds it).
 
 ### States and pauses
 
-| State               | What happens                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `measuring`         | every chosen quality's playlist and segment roots are read                           |
-| `awaiting_purchase` | a new stamp was asked for: the job waits for a user to confirm one, holding no place |
-| `buying`            | the manager was asked for the stamp                                                  |
-| `waiting_usable`    | the stamp is bought, and the job waits until it is usable and the manager lists it   |
-| `copying`           | each quality is copied in turn, under its own tag                                    |
-| `verifying`         | every chunk was posted, and the job waits for Bee to push them                       |
-| `paused`            | stopped with a reason, until a user decides                                          |
-| `waiting`           | the stream went live again; the job carries on once it is a recording again          |
-| `done`              | every chosen quality is complete, or complete with reduced protection                |
+| State               | What happens                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| `measuring`         | every chosen quality's playlist and segment roots are read                                     |
+| `awaiting_purchase` | a new stamp was asked for: the job waits for a user to confirm one, holding no place           |
+| `buying`            | the manager was asked for the stamp                                                            |
+| `waiting_usable`    | the stamp is bought, and the job waits until it is usable and the manager lists it as writable |
+| `copying`           | each quality is copied in turn, under its own tag                                              |
+| `verifying`         | every chunk was posted, and the job waits for Bee to push them                                 |
+| `paused`            | stopped with a reason, until a user decides                                                    |
+| `waiting`           | the stream went live again; the job carries on once it is a recording again                    |
+| `done`              | every chosen quality is complete, or complete with reduced protection                          |
 
-| Pause reason | When                                                                             | What a user can do                               |
-| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `user`       | someone pressed Pause                                                            | resume, cancel                                   |
-| `unreadable` | a playlist, a segment root, or a data or intermediate chunk could not be read    | resume (tries again), cancel                     |
-| `live`       | the stream went live again                                                       | wait, cancel                                     |
-| `batch`      | the stamp is full, expired, not listed or lacks room                             | resume, use another stamp, buy a new one, cancel |
-| `node`       | the catalogue node did not answer, or another node was designated                | resume, cancel                                   |
-| `funds`      | the catalogue node's chequebook is under the floor                               | resume, cancel                                   |
-| `problem`    | anything else, in the message: a tag that stopped moving, a purchase that failed | resume, cancel                                   |
+| Pause reason | When                                                                                                                                                                                                                     | What a user can do                               |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `user`       | someone pressed Pause                                                                                                                                                                                                    | resume, cancel                                   |
+| `unreadable` | a playlist, a segment root, or a data or intermediate chunk could not be read                                                                                                                                            | resume (tries again), cancel                     |
+| `live`       | the stream went live again                                                                                                                                                                                               | wait, cancel                                     |
+| `batch`      | the stamp is not listed, not usable yet, expired, unread by the manager, on a node that is the catalogue node no longer, mutable, full or lacks room, or a new one is not writable thirty minutes after it was asked for | resume, use another stamp, buy a new one, cancel |
+| `node`       | the catalogue node did not answer, or another node was designated                                                                                                                                                        | resume, cancel                                   |
+| `funds`      | the catalogue node's chequebook is under the floor                                                                                                                                                                       | resume, cancel                                   |
+| `problem`    | anything else, in the message: a tag that stopped moving, a purchase that failed                                                                                                                                         | resume, cancel                                   |
 
 **Cancel** deletes the job; what was copied stays on Swarm, and its qualities
 show as partial. **Use another stamp** starts every quality not done over on
@@ -1928,7 +1928,10 @@ default days, the cost now and what the wallet lacks of it. A user confirms
 one at `POST /api/archive/current/confirm-purchase`, which takes the place and
 asks the manager; a refusal in that moment leaves the archive waiting for a
 confirm. The job copies onto its new stamp once the stamp is usable and the
-manager lists it, and pauses as `batch` after thirty minutes without.
+manager lists it as writable. The manager may list a new stamp while Bee still
+has it pending, and then the job keeps waiting. After thirty minutes without,
+it pauses as `batch`, saying why when the manager's record has a reason, such
+as a stamp not usable yet.
 
 ### List only archived qualities
 

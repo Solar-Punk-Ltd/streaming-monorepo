@@ -238,7 +238,6 @@ export function archiveActionLabel(action: ArchiveAction, job: ArchiveJobSummary
     case 'pause':
       return 'Pause';
     case 'resume':
-      if (job.pauseReason === 'batch') return 'Try again after a dilution';
       if (job.pauseReason === 'funds') return 'Try again after funding it';
       if (job.pauseReason === 'user' || job.pauseReason === null) return 'Resume';
       return 'Try again';
