@@ -1060,6 +1060,28 @@ describe('ArchiveService', () => {
     assert.equal(options.qualities.find((quality) => quality.rendition === '360p')?.state, 'unlisted');
   });
 
+  it('shows a copy as expired once its stamp left the record after the end stored for it, and archives it again', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    store.archives.get('stream-1:360p')!.stamp_expires_at = new Date(Date.now() - 60_000);
+    catalogue.batches = [archiveBatch(OTHER_BATCH)];
+    const summary = (await service.summaries([stream])).get('stream-1');
+    assert.equal(summary?.state, 'expired');
+    assert.deepEqual(summary?.archived, []);
+    assert.equal(await service.listedRenditions({ ...stream, archived_only: true }), null);
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.qualities.find((quality) => quality.rendition === '360p')?.state, 'expired');
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
+    await service.settled();
+    assert.equal(store.archives.get('stream-1:360p')!.batch_id, OTHER_BATCH);
+    assert.equal(
+      store.archives.get('stream-1:360p')!.stamp_expires_at,
+      null,
+      'a copy onto another stamp waits for its end',
+    );
+  });
+
   it('reads nothing as expired or unlisted from a stamp record that does not carry the archive stamps', async () => {
     const stream = recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });

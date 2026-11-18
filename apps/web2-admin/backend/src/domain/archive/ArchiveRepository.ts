@@ -84,12 +84,17 @@ export interface StreamArchiveRow {
   completed_at: Date | null;
   completed_by_user_id: string | null;
   completed_by: string | null;
+  /**
+   * When the copy's stamp runs out, as the latest catalogue stamp record that listed it read it (migration 029), or
+   * null until a record lists it. Written as records arrive, never by the copy.
+   */
+  stamp_expires_at: Date | null;
 }
 
-/** What a copy writes as it starts: everything but its completion. */
+/** What a copy writes as it starts: everything but its completion and its stamp's end. */
 export type NewStreamArchive = Omit<
   StreamArchiveRow,
-  'state' | 'completed_at' | 'completed_by_user_id' | 'completed_by'
+  'state' | 'completed_at' | 'completed_by_user_id' | 'completed_by' | 'stamp_expires_at'
 >;
 
 /** What a copy updates as it goes. */
@@ -580,7 +585,10 @@ export class ArchiveRepository implements ArchiveStore {
          chunks_rebuilt = EXCLUDED.chunks_rebuilt, bucket_sum_before = EXCLUDED.bucket_sum_before,
          bucket_sum_after = EXCLUDED.bucket_sum_after, bzz_spent_estimate_plur = EXCLUDED.bzz_spent_estimate_plur,
          completed_at = NULL, completed_by_user_id = NULL, completed_by = NULL, created_at = NOW(),
-         updated_at = NOW()`,
+         updated_at = NOW(),
+         stamp_expires_at = CASE
+           WHEN stream_archives.batch_id = EXCLUDED.batch_id THEN stream_archives.stamp_expires_at
+         END`,
       [
         row.stream_id,
         row.rendition,
