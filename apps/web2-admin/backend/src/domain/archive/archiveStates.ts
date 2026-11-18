@@ -1,4 +1,8 @@
-import { archiveEffectiveChunks, type CatalogueArchiveBatch } from '@streaming-monorepo/contracts';
+import {
+  archiveEffectiveChunks,
+  type CatalogueArchiveBatch,
+  type CatalogueStampRecord,
+} from '@streaming-monorepo/contracts';
 import {
   ARCHIVED_STATES,
   streamArchiveState,
@@ -31,19 +35,49 @@ export interface ArchiveStampsHeld {
   observedAt: string;
 }
 
+/** When an archive stamp a record lists runs out, as that record read it. */
+export interface ArchiveStampEnd {
+  batchId: string;
+  expiresAt: string;
+}
+
 /**
- * Where the copy's stamp stands: `expired` when it is expired or gone by its reading or by its time to live,
- * `unlisted` when the manager lists it no longer, so nothing says when it runs out, and `listed` otherwise, or when the
+ * When each archive stamp a catalogue stamp record lists runs out: its `observedAt` plus its time to live, or its
+ * `observedAt` when it is expired or gone. A stamp whose time to live the manager could not read is left out, so the
+ * end stored before stays. Each copy on a listed stamp takes this as the record arrives, so the end is still known once
+ * the record lists the stamp no longer.
+ */
+export function archiveStampEnds(
+  record: Pick<CatalogueStampRecord, 'observedAt' | 'archiveBatches'>,
+): ArchiveStampEnd[] {
+  const observed = Date.parse(record.observedAt);
+  if (!Number.isFinite(observed)) return [];
+  const ends: ArchiveStampEnd[] = [];
+  for (const batch of record.archiveBatches ?? []) {
+    if (batch.state === 'expired' || batch.state === 'gone') {
+      ends.push({ batchId: batch.batchId, expiresAt: new Date(observed).toISOString() });
+    } else if (batch.ttlSeconds !== null) {
+      ends.push({ batchId: batch.batchId, expiresAt: new Date(observed + batch.ttlSeconds * 1000).toISOString() });
+    }
+  }
+  return ends;
+}
+
+/**
+ * Where the copy's stamp stands: `expired` when it is expired or gone by its reading or by its time to live, or when
+ * the manager lists it no longer and the end stored from its last listing (`expiresAt`) has passed; `unlisted` when the
+ * manager lists it no longer and no end has passed, so nothing says it ran out; and `listed` otherwise, or when the
  * admin was not told.
  */
 export function stampStanding(
   batchId: string,
   held: ArchiveStampsHeld | null,
   now: number,
+  expiresAt: Date | null = null,
 ): 'listed' | 'unlisted' | 'expired' {
   if (held === null) return 'listed';
   const batch = held.batches.find((candidate) => candidate.batchId === batchId);
-  if (!batch) return 'unlisted';
+  if (!batch) return expiresAt !== null && expiresAt.getTime() <= now ? 'expired' : 'unlisted';
   if (batch.state === 'expired' || batch.state === 'gone') return 'expired';
   return expiredByClock({ ttlSeconds: batch.ttlSeconds, observedAt: held.observedAt }, now) ? 'expired' : 'listed';
 }
@@ -57,7 +91,7 @@ export function qualityState(
 ): QualityArchiveState {
   if (!copy) return 'none';
   if (copy.state === 'partial') return 'partial';
-  const standing = stampStanding(copy.batch_id, held, now);
+  const standing = stampStanding(copy.batch_id, held, now, copy.stamp_expires_at);
   if (standing === 'expired') return 'expired';
   if (currentIndex !== null && copy.manifest_index !== currentIndex) return 'outdated';
   if (standing === 'unlisted') return 'unlisted';

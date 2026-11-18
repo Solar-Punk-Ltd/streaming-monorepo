@@ -1,8 +1,9 @@
 /**
- * ArchiveRepository against the real database (migrations 025 to 028), with the place it shares with the export: one
+ * ArchiveRepository against the real database (migrations 025 to 029), with the place it shares with the export: one
  * archive at a time, an archive and an export never both holding the place, a user's pause and a purchase confirm
  * giving it up, moves that apply only from the state they name, the resume ledger, a quality's copy replaced when it
- * is made again, one purchase under way at a time, and the listing switch.
+ * is made again, one purchase under way at a time, the listing switch, and the end of its stamp each catalogue stamp
+ * record gives a copy as it arrives.
  *
  * It creates its own users and streams on the suite's throwaway database and removes them in `after`.
  */
@@ -10,16 +11,22 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import type { CatalogueArchiveBatch } from '@streaming-monorepo/contracts';
+
 import { ArchiveRepository, type NewArchiveJob } from '../../src/domain/archive/ArchiveRepository.js';
 import { Database } from '../../src/domain/Database.js';
 import { ExportRepository } from '../../src/domain/export/ExportRepository.js';
+import { CatalogueStampRepository } from '../../src/domain/StageRepository.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
+import { archiveBatch } from '../unit/support/archiveFakes.js';
+import { catalogueStampRecord } from '../unit/support/stageFakes.js';
 
 import { releaseStack, requireStack, stack } from './helpers.js';
 
 const OWNER = '90f8bf6a479f320ead074411a4b0e7944ea8c9c1';
 const BATCH = 'a'.repeat(64);
+const OTHER = 'b'.repeat(64);
 
 let database: Database;
 let archives: ArchiveRepository;
@@ -82,6 +89,7 @@ async function clear(): Promise<void> {
   await database.pool.query('DELETE FROM stream_archives');
   await database.pool.query('DELETE FROM archive_rate');
   await database.pool.query('DELETE FROM stream_exports');
+  await database.pool.query('DELETE FROM catalogue_stamp');
 }
 
 before(async () => {
@@ -264,6 +272,58 @@ describe('ArchiveRepository', () => {
     assert.equal(row?.manifest_index, 9);
     assert.equal(row?.completed_at, null);
     assert.equal(row?.chunks, 0);
+  });
+
+  it("gives a copy its stamp's end as each catalogue stamp record arrives, from the latest reading only", async () => {
+    const catalogue = new CatalogueStampRepository(database.pool);
+    const streamId = await stream('itest stamp ends');
+    const copy = {
+      stream_id: streamId,
+      rendition: '720p',
+      batch_id: BATCH,
+      feed_owner: OWNER,
+      feed_topic: randomUUID(),
+      manifest_index: 5,
+      parity_missing: 0,
+      segments: 0,
+      chunks: 0,
+      bytes: 0,
+      chunks_rebuilt: 0,
+      bucket_sum_before: null,
+      bucket_sum_after: null,
+      bzz_spent_estimate_plur: null,
+    };
+    await archives.startArchive(copy);
+    await archives.startArchive({ ...copy, rendition: '360p', batch_id: OTHER });
+    const endOf = async (rendition: string) =>
+      (await archives.archivesOf([streamId]))
+        .find((row) => row.rendition === rendition)
+        ?.stamp_expires_at?.toISOString() ?? null;
+    const arrive = (time: string, ...batches: CatalogueArchiveBatch[]) =>
+      catalogue.upsert(catalogueStampRecord({ observedAt: `2030-01-01T${time}.000Z`, archiveBatches: batches }));
+    assert.equal(await endOf('720p'), null, 'no end before a record lists the stamp');
+
+    await arrive('10:00:00', archiveBatch(BATCH, { ttlSeconds: 10 * 86_400 }));
+    assert.equal(await endOf('720p'), '2030-01-11T10:00:00.000Z');
+    assert.equal(await endOf('360p'), null, 'a copy on a stamp the record does not list keeps what it had');
+
+    assert.equal(await arrive('09:00:00', archiveBatch(BATCH, { ttlSeconds: 86_400 })), null, 'kept out');
+    assert.equal(await endOf('720p'), '2030-01-11T10:00:00.000Z', 'an older record changes no copy');
+
+    await arrive('11:00:00', archiveBatch(BATCH, { ttlSeconds: 2 * 86_400 }));
+    assert.equal(await endOf('720p'), '2030-01-03T11:00:00.000Z', 'a later reading wins, sooner after a dilution');
+
+    await arrive('12:00:00', archiveBatch(OTHER, { ttlSeconds: 86_400 }));
+    assert.equal(await endOf('720p'), '2030-01-03T11:00:00.000Z', 'kept once the record lists the stamp no longer');
+    assert.equal(await endOf('360p'), '2030-01-02T12:00:00.000Z');
+
+    await arrive('13:00:00', archiveBatch(OTHER, { state: 'expired', ttlSeconds: 0 }));
+    assert.equal(await endOf('360p'), '2030-01-01T13:00:00.000Z', 'an expired stamp ends at its reading');
+
+    await archives.startArchive({ ...copy, manifest_index: 9 });
+    assert.equal(await endOf('720p'), '2030-01-03T11:00:00.000Z', 'made again on the same stamp, the end stays');
+    await archives.startArchive({ ...copy, batch_id: OTHER });
+    assert.equal(await endOf('720p'), null, 'made again onto another stamp, the end waits for a record');
   });
 
   it('keeps one purchase under way at a time, and marks one sent or never received', async () => {

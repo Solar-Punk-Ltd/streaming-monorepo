@@ -505,12 +505,15 @@ export class InMemoryArchiveStore implements ArchiveStore {
   }
 
   async startArchive(row: NewStreamArchive): Promise<void> {
-    this.archives.set(`${row.stream_id}:${row.rendition}`, {
+    const key = `${row.stream_id}:${row.rendition}`;
+    const before = this.archives.get(key);
+    this.archives.set(key, {
       ...row,
       state: 'partial',
       completed_at: null,
       completed_by_user_id: null,
       completed_by: null,
+      stamp_expires_at: before?.batch_id === row.batch_id ? before.stamp_expires_at : null,
     });
   }
 
