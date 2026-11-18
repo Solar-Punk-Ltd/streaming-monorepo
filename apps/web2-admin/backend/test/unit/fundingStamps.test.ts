@@ -448,6 +448,193 @@ describe('a dilution', () => {
   });
 });
 
+/** An archive stamp the catalogue node holds and writes: depth 22, 60 days left. */
+const BATCH_ARCHIVE = `0x${'a4'.repeat(32)}`;
+/** An archive stamp left on the stage's own node, once the catalogue node: depth 20, 20 days left, written no more. */
+const BATCH_ARCHIVE_KEPT = `0x${'a5'.repeat(32)}`;
+/** An archive stamp left on a node that is the catalogue node no longer and no stage's. */
+const BATCH_ARCHIVE_FORMER = `0x${'a6'.repeat(32)}`;
+const NODE_FORMER_CATALOGUE = 'catalogue-old:uploader';
+
+/** The stamp inventory with three archive batches: the catalogue node's, the stage node's, and a former node's. */
+function archiveInventory(): FundingInventory {
+  const inventory = stampInventory();
+  const archive = (over: Partial<NonNullable<FundingInventory['archiveBatches']>[number]>) => ({
+    ...fundingBatch({ immutable: true }),
+    nodeId: NODE_CATALOGUE,
+    nodeLabel: 'Catalogue node',
+    label: null,
+    writable: true,
+    ...over,
+  });
+  inventory.archiveBatches = [
+    archive({ batchId: BATCH_ARCHIVE, depth: 22, ttlSeconds: 60 * DAY, label: 'Spring talks' }),
+    archive({
+      batchId: BATCH_ARCHIVE_KEPT,
+      depth: 20,
+      ttlSeconds: 20 * DAY,
+      nodeId: NODE_A,
+      nodeLabel: 'Main stage uploader',
+      writable: false,
+    }),
+    archive({
+      batchId: BATCH_ARCHIVE_FORMER,
+      nodeId: NODE_FORMER_CATALOGUE,
+      nodeLabel: 'Old catalogue node',
+      writable: false,
+    }),
+  ];
+  return inventory;
+}
+
+describe('an archive stamp, named with the node that holds it', () => {
+  beforeEach(() => {
+    manager.inventoryAnswer = archiveInventory();
+  });
+
+  async function refused(items: StampOperationItemRequest[]): Promise<FundingRefusedError> {
+    const error = await refusal(funding.stampOperations(TEST_OPERATOR, items));
+    assert.ok(error instanceof FundingRefusedError, String(error));
+    assert.equal(journal.rows.size, 0, 'nothing was journalled');
+    assert.equal(manager.stampCalls.operation, 0, 'nothing was relayed');
+    return error;
+  }
+
+  it('is topped up, relayed with its holder and paid for by its wallet', async () => {
+    const answer = await requested([topUp(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 7)]);
+
+    assert.deepEqual(
+      manager.stampOperations.map(({ requestId: _id, ...rest }) => rest),
+      [
+        {
+          kind: 'topup',
+          nodeId: NODE_CATALOGUE,
+          batchId: BATCH_ARCHIVE,
+          expectedDepth: 22,
+          amountPerChunkPlur: amountFor(7).toString(),
+        },
+      ],
+    );
+    assert.deepEqual(
+      answer.items.map((item) => [item.nodeId, item.nodeLabel, item.batchId, item.costPlur, item.state]),
+      [[NODE_CATALOGUE, 'Catalogue node', BATCH_ARCHIVE, (amountFor(7) * 2n ** 22n).toString(), 'confirmed']],
+    );
+  });
+
+  it('is diluted, relayed with its holder', async () => {
+    const answer = await requested([dilute(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 1)]);
+
+    assert.deepEqual(
+      manager.stampOperations.map(({ requestId: _id, ...rest }) => rest),
+      [{ kind: 'dilute', nodeId: NODE_CATALOGUE, batchId: BATCH_ARCHIVE, expectedDepth: 22, newDepth: 23 }],
+    );
+    assert.equal(answer.items[0]?.state, 'confirmed');
+  });
+
+  it('takes top-ups only once it is not written any more: its dilution is refused', async () => {
+    const error = await refused([dilute(NODE_A, BATCH_ARCHIVE_KEPT, 20, 1)]);
+    assert.equal(error.problem, 'batch');
+    assert.equal(
+      error.message,
+      'The archive stamp 0xa5a5a5a5… of Main stage uploader (stage-1:uploader) is not written any more, so it is topped up only, never diluted. Nothing was sent.',
+    );
+
+    const answer = await requested([topUp(NODE_A, BATCH_ARCHIVE_KEPT, 20, 7)]);
+    assert.deepEqual(
+      manager.stampOperations.map((operation) => [operation.kind, operation.nodeId, operation.batchId]),
+      [['topup', NODE_A, BATCH_ARCHIVE_KEPT]],
+    );
+    assert.equal(answer.items[0]?.state, 'confirmed');
+  });
+
+  it('is refused on a node that is neither a stage node nor the catalogue node, whose wallet the admin does not fund', async () => {
+    const sentence = (holder: string) =>
+      `The archive stamp is held by ${holder}, which is the catalogue node no longer: that node's wallet is funded outside the admin, so the admin does not top it up or dilute it. Nothing was sent.`;
+
+    for (const item of [
+      topUp(NODE_FORMER_CATALOGUE, BATCH_ARCHIVE_FORMER, 20, 7),
+      dilute(NODE_FORMER_CATALOGUE, BATCH_ARCHIVE_FORMER, 20, 1),
+    ]) {
+      const error = await refused([item]);
+      assert.equal(error.problem, 'node');
+      assert.equal(error.message, sentence('Old catalogue node (catalogue-old:uploader)'));
+    }
+
+    // The catalogue node's own archive stamp, once no catalogue node is designated.
+    const inventory = archiveInventory();
+    inventory.catalogue = null;
+    manager.inventoryAnswer = inventory;
+    const error = await refused([topUp(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 7)]);
+    assert.equal(error.problem, 'node');
+    assert.equal(error.message, sentence('Catalogue node (catalogue:uploader)'));
+  });
+
+  it('is checked as any batch: read, usable, not expired, at the depth the page showed', async () => {
+    const inventory = archiveInventory();
+    inventory.archiveBatches![0]!.ttlSeconds = 0;
+    manager.inventoryAnswer = inventory;
+    const expired = await refused([topUp(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 7)]);
+    assert.equal(expired.problem, 'batch');
+    assert.equal(
+      expired.message,
+      'The archive stamp 0xa4a4a4a4… of Catalogue node (catalogue:uploader) has expired, and an expired batch can be neither topped up nor diluted. Nothing was sent.',
+    );
+
+    manager.inventoryAnswer = archiveInventory();
+    const moved = await refused([dilute(NODE_CATALOGUE, BATCH_ARCHIVE, 21, 1)]);
+    assert.equal(moved.problem, 'batch');
+    assert.equal(
+      moved.message,
+      'The archive stamp 0xa4a4a4a4… of Catalogue node (catalogue:uploader) is at depth 22 now, not the 21 the page showed: read the page again. Nothing was sent.',
+    );
+  });
+
+  it('is refused when named with another node than its holder', async () => {
+    const error = await refused([topUp(NODE_RUNG, BATCH_ARCHIVE, 22, 7)]);
+
+    assert.equal(error.problem, 'batch');
+    assert.equal(
+      error.message,
+      'Batch 0xa4a4a4a4… is not a batch Main stage 720p rung (stage-2:uploader) uploads with or holds as an archive stamp, so nothing was sent.',
+    );
+  });
+
+  it('goes in a bulk with the stage and catalogue batches, its top-up counted against its holder’s wallet', async () => {
+    const answer = await requested([
+      topUp(NODE_A, BATCH_STAGE, 20, 30),
+      topUp(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 7),
+      topUp(NODE_CATALOGUE, BATCH_CATALOGUE, 18, 7),
+    ]);
+
+    assert.deepEqual(
+      manager.stampOperations.map((operation) => [operation.nodeId, operation.batchId]),
+      [
+        [NODE_A, BATCH_STAGE],
+        [NODE_CATALOGUE, BATCH_ARCHIVE],
+        [NODE_CATALOGUE, BATCH_CATALOGUE],
+      ],
+    );
+    assert.deepEqual(
+      answer.items.map((item) => item.state),
+      ['confirmed', 'confirmed', 'confirmed'],
+    );
+
+    // Both of the catalogue node's top-ups come out of its one wallet.
+    const both = amountFor(7) * 2n ** 22n + amountFor(7) * 2n ** 18n;
+    const short = archiveInventory();
+    short.catalogue!.xbzzPlur = (both - 1n).toString();
+    manager.inventoryAnswer = short;
+    const error = await refusal(
+      funding.stampOperations(TEST_OPERATOR, [
+        topUp(NODE_CATALOGUE, BATCH_ARCHIVE, 22, 7),
+        topUp(NODE_CATALOGUE, BATCH_CATALOGUE, 18, 7),
+      ]),
+    );
+    assert.ok(error instanceof FundingRefusedError);
+    assert.equal(error.problem, 'insufficient_funds');
+  });
+});
+
 describe('refusing a request, nothing journalled', () => {
   async function refused(items: StampOperationItemRequest[]): Promise<FundingRefusedError> {
     const error = await refusal(funding.stampOperations(TEST_OPERATOR, items));
@@ -517,7 +704,7 @@ describe('refusing a request, nothing journalled', () => {
     assert.equal(other.problem, 'batch');
     assert.equal(
       other.message,
-      'Batch 0xc2c2c2c2… is not a batch Main stage uploader (stage-1:uploader) uploads with, so nothing was sent.',
+      'Batch 0xc2c2c2c2… is not a batch Main stage uploader (stage-1:uploader) uploads with or holds as an archive stamp, so nothing was sent.',
     );
 
     const gateway = await refused([topUp(NODE_B, BATCH_STAGE, 20, 30)]);
