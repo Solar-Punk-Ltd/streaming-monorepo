@@ -2,14 +2,16 @@
  * Why the Funding page's write cannot go ahead, by what it is about:
  * - `not_set_up`: the admin has no manager funding settings, or no brand wallet;
  * - `chain`: the manager answers for another chain than the one the admin signs for;
- * - `node`: a node is not in the manager's inventory, its wallet could not be read, it was never pinned, or it answers
+ * - `node`: a node is not in the manager's inventory, holds an archive stamp but is neither a stage's node nor the
+ *   catalogue node, its wallet could not be read, it was never pinned, or it answers
  *   another address than the pinned one; for a chequebook operation, also a node that is neither a stage's nor the
  *   catalogue node, or a gateway, whose chequebook the manager does not move;
  * - `fee`: the manager suggested a fee or a gas limit over the admin's own ceilings, so nothing is signed;
  * - `insufficient_funds`: the brand wallet cannot pay for the send, its fees counted, or a node cannot pay for its
  *   stamp operations, its top-ups in xBZZ or their gas in xDAI, or for its chequebook operation, its deposit in xBZZ
  *   or the gas of either way in xDAI;
- * - `batch`: a stamp operation's batch is not one its node uploads with, could not be read, is not usable, has expired
+ * - `batch`: a stamp operation's batch is not one its node uploads with or holds as an archive stamp, is an archive
+ *   stamp not written any more on a dilution, could not be read, is not usable, has expired
  *   or is no longer at the depth the page showed, or a dilution would leave it under 7 days;
  * - `price`: the manager read no price of postage, so a top-up cannot be priced;
  * - `chequebook`: a chequebook operation's chequebook: the node has none, the manager did not read it or could not,

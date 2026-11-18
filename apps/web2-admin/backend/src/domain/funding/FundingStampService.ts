@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type {
+  FundingArchiveBatch,
   FundingBatch,
   FundingErrorCode,
   FundingInventory,
@@ -60,8 +61,9 @@ import { ManagerFundingError, type ManagerFundingClient } from './ManagerFunding
  * (`packages/contracts/src/funding.ts`).
  *
  * A request is refused, in this order, nothing journalled: a request of both kinds, or one that names a batch twice;
- * funding not set up; a manager on another chain; an item whose node or batch the manager does not hold, whose batch
- * could not be read, is not usable, has expired or is no longer at the depth the page showed, whose dilution would
+ * funding not set up; a manager on another chain; an item whose node or batch the manager does not hold, an archive
+ * stamp whose holder is neither a stage's node nor the catalogue node, or one not written any more on a dilution, an
+ * item whose batch could not be read, is not usable, has expired or is no longer at the depth the page showed, whose dilution would
  * leave the batch under 7 days or take it past the manager's ceiling of depth 40, or whose top-up has no price of
  * postage to go by, or one higher than the page quoted it at; a node whose wallet could not be read, holds no xDAI for
  * the gas, or cannot pay for its top-ups in xBZZ; an earlier stamp bulk with an item that still holds up a new one,
@@ -177,26 +179,45 @@ export function checkStampShape(items: readonly StampOperationItemRequest[]): vo
   }
 }
 
-/** Why a batch takes no operation, in a sentence that names its node. Only for one {@link operableBatch} refuses. */
-function inoperable(batch: FundingBatch, node: FundingNode): string {
+/**
+ * How a sentence names the batch of an item, after "the": `batch of <node>`, or `archive stamp 0x… of <node>` for an
+ * archive stamp, which its holder keeps beside the batch it uploads with.
+ */
+function batchOf(node: FundingNode, archive: FundingArchiveBatch | null): string {
+  return archive ? `archive stamp ${shortBatch(archive.batchId)} of ${nodeName(node)}` : `batch of ${nodeName(node)}`;
+}
+
+/** Why a batch takes no operation, in a sentence that names it. Only for one {@link operableBatch} refuses. */
+function inoperable(batch: FundingBatch, which: string): string {
   const unread = batch.readError !== null || batch.depth === null || batch.ttlSeconds === null || batch.usable === null;
   if (unread) {
-    return `The batch of ${nodeName(node)} could not be read, so nothing was sent.${batch.readError ? ` ${batch.readError}` : ''}`;
+    return `The ${which} could not be read, so nothing was sent.${batch.readError ? ` ${batch.readError}` : ''}`;
   }
   if (batch.ttlSeconds === 0) {
-    return `The batch of ${nodeName(node)} has expired, and an expired batch can be neither topped up nor diluted. Nothing was sent.`;
+    return `The ${which} has expired, and an expired batch can be neither topped up nor diluted. Nothing was sent.`;
   }
-  return `Bee does not call the batch of ${nodeName(node)} usable, so nothing was sent.`;
+  return `Bee does not call the ${which} usable, so nothing was sent.`;
+}
+
+/**
+ * Why an archive stamp is refused whose holder is neither a stage's node nor the designated catalogue node: a node
+ * that is the catalogue node no longer, whose wallet the admin does not fund.
+ */
+function formerCatalogueHolder(archive: FundingArchiveBatch): string {
+  return `The archive stamp is held by ${nodeName({ label: archive.nodeLabel, nodeId: archive.nodeId })}, which is the catalogue node no longer: that node's wallet is funded outside the admin, so the admin does not top it up or dilute it. Nothing was sent.`;
 }
 
 /**
  * Each item of a request checked against the manager's inventory, read fresh, in the request's order; the first that
  * fails refuses the request. An item names a node and a batch the node uploads with, which the inventory lists
  * together: a node is listed once for each batch it uploads with, as a stage's own node and as the catalogue node,
- * say. The batch must be read whole, usable and not expired ({@link operableBatch}), and at the depth the page showed.
- * A top-up is priced at the price of postage the manager read now ({@link stampTopUpQuote}), and refused when that is
- * higher than the price the page quoted it at, so it never costs more than the page showed; a dilution must leave the
- * batch 7 days or more, and take it no deeper than the manager's ceiling, `STAMP_MAX_DEPTH` ({@link stampDiluteQuote}).
+ * say. Or it names an archive stamp of the inventory's `archiveBatches` and the node that holds it, which pays for it;
+ * that node must be a stage's node or the designated catalogue node, since the admin does not fund a former catalogue
+ * node's wallet, and an archive stamp that is not `writable` any more takes top-ups only. The batch must be read
+ * whole, usable and not expired ({@link operableBatch}), and at the depth the page showed. A top-up is priced at the
+ * price of postage the manager read now ({@link stampTopUpQuote}), and refused when that is higher than the price the
+ * page quoted it at, so it never costs more than the page showed; a dilution must leave the batch 7 days or more, and
+ * take it no deeper than the manager's ceiling, `STAMP_MAX_DEPTH` ({@link stampDiluteQuote}).
  */
 export function stampTargetsOf(
   items: readonly StampOperationItemRequest[],
@@ -206,26 +227,39 @@ export function stampTargetsOf(
     ...inventory.stages.flatMap((stage) => stage.nodes),
     ...(inventory.catalogue ? [inventory.catalogue] : []),
   ];
+  const archived = inventory.archiveBatches ?? [];
   const postage = inventory.chain.postage ?? null;
   return items.map((item) => {
     const named = entries.filter((node) => node.nodeId === item.nodeId);
+    const held = archived.find((archive) => archive.nodeId === item.nodeId && archive.batchId === item.batchId);
     const [first] = named;
     if (!first) {
+      if (held) throw new FundingRefusedError('node', formerCatalogueHolder(held));
       throw new FundingRefusedError('node', `The manager has no node ${item.nodeId}, so nothing was sent.`);
     }
-    const node = named.find((candidate) => candidate.batch?.batchId === item.batchId);
-    const batch = node?.batch;
+    const own = named.find((candidate) => candidate.batch?.batchId === item.batchId);
+    // The batch the node uploads with, or else an archive stamp it holds, paid for from the same wallet.
+    const archive = own ? null : (held ?? null);
+    const node = own ?? (archive ? first : undefined);
+    const batch = own?.batch ?? archive;
     if (!node || !batch) {
       throw new FundingRefusedError(
         'batch',
-        `Batch ${shortBatch(item.batchId)} is not a batch ${nodeName(first)} uploads with, so nothing was sent.`,
+        `Batch ${shortBatch(item.batchId)} is not a batch ${nodeName(first)} uploads with or holds as an archive stamp, so nothing was sent.`,
       );
     }
-    if (!operableBatch(batch)) throw new FundingRefusedError('batch', inoperable(batch, node));
+    const which = batchOf(node, archive);
+    if (!operableBatch(batch)) throw new FundingRefusedError('batch', inoperable(batch, which));
     if (batch.depth !== item.expectedDepth) {
       throw new FundingRefusedError(
         'batch',
-        `The batch of ${nodeName(node)} is at depth ${batch.depth} now, not the ${item.expectedDepth} the page showed: read the page again. Nothing was sent.`,
+        `The ${which} is at depth ${batch.depth} now, not the ${item.expectedDepth} the page showed: read the page again. Nothing was sent.`,
+      );
+    }
+    if (item.kind === 'dilute' && archive && !archive.writable) {
+      throw new FundingRefusedError(
+        'batch',
+        `The ${which} is not written any more, so it is topped up only, never diluted. Nothing was sent.`,
       );
     }
     if (item.kind === 'topup') {
@@ -257,7 +291,7 @@ export function stampTargetsOf(
     if (quote.problem) {
       throw new FundingRefusedError(
         'batch',
-        `The batch of ${nodeName(node)} cannot be diluted ${plural(item.steps, 'step')}: ${quote.problem} Nothing was sent.`,
+        `The ${which} cannot be diluted ${plural(item.steps, 'step')}: ${quote.problem} Nothing was sent.`,
       );
     }
     return { item, node, batch, newDepth: quote.newDepth, amountPerChunkPlur: null, costPlur: null };
