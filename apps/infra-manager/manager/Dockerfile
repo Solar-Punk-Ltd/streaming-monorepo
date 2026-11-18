@@ -53,12 +53,17 @@ WORKDIR /app
 # 5.6.1 on 2026-10-25, when Alpine 3.24 stopped offering 5.1.4, and
 # manager/test/docker/shared-image-race.sh was run again inside this image
 # against Compose 5.6.1: the race reproduced with the shared tag and
-# per-project image names kept every container's own content. Any change of
-# this pin, an Alpine revision of the same version included, is a deliberate
-# edit here with that run repeated, never a silent move.
+# per-project image names kept every container's own content. It moved from
+# 5.6.1 to 5.7.2 on 2026-11-18, when Alpine 3.24 stopped offering 5.6.1, and
+# the same run inside this image against Compose 5.7.2 reproduced the race
+# with the shared tag, in the controlled interleaving and in 2 of 20 bounded
+# creations, while per-project image names kept their own content in all 20,
+# with no missing container and no failed build. Any change of this pin, an
+# Alpine revision of the same version included, is a deliberate edit here with
+# that run repeated, never a silent move.
 RUN apk add --no-cache \
       bash jq git \
-      docker-cli docker-cli-compose=5.6.1-r0 \
+      docker-cli docker-cli-compose=5.7.2-r0 \
       rsync openssh-client \
       ca-certificates
 
