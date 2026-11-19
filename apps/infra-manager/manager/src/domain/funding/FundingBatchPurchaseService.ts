@@ -24,6 +24,7 @@ import { AsyncLock } from '../AsyncLock.js';
 import type { BuyStampInput } from '../BeeClient.js';
 import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { Logger } from '../Logger.js';
+import { type CatalogueDesignationRow, isMoving } from '../stages/CatalogueDesignationRepository.js';
 import { FundingApiError } from './FundingApiError.js';
 import { bareBatchId, batchIdFrom, type FundingPurchaseFollowUp, usableOf } from './FundingPurchaseFollowUp.js';
 import type {
@@ -61,6 +62,8 @@ export interface FundingBatchPurchaseDeps {
   rungs: Pick<PurchasedRungBatches, 'current'>;
   /** The designated catalogue batch now, and its verdict (`purchaseFollowUpPorts.ts`). */
   catalogueBatches: Pick<PurchasedCatalogueBatches, 'current'>;
+  /** The catalogue designation, read for a move still pending, which refuses a catalogue purchase until released. */
+  catalogue: { read(): Promise<CatalogueDesignationRow> };
   /**
    * Whether another operation of the funding API is under way on the node, a stamp operation or a chequebook move,
    * either of which spends the same wallet. Without it none is.
@@ -107,6 +110,8 @@ const BUYING =
 const OTHER_OPERATION =
   'Another operation of the funding API is under way on this node, a top-up, a dilution or a chequebook move, and both would spend the same wallet. Try again once it is done.';
 const OTHER_PURCHASE = 'This request id names another batch purchase.';
+const MOVE_PENDING =
+  'The catalogue is still moving to a batch designated before, and the batch it moves from is not released yet, so a new catalogue batch could not be designated. Buy it once that move is released.';
 const NOT_AN_ARCHIVE_PURCHASE =
   'No archive stamp purchase was journalled under this request id. A batch purchase of another purpose is read on the batch purchase route.';
 const LABEL_TAKEN =
@@ -188,6 +193,8 @@ function answerOf(row: FundingStampPurchaseRow): FundingBatchPurchaseAnswer {
  *   `unknown_node` for a node this manager does not run;
  * - for a rung or the catalogue, `replacesBatchId` is the batch set there now, as the port's `current` reads it, and
  *   that batch no longer pays (`purchaseReplaceProblem`);
+ * - for the catalogue, no move of the catalogue is pending (`isMoving`): the batch moved from is released first, since
+ *   the designation takes no third batch;
  * - the cost in xBZZ, `amountPerChunkPlur × 2^depth`, is in the node's wallet, with some xDAI for the gas, and the
  *   amount buys the postage contract's floor of life or more at the price read now;
  * - an archive stamp keeps its check of the catalogue stamp record's places, made again under the archive batches'
@@ -472,6 +479,8 @@ export class FundingBatchPurchaseService {
    */
   private async checkReplaced(request: FundingBatchPurchaseRequest, deployment: Profile): Promise<void> {
     if (request.purpose === 'archive') return;
+    // A third batch is refused at designation while a move is pending, so it is refused here, before it is paid for.
+    if (request.purpose === 'catalogue' && isMoving(await this.deps.catalogue.read())) throw refused(MOVE_PENDING);
     const current =
       request.purpose === 'rung'
         ? await this.deps.rungs.current(deployment.name)

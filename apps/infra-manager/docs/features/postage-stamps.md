@@ -337,7 +337,10 @@ values in the dialog before buying.
 
 A purchase is refused before the node is asked when the batch it names as replaced is another than
 the one set now, and when that batch still works (`purchaseReplaceProblem`): a batch with time left
-is topped up or diluted. The checks of the amount, the wallet and the node are the ones of
+is topped up or diluted. A catalogue batch is refused too while a move of the catalogue is pending,
+since the designation takes no third batch until the batch moved from is released
+([stages.md](stages.md#moving-the-catalogue)). The checks of the amount, the wallet and the node are
+the ones of
 [What the manager refuses before Bee is asked](#what-the-manager-refuses-before-bee-is-asked).
 
 `manager/src/domain/funding/purchaseFollowUpPorts.ts` is the seam between the purchase and the
