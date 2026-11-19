@@ -28,6 +28,7 @@ import type { BeeStamp } from '../../src/domain/BeeClient.js';
 import { ProfileBusyError } from '../../src/domain/errors/index.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
 import {
+  PurchaseFollowUpError,
   purchaseFollowUpPorts,
   type PurchaseFollowUpPorts,
   type PurchaseFollowUpPortsDeps,
@@ -203,7 +204,7 @@ describe("a rung's batch", () => {
 
     await assert.rejects(
       world.ports().rungs.set({ profileName: 'pool-360p', batchId: BOUGHT, requestId: REQUEST }),
-      /^Error: The bought batch was not set on pool-360p, because batch cccccccc… is set there now\. The batch set on this node still pays for uploads/,
+      /^PurchaseFollowUpError: The bought batch was not set on pool-360p, because batch cccccccc… is set there now\. The batch set on this node still pays for uploads/,
     );
     assert.deepEqual(world.set, []);
   });
@@ -387,7 +388,7 @@ describe('one look at a stage', () => {
       last_error: 'the uploader exited',
       last_error_at: new Date(2_000),
     });
-    assert.deepEqual(await once(), { apply: 'failed', message: 'The Apply failed: the uploader exited' });
+    assert.deepEqual(await once(), { apply: 'failed', message: 'The Apply failed. The manager’s log says why.' });
     assert.equal((await once()).apply, 'failed');
     assert.deepEqual(world.applied, ['main:main-instance']);
 
@@ -463,18 +464,91 @@ describe('one look at a stage', () => {
     assert.equal(world.applied.length, 2, 'one Apply for each purchase, none after');
   });
 
-  it('answers failed with the reason an Apply did not start', async () => {
-    world.applyError = new Error('The stack refuses the engine settings.');
+  it('answers failed, without the error that can name a host, for an Apply that did not start', async () => {
+    world.applyError = new Error('ssh: connect to host 203.0.113.9 port 22: Connection refused');
     assert.deepEqual(await look(), {
       apply: 'failed',
-      message: 'The Apply did not start: The stack refuses the engine settings.',
+      message: 'The Apply did not start. The manager’s log says why.',
     });
+  });
+
+  it("answers failed, without the deploy's error that can name a host, for an Apply that failed", async () => {
+    const ports = world.ports();
+    const once = () =>
+      ports.stages.look({ stageId: 'main-instance', batchId: BOUGHT, force: false, retryFailed: false });
+    assert.equal((await once()).apply, 'applying');
+    world.clock = 5_000;
+    Object.assign(world.profiles[1]!, {
+      status: 'ERROR',
+      last_error: 'rsync to deploy@203.0.113.9:/srv/stage failed',
+      last_error_at: new Date(5_000),
+    });
+
+    const failed = await once();
+    assert.equal(failed.apply, 'failed');
+    assert.doesNotMatch(failed.message ?? '', /203\.0\.113\.9/);
   });
 
   it("answers failed when the stage's saved settings do not name the batch", async () => {
     world.catalogs.set('main', catalogOf({ value: `360p@http://192.0.2.10:10025<${OLD}>` }));
     assert.equal((await look()).apply, 'failed');
     assert.deepEqual(world.applied, []);
+  });
+});
+
+describe('what a port rejects with', () => {
+  const ADDRESS = /203\.0\.113\.9|198\.51\.100\.4/;
+
+  it('is a plain sentence for a failure that can name a host, and its own sentence otherwise', async () => {
+    world.profiles = [{ ...RUNG }];
+    world.states.set(OLD, 'expired');
+    const deps = world.deps({
+      read: async () => {
+        throw new Error('connect ECONNREFUSED 198.51.100.4:5432');
+      },
+      designate: async () => assert.fail('not reached'),
+      release: async () => assert.fail('not reached'),
+    });
+    deps.stamps.setStamp = async () => {
+      throw new Error('connect ECONNREFUSED 203.0.113.9:5432');
+    };
+    deps.profiles.list = async () => {
+      throw new Error('connect ECONNREFUSED 203.0.113.9:5432');
+    };
+    const ports = purchaseFollowUpPorts(deps);
+
+    const rejections: [Promise<unknown>, string][] = [
+      [
+        ports.rungs.set({ profileName: 'pool-360p', batchId: BOUGHT, requestId: REQUEST }),
+        'The bought batch could not be set on its deployment. The manager’s log says why.',
+      ],
+      [
+        ports.stages.look({ stageId: 'main-instance', batchId: BOUGHT, force: false, retryFailed: false }),
+        'The stage could not be read. The manager’s log says why.',
+      ],
+      [ports.catalogue.current('catalogue'), 'The catalogue batch could not be read. The manager’s log says why.'],
+      [
+        ports.catalogue.designate({ profileName: 'catalogue', batchId: BOUGHT, requestId: REQUEST }),
+        'The bought batch could not be designated as the catalogue batch. The manager’s log says why.',
+      ],
+      [
+        ports.catalogue.release({ batchId: BOUGHT, previousBatchId: OLD, requestId: REQUEST }),
+        'The previous catalogue batch could not be released. The manager’s log says why.',
+      ],
+    ];
+    for (const [rejection, sentence] of rejections) {
+      await assert.rejects(rejection, (err: unknown) => {
+        assert.ok(err instanceof PurchaseFollowUpError);
+        assert.equal(err.message, sentence);
+        assert.doesNotMatch(err.message, ADDRESS);
+        return true;
+      });
+    }
+
+    await assert.rejects(ports.rungs.current('missing'), {
+      name: 'PurchaseFollowUpError',
+      message: 'There is no deployment called missing on this manager.',
+    });
   });
 });
 
@@ -550,7 +624,7 @@ describe('the catalogue batch', () => {
 
     await assert.rejects(
       ports.catalogue.designate({ profileName: NODE, batchId: BOUGHT, requestId: REQUEST }),
-      /^Error: The bought batch was not designated, because batch 11111111… is the catalogue batch now\. The catalogue batch still pays for uploads\./,
+      /^PurchaseFollowUpError: The bought batch was not designated, because batch 11111111… is the catalogue batch now\. The catalogue batch still pays for uploads\./,
     );
     assert.equal(store.row.batchId, OLD);
     assert.equal(store.row.revision, revision, 'nothing written');
