@@ -42,8 +42,12 @@
 -- other two purposes.
 --
 -- The rows 055 wrote take the step their state says: a failed one 'failed', a
--- confirmed one that was recorded 'done', a confirmed one not recorded yet
--- 'waiting_usable', and the rest 'buying'.
+-- confirmed one that was recorded 'done', and one still being bought 'buying'.
+-- A confirmed one not recorded yet is 'waiting_usable', which the follow-up
+-- takes up, when it is the latest such purchase of its node and no purchase of
+-- that node is being bought. One purchase is under way on a node at a time, so
+-- an earlier one of the same node is 'failed' with a sentence, its batch
+-- bought, and the admin's check takes it up.
 --
 -- Going back to the manager of 055 needs no step: it writes rows that take the
 -- defaults here, and reads none of the new columns.
@@ -59,14 +63,30 @@ ALTER TABLE funding_stamp_purchases
   ADD COLUMN previous_batch_id  TEXT CHECK (previous_batch_id ~ '^0x[0-9a-f]{64}$'),
   ADD COLUMN released_at        TIMESTAMPTZ;
 
-UPDATE funding_stamp_purchases
+UPDATE funding_stamp_purchases p
    SET step = CASE
-                WHEN state = 'failed' THEN 'failed'
-                WHEN state = 'confirmed' AND recorded_at IS NOT NULL THEN 'done'
-                WHEN state = 'confirmed' THEN 'waiting_usable'
+                WHEN p.state = 'failed' THEN 'failed'
+                WHEN p.state = 'confirmed' AND p.recorded_at IS NOT NULL THEN 'done'
+                WHEN p.state = 'confirmed'
+                     AND p.request_id = (
+                       SELECT o.request_id
+                         FROM funding_stamp_purchases o
+                        WHERE o.node_id = p.node_id AND o.state = 'confirmed' AND o.recorded_at IS NULL
+                        ORDER BY o.created_at DESC, o.request_id DESC
+                        LIMIT 1)
+                     AND NOT EXISTS (
+                       SELECT 1
+                         FROM funding_stamp_purchases o
+                        WHERE o.node_id = p.node_id AND o.state IN ('unknown', 'submitted'))
+                  THEN 'waiting_usable'
+                WHEN p.state = 'confirmed' THEN 'failed'
                 ELSE 'buying'
               END,
-       bought_at = CASE WHEN state = 'confirmed' THEN updated_at END;
+       bought_at = CASE WHEN p.state = 'confirmed' THEN p.updated_at END;
+
+UPDATE funding_stamp_purchases
+   SET error = 'The batch was bought and was not made an archive batch. Check again takes it up.'
+ WHERE state = 'confirmed' AND step = 'failed' AND error IS NULL;
 
 ALTER TABLE funding_stamp_purchases
   DROP CONSTRAINT funding_stamp_purchases_node_label_check,
