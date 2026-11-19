@@ -1132,6 +1132,14 @@ describe('a batch purchase', () => {
     assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(late), late);
   });
 
+  it('says the state of the bought batch on its node, and parses an answer that gives none', () => {
+    for (const batchState of ['pending', 'active', 'expired', 'gone', 'unknown']) {
+      assert.equal(fundingBatchPurchaseStatusSchema.parse({ ...rungStatus(), batchState }).batchState, batchState);
+    }
+    assert.equal(fundingBatchPurchaseStatusSchema.parse(rungStatus()).batchState, undefined);
+    assert.equal(fundingBatchPurchaseStatusSchema.safeParse({ ...rungStatus(), batchState: 'lost' }).success, false);
+  });
+
   it('drops what a newer manager adds, a node address among it', () => {
     assert.deepEqual(
       fundingBatchPurchaseStatusSchema.parse({ ...rungStatus(), beeApiUrl: 'http://bee:1633' }),

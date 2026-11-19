@@ -6,6 +6,7 @@ import {
   type FundingNode,
   type FundingPostage,
   type FundingPurchaseApplyState,
+  type StageStampState,
   fundingPurchaseRestartable,
 } from '@streaming-monorepo/contracts';
 
@@ -309,15 +310,53 @@ export interface BatchPurchase {
   move: BatchPurchaseMove | null;
   /** Whether Check again is offered: the purchase is `failed` with its batch bought, or a stage's restart failed. */
   canCheckAgain: boolean;
+  /**
+   * The state of the bought batch on its node, as the manager last answered it: its status's `batchState`, which the
+   * admin reads with every list for a failed purchase that holds its node. Absent while there is no batch, and while
+   * the manager has not said.
+   */
+  batchState?: StageStampState;
   /** Who started it, as the audit log names them. */
   startedBy: string;
   startedAt: string;
 }
 
 /**
+ * Whether the batch a purchase bought has run out: its node holds it no more, or it has no time left. An absent
+ * state says neither, so a batch the manager could not read has not run out.
+ */
+export function boughtBatchRanOut(purchase: Pick<BatchPurchase, 'batchState'>): boolean {
+  return purchase.batchState === 'expired' || purchase.batchState === 'gone';
+}
+
+/**
+ * Whether a purchase holds its node, so the node's row offers no Buy new: it is under way, or it failed with its
+ * batch bought and that batch has not run out. The batch was paid for and never put to use, Check again puts it to
+ * use, and a second purchase would pay twice. Once the bought batch has run out there is nothing left to check, and
+ * the row offers Buy new again.
+ */
+export function batchPurchaseHoldsNode(
+  purchase: Pick<BatchPurchase, 'state' | 'canCheckAgain' | 'batchState'>,
+): boolean {
+  if (BATCH_PURCHASE_OPEN_STATES.includes(purchase.state)) return true;
+  return purchase.state === 'failed' && purchase.canCheckAgain && !boughtBatchRanOut(purchase);
+}
+
+/**
+ * Whether a purchase's row offers Check again: the backend offers it, and the purchase did not fail with a bought
+ * batch that has run out since, which no check can put to use.
+ */
+export function batchPurchaseOffersCheck(
+  purchase: Pick<BatchPurchase, 'state' | 'canCheckAgain' | 'batchState'>,
+): boolean {
+  return purchase.canCheckAgain && !(purchase.state === 'failed' && boughtBatchRanOut(purchase));
+}
+
+/**
  * `GET /api/funding/batch-purchases`: the purchases under way, the ones that started or ended in the last day, and,
  * whatever its age, a purchase that failed with its batch bought, for as long as no later purchase of its node is
- * done. That batch was paid for and never put to use, so its row keeps Check again in place of Buy new.
+ * done. That batch was paid for and never put to use, so its row keeps Check again in place of Buy new while the
+ * batch has not run out ({@link batchPurchaseHoldsNode}).
  */
 export interface BatchPurchasesResponse {
   purchases: BatchPurchase[];

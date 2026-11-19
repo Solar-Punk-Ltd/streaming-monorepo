@@ -13,6 +13,9 @@ import {
   batchBuyProblem,
   batchBuyQuote,
   batchOffersPurchase,
+  boughtBatchRanOut,
+  batchPurchaseHoldsNode,
+  batchPurchaseOffersCheck,
   batchPurchasePurpose,
   batchPurchaseStageRestartable,
   fundingBatchPurchaseAdminPath,
@@ -150,5 +153,43 @@ describe("a stage's line", () => {
   it('offers Restart now only while it waits for a broadcast', () => {
     const offered = FUNDING_PURCHASE_APPLY_STATES.filter((apply) => batchPurchaseStageRestartable({ apply }));
     assert.deepEqual(offered, ['waiting_live', 'waiting_unknown']);
+  });
+});
+
+describe('a purchase that holds its node', () => {
+  const failed = { state: 'failed', canCheckAgain: true } as const;
+
+  it('holds it while it is under way, whatever is known of its batch', () => {
+    for (const state of ['buying', 'waiting_usable', 'restarting', 'moving'] as const) {
+      assert.equal(batchPurchaseHoldsNode({ state, canCheckAgain: false }), true, state);
+      assert.equal(batchPurchaseHoldsNode({ state, canCheckAgain: false, batchState: 'expired' }), true, state);
+    }
+  });
+
+  it('holds it after it failed with its batch bought, while that batch has not run out', () => {
+    assert.equal(batchPurchaseHoldsNode(failed), true);
+    for (const batchState of ['pending', 'active', 'unknown', 'full'] as const) {
+      assert.equal(batchPurchaseHoldsNode({ ...failed, batchState }), true, batchState);
+      assert.equal(batchPurchaseOffersCheck({ ...failed, batchState }), true, batchState);
+    }
+  });
+
+  it('lets go once the bought batch has no time left or its node holds it no more, and offers no check of it', () => {
+    for (const batchState of ['expired', 'gone'] as const) {
+      assert.equal(boughtBatchRanOut({ batchState }), true);
+      assert.equal(batchPurchaseHoldsNode({ ...failed, batchState }), false, batchState);
+      assert.equal(batchPurchaseOffersCheck({ ...failed, batchState }), false, batchState);
+    }
+    assert.equal(boughtBatchRanOut({}), false);
+  });
+
+  it('never holds it once it is done, or failed with nothing bought', () => {
+    assert.equal(batchPurchaseHoldsNode({ state: 'done', canCheckAgain: false }), false);
+    assert.equal(batchPurchaseHoldsNode({ state: 'failed', canCheckAgain: false }), false);
+  });
+
+  it('keeps Check again for a stage whose restart failed, whose batch is set', () => {
+    assert.equal(batchPurchaseOffersCheck({ state: 'restarting', canCheckAgain: true, batchState: 'active' }), true);
+    assert.equal(batchPurchaseOffersCheck({ state: 'restarting', canCheckAgain: false }), false);
   });
 });
