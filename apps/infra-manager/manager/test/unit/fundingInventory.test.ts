@@ -21,6 +21,8 @@ import {
   beePublishersValue,
   type ChequebookBalance,
   stampHealthFrom,
+  type StampState,
+  suggestedRungDepth,
 } from '@streaming-infra-manager/common';
 import { type FundingInventory, type FundingNode, fundingInventorySchema } from '@streaming-monorepo/contracts';
 
@@ -276,7 +278,7 @@ function nodesById(answer: FundingInventory): Map<string, FundingNode> {
   return new Map(nodes.map((node) => [node.nodeId, node]));
 }
 
-const unreadBatch = (batchId: string, readError: string) => ({
+const unreadBatch = (batchId: string, readError: string, state: StampState = 'unknown') => ({
   batchId: `0x${batchId}`,
   depth: null,
   immutable: null,
@@ -284,6 +286,7 @@ const unreadBatch = (batchId: string, readError: string) => ({
   ttlSeconds: null,
   fillRatio: null,
   readError,
+  state,
 });
 
 describe('the funding inventory', () => {
@@ -310,7 +313,12 @@ describe('the funding inventory', () => {
 
   it('reads each node’s wallet: its address in lower case and its balances in base units', async () => {
     const { inventory } = service();
-    const { batch: _batch, chequebook: _chequebook, ...node } = (await inventory.inventory()).stages[0]!.nodes[0]!;
+    const {
+      batch: _batch,
+      chequebook: _chequebook,
+      replacement: _replacement,
+      ...node
+    } = (await inventory.inventory()).stages[0]!.nodes[0]!;
     assert.deepEqual(node, {
       nodeId: `${STREAMER_ID}:bee-uploader`,
       label: 'stage-one Bee node',
@@ -457,6 +465,7 @@ describe('each node’s batch in the funding inventory', () => {
       ttlSeconds: 1_296_000,
       fillRatio: 0.25,
       readError: null,
+      state: 'active',
     });
     assert.deepEqual(byId.get(`${RUNG_360_ID}:bee-uploader`)!.batch, {
       batchId: `0x${BATCH_360}`,
@@ -466,6 +475,7 @@ describe('each node’s batch in the funding inventory', () => {
       ttlSeconds: 86_400,
       fillRatio: 15 / 16,
       readError: null,
+      state: 'pending',
     });
   });
 
@@ -506,7 +516,11 @@ describe('each node’s batch in the funding inventory', () => {
     );
     assert.deepEqual(
       byId.get(`${RUNG_360_ID}:bee-uploader`)!.batch,
-      unreadBatch(BATCH_360, 'The node does not hold this batch: it expired and was dropped, or it is another node’s.'),
+      unreadBatch(
+        BATCH_360,
+        'The node does not hold this batch: it expired and was dropped, or it is another node’s.',
+        'gone',
+      ),
     );
     assert.deepEqual(
       byId.get(`${RUNG_720_ID}:bee-uploader`)!.batch,
@@ -534,7 +548,7 @@ describe('each node’s batch in the funding inventory', () => {
     const byId = nodesById(await inventory.inventory());
     assert.deepEqual(
       byId.get(`${STREAMER_ID}:bee-uploader`)!.batch,
-      unreadBatch(BATCH_OWN, 'The batch is gone from the chain: it expired.'),
+      unreadBatch(BATCH_OWN, 'The batch is gone from the chain: it expired.', 'gone'),
     );
     for (const [id, batchId] of [
       [RUNG_360_ID, BATCH_360],
@@ -948,6 +962,7 @@ describe('the archive batches in the funding inventory', () => {
         ttlSeconds: 1_296_000,
         fillRatio: 0.25,
         readError: null,
+        state: 'active',
         nodeId: `${CATALOGUE_ID}:bee-uploader`,
         nodeLabel: 'catalogue',
         label: 'Autumn event',
@@ -961,6 +976,7 @@ describe('the archive batches in the funding inventory', () => {
         ttlSeconds: 86_400,
         fillRatio: 8 / 256,
         readError: null,
+        state: 'active',
         nodeId: `${OLD_CATALOGUE_ID}:bee-uploader`,
         nodeLabel: 'old-catalogue',
         label: null,
@@ -1101,5 +1117,153 @@ describe('the node that holds an archive batch', () => {
       [`${OLD_CATALOGUE_ID}:bee-uploader`, null, null],
     );
     assert.ok(holder?.readError);
+  });
+});
+
+describe('the verdict on each batch in the funding inventory', () => {
+  it('gives each batch the verdict the manager’s own pages give it', async () => {
+    const { inventory } = service({
+      stampAt: async (url, batchId) => {
+        if (url === OWN_URL) return stamp(batchId);
+        if (url === RUNG_360_URL) return stamp(batchId, { utilization: 64 });
+        if (url === RUNG_720_URL) return stamp(batchId, { batchTTL: 0, usable: false });
+        return stamp(batchId, { usable: false });
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(
+      [STREAMER_ID, RUNG_360_ID, RUNG_720_ID, CATALOGUE_ID].map((id) => byId.get(`${id}:bee-uploader`)!.batch?.state),
+      ['active', 'full', 'expired', 'pending'],
+    );
+  });
+
+  it('calls a batch the node holds no more gone, and one the node did not answer about unknown', async () => {
+    const { inventory } = service({
+      stampAt: async (url, batchId) => {
+        if (url === OWN_URL) throw new BeeHttpError(404, `bee GET /stamps/${batchId} → 404: issuer does not exist`);
+        if (url === RUNG_360_URL) return stamp(batchId, { exists: false });
+        if (url === RUNG_720_URL) {
+          throw new Error('bee request GET /stamps failed: The operation was aborted due to timeout');
+        }
+        return stamp(BATCH_ELSEWHERE);
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(
+      [STREAMER_ID, RUNG_360_ID, RUNG_720_ID, CATALOGUE_ID].map((id) => byId.get(`${id}:bee-uploader`)!.batch?.state),
+      ['gone', 'gone', 'unknown', 'unknown'],
+    );
+  });
+
+  it('gives an archive batch its verdict too, and unknown to one whose deployment was removed', async () => {
+    const { inventory } = service({
+      archived: [designation(ARCHIVE_ONE), designation(ARCHIVE_LEFT, { profileName: 'removed' })],
+      stampAt: async (_url, batchId) => stamp(batchId, { batchTTL: 0, usable: false }),
+    });
+    const answer = await inventory.inventory();
+    assert.deepEqual(
+      answer.archiveBatches!.map((batch) => batch.state),
+      ['expired', 'unknown'],
+    );
+  });
+});
+
+/** The ABR stage with a Bee node of its own beside its pool string, as a stage that once ran alone keeps one. */
+function withOwnNodeOnAbrStage(list: Profile[]): Profile[] {
+  return list.map((profile) =>
+    profile.name === 'stage-abr'
+      ? { ...profile, components: ['stream-uploader', 'srs', 'bee-uploader'], stamp_id: BATCH_ELSEWHERE }
+      : profile,
+  );
+}
+
+describe('the replacement the funding inventory recommends for each node', () => {
+  it('recommends the depth and kind of the batch each node reports, immutable for the catalogue node', async () => {
+    const { inventory } = service({
+      stampAt: async (url, batchId) =>
+        url === RUNG_360_URL ? stamp(batchId, { depth: 19, immutableFlag: false }) : stamp(batchId),
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(byId.get(`${STREAMER_ID}:bee-uploader`)!.replacement, { depth: 22, immutable: true });
+    assert.deepEqual(byId.get(`${RUNG_360_ID}:bee-uploader`)!.replacement, { depth: 19, immutable: false });
+    assert.deepEqual(byId.get(`${RUNG_720_ID}:bee-uploader`)!.replacement, { depth: 22, immutable: true });
+    assert.deepEqual(byId.get(`${CATALOGUE_ID}:bee-uploader`)!.replacement, { depth: 22, immutable: true });
+  });
+
+  it('recommends none for a gateway, nor for the own node of a stage that publishes through a pool', async () => {
+    const { inventory } = service({ profiles: withOwnNodeOnAbrStage });
+    const answer = await inventory.inventory();
+    const byId = nodesById(answer);
+    assert.equal(byId.get(`${LIGHT_ID}:bee-gateway`)!.replacement, null);
+    const abr = answer.stages.find((stage) => stage.name === 'stage-abr')!;
+    const own = abr.nodes.find((node) => node.nodeId === `${ABR_ID}:bee-uploader`)!;
+    assert.equal(own.role, 'uploader');
+    assert.equal(own.replacement, null, 'its batch pays for nothing while the pool string is set');
+    assert.ok(abr.nodes.filter((node) => node.role === 'rung').every((node) => node.replacement !== null));
+  });
+
+  it('recommends the shape it last read once the node holds the batch no more', async () => {
+    let gone = false;
+    const { inventory } = service({
+      stampAt: async (url, batchId) => {
+        if (url !== RUNG_720_URL) return stamp(batchId);
+        if (gone) throw new BeeHttpError(404, `bee GET /stamps/${batchId} → 404: issuer does not exist`);
+        return stamp(batchId, { depth: 21, immutableFlag: false });
+      },
+    });
+    await inventory.inventory();
+    gone = true;
+    const rung = nodesById(await inventory.inventory()).get(`${RUNG_720_ID}:bee-uploader`)!;
+    assert.equal(rung.batch?.state, 'gone');
+    assert.deepEqual(rung.replacement, { depth: 21, immutable: false });
+  });
+
+  it('recommends what the Buy form suggests for a batch never read: a rung’s by its place, 17 otherwise', async () => {
+    const { inventory } = service({
+      stampAt: async (_url, batchId) => {
+        throw new BeeHttpError(404, `bee GET /stamps/${batchId} → 404: issuer does not exist`);
+      },
+    });
+    const byId = nodesById(await inventory.inventory());
+    assert.deepEqual(byId.get(`${STREAMER_ID}:bee-uploader`)!.replacement, { depth: 17, immutable: false });
+    assert.deepEqual(byId.get(`${RUNG_360_ID}:bee-uploader`)!.replacement, {
+      depth: suggestedRungDepth('360p'),
+      immutable: false,
+    });
+    assert.deepEqual(byId.get(`${RUNG_720_ID}:bee-uploader`)!.replacement, {
+      depth: suggestedRungDepth('720p'),
+      immutable: false,
+    });
+    assert.notEqual(suggestedRungDepth('360p'), suggestedRungDepth('720p'), 'the ladder places them apart');
+    assert.deepEqual(
+      byId.get(`${CATALOGUE_ID}:bee-uploader`)!.replacement,
+      { depth: 20, immutable: true },
+      'the depth its designation recorded',
+    );
+  });
+
+  it('recommends one for a stage’s own node with no batch set, and none under 18 for the catalogue node', async () => {
+    const { inventory } = service({
+      profiles: (list) =>
+        list.map((profile) => (profile.name === 'stage-one' ? { ...profile, stamp_id: null } : profile)),
+      stampAt: async (url, batchId) => (url === CATALOGUE_URL ? stamp(batchId, { depth: 17 }) : stamp(batchId)),
+    });
+    const byId = nodesById(await inventory.inventory());
+    const own = byId.get(`${STREAMER_ID}:bee-uploader`)!;
+    assert.equal(own.batch, null);
+    assert.deepEqual(own.replacement, { depth: 17, immutable: false });
+    assert.deepEqual(byId.get(`${CATALOGUE_ID}:bee-uploader`)!.replacement, { depth: 18, immutable: true });
+  });
+
+  it('recommends one for a node whose wallet could not be read, since it does not hang on the wallet', async () => {
+    const { inventory } = service({
+      walletAt: async (url) => {
+        if (url === OWN_URL) throw new BeeHttpError(503, 'bee GET /wallet → 503: syncing');
+        return wallet();
+      },
+    });
+    const own = nodesById(await inventory.inventory()).get(`${STREAMER_ID}:bee-uploader`)!;
+    assert.equal(own.walletAddress, null);
+    assert.deepEqual(own.replacement, { depth: 22, immutable: true });
   });
 });

@@ -8,16 +8,23 @@ import {
   getErrorMessage,
   isStampFull,
   LIGHT_NODE_MODE,
+  MIN_STAMP_DEPTH,
   MINIMUM_STAMP_VALIDITY_SECONDS,
   gatewayNodeMode,
   isStageKind,
   ownsBeeNode,
   parseBeePublishers,
   rungOrder,
+  stampHealthFrom,
+  type StampLike,
   type StampState,
+  suggestedRungDepth,
 } from '@streaming-infra-manager/common';
 import {
   ARCHIVE_BATCH_LABEL_MAX_LENGTH,
+  FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH,
+  FUNDING_PURCHASE_MAX_DEPTH,
+  FUNDING_PURCHASE_MIN_DEPTH,
   type FundingArchiveBatch,
   type FundingBatch,
   type FundingChequebook,
@@ -25,6 +32,7 @@ import {
   type FundingNode,
   type FundingNodeRole,
   type FundingPostage,
+  type FundingReplacement,
   fundingInventorySchema,
 } from '@streaming-monorepo/contracts';
 
@@ -63,6 +71,16 @@ type WalletReading =
   | { ok: true; walletAddress: string; xdaiWei: string; xbzzPlur: string }
   | { ok: false; readError: string };
 
+/**
+ * What a node is offered a new batch as, which decides the replacement the inventory recommends for it: a rung's
+ * node, by the rung's name; a single-node stage's own node; or the catalogue node, with the depth its designation
+ * recorded.
+ */
+type ReplacementOffer =
+  | { kind: 'rung'; rung: string }
+  | { kind: 'stage' }
+  | { kind: 'catalogue'; designatedDepth: number | null };
+
 /** One node to read: the inventory's own fields, how to reach it, which never leaves this service, and its batch. */
 interface PlannedNode {
   nodeId: string;
@@ -74,6 +92,40 @@ interface PlannedNode {
    * spell one, or null: a gateway's, and a node's with no batch set.
    */
   batchId: string | null;
+  /** What a new batch is bought for on this node, or null when none is: a gateway's, or a pool stage's own node's. */
+  offer: ReplacementOffer | null;
+}
+
+/** The depth and kind of a batch, as a node reported them. */
+interface BatchShape {
+  depth: number;
+  immutable: boolean;
+}
+
+/** The most batches whose last shape the inventory keeps, far above what one manager's nodes hold. */
+const LAST_SHAPES_KEPT = 500;
+
+function clampDepth(depth: number, least: number): number {
+  return Math.min(FUNDING_PURCHASE_MAX_DEPTH, Math.max(least, depth));
+}
+
+/**
+ * What the inventory recommends for a batch bought in place of a node's own, `replacement` in the contract: the depth
+ * and kind of the batch the node pays with now, as the node reports them, or as the inventory last read them while the
+ * manager runs, once the node holds that batch no more; for a node with neither, the depth the manager's own Buy form
+ * suggests, a rung's by its place in the ladder (`suggestedRungDepth`) and 17 otherwise, mutable as that form starts.
+ * The catalogue node's is immutable, at the depth its designation recorded when nothing better is known, and never
+ * under {@link FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH}. Null for a node offered none.
+ */
+function replacementOf(offer: ReplacementOffer | null, shape: BatchShape | null): FundingReplacement | null {
+  if (offer === null) return null;
+  if (offer.kind === 'catalogue') {
+    const depth = shape?.depth ?? offer.designatedDepth ?? FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH;
+    return { depth: clampDepth(depth, FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH), immutable: true };
+  }
+  if (shape) return { depth: clampDepth(shape.depth, FUNDING_PURCHASE_MIN_DEPTH), immutable: shape.immutable };
+  const suggested = offer.kind === 'rung' ? suggestedRungDepth(offer.rung) : MIN_STAMP_DEPTH;
+  return { depth: clampDepth(suggested, FUNDING_PURCHASE_MIN_DEPTH), immutable: false };
 }
 
 /** A node as the inventory answers it, and the price of postage its chain state names, kept where its wallet reads. */
@@ -196,10 +248,15 @@ const NOT_A_BATCH = 'The node answered something that is not this batch.';
 const BATCH_NOT_HELD = 'The node does not hold this batch: it expired and was dropped, or it is another node’s.';
 const BATCH_GONE = 'The batch is gone from the chain: it expired.';
 
+/** Whether a failed batch read is the node's answer that it does not hold the batch, which Bee gives as 404. */
+function saysNotHeld(error: unknown): boolean {
+  return error instanceof BeeHttpError && error.status === 404;
+}
+
 /** Why a batch read failed, in a sentence with no address in it. */
 function batchReadErrorOf(error: unknown): string {
   // Bee answers 404 for a batch it does not own, which is an answer and not a failure to answer.
-  if (error instanceof BeeHttpError && error.status === 404) return BATCH_NOT_HELD;
+  if (saysNotHeld(error)) return BATCH_NOT_HELD;
   switch (readFailureFrom(error, 0).reason) {
     case 'timeout':
       return 'The node did not answer in time.';
@@ -212,8 +269,11 @@ function batchReadErrorOf(error: unknown): string {
   }
 }
 
-/** A batch the node could not be read about: its id, no reading, and why in a sentence. */
-function unreadBatch(batchId: string, readError: string): FundingBatch {
+/**
+ * A batch the node could not be read about: its id, no reading, and why in a sentence. Its verdict is `gone` when the
+ * node answered that it holds the batch no more, and `unknown` when it did not answer about it.
+ */
+function unreadBatch(batchId: string, readError: string, state: StampState = 'unknown'): FundingBatch {
   return {
     batchId: `0x${batchId}`,
     depth: null,
@@ -222,6 +282,7 @@ function unreadBatch(batchId: string, readError: string): FundingBatch {
     ttlSeconds: null,
     fillRatio: null,
     readError,
+    state,
   };
 }
 
@@ -274,19 +335,22 @@ function isDepth(value: unknown): value is number {
 
 /**
  * A node's `GET /stamps/{id}` answer as the inventory takes it, or the batch unread and why. The fill is the fullest
- * bucket's, worked out as the postage page works it out (`fullestBucketFillRatio`).
+ * bucket's, worked out as the postage page works it out (`fullestBucketFillRatio`), and the verdict is the one the
+ * manager's own pages give the batch (`stampHealthFrom`).
  */
 function batchFrom(batchId: string, stamp: BeeStamp): FundingBatch {
   const answered: Partial<Record<keyof BeeStamp, unknown>> = typeof stamp === 'object' && stamp !== null ? stamp : {};
   if (typeof answered.batchID !== 'string' || batchIdOf(answered.batchID) !== batchId) {
     return unreadBatch(batchId, NOT_A_BATCH);
   }
-  if (answered.exists === false) return unreadBatch(batchId, BATCH_GONE);
+  if (answered.exists === false) return unreadBatch(batchId, BATCH_GONE, 'gone');
   const { depth, usable, immutableFlag, batchTTL } = answered;
   if (!isDepth(depth) || typeof usable !== 'boolean' || typeof immutableFlag !== 'boolean') {
     return unreadBatch(batchId, NOT_A_BATCH);
   }
   const fillRatio = fullestBucketFillRatio(stamp);
+  // The id the node answered with, in the spelling the verdict compares, which matched this batch above.
+  const { state } = stampHealthFrom(batchId, [{ ...stamp, batchID: batchId } as StampLike]);
   return {
     batchId: `0x${batchId}`,
     depth,
@@ -297,6 +361,7 @@ function batchFrom(batchId: string, stamp: BeeStamp): FundingBatch {
     // A fullest bucket holding more than a bucket holds contradicts the depths, so it is read as not known.
     fillRatio: fillRatio !== null && fillRatio <= 1 ? fillRatio : null,
     readError: null,
+    state,
   };
 }
 
@@ -459,12 +524,25 @@ function chequebookFrom(
  * balances that are whole numbers, the available one no more than the total. Otherwise every reading is null and a
  * sentence says why.
  *
+ * Every batch carries `state`, the verdict the manager's own pages give it (`stampHealthFrom`): `gone` for one its
+ * node answered it holds no more, and `unknown` for one the node did not answer about. Every node carries
+ * `replacement`, what a batch bought in place of its own is recommended to be ({@link replacementOf}): for a rung's
+ * node, a single-node stage's own node and the catalogue node. It is null for a gateway, and for the own node of a
+ * stage that publishes through a pool, whose batch pays for nothing; a batch purchase for a rung names one of the
+ * nodes offered one.
+ *
  * A node is named by an opaque id, `<instance_id>:<service>`, and a label. Its Bee API address, its host, the chain
  * endpoint it reads and any key stay inside this service, and every answer passes the contract's schema before it
  * leaves, so a field nobody meant to send is dropped there as well.
  */
 export class FundingInventoryService {
   private readonly now: () => Date;
+  /**
+   * The depth and kind of each batch as last read while the manager runs, by its id, which a node's `replacement`
+   * falls back on once the node holds that batch no more. Lost with the process; the oldest goes first past
+   * {@link LAST_SHAPES_KEPT}.
+   */
+  private readonly lastShapes = new Map<string, BatchShape>();
 
   constructor(private readonly deps: FundingInventoryDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -545,6 +623,8 @@ export class FundingInventoryService {
         role: 'uploader',
         apiUrl: async () => this.deps.uploaderApiUrl(stage),
         batchId: recordedBatchId(stage.stamp_id),
+        // A stage with a pool string publishes through the pool, so its own batch pays for nothing.
+        offer: stage.bee_publishers?.trim() ? null : { kind: 'stage' },
       });
     }
     if (gatewayNodeMode(stage) === LIGHT_NODE_MODE) {
@@ -554,6 +634,7 @@ export class FundingInventoryService {
         role: 'gateway',
         apiUrl: () => this.deps.gatewayApiUrl(stage),
         batchId: null,
+        offer: null,
       });
     }
     const entries = stage.bee_publishers ? (parseBeePublishers(stage.bee_publishers) ?? []) : [];
@@ -568,6 +649,7 @@ export class FundingInventoryService {
         apiUrl: async () => this.deps.uploaderApiUrl(node),
         // The pool string's batch, which is the rung's own, since that is how its node was found.
         batchId: recordedBatchId(entry.batchId),
+        offer: { kind: 'rung', rung: entry.rung },
       });
     }
     return nodes;
@@ -587,6 +669,7 @@ export class FundingInventoryService {
       role: 'uploader',
       apiUrl: async () => this.deps.uploaderApiUrl(node),
       batchId: recordedBatchId(row.batchId),
+      offer: { kind: 'catalogue', designatedDepth: row.batchDepth },
     };
   }
 
@@ -598,7 +681,27 @@ export class FundingInventoryService {
       role: 'uploader',
       apiUrl: async () => this.deps.uploaderApiUrl(profile),
       batchId,
+      offer: null,
     };
+  }
+
+  /** The depth and kind of the node's batch, as read now, or as last read; null when neither is known. */
+  private shapeOf(batchId: string | null, batch: FundingBatch | null): BatchShape | null {
+    if (batch && batch.depth !== null && batch.immutable !== null) {
+      return { depth: batch.depth, immutable: batch.immutable };
+    }
+    return batchId === null ? null : (this.lastShapes.get(batchId) ?? null);
+  }
+
+  /** Keeps a batch's depth and kind as read now, for once the node holds it no more. */
+  private remember(batchId: string, batch: FundingBatch): void {
+    if (batch.depth === null || batch.immutable === null) return;
+    this.lastShapes.delete(batchId);
+    this.lastShapes.set(batchId, { depth: batch.depth, immutable: batch.immutable });
+    if (this.lastShapes.size > LAST_SHAPES_KEPT) {
+      const oldest = this.lastShapes.keys().next().value;
+      if (oldest !== undefined) this.lastShapes.delete(oldest);
+    }
   }
 
   /**
@@ -664,7 +767,11 @@ export class FundingInventoryService {
     ]);
     if (!reading.ok) return { node: this.unread(planned, reading.readError, batch, chequebook), price: null };
     const { nodeId, label, role } = planned;
-    return { node: { nodeId, label, role, ...pick(reading), readError: null, batch, chequebook }, price };
+    const replacement = replacementOf(planned.offer, this.shapeOf(planned.batchId, batch));
+    return {
+      node: { nodeId, label, role, ...pick(reading), readError: null, batch, chequebook, replacement },
+      price,
+    };
   }
 
   /** The node's wallet, or why it could not be read. Never throws. */
@@ -691,17 +798,21 @@ export class FundingInventoryService {
       let pending = reads.batches.get(key);
       if (!pending) {
         pending = this.deps.stamp(apiUrl, batchId).then(
-          (stamp) => batchFrom(batchId, stamp),
+          (stamp) => {
+            const batch = batchFrom(batchId, stamp);
+            this.remember(batchId, batch);
+            return batch;
+          },
           (err: unknown) => {
             logger.debug(`[Funding] could not read batch ${batchId} of ${planned.label}: ${batchReadErrorOf(err)}`);
-            return unreadBatch(batchId, batchReadErrorOf(err));
+            return unreadBatch(batchId, batchReadErrorOf(err), saysNotHeld(err) ? 'gone' : 'unknown');
           },
         );
         reads.batches.set(key, pending);
       }
       return await pending;
     } catch (err) {
-      return unreadBatch(batchId, batchReadErrorOf(err));
+      return unreadBatch(batchId, batchReadErrorOf(err), saysNotHeld(err) ? 'gone' : 'unknown');
     }
   }
 
@@ -747,14 +858,30 @@ export class FundingInventoryService {
     }
   }
 
-  /** A node answered with no wallet, and why in a sentence, with its batch and its chequebook as they were read. */
+  /**
+   * A node answered with no wallet, and why in a sentence, with its batch and its chequebook as they were read, and the
+   * replacement recommended for it, which does not hang on its wallet.
+   */
   private unread(
-    { nodeId, label, role }: PlannedNode,
+    planned: PlannedNode,
     readError: string,
     batch: FundingBatch | null,
     chequebook: FundingChequebook | null,
   ): FundingNode {
-    return { nodeId, label, role, walletAddress: null, xdaiWei: null, xbzzPlur: null, readError, batch, chequebook };
+    const { nodeId, label, role } = planned;
+    const replacement = replacementOf(planned.offer, this.shapeOf(planned.batchId, batch));
+    return {
+      nodeId,
+      label,
+      role,
+      walletAddress: null,
+      xdaiWei: null,
+      xbzzPlur: null,
+      readError,
+      batch,
+      chequebook,
+      replacement,
+    };
   }
 }
 
