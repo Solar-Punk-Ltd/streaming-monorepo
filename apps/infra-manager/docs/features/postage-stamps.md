@@ -348,8 +348,11 @@ the ones of
 [What the manager refuses before Bee is asked](#what-the-manager-refuses-before-bee-is-asked).
 
 A rung's or the catalogue's purchase is refused too while the node's last purchase for the purpose
-bought its batch and stopped as failed before putting it to use. The refusal names that purchase:
-its Check again puts the batch to use, where a new purchase would pay for a second batch.
+bought its batch and stopped as failed before putting it to use, and the node still holds that batch
+with time left, read once with `GET /stamps/{id}`. The refusal names that purchase: its Check again
+puts the batch to use, where a new purchase would pay for a second batch. Once the node answers 404
+for the batch, gives it no time left or reports it gone, a new purchase goes through. A node that
+could not be read about the batch keeps the refusal, which says so.
 
 `manager/src/domain/funding/purchaseFollowUpPorts.ts` is the seam between the purchase and the
 parts of the manager that set a batch, apply a stage and designate the catalogue batch.

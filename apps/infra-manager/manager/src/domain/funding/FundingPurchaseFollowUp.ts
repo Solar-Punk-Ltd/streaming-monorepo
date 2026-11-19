@@ -1,6 +1,7 @@
 import {
   ARCHIVE_PURCHASE_SETTLE_MS,
   getErrorMessage,
+  isDeadStampState,
   PURCHASE_CHECK_NOTHING_REFUSAL,
   PURCHASE_FOLLOW_UP_MS,
   PURCHASE_NOT_USABLE_ERROR,
@@ -8,6 +9,7 @@ import {
   PURCHASE_RESTART_NOT_WAITING_REFUSAL,
   PURCHASE_USABLE_POLL_MS,
   purchaseStepOnceSet,
+  stampHealthFrom,
 } from '@streaming-infra-manager/common';
 import {
   FUNDING_PURCHASE_USABLE_WAIT_SECONDS,
@@ -18,6 +20,7 @@ import {
 
 import type { Profile } from '../../types/index.js';
 import type { BeeStamp } from '../BeeClient.js';
+import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { ArchiveBatchRefusedError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
@@ -104,6 +107,9 @@ export function usableOf(stamp: BeeStamp | null, batchId: string): boolean | nul
   if (stamp === null || typeof stamp !== 'object' || batchIdFrom(stamp.batchID) !== batchId) return null;
   return typeof stamp.usable === 'boolean' ? stamp.usable : null;
 }
+
+/** Where a batch a purchase bought stands on its node: still held with time left, gone or spent, or not read. */
+export type BoughtBatchOnNode = 'held' | 'gone' | 'unread';
 
 /** What a settle knows of the batches a purchase's batch can never be: the catalogue's own and the archive batches. */
 interface TakenBatches {
@@ -331,6 +337,27 @@ export class FundingPurchaseFollowUp {
       );
       return null;
     }
+  }
+
+  /**
+   * Whether the node still holds a bought batch with time left, read once with `GET /stamps/{id}`: `held` while it
+   * does, usable or not yet; `gone` once the node answers 404 for it, reports it gone, or gives it no time left, as
+   * `stampHealthFrom` reads a batch everywhere else; and `unread` when the node could not be read about it. Never
+   * throws.
+   */
+  async stillHeld(batchId: string, apiUrl: string): Promise<BoughtBatchOnNode> {
+    let stamp: BeeStamp;
+    try {
+      stamp = await this.deps.reads(apiUrl).getStamp(bareBatchId(batchId));
+    } catch (err) {
+      if (err instanceof BeeHttpError && err.status === 404) return 'gone';
+      logger.debug(
+        `[Funding] could not read batch ${batchId} on its node (${err instanceof Error ? err.name : 'no error'}); answering whether it still holds it as not known`,
+      );
+      return 'unread';
+    }
+    if (stamp === null || typeof stamp !== 'object' || batchIdFrom(stamp.batchID) !== batchId) return 'unread';
+    return isDeadStampState(stampHealthFrom(batchId, [stamp]).state) ? 'gone' : 'held';
   }
 
   /**

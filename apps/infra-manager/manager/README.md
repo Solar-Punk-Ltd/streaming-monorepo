@@ -774,8 +774,10 @@ three purposes, and the manager follows each purchase up in the background
   keeps the check of the record's 200 places.
 - **A batch bought and never put to use**: a rung's or the catalogue's purchase is refused, 422
   `stamp_refused`, while the node's last purchase for the purpose bought its batch and stopped as
-  failed before setting or designating it. The sentence names that purchase, whose Check puts its
-  batch to use without paying for a second.
+  failed before setting or designating it, and the node still holds that batch with time left, read
+  once with `GET /stamps/{id}`. The sentence names that purchase, whose Check puts its batch to use
+  without paying for a second. A 404, no time left, or a batch the node reports as gone lets the
+  purchase through. A node that could not be read about the batch keeps the refusal, which says so.
 - **The node** for a rung is a stage's node the inventory offers a `replacement` for: a rung's node,
   or a single-node stage's own node. The batch set there now is read through the follow-up's port,
   as is the designated catalogue batch for the catalogue.
