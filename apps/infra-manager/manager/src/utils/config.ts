@@ -11,6 +11,7 @@ import {
   type VersionInfo,
   versionInfo,
 } from '@streaming-infra-manager/common';
+import { MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER, managerApiTokenFrom } from '@streaming-monorepo/contracts';
 
 import { DEFAULT_LOG_LEVEL, isLogLevel, LOG_LEVELS, type LogLevel } from '../domain/Logger.js';
 import { type KnownHostNetworkPorts, knownHostNetworkPorts } from '../domain/ports/knownHostNetworkPorts.js';
@@ -172,26 +173,35 @@ export function fundingRpcUrl(raw: string | undefined): string | null {
   return value;
 }
 
-/** The fewest characters a funding token may have. */
-export const FUNDING_API_TOKEN_MIN_LENGTH = 32;
+/** The fewest characters the manager's API token may have. */
+export const MANAGER_API_TOKEN_MIN_LENGTH = 32;
+
+/** The manager's API token, and the setting it was read under. */
+export interface ManagerApiToken {
+  /** `MANAGER_API_TOKEN`, or `FUNDING_API_TOKEN`, its earlier name, read while `MANAGER_API_TOKEN` is unset. */
+  key: string;
+  value: string;
+}
 
 /**
- * The bearer token the web2 admin presents to the funding API under /api/admin-funding, or null when none is set,
- * which turns that API off: every path under it then answers 404. A value shorter than 32 characters, or with a space
- * inside, stops the manager at startup, as a malformed BEE_LOCAL_HOST does. The refusal names the variable and never
- * the value.
+ * The bearer token the web2 admin presents to the manager's API under /api/admin-funding, or null when none is set,
+ * which turns that API off: every path under it then answers 404. It is read as MANAGER_API_TOKEN, and under its
+ * earlier name, FUNDING_API_TOKEN, while MANAGER_API_TOKEN is unset or holds only spaces (`managerApiTokenFrom` in the
+ * contract), and the boot log names the key it was read under. A value shorter than 32 characters, or with a space
+ * inside, stops the manager at startup, as a malformed BEE_LOCAL_HOST does. The refusal names the key it was read
+ * under and never the value.
  *
  * Exported so the refusal can be tested without the process exiting.
  */
-export function fundingApiToken(raw: string | undefined): string | null {
-  const value = raw?.trim() ?? '';
-  if (value === '') return null;
-  if (value.length < FUNDING_API_TOKEN_MIN_LENGTH || /\s/.test(value)) {
+export function managerApiToken(env: Readonly<Record<string, string | undefined>>): ManagerApiToken | null {
+  const read = managerApiTokenFrom(env, MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER);
+  if (read === null) return null;
+  if (read.value.length < MANAGER_API_TOKEN_MIN_LENGTH || /\s/.test(read.value)) {
     throw new Error(
-      `FUNDING_API_TOKEN must be ${FUNDING_API_TOKEN_MIN_LENGTH} characters or more with no space inside, or unset to turn the funding API off`,
+      `${read.key} must be ${MANAGER_API_TOKEN_MIN_LENGTH} characters or more with no space inside, or unset to turn the manager's API off`,
     );
   }
-  return value;
+  return read;
 }
 
 /**
@@ -250,8 +260,8 @@ export interface AppConfig {
   adminLinkAllowPlainHttp: boolean;
   /** The repositories stack versions are built from, the first for a new version. See `parseStackSources`. */
   stackSources: readonly StackSource[];
-  /** See `fundingApiToken`. Null when the funding API is off. */
-  fundingApiToken: string | null;
+  /** See `managerApiToken`. Null when the manager's API under /api/admin-funding is off. */
+  managerApiToken: ManagerApiToken | null;
   /** See `fundingRpcUrl`. Null to use `beeRpcEndpoint`. */
   fundingRpcUrl: string | null;
   /** See `managerVersion`. */
@@ -274,7 +284,11 @@ export const config: AppConfig = {
   beeLocalHost: beeLocalHost(process.env.BEE_LOCAL_HOST),
   adminLinkAllowPlainHttp: adminLinkAllowPlainHttp(process.env.ADMIN_LINK_ALLOW_PLAIN_HTTP),
   stackSources: parseStackSources(process.env.STACK_SOURCES),
-  fundingApiToken: fundingApiToken(process.env.FUNDING_API_TOKEN),
+  // Both keys are named here, so the docs test holds the sample and the README to naming both.
+  managerApiToken: managerApiToken({
+    MANAGER_API_TOKEN: process.env.MANAGER_API_TOKEN,
+    FUNDING_API_TOKEN: process.env.FUNDING_API_TOKEN,
+  }),
   fundingRpcUrl: fundingRpcUrl(process.env.FUNDING_RPC_URL),
   managerVersion: managerVersion(process.env.MANAGER_VERSION, process.env.MANAGER_COMMIT),
   instanceName: managerInstanceName(process.env.MANAGER_INSTANCE_NAME),

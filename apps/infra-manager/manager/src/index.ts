@@ -1,5 +1,6 @@
 import { createChequebookOperationsService } from './domain/chequebook/createChequebookOperationsService.js';
 import { configuredBeeRpcEndpoint, getErrorStack, plurToBzz, getErrorMessage } from '@streaming-infra-manager/common';
+import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
 
 import { ApiServerHandle, startApiServer } from './api/server.js';
 import { AuthService } from './domain/auth/AuthService.js';
@@ -113,7 +114,16 @@ function logStartupConfig(): void {
   logger.info(`[Boot]   chequebookFloor: ${plurToBzz(config.chequebookFloorPlur)} BZZ`);
   logger.info(`[Boot]   database: ${redactDatabaseUrl(config.databaseUrl)}`);
   // Whether it is on, never the token.
-  logger.info(`[Boot]   funding API: ${config.fundingApiToken ? 'on (FUNDING_API_TOKEN is set)' : 'off'}`);
+  // The key the token was read under, never the token: MANAGER_API_TOKEN, or its earlier name while that one is unset.
+  logger.info(
+    `[Boot]   funding API: ${
+      config.managerApiToken === null
+        ? 'off'
+        : config.managerApiToken.key === MANAGER_API_TOKEN_KEY
+          ? `on (${MANAGER_API_TOKEN_KEY} is set)`
+          : `on (${config.managerApiToken.key} is set and read, ${MANAGER_API_TOKEN_KEY} being unset)`
+    }`,
+  );
   // Which endpoint the funding API reads the chain through, by its variable alone: the address can carry a key.
   logger.info(
     `[Boot]   funding chain endpoint: ${config.fundingRpcUrl ? 'FUNDING_RPC_URL' : config.beeRpcEndpoint ? 'BEE_RPC_ENDPOINT' : 'none'}`,
@@ -645,7 +655,7 @@ async function main(): Promise<void> {
       metricsCollector,
       beeRpcEndpoint: config.beeRpcEndpoint,
       funding: {
-        token: config.fundingApiToken,
+        token: config.managerApiToken?.value ?? null,
         routes: [
           createFundingInventoryRouter(fundingInventory),
           createFundingChainRouter(fundingChain),

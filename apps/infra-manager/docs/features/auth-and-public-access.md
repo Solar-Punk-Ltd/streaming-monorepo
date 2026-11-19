@@ -236,8 +236,10 @@ chequebook deposit or withdrawal, engine settings and config files, restarting c
 reading an SRT passphrase.
 
 **The funding API's credential.** The routes under `/api/admin-funding`, which the admin calls
-server to server, take `Authorization: Bearer <FUNDING_API_TOKEN>` and refuse a session cookie.
-While `FUNDING_API_TOKEN` is unset they answer 404 `funding_off`. They are mounted ahead of the
+server to server, take `Authorization: Bearer <MANAGER_API_TOKEN>`, the manager's API token, and
+refuse a session cookie. The token is read under its earlier name, `FUNDING_API_TOKEN`, while
+`MANAGER_API_TOKEN` is unset, and the boot log names the key it was read under. While neither is
+set they answer 404 `funding_off`. They are mounted ahead of the
 write header gate and `requireSession`. Right after them, `refuseFundingBearer` makes every other
 route answer 401 to a request that carries a bearer token, `/health` and `/auth` included, so
 neither credential opens the other's routes. The rules and routes are
@@ -354,7 +356,7 @@ Keys in `manager/.env`:
 | ------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `WEB_PORT`          | `8080`                 | The host port the console is published on                                                                                                                                                                                                                                                                                                                        |
 | `MANAGER_WEB_BIND`  | `127.0.0.1`            | The host address `WEB_PORT` is published on. Docker publishes past a host firewall, so widen it only behind one                                                                                                                                                                                                                                                  |
-| `FUNDING_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`. Unset turns that API off                                                                                                                                                                                                                                                                                      |
+| `MANAGER_API_TOKEN` | none                   | The admin's bearer token for `/api/admin-funding`, the manager's API token. Read as `FUNDING_API_TOKEN`, its earlier name, while unset. Unset turns that API off                                                                                                                                                                                                 |
 | `BEE_LOCAL_HOST`    | `host.docker.internal` | The host of a local deployment's published ports: where the manager reads a local Bee node's API and OME's HLS port, and the address of a local Bee node that pool strings and the catalogue stamp record carry. Set it when the binds name something other than the bridge. The manager README's settings table says how it is read in a container and natively |
 
 The stack's `*_BIND` and `*_API_LISTEN` keys are in the deploy guide's step 2. The manager's other
