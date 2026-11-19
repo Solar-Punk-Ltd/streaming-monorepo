@@ -46,7 +46,7 @@
 # read anything it was shown.
 set -euo pipefail
 
-readonly BUILD_IMAGE="node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53"
+readonly BUILD_IMAGE="node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5"
 # corepack, left to pick its own pnpm, installs the latest major, and a recent
 # one stopped reading the `pnpm.overrides` block in package.json. A checkout
 # that keeps its overrides there (as the stack did before the monorepo) then fails the

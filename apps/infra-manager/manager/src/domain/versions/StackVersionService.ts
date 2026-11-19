@@ -85,7 +85,7 @@ const LOG_TAIL_BYTES = 4096;
  * stack that names none in packageManager. The script's test keeps both in step.
  */
 export const BUILD_IMAGE =
-  'node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53';
+  'node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5';
 export const PINNED_PNPM = 'pnpm@9.12.0';
 
 /** What the build script leaves in the staging directory: the commit it exported. */
