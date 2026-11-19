@@ -305,16 +305,18 @@ that restarts goes on from the step it had reached (`step`: `buying`, `waiting_u
 
 The settings are read again just before the Apply, after the readings of a broadcast or a restart,
 so a setting saved meanwhile makes the stage wait in `waiting_settings` rather than ride along with
-the batch. Each look at a stage moves it one step at most, and the manager remembers the Applies it
-started while it runs, for each stage and batch, so each purchase that follows a stage keeps its
-own. One that ended without the batch is `failed`, with the deploy's error where it left one, until
-a check. A manager that restarted starts the Apply again where one is due. An Apply refused because
-a deploy of the stage started meanwhile, another purchase's Apply among them, is `applying`: that
-deploy writes the pool's current string, so the next look finds the batch applied without a second
-Apply. A batch that works, set on the rung or designated as the catalogue batch by another hand
-while the purchase waited, stays, and the follow-up stops as failed with the reason. The Apply is
-logged as run by a batch purchase, and the set, the designation and the release as `the batch
-purchase <requestId>` (`manager/src/domain/stages/purchaseFollowUp.ts`). What a purchase reports to
+the batch. The Apply itself is told it may roll out the batch keys alone, `STAMP` and
+`BEE_PUBLISHERS`, and applies nothing when it finds the stage behind on another, which answers
+`waiting_settings` too. Each look at a stage moves it one step at most, and the manager remembers
+the Applies it started while it runs, for each stage and batch, so each purchase that follows a
+stage keeps its own. One that ended without the batch is `failed`, with the deploy's error where it
+left one, until a check. A manager that restarted starts the Apply again where one is due. An Apply
+refused because a deploy of the stage started meanwhile, another purchase's Apply among them, is
+`applying`: that deploy writes the pool's current string, so the next look finds the batch applied
+without a second Apply. A batch that works, set on the rung or designated as the catalogue batch by
+another hand while the purchase waited, stays, and the follow-up stops as failed with the reason.
+The Apply is logged as run by a batch purchase, and the set, the designation and the release as `the
+batch purchase <requestId>` (`manager/src/domain/stages/purchaseFollowUp.ts`). What a purchase reports to
 the admin names no host and no address: an Apply's error, a deploy's error and any other failure
 that can carry one go to the manager's log, and the admin reads that the log says why.
 
