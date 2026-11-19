@@ -315,6 +315,13 @@ describe('checking the recordings on the Streams page', () => {
     expect(screen.getByRole('button', { name: 'Remove lost recordings' })).toBeDisabled();
   });
 
+  it('names only the reasons a check leaves a stream unjudged now, and no test streams', () => {
+    expect(unjudgedText(2)).toBe(
+      '2 streams were left unjudged: live, inside the restart window, or with an export or an archive under way.',
+    );
+    expect(unjudgedText(1)).not.toMatch(/test/);
+  });
+
   it('says what a removal kept and why', () => {
     expect(
       removalLines({

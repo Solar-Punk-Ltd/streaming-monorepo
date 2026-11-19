@@ -32,7 +32,7 @@ export const CHECK_INTRO =
 /** Said under a check that left streams unjudged. */
 export function unjudgedText(count: number): string {
   const streams = count === 1 ? 'One stream was' : `${count} streams were`;
-  return `${streams} left unjudged: live, inside the restart window, with an export or an archive under way, or a test stream.`;
+  return `${streams} left unjudged: live, inside the restart window, or with an export or an archive under way.`;
 }
 
 /** `N recordings lost`, the line a finished check leads with. */
