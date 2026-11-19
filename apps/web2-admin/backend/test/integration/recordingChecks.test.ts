@@ -184,6 +184,33 @@ describe('recording_checks', () => {
     await assert.rejects(checks.recordRemoval(check!.id, fine.id, 'removed', null), /check constraint/);
   });
 
+  it('lists each stream a removal kept as a draft for its export file once, with the latest such removal', async () => {
+    const filed = await stream('Filed');
+    const gone = await stream('Gone');
+    const first = await start([filed, gone]);
+    await checks.finish(
+      first!.id,
+      [
+        { streamId: filed.id, verdict: 'lost', hasExportFile: true },
+        { streamId: gone.id, verdict: 'lost', hasExportFile: false },
+      ],
+      0,
+    );
+    await checks.recordRemoval(first!.id, filed.id, 'unlisted', null);
+    await checks.recordRemoval(first!.id, gone.id, 'removed', null);
+    const second = await start([filed]);
+    await checks.finish(second!.id, [{ streamId: filed.id, verdict: 'lost', hasExportFile: true }], 0);
+    await checks.recordRemoval(second!.id, filed.id, 'unlisted', null);
+
+    const listed = await checks.unlisted();
+    assert.deepEqual(
+      listed.map((one) => one.streamId),
+      [filed.id],
+    );
+    const latest = (await checks.streams(second!.id))[0]?.removedAt;
+    assert.equal(listed[0]?.removedAt.getTime(), latest?.getTime());
+  });
+
   it('stops a running check with its reason, and at boot every check left running', async () => {
     const one = await start([]);
     const stopped = await checks.stop(one!.id, 'The catalogue node does not answer.');

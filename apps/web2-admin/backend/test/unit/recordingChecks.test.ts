@@ -393,6 +393,38 @@ describe('the removal of lost recordings', () => {
     );
   });
 
+  it('leaves a stream it kept as a draft for its export file out of later checks, until the stream changes', async () => {
+    const filed = recorded({ title: 'Filed' }, { gone: true });
+    jobs.files.add(filed.id);
+    store.finished(CHECK, [{ streamId: filed.id, title: 'Filed', verdict: 'lost' }], new Date(now - 60_000));
+    // As the check's end and the catalogue write leave its row: a draft, marked lost, last written before the removal.
+    writer.onTaken = (id) =>
+      void streams.add({
+        ...streams.get(id),
+        status: 'draft',
+        recording_verdict: 'lost',
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      });
+    const checks = service();
+    const answer = await checks.removeLost(TEST_OPERATOR, { checkId: CHECK, streamIds: [filed.id] });
+    assert.deepEqual(answer.unlisted, [{ streamId: filed.id, title: 'Filed' }]);
+
+    await checks.start(TEST_OPERATOR);
+    await checks.settled();
+    const later = (await checks.status()).check;
+    assert.equal(later?.total, 0, 'left out of the later check');
+    assert.equal(later?.unjudged, 1);
+
+    // An edit changes it, and the next check judges it again.
+    streams.add({ ...streams.get(filed.id), updated_at: new Date('2100-01-01T00:00:00.000Z') });
+    await checks.start(TEST_OPERATOR);
+    await checks.settled();
+    assert.deepEqual(
+      (await checks.status()).check?.lost.map((one) => one.title),
+      ['Filed'],
+    );
+  });
+
   it('keeps a listed stream that holds no finished recording now', async () => {
     const empty = streams.add(streamRow({ status: 'draft', manifest_index: null, title: 'Empty' }));
     store.finished(CHECK, [{ streamId: empty.id, title: 'Empty', verdict: 'lost' }], new Date(now - 60_000));
