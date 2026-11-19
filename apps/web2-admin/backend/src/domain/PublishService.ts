@@ -489,6 +489,72 @@ export class PublishService {
   }
 
   /**
+   * Takes the entries of `streamIds` off the catalogue in one write, and leaves each of those rows a draft: the
+   * removal of lost recordings. Each stream on the catalogue is claimed first, as an unpublish claims its one, so a
+   * publish or a report that lands meanwhile waits or is refused; one that cannot be claimed, a live one among them,
+   * is kept, with why. A draft is on no catalogue and is left as it is. Answers the index written, or null when none of
+   * them was on the catalogue. The caller audits each stream.
+   */
+  async takeOffCatalogue(
+    actor: Actor,
+    streamIds: readonly string[],
+  ): Promise<{ index: number | null; kept: { streamId: string; reason: string }[] }> {
+    return this.mutex.run(async () => {
+      const target = await this.catalogue.forWrite(actor);
+      const kept: { streamId: string; reason: string }[] = [];
+      const claimed: { row: StreamRow; previousStatus: StreamStatus }[] = [];
+      for (const id of new Set(streamIds)) {
+        const before = await this.streams.findById(id);
+        if (!before || before.status === 'draft') continue;
+        const row = UNPUBLISHABLE_STATUSES.includes(before.status)
+          ? await this.streams.claimForPublish(id, UNPUBLISHABLE_STATUSES)
+          : null;
+        if (!row) {
+          kept.push({ streamId: id, reason: `It is ${before.status} now, so it was left on the catalogue.` });
+          continue;
+        }
+        claimed.push({ row, previousStatus: before.status });
+      }
+      if (claimed.length === 0) return { index: null, kept };
+
+      const written: WrittenAt = { index: null };
+      try {
+        const snapshot = await this.baseSnapshot(target);
+        let entries = snapshot.entries;
+        let removedAny = false;
+        for (const { row } of claimed) {
+          const taken = removeEntry(entries, row.owner, row.topic);
+          entries = taken.entries;
+          removedAny ||= taken.removed;
+        }
+        const index = removedAny ? await this.writeFeed(entries, snapshot.index, target, written) : null;
+        for (const { row } of claimed) await this.streams.finishUnpublish(row.id);
+        logger.info(
+          `[Publish] ${describeActor(actor)} took ${claimed.length} stream${claimed.length === 1 ? '' : 's'} off the catalogue${
+            index === null ? ' (none was on the feed)' : ` at feed index ${index}`
+          }: ${claimed.map(({ row }) => describeStream(row)).join(', ')}`,
+        );
+        return { index, kept };
+      } catch (error) {
+        const message = `Taking it off the catalogue failed: ${withoutCatalogueNode(getErrorMessage(error), target)}`;
+        for (const { row, previousStatus } of claimed) {
+          await this.streams.failPublish(row.id, previousStatus, message).catch((failure: unknown) => {
+            logger.error(
+              `[Publish] could not put ${describeStream(row)} back to ${previousStatus}: ${getErrorMessage(failure)}`,
+            );
+          });
+        }
+        if (written.index !== null) {
+          logger.error(
+            `[Publish] the catalogue was written at feed index ${written.index} without ${claimed.length} entr${claimed.length === 1 ? 'y' : 'ies'}, and their rows were put back: ${message}`,
+          );
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
    * Boot-time cross-check of the one assumption the new index scheme rests on:
    * that this process is the only writer of this feed key.
    *

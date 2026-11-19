@@ -105,6 +105,8 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     // is. A test about a stream without one says so.
     stage_id: STAGE_ID,
     archived_only: false,
+    recording_verdict: null,
+    recording_checked_at: null,
     created_at: at,
     updated_at: at,
     ...over,
@@ -338,6 +340,9 @@ export class FakeStreamStore
       // As the SQL does: a live report that starts a broadcast clears it; only a retried `live → live` leaves it.
       finished_at: row.status === 'live' ? row.finished_at : null,
       publish_error: null,
+      // As the SQL does: the recording a check judged is being written again.
+      recording_verdict: null,
+      recording_checked_at: null,
     });
   }
 

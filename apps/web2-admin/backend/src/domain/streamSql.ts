@@ -10,7 +10,8 @@ export const STREAM_COLUMNS = `
   thumbnail_mime, thumbnail_ref, thumbnail_batch_id, status, published_at, published_feed_index,
   publish_error, publish_key, publish_key_rotated_at, manifest_index,
   duration_seconds, live_since, ended_at, finished_at, content_edited_at,
-  entry_content_edited_at, stage_id, archived_only, created_at, updated_at
+  entry_content_edited_at, stage_id, archived_only, recording_verdict, recording_checked_at,
+  created_at, updated_at
 `;
 
 /**
