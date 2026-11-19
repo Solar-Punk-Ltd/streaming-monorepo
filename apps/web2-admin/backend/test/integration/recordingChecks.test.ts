@@ -11,11 +11,23 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import type { OperatorActor } from '../../src/domain/actor.js';
+import { CatalogueBatchService } from '../../src/domain/CatalogueBatch.js';
 import { Database } from '../../src/domain/Database.js';
+import { FakeFeedGateway } from '../../src/domain/FakeFeedGateway.js';
+import { feedIdentityFrom } from '../../src/domain/feedIdentity.js';
+import { FeedWriteRepository } from '../../src/domain/FeedWriteRepository.js';
+import { Mutex } from '../../src/domain/Mutex.js';
+import { PostgresAuditLog } from '../../src/domain/PostgresAuditLog.js';
+import { PublishService } from '../../src/domain/PublishService.js';
 import { RecordingCheckRepository } from '../../src/domain/recordings/RecordingCheckRepository.js';
+import { RecordingCheckService } from '../../src/domain/recordings/RecordingCheckService.js';
+import { CatalogueStampRepository, StageRepository } from '../../src/domain/StageRepository.js';
+import { StreamRenditionRepository } from '../../src/domain/StreamRenditionRepository.js';
 import { StreamRepository } from '../../src/domain/StreamRepository.js';
 import { newPublishKey } from '../../src/domain/StreamService.js';
 import type { StreamRow } from '../../src/types/index.js';
+import { FakeRecordingReads } from '../unit/support/recordingFakes.js';
 
 import { releaseStack, requireStack, stack } from './helpers.js';
 
@@ -227,5 +239,84 @@ describe('recording_checks', () => {
       [two!.id],
     );
     assert.equal((await checks.latest())?.state, 'stopped');
+  });
+});
+
+describe('a check after a removal, through Postgres', () => {
+  it('leaves out a stream the removal kept as a draft for its export file, its row written before the removal', async () => {
+    const actor: OperatorActor = { kind: 'operator', userId, username: 'itest' };
+    const audit = new PostgresAuditLog(database.pool);
+    const feed = feedIdentityFrom(
+      '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+      'web2-admin-integration-recordings',
+    );
+    const feedWrites = new FeedWriteRepository(database.pool);
+    const renditions = new StreamRenditionRepository(database.pool);
+    const publish = new PublishService(
+      streams,
+      renditions,
+      new StageRepository(database.pool),
+      feedWrites,
+      new FakeFeedGateway(),
+      new CatalogueBatchService(new CatalogueStampRepository(database.pool), feedWrites, feed, audit, {
+        stampRequired: false,
+      }),
+      feed,
+      audit,
+      new Mutex(),
+    );
+    // A finished recording, out of its restart window, on the catalogue as `vod`.
+    const filed = await stream('Filed');
+    await streams.markLive(filed.id, ['draft']);
+    await streams.markVod(filed.id, ['live'], 7, 60);
+    await streams.finish(filed.id, newPublishKey());
+    const checking = new RecordingCheckService(
+      {
+        store: checks,
+        streams,
+        renditions,
+        jobs: { openJobStreams: async () => new Set(), exportFileStreams: async () => new Set([filed.id]) },
+        catalogue: {
+          forRead: async () => ({ target: { beeApiUrl: 'http://node.test', batchId: 'c3'.repeat(32) } }),
+          status: async () => ({ refusal: null }),
+        },
+        writer: publish,
+        reads: new FakeRecordingReads(),
+        audit,
+      },
+      { restartWindowMinutes: 30, wait: async () => undefined },
+    );
+
+    await checking.start(actor);
+    await checking.settled();
+    const first = (await checking.status()).check!;
+    assert.deepEqual(
+      first.lost.map((recording) => recording.streamId),
+      [filed.id],
+    );
+    const removal = await checking.removeLost(actor, { checkId: first.id, streamIds: [filed.id] });
+    assert.deepEqual(
+      removal.unlisted.map((recording) => recording.streamId),
+      [filed.id],
+    );
+
+    const written = await database.pool.query<{
+      status: string;
+      recording_verdict: string | null;
+      written_first: boolean;
+    }>(
+      `SELECT streams.status, streams.recording_verdict, streams.updated_at <= kept.removed_at AS written_first
+         FROM streams JOIN recording_check_streams AS kept ON kept.stream_id = streams.id
+        WHERE streams.id = $1 AND kept.check_id = $2`,
+      [filed.id, first.id],
+    );
+    assert.deepEqual(written.rows[0], { status: 'draft', recording_verdict: 'lost', written_first: true });
+
+    await checking.start(actor);
+    await checking.settled();
+    const next = (await checking.status()).check!;
+    assert.notEqual(next.id, first.id);
+    assert.equal(next.total, 0, 'the next check leaves it out');
+    assert.equal(next.unjudged, 1);
   });
 });
