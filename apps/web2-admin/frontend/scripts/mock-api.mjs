@@ -54,6 +54,7 @@
  * constants: `fresh`, the default, a rung whose batch ran out and one with
  * none, each offering Buy new; `stages`, a purchase restarting with a stage
  * line in every state; `failed`, one to take up with Check again;
+ * `failed_ran_out`, the same with its bought batch gone, so Buy new is back;
  * `catalogue`, the catalogue batch run out and its purchase moving the
  * catalogue, a thumbnail cleared on the way; `catalogue_off`, the same batch
  * run out with the move switched off; `unoffered`, a purchase route that
@@ -2461,6 +2462,7 @@ function seedArchivedRecording(title, description, endedMinutesAgo) {
  * - `fresh`, the default: none. The 720p rung's batch has run out and the 480p rung has none, so both offer Buy new.
  * - `stages`: a 720p purchase restarting, with a stage line in each state Restart now and Check again act on.
  * - `failed`: a 720p purchase whose batch was bought and did not become usable in time; Check again takes it up.
+ * - `failed_ran_out`: the same purchase, its bought batch gone from the node since, so the row offers Buy new again.
  * - `catalogue`: the catalogue batch has run out, and a purchase of its replacement is moving the catalogue.
  * - `catalogue_off`: the catalogue batch has run out, and the move is switched off, so its row says so.
  * - `unoffered`: a purchase answers as an admin whose manager offers none.
@@ -2600,6 +2602,11 @@ function settleBatchPurchases(now = Date.now()) {
   }
 }
 
+/** Whether a failed purchase's bought batch has run out: its node holds it no more, or it has no time left. */
+function boughtBatchRanOut(purchase) {
+  return purchase.batchState === 'expired' || purchase.batchState === 'gone';
+}
+
 function batchPurchaseAnswer(purchase) {
   const amount = batchAmountPerChunk(purchase.days);
   return {
@@ -2626,8 +2633,12 @@ function batchPurchaseAnswer(purchase) {
       released: purchase.move.released,
     },
     canCheckAgain:
-      (purchase.phase === 'failed' && purchase.batchId !== null) ||
+      (purchase.phase === 'failed' && purchase.batchId !== null && !boughtBatchRanOut(purchase)) ||
       purchase.stages.some((line) => line.apply === 'failed'),
+    // The bought batch's state, which the admin reads for a failed purchase that holds its node.
+    ...(purchase.phase === 'failed' && purchase.batchId !== null
+      ? { batchState: purchase.batchState ?? 'active' }
+      : {}),
     startedBy: purchase.startedBy,
     startedAt: purchase.startedAt,
   };
@@ -2754,8 +2765,9 @@ function purchaseMoveSummary() {
       line(randomUUID(), 'Quiet stage', 'stopped'),
     ];
   }
-  if (BATCH_PURCHASE_SEED === 'failed') {
+  if (BATCH_PURCHASE_SEED === 'failed' || BATCH_PURCHASE_SEED === 'failed_ran_out') {
     newBatchPurchase(rung, {
+      ...(BATCH_PURCHASE_SEED === 'failed_ran_out' ? { batchState: 'gone' } : {}),
       phase: 'failed',
       batchId: `0x${hex(32)}`,
       error: 'The new batch did not become usable within an hour.',

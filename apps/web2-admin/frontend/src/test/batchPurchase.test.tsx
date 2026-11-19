@@ -20,6 +20,7 @@ import {
 } from '../components/funding/BatchBuyDialog';
 import {
   BATCH_PURCHASE_POLL_MS,
+  BOUGHT_BATCH_RAN_OUT,
   NO_BATCH_SET,
   PURCHASE_TO_CHECK,
   PURCHASE_UNDER_WAY,
@@ -481,6 +482,46 @@ describe('Buy new on the Stamps tab', () => {
     serve({ purchases: () => [failed] });
     await openStamps();
     expect(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' })).toBeInTheDocument();
+  });
+
+  it('holds Buy new while the bought batch is still on its node, whatever the manager has said of it', async () => {
+    const bought = makePurchase({
+      state: 'failed',
+      error: 'The batch did not become usable in an hour.',
+      batchId: `0x${'12'.repeat(32)}`,
+      canCheckAgain: true,
+    });
+    for (const batchState of [undefined, 'active'] as const) {
+      serve({ purchases: () => [{ ...bought, ...(batchState ? { batchState } : {}) }] });
+      const { unmount } = renderWithProviders(<FundingPage />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+      expect(await screen.findByText(PURCHASE_TO_CHECK)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Buy a new batch for rung-720p' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Check again' })).toBeInTheDocument();
+      expect(screen.queryByText(BOUGHT_BATCH_RAN_OUT)).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it('offers Buy new once the bought batch has run out, keeping the line without Check again', async () => {
+    const bought = makePurchase({
+      state: 'failed',
+      error: 'The batch did not become usable in an hour.',
+      batchId: `0x${'12'.repeat(32)}`,
+      canCheckAgain: true,
+    });
+    for (const batchState of ['expired', 'gone'] as const) {
+      serve({ purchases: () => [{ ...bought, batchState }] });
+      const { unmount } = renderWithProviders(<FundingPage />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Stamps' }));
+      expect(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' })).toBeInTheDocument();
+      const lines = within(screen.getByRole('group', { name: 'Purchase for rung-720p' }));
+      expect(lines.getByText('Stopped: The batch did not become usable in an hour.')).toBeInTheDocument();
+      expect(lines.getByText(BOUGHT_BATCH_RAN_OUT)).toBeInTheDocument();
+      expect(lines.queryByRole('button', { name: 'Check again' })).not.toBeInTheDocument();
+      expect(screen.queryByText(PURCHASE_TO_CHECK)).not.toBeInTheDocument();
+      unmount();
+    }
   });
 
   it('says the purchases could not be read while a row offers Buy new', async () => {

@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import {
   BATCH_PURCHASE_MOVE_OFF,
+  batchPurchaseHoldsNode,
   operableBatch,
   STAMP_EXPIRY_WARNING_SECONDS,
   XBZZ_DECIMALS,
@@ -30,14 +31,7 @@ import { CHUNK_BYTES, formatCapacity } from '../archive/archiveText';
 import { CopyButton } from '../CopyButton';
 import { formatShort, formatUnits } from './amounts';
 import { BatchPurchaseLines } from './BatchPurchaseLines';
-import {
-  NO_BATCH_SET,
-  PURCHASE_TO_CHECK,
-  PURCHASE_UNDER_WAY,
-  purchaseHoldsNode,
-  purchaseOpen,
-  type BuyOffer,
-} from './batchPurchases';
+import { NO_BATCH_SET, PURCHASE_TO_CHECK, PURCHASE_UNDER_WAY, purchaseOpen, type BuyOffer } from './batchPurchases';
 import { NodeCard } from './NodeTable';
 import {
   tickableBatches,
@@ -313,12 +307,13 @@ export interface BuyControls {
 }
 
 /**
- * Buy new on a node's row, or why there is none: a purchase on the node is under way or waits for Check again, or the
- * catalogue move is switched off. Nothing for a node whose batch still pays.
+ * Buy new on a node's row, or why there is none: a purchase on the node is under way, or waits for Check again while
+ * the batch it bought is still on the node (the common `batchPurchaseHoldsNode`), or the catalogue move is switched
+ * off. Nothing for a node whose batch still pays.
  */
 function BuyAction({ node, buy }: { node: AdminFundingNode; buy: BuyControls }) {
   const purchase = buy.purchaseOf(node.nodeId);
-  if (purchase && purchaseHoldsNode(purchase)) {
+  if (purchase && batchPurchaseHoldsNode(purchase)) {
     return (
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
         {purchaseOpen(purchase) ? PURCHASE_UNDER_WAY : PURCHASE_TO_CHECK}
