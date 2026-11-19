@@ -343,6 +343,10 @@ since the designation takes no third batch until the batch moved from is release
 the ones of
 [What the manager refuses before Bee is asked](#what-the-manager-refuses-before-bee-is-asked).
 
+A rung's or the catalogue's purchase is refused too while the node's last purchase for the purpose
+bought its batch and stopped as failed before putting it to use. The refusal names that purchase:
+its Check again puts the batch to use, where a new purchase would pay for a second batch.
+
 `manager/src/domain/funding/purchaseFollowUpPorts.ts` is the seam between the purchase and the
 parts of the manager that set a batch, apply a stage and designate the catalogue batch.
 

@@ -115,6 +115,8 @@ export interface FundingStampPurchaseJournal {
    * batch to become usable, or null.
    */
   openOn(nodeId: string): Promise<FundingStampPurchaseRow | null>;
+  /** The purchase for this purpose journalled last on this node, whatever it came to, or null for none. */
+  latestOn(nodeId: string, purpose: FundingBatchPurchasePurpose): Promise<FundingStampPurchaseRow | null>;
   /** Writes the row, unless its request id is journalled already or another purchase is under way on its node. */
   insert(row: FundingStampPurchaseRow): Promise<FundingStampPurchaseInsert>;
   /**
@@ -276,6 +278,17 @@ export class PostgresFundingStampPurchaseJournal implements FundingStampPurchase
         ORDER BY created_at, request_id
         LIMIT 1`,
       [nodeId],
+    );
+    return result.rows[0] ? rowOf(result.rows[0]) : null;
+  }
+
+  async latestOn(nodeId: string, purpose: FundingBatchPurchasePurpose): Promise<FundingStampPurchaseRow | null> {
+    const result = await this.pool.query<Row>(
+      `SELECT ${COLUMNS} FROM funding_stamp_purchases
+        WHERE node_id = $1 AND purpose = $2
+        ORDER BY created_at DESC, request_id DESC
+        LIMIT 1`,
+      [nodeId, purpose],
     );
     return result.rows[0] ? rowOf(result.rows[0]) : null;
   }

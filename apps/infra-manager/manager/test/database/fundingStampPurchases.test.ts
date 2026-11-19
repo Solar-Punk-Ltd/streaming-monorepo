@@ -229,6 +229,31 @@ describe(
       assert.equal(await journal.insert(purchase({ requestId: OTHER_REQUEST })), 'inserted');
     });
 
+    it('reads the purchase for a purpose journalled last on a node, whatever it came to, and none for another', async () => {
+      const rung = { purpose: 'rung' as const, immutable: false, label: null, replacesBatchId: REPLACED };
+      const before = new Date(JOURNALLED_AT.getTime() - 60_000);
+      assert.equal(await journal.insert(purchase({ ...rung, createdAt: before, updatedAt: before })), 'inserted');
+      assert.equal(await journal.update(REQUEST, 'unknown', settledAs('failed')), true);
+      assert.equal(await journal.insert(purchase({ ...rung, requestId: OTHER_REQUEST })), 'inserted');
+      assert.equal(await journal.update(OTHER_REQUEST, 'unknown', settledAs('confirmed')), true);
+      const unused = { ...setOn, step: 'failed' as const, error: 'Not usable within the hour.', setAt: null };
+      assert.equal(await journal.advance(OTHER_REQUEST, 'waiting_usable', unused), true);
+      const after = new Date(SET_AT.getTime() + 60_000);
+      assert.equal(
+        await journal.insert(purchase({ requestId: THIRD_REQUEST, createdAt: after, updatedAt: after })),
+        'inserted',
+      );
+
+      const last = await journal.latestOn(NODE, 'rung');
+      assert.deepEqual(
+        [last?.requestId, last?.state, last?.step, last?.batchId, last?.setAt],
+        [OTHER_REQUEST, 'confirmed', 'failed', BATCH, null],
+      );
+      assert.equal((await journal.latestOn(NODE, 'archive'))?.requestId, THIRD_REQUEST);
+      assert.equal(await journal.latestOn(NODE, 'catalogue'), null);
+      assert.equal(await journal.latestOn(OTHER_NODE, 'rung'), null);
+    });
+
     it('keeps a node label to one purchase: another whose request id begins alike is label_taken', async () => {
       assert.equal(await journal.insert(purchase()), 'inserted');
       assert.equal(await journal.update(REQUEST, 'unknown', settledAs('failed')), true);
