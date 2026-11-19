@@ -98,6 +98,10 @@ and the settings.
   and replaces it, so saving it again costs no Swarm read. Its stream's page shows it above the OBS
   details. A user can clear it from the panel or from that card, which asks first and deletes it for
   everyone, and then export that quality again.
+- **A kept file says when it is out of date.** The export remembers which recording playlist it
+  read. Once the stream is live again, the card, the panel and the widget say the file holds the
+  earlier recording, and once it has recorded again, that the file is out of date. The file can be
+  saved and cleared as before, and a new export of that quality replaces it.
 - **It never fails, it pauses.** Segments that cannot be read, a stream that goes live again while
   the export reads or joins, a full disk or any other problem pause the export with the reason,
   keeping everything read. The panel comes to front for the user who started it, and a user
