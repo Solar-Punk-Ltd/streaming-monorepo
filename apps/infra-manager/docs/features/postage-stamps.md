@@ -303,7 +303,9 @@ that restarts goes on from the step it had reached (`step`: `buying`, `waiting_u
 | `not_following`    | The stage's pool string is a pasted one that names this rung's node. The manager leaves it                                              |
 | `stopped`          | The stage does not run, or is no longer on the manager. Its next start writes the pool's current string                                 |
 
-Each look at a stage moves it one step at most, and the manager remembers the Applies it started
+The settings are read again just before the Apply, after the readings of a broadcast or a restart, so a
+setting saved meanwhile makes the stage wait in `waiting_settings` rather than ride along with the
+batch. Each look at a stage moves it one step at most, and the manager remembers the Applies it started
 while it runs. One that ended without the batch is `failed`, with the deploy's error where it left
 one, until a check. A manager that restarted starts the Apply again where one is due. An Apply refused because a deploy of the
 stage started meanwhile, another purchase's Apply among them, is `applying`: that deploy writes the

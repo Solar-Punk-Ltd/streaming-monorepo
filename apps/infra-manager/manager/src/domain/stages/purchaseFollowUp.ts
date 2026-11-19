@@ -1,5 +1,6 @@
 import {
   type DeploymentSettingEntry,
+  type DeploymentSettingsCatalog,
   getErrorMessage,
   INGEST_READ,
   type IngestHealthReading,
@@ -122,6 +123,19 @@ function savedWithBatch(entries: readonly DeploymentSettingEntry[], batchId: str
   return entries.some((entry) => PURCHASE_BATCH_KEYS.includes(entry.key) && carriesBatch(entry.value, batchId));
 }
 
+/**
+ * The look of a stage whose running uploader is behind on another saved setting beside the batch, naming the keys,
+ * or null when the batch is the only one. An Apply would roll those out too, so an operator applies the stage.
+ */
+function waitingSettings(catalog: DeploymentSettingsCatalog): PurchaseStageLook | null {
+  const waiting = catalog.drift.keys.filter((key) => !PURCHASE_BATCH_KEYS.includes(key));
+  if (waiting.length === 0) return null;
+  return {
+    apply: 'waiting_settings',
+    message: `Other saved settings wait for an Apply beside the batch: ${waiting.join(', ')}. Apply the stage in the manager.`,
+  };
+}
+
 type Liveness = 'live' | 'idle' | 'unknown';
 
 /** What one reading of the engine's ingest says of a broadcast. */
@@ -228,13 +242,8 @@ class StageApplier implements PurchaseStageApplier {
       };
     }
 
-    const waiting = catalog.drift.keys.filter((key) => !PURCHASE_BATCH_KEYS.includes(key));
-    if (waiting.length > 0) {
-      return {
-        apply: 'waiting_settings',
-        message: `Other saved settings wait for an Apply beside the batch: ${waiting.join(', ')}. Apply the stage in the manager.`,
-      };
-    }
+    const waiting = waitingSettings(catalog);
+    if (waiting) return waiting;
     if (!savedWithBatch(catalog.entries, batchId)) {
       return {
         apply: 'failed',
@@ -261,6 +270,12 @@ class StageApplier implements PurchaseStageApplier {
       }
     }
 
+    // Read again after the live readings, or a restart's word: the Apply rolls out every setting the stage is behind
+    // on, and one saved meanwhile is not the purchase's to roll out.
+    const now = await this.deps.settings.catalog(stage.name);
+    if (runsWithBatch(now.entries, batchId)) return { apply: 'applied', message: null };
+    const waitingNow = waitingSettings(now);
+    if (waitingNow) return waitingNow;
     return this.apply(stage, batchId);
   }
 

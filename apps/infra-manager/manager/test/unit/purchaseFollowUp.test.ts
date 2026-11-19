@@ -92,7 +92,8 @@ class World {
   states = new Map<string, StampState>();
   set: string[] = [];
   followers = new Map<string, StageFollower[] | null>();
-  catalogs = new Map<string, DeploymentSettingsCatalog>();
+  /** A stage's settings list, or the lists its reads answer in turn, the last one from then on. */
+  catalogs = new Map<string, DeploymentSettingsCatalog | DeploymentSettingsCatalog[]>();
   applied: string[] = [];
   applyError: Error | null = null;
   readings: IngestHealthReading[] = [];
@@ -117,7 +118,11 @@ class World {
       },
       poolStrings: { followersOf: async (name) => this.followers.get(name) ?? null },
       settings: {
-        catalog: async (name) => this.catalogs.get(name)!,
+        catalog: async (name) => {
+          const listed = this.catalogs.get(name)!;
+          if (!Array.isArray(listed)) return listed;
+          return listed.length > 1 ? listed.shift()! : listed[0]!;
+        },
         apply: async (name, instanceId) => {
           if (this.applyError) throw this.applyError;
           this.applied.push(`${name}:${instanceId}`);
@@ -322,6 +327,21 @@ describe('one look at a stage', () => {
       });
     }
     assert.deepEqual(world.applied, []);
+  });
+
+  it('answers waiting_settings, and applies nothing, for a setting saved while the broadcast was read', async () => {
+    for (const force of [false, true]) {
+      world.applied = [];
+      world.readings = [idle, idle];
+      world.catalogs.set('main', [catalogOf({}), catalogOf({ otherKeysBehind: ['SRT_LATENCY'] })]);
+
+      assert.deepEqual(await look({ force }), {
+        apply: 'waiting_settings',
+        message:
+          'Other saved settings wait for an Apply beside the batch: SRT_LATENCY. Apply the stage in the manager.',
+      });
+      assert.deepEqual(world.applied, [], force ? 'restarted' : 'looked');
+    }
   });
 
   it('starts the Apply once two readings 15 seconds apart find no broadcast', async () => {
