@@ -13,7 +13,7 @@ import {
 
 import { TRANSITIONAL_STATUSES } from '../../types/index.js';
 import type { Profile } from '../../types/index.js';
-import { ManagerSettingsChangedError } from '../errors/index.js';
+import { ManagerSettingsChangedError, ProfileBusyError } from '../errors/index.js';
 import type {
   PurchasedCatalogueBatches,
   PurchasedRungBatches,
@@ -300,6 +300,12 @@ class StageApplier implements PurchaseStageApplier {
     try {
       await this.deps.settings.apply(stage.name, stage.instance_id, PURCHASE_APPLY_ACTOR);
     } catch (err) {
+      // A deploy of the stage started since it was read, another purchase's Apply among them. It writes the pool's
+      // current string, so the next look finds the batch there, or starts an Apply of its own then.
+      if (err instanceof ProfileBusyError) {
+        logger.info(`[BatchPurchase] ${stage.name}: a deploy of it is under way, so it was not applied again`);
+        return { apply: 'applying', message: null };
+      }
       const error = `The Apply did not start: ${getErrorMessage(err)}`;
       this.started.set(stage.instance_id, { batchId, at, error });
       logger.warn(`[BatchPurchase] ${stage.name}: ${error}`);

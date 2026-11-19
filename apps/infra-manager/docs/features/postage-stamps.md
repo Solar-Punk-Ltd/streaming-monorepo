@@ -305,7 +305,9 @@ that restarts goes on from the step it had reached (`step`: `buying`, `waiting_u
 
 Each look at a stage moves it one step at most, and the manager remembers the Applies it started
 while it runs. One that ended without the batch is `failed`, with the deploy's error where it left
-one, until a check. A manager that restarted starts the Apply again where one is due. A batch that
+one, until a check. A manager that restarted starts the Apply again where one is due. An Apply refused because a deploy of the
+stage started meanwhile, another purchase's Apply among them, is `applying`: that deploy writes the
+pool's current string, so the next look finds the batch applied without a second Apply. A batch that
 works, set on the rung by another hand while the purchase waited, stays, and the follow-up stops as
 failed with the reason. The Apply is logged as run by a batch purchase, and the set, the
 designation and the release as `the batch purchase <requestId>`
