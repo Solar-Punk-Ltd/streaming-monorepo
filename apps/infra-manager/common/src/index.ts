@@ -4,6 +4,7 @@ export * from './adminLink.js';
 export * from './adminLinkTest.js';
 export * from './archiveBatches.js';
 export * from './auth.js';
+export * from './batchPurchases.js';
 export * from './buildLabel.js';
 export * from './catalogueNode.js';
 export * from './chequebook.js';

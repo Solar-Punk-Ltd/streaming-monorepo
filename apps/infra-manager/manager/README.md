@@ -613,9 +613,10 @@ connection of its own (`docs/architecture/funding.md` at the repository root). T
 `/api/admin-funding`, ahead of the cross-site and session gates, and the console's nginx sends that
 path to the api. The shapes are in `packages/contracts/src/funding.ts`.
 
-- `FUNDING_API_TOKEN` unset: the API is off, and every path under it answers 404
-  `{ error: "funding_off" }`.
-- Set: a request needs `Authorization: Bearer <FUNDING_API_TOKEN>` and no session cookie, or it is
+- The token is `MANAGER_API_TOKEN`, and is read under its earlier name, `FUNDING_API_TOKEN`, when
+  that one is unset (`managerApiTokenFrom` in the contract). The log names the key it was read under.
+- Unset: the API is off, and every path under it answers 404 `{ error: "funding_off" }`.
+- Set: a request needs `Authorization: Bearer <MANAGER_API_TOKEN>` and no session cookie, or it is
   401 `unauthorized`. Both tokens are hashed with SHA-256 and compared in constant time, and neither
   is logged or answered.
 - Every other route refuses a request carrying a bearer with 401, so the token opens nothing but
@@ -732,7 +733,49 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
   `newDepth` or deeper. With no sign of either thirty minutes after it was recorded, it is
   `failed`. The contract is read at most once every five seconds per request id.
 
+### Batch purchases
+
+The admin buys a new batch, one purchase per request, which the node named buys through its own Bee
+API and pays for from its own wallet, xBZZ for the batch and xDAI for the gas. One route buys for
+three purposes, and the manager follows each purchase up in the background
+([Bought from the admin](../docs/features/postage-stamps.md#bought-from-the-admin)).
+
+| Method | Path                                                    | Answer                                                                                                                                                             |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/api/admin-funding/batch-purchases`                    | 202 `{ requestId, purpose, state, batchId, txHash }`. Takes `{ requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId }`         |
+| GET    | `/api/admin-funding/batch-purchases/:requestId`         | `{ requestId, purpose, nodeId, state, batchId, txHash, usable, step, error, stages, catalogue }`, `no-store`. 404 `unknown_request` for an id never recorded       |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/restart` | The status. Takes `{ stageId }`. Runs the Apply of a stage in `waiting_live` or `waiting_unknown` now. 422 `stamp_refused` for a stage in any other state          |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/check`   | The status. Takes up again a follow-up that stopped as failed after the batch was bought, and a stage whose Apply failed. 422 `stamp_refused` when nothing stopped |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/release` | The status. Releases the batch a `catalogue` purchase moved the catalogue from. 422 `stamp_refused` for a purchase with none waiting                               |
+
+| `purpose`   | `nodeId`                                         | `depth`  | `immutable` | `replacesBatchId`                         | Once usable                                          |
+| ----------- | ------------------------------------------------ | -------- | ----------- | ----------------------------------------- | ---------------------------------------------------- |
+| `rung`      | a rung's node, or a single-node stage's Bee node | 17 to 40 | either      | the batch set on it now, or null for none | set on the rung, and the following uploaders applied |
+| `catalogue` | the catalogue node                               | 18 to 40 | true        | the designated batch, or null for none    | designated as a move                                 |
+| `archive`   | the catalogue node                               | 17 to 41 | true        | null                                      | an archive batch, recorded once `confirmed`          |
+
+- **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded: the node is
+  one the purpose names (404 `unknown_node` for a node this manager does not run);
+  `replacesBatchId` is the batch set there now; for a rung and the catalogue that batch is expired,
+  gone or none (`purchaseReplaceProblem`); the cost, `amountPerChunkPlur × 2^depth`, is within the
+  node's xBZZ; the wallet holds some xDAI; and the amount buys the postage contract's floor of life
+  or more at the price read now. An archive stamp keeps the check of the record's 200 places.
+- **A node with a purchase that is `buying` or `waiting_usable`**, or with another operation of the
+  API under way, answers 409 `conflict`.
+- **The record** is a row of `funding_stamp_purchases` with the purpose, the kind and the batch
+  replaced, written as `unknown` before the node is asked. The batch carries on its node the label
+  `<purpose>-` and the first twelve hex digits of the request id (`purchaseNodeLabel`), by which a
+  purchase whose answer was lost is found again, as below.
+- **The follow-up** runs in the manager, every 30 seconds and at boot, from the step the row holds.
+  The stages of a rung purchase are rows of `funding_purchase_stages`.
+- **The release** is taken as the admin's word that its move of the catalogue is done, which the
+  manager cannot see. It is logged with the request id.
+
 ### Stamp purchases
+
+`POST /api/admin-funding/stamp-purchases` and its `GET` are the routes an admin older than
+[Batch purchases](#batch-purchases) buys an archive stamp on. The manager answers them as a batch
+purchase of purpose `archive`, and the rest of this section holds for that purpose on either route.
 
 The admin buys archive stamps, one purchase per request: a new immutable batch on the catalogue
 node, which that node buys through its own Bee API and pays for from its own wallet, xBZZ for the

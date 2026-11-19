@@ -9,15 +9,15 @@ how keys are split, and how the catalogue gets a batch of its own.
 
 ## The shape in one table
 
-| Topic           | How it works                                                                                                                                                                                                                                                                |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Direction       | The manager pushes a record per stage into the admin. The admin keeps what it was told in its own database. The admin's one call to the manager is the funding API ([funding.md](funding.md)).                                                                              |
-| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand reads it.                                                                                                                                                                  |
-| Binding         | A stream goes live only on its own stage. Every uploader presents a token of its own, and the admin answers a token only about its own stage's streams.                                                                                                                     |
-| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                                                                                                           |
-| Catalogue stamp | The catalogue is written with a batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. It never shares a batch a rung stamps segments with.                                                                                    |
-| Funding         | The admin reads stages, funds the node wallets, tops up and dilutes batches and moves chequebooks, every operation through the manager's funding API. Buying a stage's batch and the catalogue's stays in the manager. The admin buys archive stamps, through the same API. |
-| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                                                                                                            |
+| Topic           | How it works                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Direction       | The manager pushes a record per stage into the admin. The admin keeps what it was told in its own database. The admin's one call to the manager is the funding API ([funding.md](funding.md)).                                                                                                                                                          |
+| Catalogue       | One per brand, signed by the brand key, listing the streams of every stage. One viewer per brand reads it.                                                                                                                                                                                                                                              |
+| Binding         | A stream goes live only on its own stage. Every uploader presents a token of its own, and the admin answers a token only about its own stage's streams.                                                                                                                                                                                                 |
+| Keys            | Every stage signs its feeds with its own key. The brand key signs the catalogue alone and never leaves the admin.                                                                                                                                                                                                                                       |
+| Catalogue stamp | The catalogue is written with a batch of its own, immutable and deep, on a dedicated catalogue node the manager runs, pinned by id. It never shares a batch a rung stamps segments with.                                                                                                                                                                |
+| Funding         | The admin reads stages, funds the node wallets, tops up and dilutes batches and moves chequebooks, every operation through the manager's funding API. The admin buys a new batch for a rung or for the catalogue once the one it has no longer pays, and it buys archive stamps, through the same API. The manager's own pages buy a batch at any time. |
+| Engines         | SRS stages only. An OvenMediaEngine stage is listed and marked as not supported.                                                                                                                                                                                                                                                                        |
 
 ## Why it is shaped this way
 
@@ -375,6 +375,29 @@ README has the detail.
 - The start, the end and a failure are audited (`catalogue.move.start`, `.done`, `.failed`) and
   logged with batch ids shortened. The Stages page shows N of M slots while it runs, the reason when
   it failed, and, once done, that the previous batch can now be released in the manager.
+
+### A batch bought on the Stamps tab
+
+A catalogue batch that has expired, or that its node holds no more, is replaced from the admin's
+Funding page ([funding.md](funding.md#buying-a-new-batch)). The parts are the ones above, started by
+the purchase in place of a person:
+
+- The manager buys the batch on the catalogue node, waits until the node calls it usable, and
+  designates it as a move from the batch designated before, with every check a designation makes.
+  The catalogue stamp record it pushes names the new batch, and the old one as `previous`.
+- The admin starts the move for a batch its own purchase bought as soon as the record names it. The
+  move's row names the purchase as its starter (`CATALOGUE_MOVE_STARTED_BY_PURCHASE`). A move to a
+  batch chosen on the manager's card is started on the Stages page.
+- The old batch has lapsed, so every slot comes from the bytes the admin recorded, and a slot with
+  no recorded bytes refuses the start with `lapsed`.
+- A thumbnail whose bytes the stream's row holds is uploaded from them. One the row does not hold is
+  read from the network, which after a lapse may hold it no more. The move then clears the thumbnail
+  on its stream, lists the stream (`catalogue_moves.cleared_thumbnails`), and goes on. The entry
+  written at the switch carries no image for that stream, and the stream takes a new one on its
+  page. A move from a batch with time left stops before the switch on a thumbnail it cannot read.
+- Once the catalogue is written with the new batch, the admin asks the manager to release the
+  previous one through the purchase, `POST /api/admin-funding/batch-purchases/:requestId/release`.
+  The manager releases it as its own Release does, and the purchase is done.
 
 ### Trying the move on a real node
 
