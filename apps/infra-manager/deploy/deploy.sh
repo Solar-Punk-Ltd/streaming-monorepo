@@ -209,12 +209,19 @@ if [ "$POSTGRES_PASSWORD_SETTING" = "$SAMPLE_POSTGRES_PASSWORD" ]; then
         exit 1
     fi
 fi
-# The funding API's bearer token is optional, but a short one stops the manager
-# at startup, so it is refused here before anything reaches the host. The value
-# is never printed.
-FUNDING_API_TOKEN_SETTING="$(sed -n 's/^FUNDING_API_TOKEN=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
-if [ -n "$FUNDING_API_TOKEN_SETTING" ] && { [ "${#FUNDING_API_TOKEN_SETTING}" -lt 32 ] || [[ "$FUNDING_API_TOKEN_SETTING" =~ [[:space:]] ]]; }; then
-    echo "ERROR: FUNDING_API_TOKEN in $ENV_FILE must be 32 characters or more with no space inside, or left unset to turn the funding API off." >&2
+# The manager's API token is optional, but a short one stops the manager at
+# startup, so it is refused here before anything reaches the host. It is read
+# as the manager reads it: MANAGER_API_TOKEN, or its earlier name,
+# FUNDING_API_TOKEN, while MANAGER_API_TOKEN is unset or blank. The value is
+# never printed.
+MANAGER_API_TOKEN_KEY=MANAGER_API_TOKEN
+MANAGER_API_TOKEN_SETTING="$(sed -n 's/^MANAGER_API_TOKEN=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+if [ -z "$(printf '%s' "$MANAGER_API_TOKEN_SETTING" | tr -d '[:space:]')" ]; then
+    MANAGER_API_TOKEN_KEY=FUNDING_API_TOKEN
+    MANAGER_API_TOKEN_SETTING="$(sed -n 's/^FUNDING_API_TOKEN=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+fi
+if [ -n "$MANAGER_API_TOKEN_SETTING" ] && { [ "${#MANAGER_API_TOKEN_SETTING}" -lt 32 ] || [[ "$MANAGER_API_TOKEN_SETTING" =~ [[:space:]] ]]; }; then
+    echo "ERROR: $MANAGER_API_TOKEN_KEY in $ENV_FILE must be 32 characters or more with no space inside, or left unset to turn the funding API off." >&2
     exit 1
 fi
 
