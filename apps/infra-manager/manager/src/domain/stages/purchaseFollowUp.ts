@@ -15,7 +15,7 @@ import {
 
 import { TRANSITIONAL_STATUSES } from '../../types/index.js';
 import type { Profile } from '../../types/index.js';
-import { ManagerSettingsChangedError, ProfileBusyError } from '../errors/index.js';
+import { CatalogueNodeInputError, ManagerSettingsChangedError, ProfileBusyError } from '../errors/index.js';
 import type {
   PurchasedCatalogueBatches,
   PurchasedRungBatches,
@@ -63,13 +63,77 @@ export interface PurchaseFollowUpPorts {
   catalogue: PurchasedCatalogueBatches;
 }
 
-/** Builds the three ports over the manager's own services. */
+/**
+ * Builds the three ports over the manager's own services. What a port rejects with reaches the web2 admin, so it is a
+ * sentence of this module's own, {@link PurchaseFollowUpError}, or the catalogue designation's own refusal. Any other
+ * failure, which can carry a host's address, is logged here and answered as a plain sentence.
+ */
 export function purchaseFollowUpPorts(deps: PurchaseFollowUpPortsDeps): PurchaseFollowUpPorts {
+  const rungs = new RungBatches(deps);
+  const stages = new StageApplier(deps);
+  const catalogue = new CatalogueBatches(deps);
   return {
-    rungs: new RungBatches(deps),
-    stages: new StageApplier(deps),
-    catalogue: new CatalogueBatches(deps),
+    rungs: {
+      current: (profileName) =>
+        guarded(`reading the batch of ${profileName}`, 'The batch set on the deployment could not be read.', () =>
+          rungs.current(profileName),
+        ),
+      set: (input) =>
+        guarded(
+          `setting batch ${shortBatch(input.batchId)} on ${input.profileName}`,
+          'The bought batch could not be set on its deployment.',
+          () => rungs.set(input),
+        ),
+    },
+    stages: {
+      look: (input) =>
+        guarded(`looking at stage ${input.stageId}`, 'The stage could not be read.', () => stages.look(input)),
+    },
+    catalogue: {
+      current: (profileName) =>
+        guarded(`reading the catalogue batch of ${profileName}`, 'The catalogue batch could not be read.', () =>
+          catalogue.current(profileName),
+        ),
+      designate: (input) =>
+        guarded(
+          `designating batch ${shortBatch(input.batchId)} as the catalogue batch`,
+          'The bought batch could not be designated as the catalogue batch.',
+          () => catalogue.designate(input),
+        ),
+      release: (input) =>
+        guarded(
+          `releasing batch ${shortBatch(input.previousBatchId)}`,
+          'The previous catalogue batch could not be released.',
+          () => catalogue.release(input),
+        ),
+    },
   };
+}
+
+/** A sentence a port rejects with, which names no host and no address, and reaches the web2 admin as it is. */
+export class PurchaseFollowUpError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'PurchaseFollowUpError';
+  }
+}
+
+/** What the admin reads where the manager's log holds the detail. */
+const SEE_THE_LOG = 'The manager’s log says why.';
+
+/**
+ * Runs one call of a port. A rejection with a sentence of this module's own, or with the catalogue designation's own
+ * refusal, passes as it is; any other is logged with its detail and answered as `plain`, since its text can name a
+ * host.
+ */
+async function guarded<T>(what: string, plain: string, call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    if (err instanceof PurchaseFollowUpError || err instanceof CatalogueNodeInputError) throw err;
+    logger.warn(`[BatchPurchase] ${what} failed: ${getErrorMessage(err)}`);
+    throw new PurchaseFollowUpError(`${plain} ${SEE_THE_LOG}`, { cause: err });
+  }
 }
 
 /**
@@ -169,7 +233,7 @@ class RungBatches implements PurchasedRungBatches {
         const state = (await this.deps.stamps.stampHealthFor(profile, profile.stamp_id)).state;
         const problem = purchaseReplaceProblem('rung', state);
         if (problem) {
-          throw new Error(
+          throw new PurchaseFollowUpError(
             `The bought batch was not set on ${profile.name}, because batch ${shortBatch(setNow)} is set there now. ${problem}`,
           );
         }
@@ -191,6 +255,8 @@ class RungBatches implements PurchasedRungBatches {
 interface StartedApply {
   at: number;
   error: string | null;
+  /** Whether the manager's log holds why it failed, so a look that finds it failed again logs nothing. */
+  logged: boolean;
 }
 
 /**
@@ -330,21 +396,28 @@ class StageApplier implements PurchaseStageApplier {
         logger.info(`[BatchPurchase] ${stage.name}: a deploy of it is under way, so it was not applied again`);
         return { apply: 'applying', message: null };
       }
-      const error = `The Apply did not start: ${getErrorMessage(err)}`;
-      this.started.set(startedKey(stage.instance_id, batchId), { at, error });
-      logger.warn(`[BatchPurchase] ${stage.name}: ${error}`);
+      const error = `The Apply did not start. ${SEE_THE_LOG}`;
+      this.started.set(startedKey(stage.instance_id, batchId), { at, error, logged: true });
+      logger.warn(`[BatchPurchase] ${stage.name}: the Apply did not start: ${getErrorMessage(err)}`);
       return { apply: 'failed', message: error };
     }
-    this.started.set(startedKey(stage.instance_id, batchId), { at, error: null });
+    this.started.set(startedKey(stage.instance_id, batchId), { at, error: null, logged: false });
     logger.info(`[BatchPurchase] ${stage.name}: applied for batch ${shortBatch(batchId)}`);
     return { apply: 'applying', message: null };
   }
 
-  /** Why an Apply this process started ended without the batch: the deploy's own error since, where it left one. */
+  /**
+   * Why an Apply this process started ended without the batch, in a sentence that names no host. The deploy's own
+   * error since, where it left one, can name one: it goes to the manager's log, once, and the stage's page shows it.
+   */
   private endedWithout(stage: Profile, started: StartedApply): string {
     const since = stage.last_error_at !== null && stage.last_error_at.getTime() >= started.at;
-    if (since && stage.last_error) return `The Apply failed: ${stage.last_error}`;
-    return 'The Apply ended, and the uploader does not pay with the new batch.';
+    if (!since || !stage.last_error) return 'The Apply ended, and the uploader does not pay with the new batch.';
+    if (!started.logged) {
+      logger.warn(`[BatchPurchase] ${stage.name}: the Apply failed: ${stage.last_error}`);
+      started.logged = true;
+    }
+    return `The Apply failed. ${SEE_THE_LOG}`;
   }
 }
 
@@ -404,7 +477,7 @@ class CatalogueBatches implements PurchasedCatalogueBatches {
     const state = holder ? (await this.deps.stamps.stampHealthFor(holder, designation.batchId)).state : 'unknown';
     const problem = purchaseReplaceProblem('catalogue', state);
     if (problem) {
-      throw new Error(
+      throw new PurchaseFollowUpError(
         `The bought batch was not designated, because batch ${shortBatch(designation.batchId)} is the catalogue batch now. ${problem}`,
       );
     }
@@ -417,13 +490,13 @@ class CatalogueBatches implements PurchasedCatalogueBatches {
       const answer = await this.deps.catalogue.read();
       const pinned = answer.pinned?.batchId ?? null;
       if (pinned !== batchId) {
-        throw new Error(
+        throw new PurchaseFollowUpError(
           `The catalogue has moved on from batch ${shortBatch(batchId)} since, so batch ${shortBatch(previousBatchId)} is not released for this purchase.`,
         );
       }
       if (!answer.movingFrom) return;
       if (answer.movingFrom.batchId !== previousBatchId) {
-        throw new Error(
+        throw new PurchaseFollowUpError(
           `The catalogue is moving from batch ${shortBatch(answer.movingFrom.batchId)} now, not from batch ${shortBatch(previousBatchId)}, so nothing was released for this purchase.`,
         );
       }
@@ -441,6 +514,6 @@ class CatalogueBatches implements PurchasedCatalogueBatches {
 
 async function profileNamed(deps: PurchaseFollowUpPortsDeps, name: string): Promise<Profile> {
   const profile = await deps.profiles.findByName(name);
-  if (!profile) throw new Error(`There is no deployment called ${name} on this manager.`);
+  if (!profile) throw new PurchaseFollowUpError(`There is no deployment called ${name} on this manager.`);
   return profile;
 }
