@@ -76,8 +76,9 @@ export interface PurchaseStageApplier {
    * With `force`, a live broadcast and one that cannot be told are passed over and the Apply starts: the admin's
    * Restart now. `force` changes nothing else, so settings that wait still answer `waiting_settings`.
    *
-   * An Apply that did not go through answers `failed` with its reason, and the next look starts it again only when
-   * the follow-up was asked to check again. It never rejects for a stage's own trouble; it rejects only when the stage
+   * An Apply that did not go through answers `failed` with its reason, for that stage and that batch, and the next
+   * look starts it again only when the follow-up was asked to check again. The look keeps that in the process, so a
+   * manager that restarted starts the Apply once more where one is due. It never rejects for a stage's own trouble; it rejects only when the stage
    * could not be read at all, and the follow-up then looks again at its next turn.
    */
   look(input: { stageId: string; batchId: string; force: boolean; retryFailed: boolean }): Promise<PurchaseStageLook>;

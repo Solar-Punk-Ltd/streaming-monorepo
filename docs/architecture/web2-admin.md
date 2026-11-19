@@ -385,7 +385,7 @@ and removes them.
 **Check recordings** is started by a person, and one check runs at a time for the whole admin.
 
 - **What it reads.** Through the catalogue node, each recording's own playlist, the master playlist
-  of a ladder, and for each quality its playlist and its first segment. A recording copied onto an
+  of a ladder, and for each quality its playlist and the first 64 KiB of its first segment. A recording copied onto an
   archive stamp reads from there, so it is found readable.
 - **Three rounds.** Every recording is read once. The ones that failed are read again ten minutes
   later, and what still failed ten minutes after that (`RECORDING_CHECK_ROUNDS`,
@@ -395,8 +395,7 @@ and removes them.
   is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`). A node with fewer reads nothing
   whatever is on Swarm, so the check stops with no result and says so.
 - **Which streams.** One rule decides, `recordingSkipReason`: a live stream, a stream inside its
-  restart window, a stream with an export or an archive under way, and a test stream are left
-  unjudged.
+  restart window and a stream with an export or an archive under way are left unjudged.
 - **The result.** **Lost**: the master playlist failed in every round, or every quality did.
   **Partly lost**: some quality failed in every round and another was read; it is listed with the
   qualities that failed and left alone. The stream's row carries the mark until the stream goes live
