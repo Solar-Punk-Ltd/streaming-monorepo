@@ -770,14 +770,23 @@ three purposes, and the manager follows each purchase up in the background
   gone or none (`purchaseReplaceProblem`); the cost, `amountPerChunkPlur × 2^depth`, is within the
   node's xBZZ; the wallet holds some xDAI; and the amount buys the postage contract's floor of life
   or more at the price read now. An archive stamp keeps the check of the record's 200 places.
+- **The node** for a rung is a stage's node the inventory offers a `replacement` for: a rung's node,
+  or a single-node stage's own node. The batch set there now is read through the follow-up's port,
+  as is the designated catalogue batch for the catalogue.
 - **A node with a purchase that is `buying` or `waiting_usable`**, or with another operation of the
-  API under way, answers 409 `conflict`.
+  API under way, a stamp operation or a chequebook move still open, answers 409 `conflict`.
 - **The record** is a row of `funding_stamp_purchases` with the purpose, the kind and the batch
   replaced, written as `unknown` before the node is asked. The batch carries on its node the label
   `<purpose>-` and the first twelve hex digits of the request id (`purchaseNodeLabel`), by which a
   purchase whose answer was lost is found again, as below.
-- **The follow-up** runs in the manager, every 30 seconds and at boot, from the step the row holds.
-  The stages of a rung purchase are rows of `funding_purchase_stages`.
+- **The follow-up** runs in the manager, every 30 seconds and at boot, from the step the row holds,
+  and reads a bought batch every 3 seconds until it is usable. The stages of a rung purchase are rows
+  of `funding_purchase_stages`, taken in order with at most one Apply at a time: an Apply under way
+  is looked at first, and a pass ends at the look that starts one. A stage that waits, for a
+  broadcast or for other settings, holds none of the later ones back.
+- **Check** takes up a purchase that stopped after its batch was bought by reading the node once:
+  a usable batch is set or designated, and one still not usable leaves the purchase failed. It
+  starts again the Apply of each stage that failed, one at a time.
 - **The release** is taken as the admin's word that its move of the catalogue is done, which the
   manager cannot see. It is logged with the request id.
 
@@ -833,7 +842,10 @@ batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive
   `unknown`. The list is read at most once every five seconds per request id.
 - **`usable`** is read from the node on every `GET`, as the inventory reads a batch: false for the
   minutes after a purchase, true once the batch can stamp, and null while there is no batch or the
-  node did not answer. The manager waits for nothing in the background.
+  node did not answer. The follow-up of [Batch purchases](#batch-purchases) waits for it in the
+  background, and designates a batch the archive batches did not take yet at each of its looks.
+- **The older route's `GET`** answers no step: its `error` is the sentence of a purchase that is
+  `failed` or `unknown`, and null for one that is `confirmed`.
 
 ### Chequebook operations
 
