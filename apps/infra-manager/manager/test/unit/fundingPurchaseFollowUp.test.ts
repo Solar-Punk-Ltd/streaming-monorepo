@@ -9,7 +9,7 @@
  * taken with `advance`, as the sweep takes it every 30 seconds. `pnpm test` in manager/.
  */
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, describe, it, type TestContext } from 'node:test';
 
 import {
   ARCHIVE_PURCHASE_SETTLE_MS,
@@ -38,6 +38,7 @@ import type {
   PurchaseStageApplier,
   PurchaseStageLook,
 } from '../../src/domain/funding/purchaseFollowUpPorts.js';
+import { Logger } from '../../src/domain/Logger.js';
 import type { ArchiveBatchToDesignate } from '../../src/domain/stages/archiveBatchPorts.js';
 import type { Profile } from '../../src/types/index.js';
 import { emptyCatalogueDesignationRow } from '../support/InMemoryCatalogueDesignation.js';
@@ -671,5 +672,79 @@ describe('the sweep', () => {
     await followUp.sweep();
     await followUp.advance(REQUEST);
     assert.equal(current().step, 'waiting_usable');
+  });
+});
+
+describe('the words of a port and of an Apply, as the admin reads them', () => {
+  /** A rejection that names the node it could not reach, as a wrapped network error does. */
+  const NAMING = 'connect ECONNREFUSED 192.0.2.10:1633 while asking http://bee.invalid:1633/stamps';
+  const READ = 'connect ECONNREFUSED <address> while asking <address>';
+
+  /** Every line the manager logs at this level while the test runs. */
+  function logged(t: TestContext, level: 'info' | 'warn'): string[] {
+    const lines: string[] = [];
+    t.mock.method(Logger.prototype, level, (...args: unknown[]) => void lines.push(args.map(String).join(' ')));
+    return lines;
+  }
+
+  it('stops a purchase as failed with a port’s rejection without the node’s address, which the log keeps', async (t) => {
+    const lines = logged(t, 'warn');
+    for (const purpose of ['rung', 'catalogue'] as const) {
+      const { current, followUp, ports, usable } = setup([row(purpose)]);
+      ports.setFailure = new Error(NAMING);
+      ports.designateFailure = new Error(NAMING);
+      usable();
+      lines.length = 0;
+      await followUp.advance(REQUEST);
+      assert.deepEqual([current().step, current().error], ['failed', READ], purpose);
+      assert.ok(
+        lines.some((line) => line.includes(NAMING)),
+        `the manager's log keeps the ${purpose} port's sentence whole`,
+      );
+    }
+  });
+
+  it('writes a stage’s failed Apply without the node’s address, once, and logs it whole once', async (t) => {
+    const lines = logged(t, 'info');
+    const { followUp, journal, ports, usable } = setup([row('rung')]);
+    ports.followers = [{ stageId: STAGE_ONE, name: 'stage-one', following: true }];
+    ports.answer(STAGE_ONE, { apply: 'failed', message: `The Apply did not go through: ${NAMING}` });
+    usable();
+    await followUp.advance(REQUEST);
+    await followUp.advance(REQUEST);
+    assert.equal(ports.looks.length, 2, 'looked at twice');
+    assert.equal(journal.stages.get(REQUEST)?.[0]?.message, `The Apply did not go through: ${READ}`);
+    assert.equal(lines.filter((line) => line.includes(NAMING)).length, 1, 'logged whole when it was written, once');
+  });
+
+  it('writes a restarted stage’s words without the node’s address', async () => {
+    const { followUp, journal, ports } = setup([row('rung', { step: 'set', setAt: new Date(START) })]);
+    journal.stages.set(REQUEST, [
+      {
+        stageId: STAGE_ONE,
+        name: 'stage-one',
+        position: 0,
+        apply: 'waiting_unknown',
+        message: null,
+        forcedAt: null,
+        updatedAt: new Date(START),
+      },
+    ]);
+    ports.answer(STAGE_ONE, { apply: 'failed', message: NAMING });
+    await followUp.restart(REQUEST, STAGE_ONE);
+    assert.equal(journal.stages.get(REQUEST)?.[0]?.message, READ);
+  });
+
+  it('refuses a release with the port’s sentence without the node’s address, which the log keeps', async (t) => {
+    const lines = logged(t, 'warn');
+    const { followUp, ports } = setup([
+      row('catalogue', { step: 'set', setAt: new Date(START), previousBatchId: `0x${PREVIOUS}` }),
+    ]);
+    ports.releaseFailure = new Error(NAMING);
+    await refusedWith(followUp.release(REQUEST), READ);
+    assert.ok(
+      lines.some((line) => line.includes(NAMING)),
+      "the manager's log keeps the sentence whole",
+    );
   });
 });

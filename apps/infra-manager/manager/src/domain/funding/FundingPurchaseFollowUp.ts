@@ -22,6 +22,7 @@ import { ArchiveBatchRefusedError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
 import { type CatalogueDesignationRow, isDesignated, isMoving } from '../stages/CatalogueDesignationRepository.js';
+import { addressFree } from './addressFree.js';
 import { FundingApiError } from './FundingApiError.js';
 import { FUNDING_STATUS_READ_MS } from './FundingChainService.js';
 import type {
@@ -80,6 +81,11 @@ const STAGE_UNREAD = 'The stage could not be read, so nothing was restarted. Try
 
 function refused(message: string): FundingApiError {
   return new FundingApiError('stamp_refused', message);
+}
+
+/** A stage's words as a log line ends with them, whole, a node's address included; nothing when it has none. */
+function wholly(message: string | null): string {
+  return message === null ? '' : `: ${message}`;
 }
 
 /** A batch id as the funding API prints one, `0x` and 64 hex digits in lower case, or null for anything else. */
@@ -408,12 +414,12 @@ export class FundingPurchaseFollowUp {
       const at = new Date(this.now());
       await this.deps.journal.updateStage(requestId, stageId, {
         apply: look.apply,
-        message: look.message,
+        message: look.message === null ? null : addressFree(look.message),
         updatedAt: at,
         forcedAt: at,
       });
       logger.info(
-        `[Funding] batch purchase ${requestId}: the admin asked to restart stage ${stage.name} now, which is ${look.apply}`,
+        `[Funding] batch purchase ${requestId}: the admin asked to restart stage ${stage.name} now, which is ${look.apply}${wholly(look.message)}`,
       );
       await this.finishIfSettled(row);
     });
@@ -467,7 +473,10 @@ export class FundingPurchaseFollowUp {
           requestId,
         });
       } catch (err) {
-        throw refused(getErrorMessage(err));
+        // The log keeps the port's sentence whole; the admin reads it without a node's address.
+        const said = getErrorMessage(err);
+        logger.warn(`[Funding] batch purchase ${requestId} could not release ${row.previousBatchId}: ${said}`);
+        throw refused(addressFree(said));
       }
       const at = new Date(this.now());
       await this.deps.journal.advance(
@@ -598,12 +607,15 @@ export class FundingPurchaseFollowUp {
     return this.now() - since >= FUNDING_PURCHASE_USABLE_WAIT_SECONDS * 1000;
   }
 
-  /** Stops the purchase as failed, from the step it is at, with the sentence that says why. */
+  /**
+   * Stops the purchase as failed, from the step it is at, with the sentence that says why. The row, which the admin
+   * reads, keeps it without a node's address, and the log keeps it whole.
+   */
   private async fail(row: FundingStampPurchaseRow, from: FundingPurchaseStep, error: string): Promise<void> {
     const moved = await this.deps.journal.advance(
       row.requestId,
       from,
-      stepPatch(row, { step: 'failed', error, updatedAt: new Date(this.now()) }),
+      stepPatch(row, { step: 'failed', error: addressFree(error), updatedAt: new Date(this.now()) }),
     );
     if (moved) logger.warn(`[Funding] batch purchase ${row.requestId} stopped as failed: ${error}`);
   }
@@ -697,13 +709,17 @@ export class FundingPurchaseFollowUp {
         continue;
       }
       this.retryAsked.delete(key);
-      if (look.apply !== stage.apply || look.message !== stage.message) {
+      // The stage's words as the admin reads them, which are what the row holds and what a later look is set against.
+      const message = look.message === null ? null : addressFree(look.message);
+      if (look.apply !== stage.apply || message !== stage.message) {
         await this.deps.journal.updateStage(row.requestId, stage.stageId, {
           apply: look.apply,
-          message: look.message,
+          message,
           updatedAt: new Date(this.now()),
         });
-        logger.info(`[Funding] batch purchase ${row.requestId}: stage ${stage.name} is ${look.apply}`);
+        logger.info(
+          `[Funding] batch purchase ${row.requestId}: stage ${stage.name} is ${look.apply}${wholly(look.message)}`,
+        );
       }
       if (look.apply === 'applying') break;
     }

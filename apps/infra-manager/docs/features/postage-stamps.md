@@ -322,6 +322,10 @@ failure that can carry one go to the manager's log, and the admin reads that the
 Apply refused for the stored engine settings passes on that refusal's own sentence, which says what
 to fix, unless it names an address.
 
+What the admin reads of a port's sentence, a stage's error and a refused release leaves every node
+address out: a URL, a host and its port, and an IP address each read `<address>`
+(`manager/src/domain/funding/addressFree.ts`). The manager's log keeps the words whole.
+
 The admin's **Restart now** runs the Apply of a stage in `waiting_live` or `waiting_unknown` at
 once (`POST …/batch-purchases/:requestId/restart`). The batch is the only setting it carries, since
 a stage with other settings waiting is in `waiting_settings`. The manager applies a stage for the
