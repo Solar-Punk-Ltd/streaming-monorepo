@@ -3,7 +3,7 @@ import { type NextFunction, type Request, type Response, Router } from 'express'
 import { UUID_PATTERN, fundingStampPurchaseRequestSchema } from '@streaming-monorepo/contracts';
 
 import { FundingApiError } from '../../domain/funding/FundingApiError.js';
-import type { FundingStampPurchaseService } from '../../domain/funding/FundingStampPurchaseService.js';
+import type { FundingStampPurchaseService } from '../../domain/funding/FundingBatchPurchaseService.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 
 /**

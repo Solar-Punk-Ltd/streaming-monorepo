@@ -47,8 +47,8 @@ import { fundingNodeApiUrl, fundingNodeDeployment } from './domain/funding/fundi
 import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
-import { createFundingStampPurchaseRouter } from './api/routes/fundingStampPurchases.js';
-import { FundingStampPurchaseService } from './domain/funding/FundingStampPurchaseService.js';
+import { createFundingStampPurchaseRouter } from './api/routes/fundingBatchPurchases.js';
+import { FundingStampPurchaseService } from './domain/funding/FundingBatchPurchaseService.js';
 import { PostgresFundingStampPurchaseJournal } from './domain/funding/FundingStampPurchaseJournal.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from './domain/stages/archiveBatchPorts.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';

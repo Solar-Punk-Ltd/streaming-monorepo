@@ -42,7 +42,7 @@ import {
   type FundingStampPurchaseNode,
   type FundingStampPurchaseReads,
   FundingStampPurchaseService,
-} from '../../src/domain/funding/FundingStampPurchaseService.js';
+} from '../../src/domain/funding/FundingBatchPurchaseService.js';
 import { Logger } from '../../src/domain/Logger.js';
 import type { ArchiveBatchToDesignate } from '../../src/domain/stages/archiveBatchPorts.js';
 import type { Profile } from '../../src/types/index.js';
