@@ -1,8 +1,12 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { CatalogueMoveStatus, CatalogueMoveSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  CATALOGUE_MOVE_STARTED_BY_PURCHASE,
+  type CatalogueMoveStatus,
+  type CatalogueMoveSummary,
+} from '@streaming-monorepo/web2-admin-common';
 
-import { moveDoneText, moveIsCurrent } from '../components/stages/CatalogueMoveCard';
+import { moveDoneText, moveIsCurrent, STARTED_BY_PURCHASE_TEXT } from '../components/stages/CatalogueMoveCard';
 import { StagesPage } from '../pages/StagesPage';
 import { jsonError, jsonOk, mockFetch, renderWithProviders } from './helpers';
 
@@ -168,5 +172,49 @@ describe('the catalogue move on the Stages page', () => {
       unmount();
     }
     expect(moveIsCurrent(full({ enabled: true, waiting: null, refusal: null, latest: done }), done)).toBe(true);
+  });
+
+  it('lists the streams whose thumbnail the move cleared, each a link to its page, while it runs and once done', async () => {
+    const cleared = [
+      { streamId: 's-1', title: 'Opening night' },
+      { streamId: 's-2', title: 'Second set' },
+    ];
+    serve({ enabled: true, waiting: null, refusal: null, latest: summary({ clearedThumbnails: cleared }) });
+    const { unmount } = renderWithProviders(<StagesPage />);
+    const list = await screen.findByRole('list', { name: 'Cleared thumbnails' });
+    expect(within(list).getByRole('link', { name: 'Opening night' })).toHaveAttribute('href', '/streams/s-1');
+    expect(within(list).getByRole('link', { name: 'Second set' })).toHaveAttribute('href', '/streams/s-2');
+    expect(screen.getByText(/2 streams lost their thumbnails/)).toBeInTheDocument();
+    unmount();
+
+    serve({
+      enabled: true,
+      waiting: null,
+      refusal: null,
+      latest: summary({ state: 'done', slotsDone: 5, clearedThumbnails: [cleared[0]] }),
+    });
+    renderWithProviders(<StagesPage />);
+    expect(await screen.findByText(/One stream lost its thumbnail/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Opening night' })).toBeInTheDocument();
+  });
+
+  it('lists no cleared thumbnails for a move that cleared none', async () => {
+    serve({ enabled: true, waiting: null, refusal: null, latest: summary({ clearedThumbnails: [] }) });
+    renderWithProviders(<StagesPage />);
+    expect(await screen.findByText(/Moving the catalogue to batch/)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Cleared thumbnails' })).not.toBeInTheDocument();
+  });
+
+  it('says a move the admin started for a bought batch releases the previous batch through that purchase', async () => {
+    const running = summary({ startedBy: CATALOGUE_MOVE_STARTED_BY_PURCHASE });
+    serve({ enabled: true, waiting: null, refusal: null, latest: running });
+    const { unmount } = renderWithProviders(<StagesPage />);
+    expect(await screen.findByText(STARTED_BY_PURCHASE_TEXT)).toBeInTheDocument();
+    unmount();
+
+    const done = summary({ state: 'done', slotsDone: 5, startedBy: CATALOGUE_MOVE_STARTED_BY_PURCHASE });
+    expect(moveDoneText(done)).toMatch(/is released through the purchase that started the move\.$/);
+    expect(moveDoneText(done)).not.toMatch(/in the manager/);
+    expect(moveDoneText(summary({ state: 'done', slotsDone: 5 }))).toMatch(/in the manager\.$/);
   });
 });

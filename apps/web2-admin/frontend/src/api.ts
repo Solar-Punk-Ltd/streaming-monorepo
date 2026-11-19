@@ -87,6 +87,20 @@ import {
   type StampOperationItemRequest,
 } from '@streaming-monorepo/web2-admin-common';
 
+import {
+  FUNDING_BATCH_PURCHASES_ADMIN_PATH,
+  fundingBatchPurchaseCheckAdminPath,
+  fundingBatchPurchaseRestartAdminPath,
+  LOST_RECORDINGS_REMOVAL_PATH,
+  RECORDING_CHECK_PATH,
+  type BatchPurchaseRequest,
+  type BatchPurchaseRestartRequest,
+  type BatchPurchasesResponse,
+  type LostRecordingsRemovalRequest,
+  type LostRecordingsRemovalResponse,
+  type RecordingCheckResponse,
+} from '@streaming-monorepo/web2-admin-common';
+
 import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
 import {
   apiFetch,
@@ -582,4 +596,53 @@ export function buyArchiveStamp(choice: ArchiveBuyChoice): Promise<ArchiveStampP
 /** The streams that have an archive, newest copy first: the Archive page. */
 export async function fetchArchivedStreams(): Promise<ArchivedStream[]> {
   return (await getJson<ArchiveStreamsResponse>(ARCHIVE_STREAMS_PATH)).streams;
+}
+
+// --- buying a new batch on the Stamps tab ----------------------------------------
+
+/**
+ * The batch purchases under way and the ones that ended in the last day. A `background` look, the tab's timer while
+ * one is under way, says so in a header, as the archive stamps' does.
+ */
+export function fetchBatchPurchases(options: { background?: boolean } = {}): Promise<BatchPurchasesResponse> {
+  const headers = options.background ? { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE } : undefined;
+  return getJson<BatchPurchasesResponse>(FUNDING_BATCH_PURCHASES_ADMIN_PATH, headers);
+}
+
+/**
+ * Starts buying a batch in place of the one a node pays with. The tab reads the purchases again afterwards, so the
+ * answer is not read; a refusal rejects with the API's sentence.
+ */
+export function buyBatch(request: BatchPurchaseRequest): Promise<void> {
+  return send('POST', FUNDING_BATCH_PURCHASES_ADMIN_PATH, request);
+}
+
+/** Restarts now the uploader of one stage that a purchase waits to restart while a broadcast is live, or may be. */
+export function restartPurchaseStage(purchaseId: string, stageId: string): Promise<void> {
+  const body: BatchPurchaseRestartRequest = { stageId };
+  return send('POST', fundingBatchPurchaseRestartAdminPath(purchaseId), body);
+}
+
+/** Takes up again what stopped after a purchase's batch was bought. Nothing is bought a second time. */
+export function checkPurchaseAgain(purchaseId: string): Promise<void> {
+  return sendEmpty(fundingBatchPurchaseCheckAdminPath(purchaseId));
+}
+
+// --- checking the recordings and removing the lost ones -------------------------------
+
+/** The latest check of the recordings, and whether a new one can start and its lost recordings be removed. */
+export function fetchRecordingCheck(options: { background?: boolean } = {}): Promise<RecordingCheckResponse> {
+  const headers = options.background ? { [BACKGROUND_READ_HEADER]: BACKGROUND_READ_VALUE } : undefined;
+  return getJson<RecordingCheckResponse>(RECORDING_CHECK_PATH, headers);
+}
+
+/** Starts a check of the recordings. The page reads the check again afterwards, so the answer is not read. */
+export function startRecordingCheck(): Promise<void> {
+  return sendEmpty(RECORDING_CHECK_PATH);
+}
+
+/** Removes the lost recordings of a finished check: the list the confirm showed. */
+export function removeLostRecordings(checkId: string, streamIds: string[]): Promise<LostRecordingsRemovalResponse> {
+  const body: LostRecordingsRemovalRequest = { checkId, streamIds };
+  return sendJson<LostRecordingsRemovalResponse>('POST', LOST_RECORDINGS_REMOVAL_PATH, body);
 }

@@ -1,4 +1,5 @@
 import {
+  batchOffersPurchase,
   operableBatch,
   stampDiluteQuote,
   stampTopUpQuote,
@@ -180,6 +181,11 @@ export interface BatchGroup {
   title: string;
   nodes: NodeGroup;
   rows: BatchRow[];
+  /**
+   * The group's nodes that have no batch at all and for which the manager recommends one, the common
+   * `batchOffersPurchase`: each has a row of its own with Buy new. A gateway, which stamps nothing, has none.
+   */
+  missing: AdminFundingNode[];
 }
 
 /** The title of the group of archive stamps, under the catalogue batch. */
@@ -189,8 +195,8 @@ export const ARCHIVE_GROUP_TITLE = 'Archive stamps';
  * The catalogue batch in a group of its own on top, then the archive stamps, then each stage's batches under its name,
  * in the admin's order. Each archive stamp is paid for by the node that holds it, the catalogue node for every stamp
  * bought here, so that node's one wallet pays for them and for the catalogue batch alike. The archive group is there
- * whenever the catalogue node or an archive stamp is, with no rows while there is no stamp. A node with no batch, a
- * gateway among them, has no row.
+ * whenever the catalogue node or an archive stamp is, with no rows while there is no stamp. A node with no batch has no
+ * batch row; one the manager recommends a batch for is in its group's `missing`, and a gateway is in neither.
  */
 export function batchGroups(view: Inventory): BatchGroup[] {
   const stamps = view.archiveStamps ?? [];
@@ -205,11 +211,13 @@ export function batchGroups(view: Inventory): BatchGroup[] {
     title: ARCHIVE_GROUP_TITLE,
     nodes: { key: 'archive', title: ARCHIVE_GROUP_TITLE, catalogue: false, nodes: archiveRows.map((row) => row.node) },
     rows: archiveRows,
+    missing: [],
   };
   const groups = nodeGroups(view).flatMap((group): BatchGroup[] => {
     const rows = group.nodes.flatMap((node) => (node.batch ? [{ node, batch: node.batch }] : []));
-    if (!group.catalogue) return [{ key: group.key, kind: 'stage', title: group.title, nodes: group, rows }];
-    return [{ key: group.key, kind: 'catalogue', title: 'Catalogue batch', nodes: group, rows }, archiveGroup];
+    const missing = group.nodes.filter((node) => !node.batch && batchOffersPurchase(node));
+    if (!group.catalogue) return [{ key: group.key, kind: 'stage', title: group.title, nodes: group, rows, missing }];
+    return [{ key: group.key, kind: 'catalogue', title: 'Catalogue batch', nodes: group, rows, missing }, archiveGroup];
   });
   // With no catalogue node designated, stamps left on other nodes still need their top-ups: their group comes first.
   return view.catalogue || stamps.length === 0 ? groups : [archiveGroup, ...groups];

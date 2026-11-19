@@ -71,7 +71,7 @@ function NotSetUp() {
       </Typography>
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
         Funding needs the manager&apos;s address and token in the admin&apos;s env file, MANAGER_FUNDING_URL and
-        MANAGER_FUNDING_TOKEN, and BRAND_WALLET_SECRET for the brand wallet.
+        MANAGER_API_TOKEN, and BRAND_WALLET_SECRET for the brand wallet.
       </Typography>
     </Paper>
   );
