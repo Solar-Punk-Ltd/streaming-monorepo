@@ -208,6 +208,7 @@ export function ExportPanel() {
 
   const keptHere =
     current?.state === 'done' && current.streamId === panel.streamId && current.rendition === choice ? current : null;
+  const keptOutdated = keptHere ? outdatedLine(keptHere) : null;
   const replacing = current?.state === 'done' && !keptHere ? current : null;
 
   return (
@@ -259,7 +260,9 @@ export function ExportPanel() {
                     ))}
                   </RadioGroup>
                   {keptHere ? (
-                    <Alert severity="success">
+                    // A kept file that is out of date says so first, in the same alert, as a warning.
+                    <Alert severity={keptOutdated ? 'warning' : 'success'}>
+                      {keptOutdated ? `${keptOutdated} ` : null}
                       This quality is on the server already: {keptHere.fileName}, {formatBytes(keptHere.sizeBytes)}.
                       Saving it reads nothing from Swarm. To export it again, clear it first.
                     </Alert>

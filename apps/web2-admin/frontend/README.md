@@ -394,7 +394,8 @@ One export runs at a time for the whole admin, and every signed-in user sees it
   and each quality with its resolution and estimated size, highest first, and Start export. When
   the file kept on the server is this stream at the chosen quality, it offers Save file instead,
   and Clear, which asks first and deletes the kept file for everyone, so that quality can be
-  exported again, a partial file included. Starting another export replaces the kept file, and the
+  exported again, a partial file included. When that file is out of date, its note turns orange and
+  says so first. Starting another export replaces the kept file, and the
   panel says so. While an export holds the
   slot, the panel follows that export, whichever stream it is, and says one runs at a time.
 - **Following an export.** Where it stands, with a progress bar, who started it and when, in UTC to
