@@ -1277,6 +1277,72 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
   });
 
   /**
+   * The manager's API token is read as the manager reads it: MANAGER_API_TOKEN, or its earlier name,
+   * FUNDING_API_TOKEN, while MANAGER_API_TOKEN is unset or blank. A malformed one is refused before
+   * anything leaves, naming the key it was read under and never the value. Unset, the API is off and
+   * the deploy goes on.
+   */
+  it('reads the API token as the manager does, and refuses a malformed one naming the key it read', () => {
+    const root = mkdtempSync(join(tmpdir(), 'manager-deploy-api-token-'));
+    const good = 'g'.repeat(40);
+    const alsoGood = 'h'.repeat(40);
+    const short = 'synthetic-short-token';
+    try {
+      const { manager, environment } = checkout(root);
+      const deployWith = (lines: string[]) => {
+        writeFileSync(join(manager, 'manager', '.env'), ['POSTGRES_PASSWORD=pwd-of-its-own', ...lines, ''].join('\n'));
+        return deploy(root, manager, environment, ['--host=fixture-host']);
+      };
+
+      const accepted: Array<[string, string[]]> = [
+        ['MANAGER_API_TOKEN alone', [`MANAGER_API_TOKEN=${good}`]],
+        ['FUNDING_API_TOKEN alone', [`FUNDING_API_TOKEN=${good}`]],
+        [
+          'both, the new name winning over a short earlier one',
+          [`MANAGER_API_TOKEN=${good}`, `FUNDING_API_TOKEN=${short}`],
+        ],
+        ['both well formed', [`MANAGER_API_TOKEN=${good}`, `FUNDING_API_TOKEN=${alsoGood}`]],
+        ['MANAGER_API_TOKEN blank, read as unset', ['MANAGER_API_TOKEN=   ', `FUNDING_API_TOKEN=${good}`]],
+        ['neither, the API off', []],
+      ];
+      for (const [what, lines] of accepted) {
+        const deployed = deployWith(lines);
+        assert.equal(deployed.status, 0, `${what}: ${deployed.stderr}`);
+        assert.doesNotMatch(deployed.stderr, /API_TOKEN in .* must be/, what);
+        for (const value of [good, alsoGood, short])
+          assert.ok(!deployed.stderr.includes(value), `${what} printed a token`);
+      }
+
+      const refused: Array<[string, string[], RegExp]> = [
+        ['a short MANAGER_API_TOKEN', [`MANAGER_API_TOKEN=${short}`], /ERROR: MANAGER_API_TOKEN in \S+ must be 32/],
+        [
+          'a short MANAGER_API_TOKEN over a good earlier one, since the new name is the one read',
+          [`MANAGER_API_TOKEN=${short}`, `FUNDING_API_TOKEN=${good}`],
+          /ERROR: MANAGER_API_TOKEN in \S+ must be 32/,
+        ],
+        [
+          'a short FUNDING_API_TOKEN alone',
+          [`FUNDING_API_TOKEN=${short}`],
+          /ERROR: FUNDING_API_TOKEN in \S+ must be 32/,
+        ],
+        [
+          'a MANAGER_API_TOKEN with a space inside',
+          ['MANAGER_API_TOKEN="synthetic token with a space, long enough to pass"'],
+          /ERROR: MANAGER_API_TOKEN in \S+ must be 32 characters or more with no space inside/,
+        ],
+      ];
+      for (const [what, lines, expected] of refused) {
+        const stopped = deployWith(lines);
+        stoppedBeforeAnything(stopped);
+        assert.match(stopped.stderr, expected, what);
+        for (const value of [good, short]) assert.ok(!stopped.stderr.includes(value), `${what} printed a token`);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
    * Every setting the deploy reads before anything leaves comes from the profile's file: the
    * password the host needs, the host's folder, and the repository the host fetches the stack from.
    */
