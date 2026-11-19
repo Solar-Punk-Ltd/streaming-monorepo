@@ -1,6 +1,7 @@
 import type { CatalogueStampRecord } from '@streaming-monorepo/contracts';
 import {
   CATALOGUE_MOVE_STARTED_BY_PURCHASE,
+  RECORDING_CHECK_MIN_PEERS,
   type CatalogueMoveProblem,
   type CatalogueMoveStatus,
   type CatalogueMoveSummary,
@@ -222,17 +223,32 @@ export const ANOTHER_MOVE_RUNNING =
 const THUMBNAIL_PROBE_TIMEOUT_MS = 30_000;
 
 /**
- * Whether the network holds a thumbnail no more: the target's node answers 404 for it. A node that answers it has it
- * says false, and any other answer, a timeout among them, throws: only a node that answers can say a thing is gone.
+ * Whether the network holds a thumbnail no more: the target's node answers 404 for it while it is connected to
+ * {@link RECORDING_CHECK_MIN_PEERS} peers or more, the floor a check of the recordings reads by, since a node with
+ * fewer finds nothing whatever is on Swarm. A node that answers it has it says false. Any other answer throws, a 404
+ * from a node under the floor and a timeout among them: only a healthy node that answers can say a thing is gone.
  */
 export async function thumbnailGoneFromNetwork(reference: string, target: CatalogueTarget): Promise<boolean> {
-  const response = await fetch(`${target.beeApiUrl.replace(/\/+$/, '')}/bzz/${reference}/`, {
+  const base = target.beeApiUrl.replace(/\/+$/, '');
+  const response = await fetch(`${base}/bzz/${reference}/`, {
     method: 'HEAD',
     signal: AbortSignal.timeout(THUMBNAIL_PROBE_TIMEOUT_MS),
   });
-  if (response.status === 404) return true;
   if (response.ok) return false;
-  throw new Error(`the node answered ${response.status} when asked for the thumbnail`);
+  if (response.status !== 404) throw new Error(`the node answered ${response.status} when asked for the thumbnail`);
+  const peers = await fetch(`${base}/peers`, { signal: AbortSignal.timeout(THUMBNAIL_PROBE_TIMEOUT_MS) });
+  if (!peers.ok) {
+    await peers.body?.cancel();
+    throw new Error(`the node answered ${peers.status} when asked for its peers`);
+  }
+  const listed = ((await peers.json()) as { peers?: unknown }).peers;
+  const count = Array.isArray(listed) ? listed.length : 0;
+  if (count < RECORDING_CHECK_MIN_PEERS) {
+    throw new Error(
+      `the node answered 404 for the thumbnail while connected to ${count} peer${count === 1 ? '' : 's'}, under the ${RECORDING_CHECK_MIN_PEERS} it needs to tell one that is gone`,
+    );
+  }
+  return true;
 }
 
 /** The slice of the feed write log the move reads: the head, and the entries written there. */

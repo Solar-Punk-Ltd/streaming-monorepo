@@ -11,6 +11,7 @@
  * - `GET /chunks/{ref}`, `GET /bytes/{ref}`: what any upload stored, whatever batch stamped it: the network.
  * - `POST /bzz?name=`, `GET` and `HEAD /bzz/{ref}/`: a file, whose reference is a hash of its name, type and bytes,
  *   so the same file gives the same reference as Bee's manifest does.
+ * - `GET /peers`: `peerCount` peers the node is connected to.
  *
  * `beforeAnswer` runs before a single-owner chunk or a file upload is answered, never a `POST /bytes`, so a test can
  * write the catalogue while a move is on its way or hold a call for ever, as a process that died would. `failNext`
@@ -56,6 +57,8 @@ export class FakeBee {
   readonly files = new Map<string, { bytes: Uint8Array; name: string; contentType: string }>();
   beforeAnswer: ((upload: FakeUpload) => Promise<void> | void) | null = null;
   failNext: { kind: FakeUpload['kind']; status: number; batch?: string } | null = null;
+  /** How many peers `GET /peers` answers the node is connected to. */
+  peerCount = 8;
   private server: http.Server | null = null;
 
   async start(): Promise<this> {
@@ -185,6 +188,14 @@ export class FakeBee {
       this.uploads.push(upload);
       this.chunks.set(address, bytes);
       return json(201, { reference: address });
+    }
+
+    if (req.method === 'GET' && url.pathname === '/peers') {
+      const peers = Array.from({ length: this.peerCount }, (_, at) => ({
+        address: at.toString(16).padStart(64, '0'),
+        fullNode: true,
+      }));
+      return json(200, { peers });
     }
 
     if (req.method === 'POST' && url.pathname === '/bytes') {

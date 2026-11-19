@@ -166,6 +166,7 @@ beforeEach(() => {
   bee.files.clear();
   bee.failNext = null;
   bee.beforeAnswer = null;
+  bee.peerCount = 8;
   gateway = new BeeFeedGateway({ feedPrivateKey: KEY, feedTopic: TOPIC });
   stamps = new FakeCatalogueStampStore();
   writes = new FakeFeedWrites();
@@ -895,6 +896,19 @@ describe('a thumbnail the network gives no more', () => {
     assert.equal(latest?.state, 'failed');
     assert.match(latest?.error ?? '', new RegExp(`The thumbnail ${lost.thumbnail_ref} could not be uploaded again`));
     assert.equal(latest?.clearedThumbnails, undefined);
+    assert.equal(streams.get(lost.id).thumbnail_ref, lost.thumbnail_ref, 'the stream keeps its image');
+    assert.equal(stamps.row?.active_batch_id, OLD, 'nothing was switched');
+  });
+
+  it('is not cleared after a lapse while the node has fewer peers than a check reads by, and the move stops', async () => {
+    const { streams, moving, lost } = await twoPublished();
+    lapseOld();
+    bee.peerCount = 2;
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    assert.equal((await moving.status()).latest?.state, 'failed');
     assert.equal(streams.get(lost.id).thumbnail_ref, lost.thumbnail_ref, 'the stream keeps its image');
     assert.equal(stamps.row?.active_batch_id, OLD, 'nothing was switched');
   });
