@@ -160,6 +160,14 @@ export interface Stream {
    */
   archive?: StreamArchiveSummary;
   /**
+   * What the latest check of the recordings found of this one: `lost` when it could not be read from Swarm, and
+   * `partly_lost` when some quality could not. Absent on a recording that read, on one never checked, and on a
+   * stream that went live again since. `docs/architecture/web2-admin.md`, "Lost recordings".
+   */
+  recording?: 'lost' | 'partly_lost';
+  /** When that check ended, ISO 8601. Absent with `recording`. */
+  recordingCheckedAt?: string;
+  /**
    * The stage the stream is broadcast on (`GET /api/stages` names it), or
    * null until one is picked. A draft needs one to be published. It changes
    * only while the stream is a draft, and a stream that holds a recording
