@@ -795,6 +795,9 @@ three purposes, and the manager follows each purchase up in the background
   starts again the Apply of each stage that failed, one at a time.
 - **The release** is taken as the admin's word that its move of the catalogue is done, which the
   manager cannot see. It is logged with the request id.
+- **What the admin reads** of a port's sentence, a stage's Apply error and a refused release leaves
+  every node address out: a URL, a host and its port, and an IP address each read `<address>`
+  (`addressFree`). The manager's log keeps the words whole.
 
 ### Stamp purchases
 
