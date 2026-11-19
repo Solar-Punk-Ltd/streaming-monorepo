@@ -19,7 +19,7 @@ import {
 
 import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import { createAdminFundingRouter } from '../../src/api/routes/adminFunding.js';
-import { createFundingStampPurchaseRouter } from '../../src/api/routes/fundingStampPurchases.js';
+import { createFundingStampPurchaseRouter } from '../../src/api/routes/fundingBatchPurchases.js';
 import { FundingApiError } from '../../src/domain/funding/FundingApiError.js';
 
 const TOKEN = 't'.repeat(40);
