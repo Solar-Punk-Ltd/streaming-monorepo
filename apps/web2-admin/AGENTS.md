@@ -28,6 +28,7 @@ of the repository holds the rules that apply everywhere. This file adds the admi
 - Mirror the manager (`../infra-manager`) where a choice is arbitrary, so the two read as one
   team's work.
 - The admin never touches a host or a node's wallet directly. Wallet actions go through the
-  manager's funding API, on its bearer token (`MANAGER_FUNDING_TOKEN`), and the admin signs with
+  manager's funding API, on its bearer token (`MANAGER_API_TOKEN`, read as `MANAGER_FUNDING_TOKEN`
+  when unset), and the admin signs with
   the brand wallet and nothing else. `../../docs/architecture/funding.md` is the plan.
 - Ownership (which brand a call may act for) is enforced in the admin API and nowhere else.

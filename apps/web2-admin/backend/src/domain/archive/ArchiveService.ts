@@ -117,8 +117,11 @@ export interface ArchiveCatalogue {
   get(): Promise<CatalogueStampRow | null>;
 }
 
-/** The slice of the manager's funding API the archive uses: the inventory, and the purchases. */
-export type ArchiveManager = Pick<ManagerFundingClient, 'inventory' | 'stampPurchase' | 'stampPurchaseStatus'>;
+/**
+ * The slice of the manager's funding API the archive uses: the inventory, and the purchases, each a batch purchase of
+ * purpose `archive`.
+ */
+export type ArchiveManager = Pick<ManagerFundingClient, 'inventory' | 'batchPurchase' | 'batchPurchaseStatus'>;
 
 /** Rewrites a stream's catalogue entry, for the "List only archived qualities" switch. */
 export interface ArchivePublisher {
@@ -1843,17 +1846,21 @@ export class ArchiveService {
       // Marked first: a process that stops after the manager took it reads where it stands, rather than asking again.
       await this.store.updatePurchase(id, { relayed: true });
       try {
-        const answer = await this.manager.stampPurchase({
+        // An archive stamp is immutable and replaces no batch: the manager refuses any other.
+        const answer = await this.manager.batchPurchase({
           requestId: row.id,
+          purpose: 'archive',
           nodeId: buy.nodeId,
           depth: row.depth,
           amountPerChunkPlur: row.amount_per_chunk_plur,
+          immutable: true,
           label: row.label,
+          replacesBatchId: null,
         });
         if (answer.state === 'failed') {
           // The answer carries no reason; the status route carries Bee's words, when there are any.
           const words = await this.manager
-            .stampPurchaseStatus(id)
+            .batchPurchaseStatus(id)
             .then((status) => status.error?.trim() || null)
             .catch(() => null);
           await this.settlePurchase(row, { state: 'failed', error: words ?? 'The node did not buy the stamp.' });
@@ -1893,7 +1900,7 @@ export class ArchiveService {
     }
     let status;
     try {
-      status = await this.manager.stampPurchaseStatus(id);
+      status = await this.manager.batchPurchaseStatus(id);
     } catch (error) {
       if (error instanceof ManagerFundingError && error.code === 'unknown_request') {
         // The manager never received it, so the next look asks again, under the same id.

@@ -129,7 +129,7 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `ARCHIVE_BUY_DEFAULT_DAYS`            | `30`               | how long a new archive stamp lasts unless the user says otherwise, 2 to 3650 days                                                                                                                                                                 |
 | `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                          |
 | `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                   |
-| `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                                                                                                                    |
+| `MANAGER_API_TOKEN`                   | with the URL       | 32+ chars, printable ASCII, no space: the manager's `MANAGER_API_TOKEN`. Read as `MANAGER_FUNDING_TOKEN` when unset. Refused without the URL. Never logged                                                                                        |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)                                                                                                                 |
 | `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                                                                                                                        |
 | `POSTGRES_PASSWORD`                   | `web2admin`        | read by the compose files, not by the API: the database's password, written into the `DATABASE_URL` they set                                                                                                                                      |
@@ -1138,7 +1138,7 @@ deployment is in [deploy/README.md](../deploy/README.md).
 
 ### The manager's address and token
 
-`MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` come together or not at all.
+`MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN` come together or not at all.
 With neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
 required as well, since funding signs every transfer with the brand wallet:
 the API refuses to start with the address and no secret. Every request
@@ -1151,8 +1151,12 @@ taken as a Docker service on this host. The container's DNS search domains
 could still resolve such a name to another host, so give the https address of
 any manager that is not on this host. Plain http anywhere else, a user
 name or password, or a `?` or `#` part stops the
-start. The token is the manager's `FUNDING_API_TOKEN`: 32 characters or more,
-printable ASCII with no space, since it travels in a header.
+start. The token is the manager's API token, its `MANAGER_API_TOKEN`: 32
+characters or more, printable ASCII with no space, since it travels in a
+header. An env file that still names it `MANAGER_FUNDING_TOKEN`, its former
+name, is read the same while `MANAGER_API_TOKEN` is unset
+(`managerApiTokenFrom` of the contracts), a refusal names the key it was read
+under, and the boot log says to rename it.
 
 ### The client of the manager's funding API
 
@@ -1163,9 +1167,15 @@ which the funding service uses, `stampOperation(operation)` and
 `stampOperationStatus(requestId)`, which the stamp service uses
 ([Stamp operations](#stamp-operations)), and `chequebookOperation(operation)`
 and `chequebookOperationStatus(requestId)`, which the chequebook service uses
-([Chequebook operations](#chequebook-operations)).
+([Chequebook operations](#chequebook-operations)). `batchPurchase(purchase)`,
+`batchPurchaseStatus(requestId)`, `batchPurchaseRestart(requestId, stageId)`,
+`batchPurchaseCheck(requestId)` and `batchPurchaseRelease(requestId)` are the
+batch purchase routes, which the purchase service uses
+([Buying a new batch](#buying-a-new-batch)), and the archive for an archive
+stamp, as a purchase of purpose `archive` ([Buying a stamp](#buying-a-stamp)).
+A purchase and a restart have the stamp operations' deadline.
 
-- Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
+- Every request carries `Authorization: Bearer <MANAGER_API_TOKEN>`, to the
   manager's address alone: the client holds the address to the rule above as
   well, and follows no redirect. It logs nothing, and no error carries the
   token.
@@ -1421,7 +1431,7 @@ nothing logs or audits it.
 | `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), `relayed_at` (when the manager's answer to its last relay came back, by the service's clock), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
 | `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                                                                                                                            |
 
-Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
+Without `MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN` the page answers
 `configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet.
 Either way every send is refused as not set up, and a pin needs the manager.
 
@@ -1924,8 +1934,9 @@ cost that differs is refused as `price_moved`, with the new cost, so what is
 spent is what a user confirmed. `archiveBuyProblem` checks the rest, the
 catalogue node's wallet included. The purchase is then written to
 `archive_stamp_purchases`, one under way at a time, before the manager is asked,
-under the id the manager knows it by, so asking again never buys twice
-(`POST /api/admin-funding/stamp-purchases`). The route waits a moment for the
+under the id the manager knows it by, so asking again never buys twice. It is a
+batch purchase of purpose `archive`, immutable and replacing no batch
+(`POST /api/admin-funding/batch-purchases`). The route waits a moment for the
 manager's first answer: a manager with no purchase route is answered as
 `purchases_not_offered`, another operation under way on the catalogue node as
 `not_now`, in the manager's own sentence when its 409 carries one, and a check
