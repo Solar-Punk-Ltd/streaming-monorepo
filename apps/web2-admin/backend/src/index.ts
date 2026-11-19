@@ -29,6 +29,8 @@ import { FeedBootCheckRunner } from './domain/feedBootCheck.js';
 import type { CatalogueRestamper, FeedGateway } from './domain/FeedGateway.js';
 import { feedIdentityFrom } from './domain/feedIdentity.js';
 import { FeedWriteRepository } from './domain/FeedWriteRepository.js';
+import { BatchPurchaseRepository } from './domain/funding/BatchPurchaseRepository.js';
+import { BatchPurchaseService } from './domain/funding/BatchPurchaseService.js';
 import { BrandWallet } from './domain/funding/BrandWallet.js';
 import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
 import { FundingChequebookRepository } from './domain/funding/FundingChequebookRepository.js';
@@ -45,6 +47,7 @@ import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
+import { createRecordings, type RecordingCheckService } from './domain/recordings/index.js';
 import { resetOrphanedPublishing } from './domain/resetOrphanedPublishing.js';
 import { CatalogueStampRepository, StageRepository } from './domain/StageRepository.js';
 import { StageService } from './domain/StageService.js';
@@ -146,6 +149,8 @@ let streamFinishSweep: StreamFinishSweep | undefined;
 let catalogueMove: CatalogueMoveService | undefined;
 let exportService: ExportService | undefined;
 let archiveService: ArchiveService | undefined;
+let recordings: RecordingCheckService | undefined;
+let batchPurchases: BatchPurchaseService | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -169,6 +174,12 @@ async function gracefulShutdown(signal: string): Promise<void> {
       await apiServer.close();
       apiServer = undefined;
     }
+    if (batchPurchases) {
+      // Before the move, which a purchase's look asks. The look in flight ends; a purchase stays as recorded, and the
+      // next start reads it from the manager again.
+      await batchPurchases.shutdown();
+      batchPurchases = undefined;
+    }
     if (catalogueMove) {
       // After the slot it is on, so the move stays running and the next start resumes it.
       await catalogueMove.shutdown();
@@ -183,6 +194,10 @@ async function gracefulShutdown(signal: string): Promise<void> {
       // The chunks in flight are dropped and the archive stays in its state, so the next start carries on with it.
       await archiveService.shutdown();
       archiveService = undefined;
+    }
+    if (recordings) {
+      await recordings.shutdown();
+      recordings = undefined;
     }
     if (database) {
       await database.close();
@@ -267,6 +282,7 @@ async function main(): Promise<void> {
     feed,
     auditLog,
     { enabled: config.catalogueMoveEnabled },
+    publishService,
   );
   // After the orphan reset, so the dry-run diff sees the repaired statuses.
   // Never fatal: this is a cross-check of the feed, and the API is fully
@@ -320,6 +336,15 @@ async function main(): Promise<void> {
   // funding API, none without MANAGER_FUNDING_URL and MANAGER_API_TOKEN: then the Funding page answers that
   // funding is not set up, and every pin, send, stamp request and chequebook request is refused.
   const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
+  // A new batch bought on the Stamps tab: written, sent to the manager and followed up, a catalogue batch moved onto
+  // through the catalogue move. The purchases left under way by the last process are read again from now on.
+  batchPurchases = new BatchPurchaseService({
+    manager: managerFunding,
+    store: new BatchPurchaseRepository(database.pool),
+    move: catalogueMove,
+    audit: auditLog,
+  });
+  batchPurchases.boot();
   const fundingService = new FundingService({
     wallet: brandWallet,
     manager: managerFunding,
@@ -335,6 +360,7 @@ async function main(): Promise<void> {
       journal: new FundingChequebookRepository(database.pool),
       audit: auditLog,
     }),
+    purchases: batchPurchases,
     audit: auditLog,
   });
 
@@ -358,6 +384,21 @@ async function main(): Promise<void> {
   publishService.listArchivedOnlyWith(archiveService);
   await archiveService.boot();
 
+  // Checking the recordings and removing the lost ones from the Streams page. A check the last process left running
+  // is stopped.
+  recordings = createRecordings({
+    pool: database.pool,
+    streams: streamRepository,
+    renditions: renditionRepository,
+    catalogue: catalogueBatch,
+    publish: publishService,
+    exports: exportService,
+    archives: archiveService,
+    audit: auditLog,
+    restartWindowMinutes: config.streamRestartWindowMinutes,
+  });
+  await recordings.boot();
+
   const consoleSettings = new ConsoleSettingsService(new ConsoleSettingsRepository(database.pool));
 
   apiServer = startApiServer(
@@ -375,6 +416,7 @@ async function main(): Promise<void> {
       catalogueMove,
       exportService,
       archiveService,
+      recordings,
       fundingService,
       consoleSettings,
       internalApiToken: config.internalApiToken,
