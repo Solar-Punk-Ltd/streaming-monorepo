@@ -2142,8 +2142,9 @@ The Streams page checks the recordings and removes the lost ones:
 
 - **Which streams.** Every stream that holds a finished recording
   (`manifest_index` set), asked the one rule, `recordingSkipReason`. A live
-  stream, one inside its restart window, one with an export or an archive under
-  way, and a test stream are left unjudged.
+  stream, one inside its restart window, and one with an export or an archive
+  under way are left unjudged. The rule also leaves out a stream its input
+  marks as a test, and the admin marks none.
 - **What it reads**, through the catalogue node: each recording's own playlist
   (a ladder's master), and each quality's playlist and the first 64 KiB of its
   first segment. A stream with no ladder is one quality, itself.
