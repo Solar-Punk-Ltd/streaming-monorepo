@@ -44,6 +44,12 @@ interface StagePool {
   rungs: PoolRung[];
 }
 
+/** A stage whose pool string names a rung's node, and whether that string is the pool's own. */
+export interface StageFollower {
+  stage: Profile;
+  following: boolean;
+}
+
 /**
  * The pool string of an ABR stage, kept on the batches its pool holds now.
  *
@@ -104,6 +110,29 @@ export class StagePoolStrings {
         `[StagePoolStrings] the stages of ${memberName}'s pool keep their stored pool string: ${getErrorMessage(err)}`,
       );
     }
+  }
+
+  /**
+   * Every stage whose stored pool string names this rung's node, by name: `following` when the string is its pool's
+   * own, which a batch set on the rung brings up to date, and not when it was pasted from elsewhere and names the
+   * node among other addresses, which is left as it was saved. Null when the deployment is no rung of a node pool of
+   * this manager.
+   */
+  async followersOf(memberName: string): Promise<StageFollower[] | null> {
+    const profiles = await this.deps.profiles.list();
+    const pool = (await this.pools(profiles)).find((candidate) =>
+      candidate.rungs.some((rung) => rung.member.name === memberName),
+    );
+    const rung = pool?.rungs.find((candidate) => candidate.member.name === memberName);
+    if (!pool || !rung) return null;
+    return profiles
+      .flatMap((stage) => {
+        const entries = entriesOf(stage);
+        if (!entries) return [];
+        if (poolNamedBy(entries, [pool])) return [{ stage, following: true }];
+        return entries.some((entry) => entry.url === rung.url) ? [{ stage, following: false }] : [];
+      })
+      .sort((a, b) => a.stage.name.localeCompare(b.stage.name));
   }
 
   /**
