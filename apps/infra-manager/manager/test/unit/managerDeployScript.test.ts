@@ -1294,21 +1294,27 @@ describe('deploy/deploy.sh, run against a repository on this disk', () => {
         return deploy(root, manager, environment, ['--host=fixture-host']);
       };
 
-      const accepted: Array<[string, string[]]> = [
-        ['MANAGER_API_TOKEN alone', [`MANAGER_API_TOKEN=${good}`]],
-        ['FUNDING_API_TOKEN alone', [`FUNDING_API_TOKEN=${good}`]],
+      // Whether the earlier name was read, which the deploy warns of as the admin's does.
+      const formerNameRead =
+        /WARNING: FUNDING_API_TOKEN is the former name of MANAGER_API_TOKEN, and is read while MANAGER_API_TOKEN is unset\. Rename it in \S+\./;
+      const accepted: Array<[string, string[], boolean]> = [
+        ['MANAGER_API_TOKEN alone', [`MANAGER_API_TOKEN=${good}`], false],
+        ['FUNDING_API_TOKEN alone', [`FUNDING_API_TOKEN=${good}`], true],
         [
           'both, the new name winning over a short earlier one',
           [`MANAGER_API_TOKEN=${good}`, `FUNDING_API_TOKEN=${short}`],
+          false,
         ],
-        ['both well formed', [`MANAGER_API_TOKEN=${good}`, `FUNDING_API_TOKEN=${alsoGood}`]],
-        ['MANAGER_API_TOKEN blank, read as unset', ['MANAGER_API_TOKEN=   ', `FUNDING_API_TOKEN=${good}`]],
-        ['neither, the API off', []],
+        ['both well formed', [`MANAGER_API_TOKEN=${good}`, `FUNDING_API_TOKEN=${alsoGood}`], false],
+        ['MANAGER_API_TOKEN blank, read as unset', ['MANAGER_API_TOKEN=   ', `FUNDING_API_TOKEN=${good}`], true],
+        ['neither, the API off', [], false],
       ];
-      for (const [what, lines] of accepted) {
+      for (const [what, lines, warns] of accepted) {
         const deployed = deployWith(lines);
         assert.equal(deployed.status, 0, `${what}: ${deployed.stderr}`);
         assert.doesNotMatch(deployed.stderr, /API_TOKEN in .* must be/, what);
+        if (warns) assert.match(deployed.stderr, formerNameRead, what);
+        else assert.doesNotMatch(deployed.stderr, /former name of MANAGER_API_TOKEN/, what);
         for (const value of [good, alsoGood, short])
           assert.ok(!deployed.stderr.includes(value), `${what} printed a token`);
       }
