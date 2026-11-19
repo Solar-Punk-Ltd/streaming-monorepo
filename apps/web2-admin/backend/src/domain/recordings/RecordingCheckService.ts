@@ -140,6 +140,7 @@ export const KEPT_BY_RULE: Readonly<Record<RecordingSkipReason, string>> = {
   restart_window: 'It can still go live again on its key.',
   job: 'An export or an archive of it is under way.',
   test: 'It is a test stream.',
+  unlisted: 'A removal kept it as a draft for its export file before, and it has not changed since.',
 };
 
 export function noCatalogueNode(why: string): string {

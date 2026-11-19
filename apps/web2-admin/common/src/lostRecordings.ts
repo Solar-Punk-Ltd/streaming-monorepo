@@ -37,8 +37,10 @@ export const RECORDING_CHECK_VALID_SECONDS = 6 * 60 * 60;
  * - `restart_window`: it ended and can still go live again on its key, so its recording can still change.
  * - `job`: an export or an archive of it is under way, which reads the same recording.
  * - `test`: it is a test stream, hidden from viewers.
+ * - `unlisted`: a removal took it off the catalogue as lost and kept it as a draft for the export file the server keeps
+ *   of it, and it has not changed since, so a check would only find it lost again.
  */
-export type RecordingSkipReason = 'live' | 'restart_window' | 'job' | 'test';
+export type RecordingSkipReason = 'live' | 'restart_window' | 'job' | 'test' | 'unlisted';
 
 /** What the one rule reads of a stream to decide whether a check may judge it. */
 export interface RecordingJudgeInput {
@@ -49,6 +51,11 @@ export interface RecordingJudgeInput {
   hasOpenJob: boolean;
   /** Whether the stream is a test stream. Absent is read as false. */
   test?: boolean;
+  /**
+   * Whether a removal kept the stream as a draft off the catalogue for its export file, and it has not changed since.
+   * Absent is read as false.
+   */
+  unlisted?: boolean;
 }
 
 /**
@@ -60,6 +67,7 @@ export function recordingSkipReason(stream: RecordingJudgeInput, now: Date): Rec
   if (stream.status === 'live') return 'live';
   if (stream.restartUntil !== null && new Date(stream.restartUntil).getTime() > now.getTime()) return 'restart_window';
   if (stream.hasOpenJob) return 'job';
+  if (stream.unlisted === true) return 'unlisted';
   return null;
 }
 
