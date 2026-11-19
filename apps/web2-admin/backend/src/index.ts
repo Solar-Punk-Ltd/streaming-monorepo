@@ -1,3 +1,4 @@
+import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
 import { useRestartWindow } from './api/presenters.js';
@@ -111,9 +112,16 @@ function logStartupConfig(owner: string, topicHex: string): void {
   );
   logger.info(
     `[Boot]   manager funding: ${
-      config.managerFunding ? `${config.managerFunding.url}, with its token` : '(unset → funding is not set up)'
+      config.managerFunding
+        ? `${config.managerFunding.url}, with its token (${config.managerFunding.tokenKey})`
+        : '(unset → funding is not set up)'
     }`,
   );
+  if (config.managerFunding && config.managerFunding.tokenKey !== MANAGER_API_TOKEN_KEY) {
+    logger.warn(
+      `[Boot] the manager's API token is read under ${config.managerFunding.tokenKey}, its former name. Rename it ${MANAGER_API_TOKEN_KEY} in the env file.`,
+    );
+  }
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
@@ -309,7 +317,7 @@ async function main(): Promise<void> {
   });
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
   // The brand wallet started above, its address null without BRAND_WALLET_SECRET, and the client of the manager's
-  // funding API, none without MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN: then the Funding page answers that
+  // funding API, none without MANAGER_FUNDING_URL and MANAGER_API_TOKEN: then the Funding page answers that
   // funding is not set up, and every pin, send, stamp request and chequebook request is refused.
   const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
   const fundingService = new FundingService({

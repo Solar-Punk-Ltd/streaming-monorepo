@@ -1,12 +1,21 @@
 import {
   FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_INVENTORY_PATH,
+  FUNDING_BATCH_PURCHASES_PATH,
   FUNDING_STAMP_OPERATIONS_PATH,
-  FUNDING_STAMP_PURCHASES_PATH,
   FUNDING_TRANSFERS_PATH,
   type FundingAccountAnswer,
   fundingAccountAnswerSchema,
   fundingAccountPath,
+  type FundingBatchPurchaseAnswer,
+  fundingBatchPurchaseAnswerSchema,
+  fundingBatchPurchaseCheckPath,
+  fundingBatchPurchasePath,
+  fundingBatchPurchaseReleasePath,
+  type FundingBatchPurchaseRequest,
+  fundingBatchPurchaseRestartPath,
+  type FundingBatchPurchaseStatus,
+  fundingBatchPurchaseStatusSchema,
   type FundingChequebookOperationAnswer,
   fundingChequebookOperationAnswerSchema,
   fundingChequebookOperationPath,
@@ -23,12 +32,6 @@ import {
   type FundingStampOperationRequest,
   type FundingStampOperationStatus,
   fundingStampOperationStatusSchema,
-  type FundingStampPurchaseAnswer,
-  fundingStampPurchaseAnswerSchema,
-  fundingStampPurchasePath,
-  type FundingStampPurchaseRequest,
-  type FundingStampPurchaseStatus,
-  fundingStampPurchaseStatusSchema,
   type FundingTransferAnswer,
   fundingTransferAnswerSchema,
   fundingTransferPath,
@@ -39,8 +42,8 @@ import {
 
 import {
   MANAGER_FUNDING_URL_KEY,
+  managerApiTokenProblem,
   managerFundingBaseUrl,
-  managerFundingTokenProblem,
   managerFundingUrlProblem,
 } from '../../utils/fundingSettings.js';
 
@@ -50,7 +53,7 @@ import {
  * and the manager sends, and the stamp and chequebook operations the manager asks the nodes for. The funding services
  * are its users.
  *
- * Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>` to the manager's address and nowhere else:
+ * Every request carries `Authorization: Bearer <MANAGER_API_TOKEN>` to the manager's address and nowhere else:
  * the address is held to the funding rules (https, or plain http to this host), and no redirect is followed. Each
  * call has a deadline that covers its answer read whole, and reads a bounded answer. Every answer is parsed by the
  * contract's schema, so the client answers the contract's shape and nothing more, and every failure is a
@@ -126,7 +129,7 @@ export class ManagerFundingError extends Error {
 export interface ManagerFundingClientOptions {
   /** The manager's address, as `config.managerFunding.url` holds it. Held to the funding rules here as well. */
   url: string;
-  /** The manager's `FUNDING_API_TOKEN`, sent as `Authorization: Bearer` with every request. */
+  /** The manager's API token, its `MANAGER_API_TOKEN`, sent as `Authorization: Bearer` with every request. */
   token: string;
   /** The deadline of one call, its answer read whole, in ms. {@link MANAGER_FUNDING_TIMEOUT_MS} by default. */
   timeoutMs?: number;
@@ -219,7 +222,7 @@ export class ManagerFundingClient {
 
   /** Throws for an address or a token the funding rules refuse, in a sentence that repeats neither. */
   constructor(options: ManagerFundingClientOptions) {
-    const problem = managerFundingUrlProblem(options.url) ?? managerFundingTokenProblem(options.token);
+    const problem = managerFundingUrlProblem(options.url) ?? managerApiTokenProblem(options.token);
     if (problem) throw new Error(problem);
     const timeoutMs = options.timeoutMs ?? MANAGER_FUNDING_TIMEOUT_MS;
     const stampTimeoutMs = options.stampTimeoutMs ?? MANAGER_FUNDING_STAMP_TIMEOUT_MS;
@@ -318,31 +321,65 @@ export class ManagerFundingClient {
   }
 
   /**
-   * `POST /api/admin-funding/stamp-purchases`: one archive stamp bought on the catalogue node, which the manager
-   * checks, journals and asks the node for. Only the contract's fields go. Bee answers a purchase once its transaction
-   * is mined, so the call has the stamp operations' deadline ({@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}). The same
-   * request id sent again answers the purchase's state and never buys twice, so a call that ended in `unreachable` or
-   * `timeout` is read on {@link stampPurchaseStatus}, and made again as it was once that says the manager never
-   * received it.
+   * `POST /api/admin-funding/batch-purchases`: one new batch bought on a node for a rung, for the catalogue or as an
+   * archive stamp, which the manager checks, journals, asks the node for and follows up. Only the contract's fields
+   * go. Bee answers a purchase once its transaction is mined, so the call has the stamp operations' deadline
+   * ({@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}). The same request id sent again answers the purchase's state and never
+   * buys twice, so a call that ended in `unreachable` or `timeout` is read on {@link batchPurchaseStatus}, and made
+   * again as it was once that says the manager never received it.
    */
-  async stampPurchase(purchase: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
-    const { requestId, nodeId, depth, amountPerChunkPlur, label } = purchase;
+  async batchPurchase(purchase: FundingBatchPurchaseRequest): Promise<FundingBatchPurchaseAnswer> {
+    const { requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId } = purchase;
     return this.#call(
       'POST',
-      FUNDING_STAMP_PURCHASES_PATH,
-      fundingStampPurchaseAnswerSchema,
-      { requestId, nodeId, depth, amountPerChunkPlur, label },
+      FUNDING_BATCH_PURCHASES_PATH,
+      fundingBatchPurchaseAnswerSchema,
+      { requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId },
       this.#stampTimeoutMs,
     );
   }
 
   /**
-   * `GET /api/admin-funding/stamp-purchases/:requestId`: where a purchase stands, and whether its batch can stamp yet.
-   * `unknown_request` (404) when the manager journalled no purchase under the id. Throws, asking nothing, for what is
-   * not a UUID.
+   * `GET /api/admin-funding/batch-purchases/:requestId`: where a purchase stands, whether its batch can stamp yet, and
+   * the follow-up the manager runs after it. `unknown_request` (404) when the manager journalled no purchase under the
+   * id. Throws, asking nothing, for what is not a UUID.
    */
-  async stampPurchaseStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
-    return this.#call('GET', fundingStampPurchasePath(requestId), fundingStampPurchaseStatusSchema);
+  async batchPurchaseStatus(requestId: string): Promise<FundingBatchPurchaseStatus> {
+    return this.#call('GET', fundingBatchPurchasePath(requestId), fundingBatchPurchaseStatusSchema);
+  }
+
+  /**
+   * `POST /api/admin-funding/batch-purchases/:requestId/restart`: runs now the Apply of one stage that a rung purchase
+   * waits to restart while a broadcast is live or untold, and answers the purchase's status. The Apply recreates the
+   * stage's uploader, so the call has the stamp operations' deadline ({@link MANAGER_FUNDING_STAMP_TIMEOUT_MS}).
+   * Throws, asking nothing, for a request id that is not a UUID.
+   */
+  async batchPurchaseRestart(requestId: string, stageId: string): Promise<FundingBatchPurchaseStatus> {
+    return this.#call(
+      'POST',
+      fundingBatchPurchaseRestartPath(requestId),
+      fundingBatchPurchaseStatusSchema,
+      { stageId },
+      this.#stampTimeoutMs,
+    );
+  }
+
+  /**
+   * `POST /api/admin-funding/batch-purchases/:requestId/check`: takes up again the follow-up of a purchase that
+   * stopped after its batch was bought, and a stage whose Apply failed, and answers the purchase's status. Nothing is
+   * bought a second time. Throws, asking nothing, for a request id that is not a UUID.
+   */
+  async batchPurchaseCheck(requestId: string): Promise<FundingBatchPurchaseStatus> {
+    return this.#call('POST', fundingBatchPurchaseCheckPath(requestId), fundingBatchPurchaseStatusSchema);
+  }
+
+  /**
+   * `POST /api/admin-funding/batch-purchases/:requestId/release`: releases the batch a catalogue purchase moved the
+   * catalogue from, once the admin's move switched the catalogue to the bought batch, and answers the purchase's
+   * status. Throws, asking nothing, for a request id that is not a UUID.
+   */
+  async batchPurchaseRelease(requestId: string): Promise<FundingBatchPurchaseStatus> {
+    return this.#call('POST', fundingBatchPurchaseReleasePath(requestId), fundingBatchPurchaseStatusSchema);
   }
 
   /**

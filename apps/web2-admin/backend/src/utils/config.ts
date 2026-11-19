@@ -3,7 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { PrivateKey } from '@ethersphere/bee-js';
-import { ADMIN_API_TOKEN_MIN_LENGTH } from '@streaming-monorepo/contracts';
+import {
+  ADMIN_API_TOKEN_MIN_LENGTH,
+  MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN,
+  MANAGER_API_TOKEN_KEY,
+  managerApiTokenFrom,
+} from '@streaming-monorepo/contracts';
 import type { VersionInfo } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -17,10 +22,9 @@ import { getErrorMessage } from './errorUtils.js';
 import {
   BRAND_WALLET_SECRET_KEY,
   brandWalletSecretProblem,
-  MANAGER_FUNDING_TOKEN_KEY,
+  managerApiTokenProblem,
   MANAGER_FUNDING_URL_KEY,
   managerFundingBaseUrl,
-  managerFundingTokenProblem,
   managerFundingUrlProblem,
 } from './fundingSettings.js';
 
@@ -75,8 +79,13 @@ const FEED_GATEWAY_KINDS: readonly FeedGatewayKind[] = ['bee', 'fake'];
 export interface ManagerFundingSettings {
   /** The manager's address, https or plain http to this host, with no trailing slash: the API's paths go after it. */
   url: string;
-  /** The manager's `FUNDING_API_TOKEN`, the same value. Never logged. */
+  /** The manager's API token, its `MANAGER_API_TOKEN`, the same value. Never logged. */
   token: string;
+  /**
+   * The name the token was read under: `MANAGER_API_TOKEN`, or `MANAGER_FUNDING_TOKEN`, its former name, read when
+   * the other is unset. The boot log names it.
+   */
+  tokenKey: string;
 }
 
 export interface AppConfig {
@@ -103,8 +112,8 @@ export interface AppConfig {
    */
   brandWalletSecret: string | null;
   /**
-   * `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN`, or null when neither is set, and then funding is not set up
-   * (docs/architecture/funding.md).
+   * `MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN`, or null when neither is set, and then funding is not set up
+   * (docs/architecture/funding.md). The token is read as `MANAGER_FUNDING_TOKEN` when `MANAGER_API_TOKEN` is unset.
    */
   managerFunding: ManagerFundingSettings | null;
   /**
@@ -175,30 +184,31 @@ function brandWalletSecret(): string | null {
 }
 
 /**
- * `MANAGER_FUNDING_URL` with `MANAGER_FUNDING_TOKEN`, or null when neither is set. One without the other, an address
- * the funding rules refuse, a token they refuse, or the address without `BRAND_WALLET_SECRET` stops the start, with a
- * sentence that names the keys and never repeats a value. Funding signs every transfer with the brand wallet, so it
- * is not set up without one.
+ * `MANAGER_FUNDING_URL` with the manager's API token, or null when neither is set. The token is `MANAGER_API_TOKEN`,
+ * and `MANAGER_FUNDING_TOKEN`, its former name, when that is unset (`managerApiTokenFrom`). One without the other, an
+ * address the funding rules refuse, a token they refuse, or the address without `BRAND_WALLET_SECRET` stops the
+ * start, with a sentence that names the keys and never repeats a value. Funding signs every transfer with the brand
+ * wallet, so it is not set up without one.
  */
 function managerFunding(): ManagerFundingSettings | null {
   const url = optional(MANAGER_FUNDING_URL_KEY, '').trim();
-  const token = optional(MANAGER_FUNDING_TOKEN_KEY, '').trim();
+  const read = managerApiTokenFrom(process.env, MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN);
   if (url === '') {
-    if (token === '') return null;
+    if (read === null) return null;
     throw new Error(
-      `Env var ${MANAGER_FUNDING_TOKEN_KEY} is set without ${MANAGER_FUNDING_URL_KEY}: set both to set funding up, or neither`,
+      `Env var ${read.key} is set without ${MANAGER_FUNDING_URL_KEY}: set both to set funding up, or neither`,
     );
   }
   const problem =
     managerFundingUrlProblem(url) ??
-    (token === ''
-      ? `${MANAGER_FUNDING_TOKEN_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: it is the manager's FUNDING_API_TOKEN`
-      : managerFundingTokenProblem(token)) ??
+    (read === null
+      ? `${MANAGER_API_TOKEN_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: it is the manager's ${MANAGER_API_TOKEN_KEY}, the same value`
+      : managerApiTokenProblem(read.value, read.key)) ??
     (optional(BRAND_WALLET_SECRET_KEY, '').trim() === ''
       ? `${BRAND_WALLET_SECRET_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: funding signs every transfer with the brand wallet, whose key is encrypted under it`
       : null);
   if (problem) throw new Error(`Env var ${problem}`);
-  return { url: managerFundingBaseUrl(url), token };
+  return { url: managerFundingBaseUrl(url), token: read!.value, tokenKey: read!.key };
 }
 
 /**

@@ -155,9 +155,9 @@ export function managerProblem(error: unknown): string {
     case 'timeout':
       return 'The manager could not be reached.';
     case 'funding_off':
-      return "The manager's funding API is off: the manager has no FUNDING_API_TOKEN.";
+      return "The manager's funding API is off: the manager has no MANAGER_API_TOKEN.";
     case 'unauthorized':
-      return "The manager refused the admin's token: MANAGER_FUNDING_TOKEN is not the manager's FUNDING_API_TOKEN.";
+      return "The manager refused the admin's token: the admin's MANAGER_API_TOKEN is not the manager's.";
     case 'chain_unreachable':
       return 'The manager could not reach the chain.';
     default:
@@ -751,7 +751,7 @@ export class FundingService {
     if (!this.manager) {
       throw new FundingRefusedError(
         'not_set_up',
-        'Funding is not set up: the admin has no MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN.',
+        'Funding is not set up: the admin has no MANAGER_FUNDING_URL and MANAGER_API_TOKEN.',
       );
     }
     return this.manager;

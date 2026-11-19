@@ -15,6 +15,7 @@ import { inspect } from 'node:util';
 import {
   FUNDING_ERROR_CODES,
   FUNDING_ERROR_STATUS,
+  type FundingBatchPurchaseRequest,
   type FundingChequebookOperationRequest,
   type FundingErrorCode,
   type FundingStampOperationRequest,
@@ -451,6 +452,135 @@ describe('ManagerFundingClient: stamp operations', () => {
   });
 });
 
+const rungPurchase = (): FundingBatchPurchaseRequest => ({
+  requestId: REQUEST_ID,
+  purpose: 'rung',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  depth: 22,
+  amountPerChunkPlur: '12441600000',
+  immutable: false,
+  label: null,
+  replacesBatchId: BATCH_ID,
+});
+
+const purchaseStatus = () => ({
+  requestId: REQUEST_ID,
+  purpose: 'rung',
+  nodeId: `${STAGE_ID}:bee-uploader`,
+  state: 'confirmed',
+  batchId: BATCH_ID,
+  txHash: TX_HASH,
+  usable: true,
+  step: 'set',
+  error: null,
+  stages: [{ stageId: STAGE_ID, name: 'main stage', apply: 'waiting_live', message: null }],
+  catalogue: null,
+});
+
+describe('ManagerFundingClient: batch purchases', () => {
+  it('asks each purchase route as the contract names it, with the token as a bearer', async () => {
+    const { client, seen } = clientOn(({ method, url }) =>
+      method === 'POST' && url.endsWith('/batch-purchases')
+        ? Response.json(
+            { requestId: REQUEST_ID, purpose: 'rung', state: 'confirmed', batchId: BATCH_ID, txHash: TX_HASH },
+            { status: 202 },
+          )
+        : Response.json(purchaseStatus()),
+    );
+
+    await client.batchPurchase(rungPurchase());
+    await client.batchPurchaseStatus(REQUEST_ID.toUpperCase());
+    await client.batchPurchaseRestart(REQUEST_ID, STAGE_ID);
+    await client.batchPurchaseCheck(REQUEST_ID);
+    await client.batchPurchaseRelease(REQUEST_ID);
+
+    assert.deepEqual(
+      seen.map(({ method, url }) => `${method} ${url}`),
+      [
+        `POST ${BASE}/api/admin-funding/batch-purchases`,
+        `GET ${BASE}/api/admin-funding/batch-purchases/${REQUEST_ID}`,
+        `POST ${BASE}/api/admin-funding/batch-purchases/${REQUEST_ID}/restart`,
+        `POST ${BASE}/api/admin-funding/batch-purchases/${REQUEST_ID}/check`,
+        `POST ${BASE}/api/admin-funding/batch-purchases/${REQUEST_ID}/release`,
+      ],
+    );
+    for (const request of seen) {
+      assert.equal(request.headers.get('authorization'), `Bearer ${TOKEN}`, request.url);
+      assert.equal(request.redirect, 'manual', request.url);
+    }
+    assert.deepEqual(JSON.parse(seen[2]?.body ?? 'null'), { stageId: STAGE_ID });
+    assert.deepEqual(
+      [seen[1]?.body, seen[3]?.body, seen[4]?.body],
+      [null, null, null],
+      'a status read, a check and a release carry no body',
+    );
+  });
+
+  it("sends the contract's fields of a purchase and nothing else the object carries", async () => {
+    const { client, seen } = clientOn(() =>
+      Response.json(
+        { requestId: REQUEST_ID, purpose: 'archive', state: 'unknown', batchId: null, txHash: null },
+        { status: 202 },
+      ),
+    );
+    const archive: FundingBatchPurchaseRequest = {
+      ...rungPurchase(),
+      purpose: 'archive',
+      immutable: true,
+      label: 'Alps archive',
+      replacesBatchId: null,
+    };
+
+    await client.batchPurchase({ ...archive, days: 30, costPlur: '1' } as FundingBatchPurchaseRequest);
+
+    assert.deepEqual(JSON.parse(seen[0]?.body ?? 'null'), archive);
+  });
+
+  it("answers the manager's status as the contract's schema reads it, and carries its refusals", async () => {
+    const { client } = clientOn(() => Response.json({ ...purchaseStatus(), bzzApiUrl: 'http://192.0.2.20:1633' }));
+    assert.deepEqual(await client.batchPurchaseStatus(REQUEST_ID), purchaseStatus());
+
+    for (const code of ['stamp_refused', 'unknown_node', 'conflict', 'unknown_request'] as const) {
+      const status = FUNDING_ERROR_STATUS[code];
+      const refusing = clientOn(() => Response.json({ error: code, message: `A sentence for ${code}.` }, { status }));
+      const error = await failure(() => refusing.client.batchPurchaseRestart(REQUEST_ID, STAGE_ID));
+      assert.deepEqual([error.code, error.status, error.message], [code, status, `A sentence for ${code}.`]);
+    }
+  });
+
+  it('asks nothing for a request id that is not a UUID', async () => {
+    const { client, seen } = clientOn(() => Response.json(purchaseStatus()));
+
+    await assert.rejects(client.batchPurchaseStatus('../inventory'), /UUID/);
+    await assert.rejects(client.batchPurchaseRestart('../inventory', STAGE_ID), /UUID/);
+    await assert.rejects(client.batchPurchaseCheck('../inventory'), /UUID/);
+    await assert.rejects(client.batchPurchaseRelease('../inventory'), /UUID/);
+
+    assert.deepEqual(seen, []);
+  });
+
+  it('waits on a purchase and a restart under the stamp deadline, and on a status read under the usual one', async () => {
+    const slow = answersAfter(80, () =>
+      Response.json(
+        { requestId: REQUEST_ID, purpose: 'rung', state: 'confirmed', batchId: BATCH_ID, txHash: TX_HASH },
+        { status: 202 },
+      ),
+    );
+    const { client } = clientOn(slow, { timeoutMs: 20, stampTimeoutMs: 1_000 });
+
+    const answer = await client.batchPurchase(rungPurchase());
+    const statusRead = await failure(() => client.batchPurchaseStatus(REQUEST_ID));
+
+    assert.equal(answer.state, 'confirmed');
+    assert.equal(statusRead.code, 'timeout');
+    const restarting = clientOn(
+      answersAfter(80, () => Response.json(purchaseStatus())),
+      { timeoutMs: 20, stampTimeoutMs: 1_000 },
+    );
+    assert.equal((await restarting.client.batchPurchaseRestart(REQUEST_ID, STAGE_ID)).step, 'set');
+  });
+});
+
 describe('ManagerFundingClient: chequebook operations', () => {
   it('asks for a move and for where it stands as the contract names the routes, with the token as a bearer', async () => {
     const { client, seen } = clientOn(({ method }) =>
@@ -811,8 +941,8 @@ describe('ManagerFundingClient: what it is given', () => {
         'MANAGER_FUNDING_URL',
         'password-1234',
       ],
-      ['a short token', { token: 'tiny-funding-token' }, 'MANAGER_FUNDING_TOKEN', 'tiny-funding-token'],
-      ['a token with a line break', { token: `${TOKEN}\nX-Injected: 1` }, 'MANAGER_FUNDING_TOKEN', TOKEN],
+      ['a short token', { token: 'tiny-funding-token' }, 'MANAGER_API_TOKEN', 'tiny-funding-token'],
+      ['a token with a line break', { token: `${TOKEN}\nX-Injected: 1` }, 'MANAGER_API_TOKEN', TOKEN],
     ] as const) {
       assert.throws(
         () => clientOn(() => Response.json(inventory()), options),
