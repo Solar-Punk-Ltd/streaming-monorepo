@@ -599,6 +599,32 @@ already), `target` (the designated batch is expired, gone or mutable), `lapsed`
 recorded bytes, which only the network could give), and `changed` (the page
 named another batch than the designated one).
 
+**For a catalogue batch bought on the Stamps tab.** The purchase asks the move
+through `PurchasedCatalogueMove` (`src/domain/funding/batchPurchasePorts.ts`),
+which `CatalogueMoveService` implements. `ensure` starts the move onto the
+bought batch once the manager's catalogue stamp record designates it, as the
+system, with `started_by` set to `batch purchase`
+(`CATALOGUE_MOVE_STARTED_BY_PURCHASE`) and the purchase's id in the
+`catalogue.move.start` audit details. It starts a failed move again only on the
+purchase's Check again, and leaves a running or finished one as it is. It
+answers `waiting` with the sentence until the record names the batch, while the
+move is off, and while a start is refused: after a lapse, a slot with no
+recorded bytes keeps `lapsed`. With nothing to move it answers `done`.
+
+**After a lapse.** Once the batch the move goes from has lapsed, the move
+clears a thumbnail the network gives no more. A lapse is read from the batch's
+last reading: expired, gone, or out of time by its clock; after the switch,
+from the record's `previous`. The thumbnail is cleared when no stream holds its
+bytes and the catalogue node answers 404 for it (`HEAD /bzz/<reference>/`). It
+is cleared, as an edit, on every stream that names it: `streams.thumbnail_ref`,
+its batch and its type are set to null. The stream is added to
+`catalogue_moves.cleared_thumbnails` (migration `030`), and the move goes on.
+Right after the switch, still holding the publish mutex, the move writes the
+catalogue once more with those streams' entries rebuilt from their rows
+(`PublishService.rewriteEntriesHeld`), so the entry written with the new batch
+names no lost image. A node that answers anything but 404 stops the move as
+before, and so does such a thumbnail when the batch has time left.
+
 **Audited** as `catalogue.move.start`, `catalogue.move.done` and
 `catalogue.move.failed`, with the move's id and both batches. The log lines,
 `[CatalogueMove]`, shorten batch ids. Once the page says the move is done, the
@@ -2103,6 +2129,78 @@ The audit log records `archive.start`, `archive.pause`, `archive.resume`,
 `archive.paused`, `archive.quality.done`, `archive.done`,
 `archive.purchase.usable` and `archive.purchase.failed` by the system.
 
+## Lost recordings
+
+A recording lives on Swarm only while a batch that stamped it has time left.
+The Streams page checks the recordings and removes the lost ones:
+`src/domain/recordings/`, with each check in `recording_checks` and
+`recording_check_streams` (migration `031`).
+[The admin's architecture page](../../../docs/architecture/web2-admin.md#lost-recordings),
+"Lost recordings", is the design.
+
+**A check** is started by a person, and one runs at a time for the whole admin.
+
+- **Which streams.** Every stream that holds a finished recording
+  (`manifest_index` set), asked the one rule, `recordingSkipReason`. A live
+  stream, one inside its restart window, one with an export or an archive under
+  way, and a test stream are left unjudged.
+- **What it reads**, through the catalogue node: each recording's own playlist
+  (a ladder's master), and each quality's playlist and the first 64 KiB of its
+  first segment. A stream with no ladder is one quality, itself.
+- **Three rounds.** What failed is read again 10 minutes later, twice
+  (`RECORDING_CHECK_ROUND_GAP_SECONDS`, `RECORDING_CHECK_ROUNDS`).
+- **The result.** **Lost**: the master failed in every round, or every quality
+  did. **Partly lost**: some quality did and another read. Each stream is asked
+  the rule again before it is judged.
+
+**A healthy node.** A round starts, and its failures count, only while the
+catalogue node answers `GET /peers` with 4 peers or more
+(`RECORDING_CHECK_MIN_PEERS`). Otherwise the check stops with no result and says
+why. The rounds run in the process, so the next boot stops a check left
+running, with "The admin restarted while the check ran."
+
+**The mark.** A finished check sets `streams.recording_verdict` (`lost` or
+`partly_lost`) and `recording_checked_at` on each stream it judged so, and
+clears them on one that read. The stream list shows them as `recording` and
+`recordingCheckedAt`. A `live` report clears them.
+
+**The removal** takes the lost recordings of the latest finished check, for six
+hours after it ended (`RECORDING_CHECK_VALID_SECONDS`). It takes only the
+check's own list, in any order.
+
+- Each is asked the rule again and read once more. One that may not be judged
+  now, or that reads now, is kept and named with the reason; one that reads now
+  also loses its mark.
+- The rest leave the catalogue in one write: `PublishService.takeOffCatalogue`
+  claims each as an unpublish does and leaves it a draft.
+- One the server keeps a finished export file of stays, as a draft. Every other
+  is deleted.
+- Each removal is recorded on its row of the check.
+
+**Routes**, behind the session:
+
+- `GET /api/recordings/check`: the latest check, `startRefusal` and
+  `removalRefusal` (`RecordingCheckResponse`). The node's peers are read at most
+  every 15 seconds for it.
+- `POST /api/recordings/check`: starts a check. `409 recordings_refused` with
+  the sentence when one runs, or when no catalogue node is designated, the node
+  does not answer, or it has too few peers.
+- `POST /api/recordings/lost/removal` with `{ checkId, streamIds }`: answers
+  `{ removed, unlisted, kept, feedIndex }`. `409 recordings_refused` with the
+  sentence when:
+  - the check is not the latest, is not done, or is too old;
+  - it lists no lost recording, or another set;
+  - the catalogue cannot be written (its batch has run out: buy a new catalogue
+    batch first);
+  - or the node is not healthy.
+
+  A body that names no check or stream ids gets `400`.
+
+**Audited** as `recording.check.start`, `recording.check.finish` (`done` with
+the counts, or `stopped` with why), `recording.lost.delete` and
+`recording.lost.unlist`. Each carries the check's id, and a removal the
+catalogue's feed index.
+
 ## Migrations
 
 The schema is the files in `src/migrations/`, named `NNN_name.sql`. They are
@@ -2144,6 +2242,7 @@ is harmless. `pnpm build` copies the folder into `dist`.
 | `028_archive_jobs.sql`                  | `archive_jobs`, the one archive on the server, with `archive_job_items`, `archive_job_segments` (the resume ledger), `archive_job_dismissals` and `archive_rate`, the last rate a job measured            |
 | `029_stream_archives_stamp_end.sql`     | `stream_archives.stamp_expires_at`, when a copy's stamp runs out as the latest catalogue stamp record that listed it read it ([List only archived qualities](#list-only-archived-qualities))              |
 | `030_batch_purchases.sql`               | `batch_purchases`, each batch bought on the Stamps tab, written before the manager is asked, one under way per node, and `catalogue_moves.cleared_thumbnails` ([Buying a new batch](#buying-a-new-batch)) |
+| `031_recording_checks.sql`              | the checks of the recordings, the streams each listed with their readings and verdicts, and `streams.recording_verdict` and `recording_checked_at` ([Lost recordings](#lost-recordings))                  |
 
 ## Audit log
 
