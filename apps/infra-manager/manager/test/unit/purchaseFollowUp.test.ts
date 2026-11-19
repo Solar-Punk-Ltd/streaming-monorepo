@@ -25,6 +25,7 @@ import {
 } from '@streaming-infra-manager/common';
 
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
+import { ProfileBusyError } from '../../src/domain/errors/index.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
 import {
   purchaseFollowUpPorts,
@@ -372,6 +373,38 @@ describe('one look at a stage', () => {
 
     assert.equal((await once(true)).apply, 'applying');
     assert.deepEqual(world.applied, ['main:main-instance', 'main:main-instance']);
+  });
+
+  it("answers applying when another purchase's deploy of the stage started first, and applied once it brought the batch, without an Apply of its own", async () => {
+    // Two rungs of one pool, each with a batch of its own purchase; the other rung's Apply claimed the stage between
+    // this look's reading and its Apply.
+    const SECOND = 'd'.repeat(64);
+    world.profiles.push(
+      makeProfile({ name: 'pool-720p', kind: 'custom', components: ['bee-uploader'], stamp_id: SECOND }),
+    );
+    world.followers.set('pool-720p', [{ stage: stageProfile('main'), following: true }]);
+    world.applyError = new ProfileBusyError('main', 'DEPLOYING');
+    const ports = world.ports();
+    const once = () =>
+      ports.stages.look({ stageId: 'main-instance', batchId: BOUGHT, force: false, retryFailed: false });
+
+    assert.deepEqual(await once(), { apply: 'applying', message: null });
+    assert.deepEqual(world.applied, []);
+
+    // While that deploy runs.
+    world.profiles[1]!.status = 'DEPLOYING';
+    assert.deepEqual(await once(), { apply: 'applying', message: null });
+
+    // That deploy wrote the pool's current string, which carries both rungs' new batches.
+    world.applyError = null;
+    world.profiles[1]!.status = 'RUNNING';
+    const both = beePublishersValue([
+      { rungName: '360p', url: 'http://192.0.2.10:10025', batchId: BOUGHT },
+      { rungName: '720p', url: 'http://192.0.2.10:10035', batchId: SECOND },
+    ]);
+    world.catalogs.set('main', catalogOf({ state: 'same', runningValue: both, value: both }));
+    assert.deepEqual(await once(), { apply: 'applied', message: null });
+    assert.deepEqual(world.applied, [], 'no second Apply');
   });
 
   it('answers failed with the reason an Apply did not start', async () => {
