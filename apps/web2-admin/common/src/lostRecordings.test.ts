@@ -31,6 +31,11 @@ describe('which stream a check may judge', () => {
     assert.equal(recordingSkipReason(stream({ hasOpenJob: true }), NOW), 'job');
   });
 
+  it('leaves out a stream a removal kept as a draft for its export file, while it has not changed', () => {
+    assert.equal(recordingSkipReason(stream({ status: 'draft', unlisted: true }), NOW), 'unlisted');
+    assert.equal(recordingSkipReason(stream({ status: 'draft', unlisted: false }), NOW), null);
+  });
+
   it('never judges a test stream, whatever else is true of it', () => {
     assert.equal(recordingSkipReason(stream({ test: true }), NOW), 'test');
     assert.equal(recordingSkipReason(stream({ test: true, status: 'live', hasOpenJob: true }), NOW), 'test');
