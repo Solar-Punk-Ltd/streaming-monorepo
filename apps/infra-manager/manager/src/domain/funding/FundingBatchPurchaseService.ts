@@ -138,6 +138,16 @@ function replacesAnother(now: string | null): string {
     : `The batch set here now is 0x${now}, another than the one the purchase names as replaced. Read the inventory again.`;
 }
 
+/** Whether a purchase bought its batch and stopped as failed before the batch was set or designated. */
+function boughtNeverPutToUse(row: FundingStampPurchaseRow): boolean {
+  return row.state === 'confirmed' && row.step === 'failed' && row.batchId !== null && row.setAt === null;
+}
+
+/** Why a new purchase is refused while the node's last one for the purpose holds a batch it never put to use. */
+function boughtUnused(row: FundingStampPurchaseRow): string {
+  return `The last ${row.purpose} purchase on this node, ${row.requestId}, bought ${row.batchId} and stopped before the batch was put to use. Check again on that purchase, which puts its batch to use once the node calls it usable, rather than buying another.`;
+}
+
 /** Life left as a sentence says it: "1d 0h of life", or "no life". */
 function lifeOf(seconds: number): string {
   return seconds > 0 ? `${formatTtl(seconds)} of life` : 'no life';
@@ -195,6 +205,8 @@ function answerOf(row: FundingStampPurchaseRow): FundingBatchPurchaseAnswer {
  *   that batch no longer pays (`purchaseReplaceProblem`);
  * - for the catalogue, no move of the catalogue is pending (`isMoving`): the batch moved from is released first, since
  *   the designation takes no third batch;
+ * - for a rung or the catalogue, the node's last purchase for the purpose did not buy its batch and stop as failed
+ *   before putting it to use, which Check again on that purchase does without paying for a second batch;
  * - the cost in xBZZ, `amountPerChunkPlur × 2^depth`, is in the node's wallet, with some xDAI for the gas, and the
  *   amount buys the postage contract's floor of life or more at the price read now;
  * - an archive stamp keeps its check of the catalogue stamp record's places, made again under the archive batches'
@@ -232,6 +244,7 @@ export class FundingBatchPurchaseService {
     const deployment = await this.deps.deployment(request.nodeId);
     if (!deployment) throw new FundingApiError('unknown_node', UNKNOWN_NODE);
     await this.checkReplaced(request, deployment);
+    await this.refuseWhileBoughtUnused(request);
     const apiUrl = this.deps.uploaderApiUrl(deployment);
     await this.refuseWhileBusy(request.nodeId, apiUrl, deployment);
 
@@ -490,6 +503,17 @@ export class FundingBatchPurchaseService {
     if (named !== now) throw refused(replacesAnother(now));
     const problem = purchaseReplaceProblem(request.purpose, current.state);
     if (problem !== null) throw refused(problem);
+  }
+
+  /**
+   * Refuses a rung's or the catalogue's purchase while the node's last purchase for the purpose bought its batch and
+   * stopped as failed before putting it to use: Check again on that purchase puts the batch to use, and a new purchase
+   * would pay for a second one.
+   */
+  private async refuseWhileBoughtUnused(request: FundingBatchPurchaseRequest): Promise<void> {
+    if (request.purpose === 'archive') return;
+    const last = await this.deps.journal.latestOn(request.nodeId, request.purpose);
+    if (last !== null && boughtNeverPutToUse(last)) throw refused(boughtUnused(last));
   }
 
   /**

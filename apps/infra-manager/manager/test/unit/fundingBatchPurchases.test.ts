@@ -26,6 +26,7 @@ import {
 } from '@streaming-infra-manager/common';
 import {
   CATALOGUE_ARCHIVE_BATCHES_MAX,
+  type FundingBatchPurchasePurpose,
   type FundingBatchPurchaseRequest,
   type FundingInventory,
   type FundingNode,
@@ -73,12 +74,16 @@ const REQUEST = '7d1e2f3a-4b5c-4d6e-9f0a-b1c2d3e4f5a6';
 const OTHER_REQUEST = '3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e6f';
 /** Another request id that begins with the same twelve hex digits as REQUEST. */
 const LOOKALIKE_REQUEST = '7d1e2f3a-4b5c-4fff-8aaa-bbbbbbbbbbbb';
+/** A third request id, journalled on the same node as OTHER_REQUEST. */
+const ANOTHER_REQUEST = '5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b';
 const NODE_LABEL = purchaseNodeLabel('archive', REQUEST);
 const OTHER_LABEL = purchaseNodeLabel('archive', OTHER_REQUEST);
 /** The catalogue's own batch, as the designation keeps it, and the batch a purchase buys, as Bee spells them. */
 const CATALOGUE_BATCH = 'ef'.repeat(32);
 const BOUGHT = 'c5'.repeat(32);
 const ANOTHERS = 'd6'.repeat(32);
+/** The batch an earlier purchase bought and never put to use. */
+const UNUSED = 'a7'.repeat(32);
 /** The batch a rung purchase replaces: the one set on the rung now. */
 const REPLACED = 'b4'.repeat(32);
 const TX = `0x${'9a'.repeat(32)}`;
@@ -90,6 +95,7 @@ const DEPTH = 20;
 /** That amount for each of a depth 20 batch's 2^20 chunks, in PLUR: 1.30459631616 xBZZ. */
 const COST = (BigInt(AMOUNT) << BigInt(DEPTH)).toString();
 const START = Date.parse('2026-11-13T10:00:00.000Z');
+const HOUR = 3_600_000;
 const API = 'http://bee.invalid:1633';
 const BUSY =
   'Another batch purchase on this node is still being bought or waits for its batch to become usable, and both would spend the same wallet. Try again once it is done.';
@@ -403,6 +409,35 @@ function journalled(over: Partial<FundingStampPurchaseRow> = {}): FundingStampPu
 /** The other purchase, left open on the catalogue node. */
 const otherOpen = (over: Partial<FundingStampPurchaseRow> = {}) =>
   journalled({ requestId: OTHER_REQUEST, nodeLabel: OTHER_LABEL, ...over });
+
+/**
+ * The node's last purchase for the purpose, which bought its batch and stopped as failed before putting it to use, as
+ * an hour of waiting for a usable batch leaves it.
+ */
+function boughtUnused(
+  purpose: FundingBatchPurchasePurpose,
+  nodeId: string,
+  over: Partial<FundingStampPurchaseRow> = {},
+): FundingStampPurchaseRow {
+  return journalled({
+    requestId: OTHER_REQUEST,
+    purpose,
+    nodeId,
+    immutable: purpose !== 'rung',
+    label: null,
+    nodeLabel: purchaseNodeLabel(purpose, OTHER_REQUEST),
+    replacesBatchId: purpose === 'rung' ? `0x${REPLACED}` : purpose === 'catalogue' ? `0x${CATALOGUE_BATCH}` : null,
+    batchId: `0x${UNUSED}`,
+    txHash: TX,
+    state: 'confirmed',
+    step: 'failed',
+    error: 'The batch did not become usable within an hour of its purchase.',
+    createdAt: new Date(START - HOUR),
+    updatedAt: new Date(START),
+    boughtAt: new Date(START - HOUR),
+    ...over,
+  });
+}
 
 async function refusedWith(promise: Promise<unknown>, code: string, expected?: RegExp | string): Promise<void> {
   await assert.rejects(promise, (err: unknown) => {
@@ -725,6 +760,44 @@ describe('POST /api/admin-funding/batch-purchases for a rung', () => {
     });
     await refusedWith(service.purchase(rungRequest()), 'stamp_refused', /this batch costs\.$/);
   });
+
+  it('refuses while the node’s last rung purchase bought a batch and stopped before setting it, naming Check again', async () => {
+    const journal = new InMemoryFundingStampPurchaseJournal();
+    await journal.insert(boughtUnused('rung', RUNG));
+    const { bee, service } = setup({ journal });
+    await refusedWith(
+      service.purchase(rungRequest()),
+      'stamp_refused',
+      `The last rung purchase on this node, ${OTHER_REQUEST}, bought 0x${UNUSED} and stopped before the batch was put to use. Check again on that purchase, which puts its batch to use once the node calls it usable, rather than buying another.`,
+    );
+    assert.equal(bee.bought.length, 0);
+    assert.deepEqual([...journal.rows.keys()], [OTHER_REQUEST], 'nothing journalled');
+  });
+
+  it('buys once the node’s last rung purchase put its batch to use, or bought none', async () => {
+    const lastOnes: Array<[string, FundingStampPurchaseRow[]]> = [
+      ['set on the rung', [boughtUnused('rung', RUNG, { step: 'done', setAt: new Date(START) })]],
+      ['failed before it bought', [boughtUnused('rung', RUNG, { state: 'failed', batchId: null, boughtAt: null })]],
+      [
+        'one put to use after one that stopped unused',
+        [
+          boughtUnused('rung', RUNG, {
+            requestId: ANOTHER_REQUEST,
+            nodeLabel: purchaseNodeLabel('rung', ANOTHER_REQUEST),
+            createdAt: new Date(START - 2 * HOUR),
+          }),
+          boughtUnused('rung', RUNG, { step: 'done', setAt: new Date(START) }),
+        ],
+      ],
+      ['another node’s', [boughtUnused('rung', NODE)]],
+    ];
+    for (const [name, rows] of lastOnes) {
+      const journal = new InMemoryFundingStampPurchaseJournal();
+      for (const row of rows) await journal.insert(row);
+      const { service } = setup({ journal });
+      assert.equal((await service.purchase(rungRequest())).state, 'confirmed', name);
+    }
+  });
 });
 
 describe('POST /api/admin-funding/batch-purchases for the catalogue', () => {
@@ -761,6 +834,36 @@ describe('POST /api/admin-funding/batch-purchases for the catalogue', () => {
     );
     const active = setup({ catalogueBatch: { batchId: CATALOGUE_BATCH, state: 'active' } });
     await refusedWith(active.service.purchase(catalogueRequest()), 'stamp_refused', /^The catalogue batch still pays/);
+  });
+
+  it('refuses while the catalogue’s last purchase bought a batch and stopped before designating it, archive stamps after it or not', async () => {
+    const journal = new InMemoryFundingStampPurchaseJournal();
+    await journal.insert(boughtUnused('catalogue', CATALOGUE));
+    await journal.insert(
+      boughtUnused('archive', CATALOGUE, {
+        requestId: ANOTHER_REQUEST,
+        nodeLabel: purchaseNodeLabel('archive', ANOTHER_REQUEST),
+        step: 'done',
+        createdAt: new Date(START),
+        recordedAt: new Date(START),
+      }),
+    );
+    const { bee, service } = setup({ journal });
+    await refusedWith(
+      service.purchase(catalogueRequest()),
+      'stamp_refused',
+      /^The last catalogue purchase on this node, .* Check again on that purchase/,
+    );
+    assert.equal(bee.bought.length, 0);
+  });
+
+  it('buys a catalogue batch and an archive stamp while an archive stamp bought before stopped unused', async () => {
+    for (const purchase of [catalogueRequest(), request()]) {
+      const journal = new InMemoryFundingStampPurchaseJournal();
+      await journal.insert(boughtUnused('archive', CATALOGUE));
+      const { service } = setup({ journal });
+      assert.equal((await service.purchase(purchase)).state, 'confirmed', purchase.purpose);
+    }
   });
 });
 

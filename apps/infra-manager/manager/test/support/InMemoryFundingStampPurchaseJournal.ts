@@ -1,4 +1,8 @@
-import type { FundingPurchaseStep, FundingTransferState } from '@streaming-monorepo/contracts';
+import type {
+  FundingBatchPurchasePurpose,
+  FundingPurchaseStep,
+  FundingTransferState,
+} from '@streaming-monorepo/contracts';
 
 import type {
   FundingPurchaseStagePatch,
@@ -37,6 +41,13 @@ export class InMemoryFundingStampPurchaseJournal implements FundingStampPurchase
   async openOn(nodeId: string): Promise<FundingStampPurchaseRow | null> {
     const open = [...this.rows.values()].find((row) => row.nodeId === nodeId && isOpen(row));
     return open ? { ...open } : null;
+  }
+
+  async latestOn(nodeId: string, purpose: FundingBatchPurchasePurpose): Promise<FundingStampPurchaseRow | null> {
+    const [latest] = [...this.rows.values()]
+      .filter((row) => row.nodeId === nodeId && row.purpose === purpose)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || (a.requestId < b.requestId ? 1 : -1));
+    return latest ? { ...latest } : null;
   }
 
   async insert(row: FundingStampPurchaseRow): Promise<FundingStampPurchaseInsert> {
