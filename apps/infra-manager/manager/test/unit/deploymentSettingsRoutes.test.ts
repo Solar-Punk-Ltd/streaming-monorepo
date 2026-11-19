@@ -91,7 +91,7 @@ async function appFor(options: { signedIn?: boolean; status?: 'RUNNING' | 'STOPP
   outer.use(createDeploymentSettingsRouter(service));
   const app = await startRouterTestApp(outer);
   const instanceId = harness.profiles.rows.get('stage')!.instance_id;
-  return { app, harness, instanceId };
+  return { app, harness, instanceId, service };
 }
 
 async function listed(app: Awaited<ReturnType<typeof startRouterTestApp>>): Promise<DeploymentSettingsCatalog> {
@@ -269,6 +269,40 @@ describe('POST /profiles/:name/settings/apply', () => {
       assert.equal(harness.runner.runs.length, 2);
       assert.ok(harness.runner.runs[1]!.args.includes('stream-uploader'), harness.runner.runs[1]!.args.join(' '));
       assert.equal(harness.runner.runs[1]!.args.includes('srs'), false);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies nothing, and says which, when it is behind on a key beyond the ones the caller names', async () => {
+    const { app, harness, instanceId, service } = await appFor();
+    try {
+      await call(app, 'PUT', '/profiles/stage/settings', {
+        expectedInstanceId: instanceId,
+        expectedRevision: 0,
+        entries: [{ key: 'UPLOADER_START_GATES', value: 'refuse' }],
+      });
+      harness.profiles.rows.set('stage', { ...harness.profiles.rows.get('stage')!, stamp_id: 'b'.repeat(64) });
+
+      await assert.rejects(service.apply('stage', instanceId, 'a batch purchase', { only: ['STAMP'] }), {
+        name: 'DeploymentSettingsBeyondError',
+        keys: ['UPLOADER_START_GATES'],
+      });
+      assert.equal(harness.runner.runs.length, 1, 'only the first deploy ran');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('applies the keys the caller names when it is behind on those alone', async () => {
+    const { app, harness, instanceId, service } = await appFor();
+    try {
+      harness.profiles.rows.set('stage', { ...harness.profiles.rows.get('stage')!, stamp_id: 'b'.repeat(64) });
+
+      const applied = await service.apply('stage', instanceId, 'a batch purchase', { only: ['STAMP'] });
+
+      assert.deepEqual(applied, { recreated: ['stream-uploader'] });
+      assert.equal(harness.runner.runs.length, 2);
     } finally {
       await app.close();
     }

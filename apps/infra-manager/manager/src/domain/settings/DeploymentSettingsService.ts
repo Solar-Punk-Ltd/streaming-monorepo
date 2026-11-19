@@ -56,6 +56,20 @@ import { versionSettingsFilesAt, versionValuesOf } from './versionSettingsFiles.
 
 const logger = Logger.getInstance();
 
+/**
+ * An Apply that names the keys it may roll out found the running containers
+ * behind on others as well, and applied nothing. `keys` are the others.
+ */
+export class DeploymentSettingsBeyondError extends Error {
+  constructor(
+    readonly profileName: string,
+    readonly keys: readonly string[],
+  ) {
+    super(`${profileName} is behind on other saved settings as well: ${keys.join(', ')}. Nothing was applied.`);
+    this.name = 'DeploymentSettingsBeyondError';
+  }
+}
+
 /** A deployment on its way out, whose settings no page should still be changing. */
 const REMOVING_STATUS = 'REMOVING';
 
@@ -151,8 +165,19 @@ export class DeploymentSettingsService {
    * a changed key reaches the deploy scripts alone, and answers which. Refused
    * while the deploy would refuse the stored engine settings, with its reason,
    * rather than starting a deploy that fails on them.
+   *
+   * With `only`, the keys this Apply may roll out, it applies nothing and
+   * throws `DeploymentSettingsBeyondError` when the running containers are
+   * behind on any other key, judged from the drift it reads here, so a setting
+   * saved since the caller looked is never rolled out with them. A batch
+   * purchase applies its batch so. The console's Apply names none.
    */
-  async apply(name: string, expectedInstanceId: string, username: string): Promise<DeploymentSettingsApplied> {
+  async apply(
+    name: string,
+    expectedInstanceId: string,
+    username: string,
+    options: { only?: readonly string[] } = {},
+  ): Promise<DeploymentSettingsApplied> {
     const profile = await this.profileNamed(name);
     if (profile.instance_id !== expectedInstanceId) throw new ProfileInstanceChangedError(name);
     if ((TRANSITIONAL_STATUSES as readonly string[]).includes(profile.status)) {
@@ -162,6 +187,9 @@ export class DeploymentSettingsService {
     const { drift, running, engineSettingsProblem } = (await this.read(profile)).catalog;
     if (!running) throw new DeploymentStoppedError(name);
     if (drift.keys.length === 0) return { recreated: [] };
+    const only = options.only;
+    const beyond = only ? drift.keys.filter((key) => !only.includes(key)) : [];
+    if (beyond.length > 0) throw new DeploymentSettingsBeyondError(name, beyond);
     if (engineSettingsProblem) throw new ProfileConfigError(name, engineSettingsProblem);
 
     const services = drift.fullRedeploy ? undefined : drift.services;

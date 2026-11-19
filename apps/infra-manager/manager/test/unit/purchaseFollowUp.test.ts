@@ -27,7 +27,9 @@ import {
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
 import { ProfileBusyError } from '../../src/domain/errors/index.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
+import { DeploymentSettingsBeyondError } from '../../src/domain/settings/DeploymentSettingsService.js';
 import {
+  PURCHASE_BATCH_KEYS,
   PurchaseFollowUpError,
   purchaseFollowUpPorts,
   type PurchaseFollowUpPorts,
@@ -97,6 +99,8 @@ class World {
   catalogs = new Map<string, DeploymentSettingsCatalog | DeploymentSettingsCatalog[]>();
   applied: string[] = [];
   applyError: Error | null = null;
+  /** The keys each Apply was told it may roll out. */
+  applyOnly: (readonly string[] | null)[] = [];
   readings: IngestHealthReading[] = [];
   pauses: number[] = [];
   clock = 1_000;
@@ -124,7 +128,8 @@ class World {
           if (!Array.isArray(listed)) return listed;
           return listed.length > 1 ? listed.shift()! : listed[0]!;
         },
-        apply: async (name, instanceId) => {
+        apply: async (name, instanceId, _username, options) => {
+          this.applyOnly.push(options?.only ?? null);
           if (this.applyError) throw this.applyError;
           this.applied.push(`${name}:${instanceId}`);
           const profile = this.profiles.find((candidate) => candidate.name === name)!;
@@ -351,6 +356,20 @@ describe('one look at a stage', () => {
     assert.deepEqual(await look(), { apply: 'applying', message: null });
     assert.deepEqual(world.pauses, [PURCHASE_LIVE_READ_GAP_MS]);
     assert.deepEqual(world.applied, ['main:main-instance']);
+    assert.deepEqual(world.applyOnly, [PURCHASE_BATCH_KEYS], 'the Apply may roll out the batch keys alone');
+  });
+
+  it('answers waiting_settings when the Apply finds another setting saved after the look read the drift', async () => {
+    world.applyError = new DeploymentSettingsBeyondError('main', ['SRT_LATENCY']);
+
+    for (const force of [false, true]) {
+      assert.deepEqual(await look({ force }), {
+        apply: 'waiting_settings',
+        message:
+          'Other saved settings wait for an Apply beside the batch: SRT_LATENCY. Apply the stage in the manager.',
+      });
+    }
+    assert.deepEqual(world.applied, []);
   });
 
   it('waits for a broadcast seen in either reading, and a restart passes over it', async () => {

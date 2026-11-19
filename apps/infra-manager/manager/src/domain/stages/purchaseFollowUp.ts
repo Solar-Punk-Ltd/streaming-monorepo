@@ -27,7 +27,10 @@ import type {
 import type { IngestHealthService } from '../ingestHealth/IngestHealthService.js';
 import { Logger } from '../Logger.js';
 import type { ProfileRepository } from '../ProfileRepository.js';
-import type { DeploymentSettingsService } from '../settings/DeploymentSettingsService.js';
+import {
+  type DeploymentSettingsService,
+  DeploymentSettingsBeyondError,
+} from '../settings/DeploymentSettingsService.js';
 import type { StampService } from '../StampService.js';
 
 import type { CatalogueDesignationService } from './CatalogueDesignationService.js';
@@ -194,10 +197,14 @@ function savedWithBatch(entries: readonly DeploymentSettingEntry[], batchId: str
  */
 function waitingSettings(catalog: DeploymentSettingsCatalog): PurchaseStageLook | null {
   const waiting = catalog.drift.keys.filter((key) => !PURCHASE_BATCH_KEYS.includes(key));
-  if (waiting.length === 0) return null;
+  return waiting.length === 0 ? null : waitingOn(waiting);
+}
+
+/** The look of a stage that waits for an operator to apply these other saved settings. */
+function waitingOn(keys: readonly string[]): PurchaseStageLook {
   return {
     apply: 'waiting_settings',
-    message: `Other saved settings wait for an Apply beside the batch: ${waiting.join(', ')}. Apply the stage in the manager.`,
+    message: `Other saved settings wait for an Apply beside the batch: ${keys.join(', ')}. Apply the stage in the manager.`,
   };
 }
 
@@ -388,10 +395,14 @@ class StageApplier implements PurchaseStageApplier {
   private async apply(stage: Profile, batchId: string): Promise<PurchaseStageLook> {
     const at = this.now();
     try {
-      await this.deps.settings.apply(stage.name, stage.instance_id, PURCHASE_APPLY_ACTOR);
+      await this.deps.settings.apply(stage.name, stage.instance_id, PURCHASE_APPLY_ACTOR, {
+        only: PURCHASE_BATCH_KEYS,
+      });
     } catch (err) {
       // A deploy of the stage started since it was read, another purchase's Apply among them. It writes the pool's
       // current string, so the next look finds the batch there, or starts an Apply of its own then.
+      // A setting saved since the look read the drift: the Apply carries the batch and nothing else, so it waits.
+      if (err instanceof DeploymentSettingsBeyondError) return waitingOn(err.keys);
       if (err instanceof ProfileBusyError) {
         logger.info(`[BatchPurchase] ${stage.name}: a deploy of it is under way, so it was not applied again`);
         return { apply: 'applying', message: null };
