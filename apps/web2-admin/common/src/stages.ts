@@ -212,12 +212,23 @@ export interface CatalogueMoveSummary {
   skipped: number;
   /** The thumbnails the move went through: every one a stream or the latest entry names, once the move is done. */
   thumbnails: number;
+  /**
+   * The streams whose thumbnail the move cleared: the batch the catalogue was written with had lapsed, the stream's
+   * row holds no bytes of the image, and the network holds it no more. The stream is written without an image from
+   * then on, and takes a new one on its page. Absent or empty for a move that cleared none, as every move from a
+   * batch with time left is: that one stops before the switch on a thumbnail it cannot read.
+   */
+  clearedThumbnails?: { streamId: string; title: string }[];
   /** Why a failed move stopped. */
   error: string | null;
+  /** Who started it: a user, or the admin itself for a batch bought on the Stamps tab, named after that purchase. */
   startedBy: string;
   startedAt: string;
   finishedAt: string | null;
 }
+
+/** The name a move carries as its starter when the admin started it for a catalogue batch bought on the Stamps tab. */
+export const CATALOGUE_MOVE_STARTED_BY_PURCHASE = 'batch purchase';
 
 /**
  * The catalogue move as the Stages page reads it: whether one is waiting and can start, why it cannot, and the latest

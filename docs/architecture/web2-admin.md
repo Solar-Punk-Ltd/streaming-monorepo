@@ -46,7 +46,7 @@ stream, or fund a node, until it is back.
   with. The admin keeps what it was told. [stages.md](stages.md) describes those records.
 - **The admin calls the manager** for one thing, its funding API, on a bearer token of its own:
   to read the node wallets, to relay transfers the brand wallet signed, and to ask a node to top up
-  or dilute a batch or move its chequebook, which the node pays for itself.
+  or dilute a batch, buy a new one, or move its chequebook, which the node pays for itself.
   [funding.md](funding.md) describes it.
 - **Exports read through the catalogue node.** To export a recording, the admin reads its playlist
   and segments through the node the manager designated for the catalogue, the one it already reads
@@ -375,6 +375,45 @@ Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), the chunks read and posted at o
 `ARCHIVE_PUSH_WINDOW_CHUNKS` (2000), `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30)
 and `ARCHIVE_BUY_DEFAULT_DAYS` (30).
 Every action goes to the audit log, with times in UTC.
+
+## Lost recordings
+
+A recording lives on Swarm while a batch that stamped it has time left. When a stage's batches run
+out, the network drops its recordings, and the admin still lists them. The Streams page finds them
+and removes them.
+
+**Check recordings** is started by a person, and one check runs at a time for the whole admin.
+
+- **What it reads.** Through the catalogue node, each recording's own playlist, the master playlist
+  of a ladder, and for each quality its playlist and its first segment. A recording copied onto an
+  archive stamp reads from there, so it is found readable.
+- **Three rounds.** Every recording is read once. The ones that failed are read again ten minutes
+  later, and what still failed ten minutes after that (`RECORDING_CHECK_ROUNDS`,
+  `RECORDING_CHECK_ROUND_GAP_SECONDS`). Only a failure in every round counts, so a slow read or a
+  node that was out of step for a moment loses nothing.
+- **A healthy node.** A check starts, and goes on to its next round, only while the catalogue node
+  is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`). A node with fewer reads nothing
+  whatever is on Swarm, so the check stops with no result and says so.
+- **Which streams.** One rule decides, `recordingSkipReason`: a live stream, a stream inside its
+  restart window, a stream with an export or an archive under way, and a test stream are left
+  unjudged.
+- **The result.** **Lost**: the master playlist failed in every round, or every quality did.
+  **Partly lost**: some quality failed in every round and another was read; it is listed with the
+  qualities that failed and left alone. The stream's row carries the mark until the stream goes live
+  again or a later check reads it.
+
+**Remove lost recordings** opens a confirm that lists the lost recordings of the latest check, which
+is good for six hours (`RECORDING_CHECK_VALID_SECONDS`).
+
+- Each stream is asked the rule again and read once more, and one that reads now, or that may not
+  be judged now, is kept and named with the reason.
+- The rest leave the catalogue in one write.
+- A stream with an export file on the server stays, as a draft off the catalogue, with its file.
+  Every other is deleted.
+- Each removal is audited.
+
+The removal needs a catalogue that can be written. While the catalogue batch has run out the page
+says to buy a new catalogue batch first ([funding.md](funding.md#buying-a-new-batch)).
 
 ## What it does not do
 
