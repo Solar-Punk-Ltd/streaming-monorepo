@@ -34,22 +34,22 @@ pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 From this package, `pnpm mock-api` does the same. Sign in as `admin` with the password
 `admin1234`. Nothing deployed the mock, so its build line reads `Version development build`.
 
-| Variable               | Default                  | What it does                                                                                                                        |
-| ---------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `MOCK_API_PORT`        | `9877`                   | the port it listens on                                                                                                              |
-| `SEED_ADMIN_USERNAME`  | `admin`                  | the user it starts with                                                                                                             |
-| `SEED_ADMIN_PASSWORD`  | `admin1234`              | that user's password, which the console can change                                                                                  |
-| `MOCK_NO_USERS`        | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                |
-| `MOCK_NO_STAGES`       | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                |
-| `MOCK_RECORDING`       | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
-| `MOCK_FUNDING`         | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
-| `MOCK_ARCHIVE`         | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`               |
-| `MOCK_EXPORT`          | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done`, `outdated` or `off`                          |
-| `MOCK_ARCHIVE_STAMPS`  | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                  |
-| `MOCK_BATCH_PURCHASES` | `fresh`                  | Buy new on the Stamps tab, as [below](#the-mock-funding): `fresh`, `stages`, `failed`, `catalogue`, `catalogue_off` or `unoffered`  |
-| `MOCK_RECORDING_CHECK` | `none`                   | the latest check of the recordings, as [below](#the-mock-recording-check): `none`, `running`, `done` or `stopped`                   |
-| `MOCK_DEFAULT_THEME`   | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
-| `VIEWER_BASE_URL`      | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
+| Variable               | Default                  | What it does                                                                                                                                         |
+| ---------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOCK_API_PORT`        | `9877`                   | the port it listens on                                                                                                                               |
+| `SEED_ADMIN_USERNAME`  | `admin`                  | the user it starts with                                                                                                                              |
+| `SEED_ADMIN_PASSWORD`  | `admin1234`              | that user's password, which the console can change                                                                                                   |
+| `MOCK_NO_USERS`        | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                                 |
+| `MOCK_NO_STAGES`       | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                                 |
+| `MOCK_RECORDING`       | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams)                  |
+| `MOCK_FUNDING`         | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)                          |
+| `MOCK_ARCHIVE`         | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`                                |
+| `MOCK_EXPORT`          | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done`, `outdated` or `off`                                           |
+| `MOCK_ARCHIVE_STAMPS`  | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                                   |
+| `MOCK_BATCH_PURCHASES` | `fresh`                  | Buy new on the Stamps tab, as [below](#the-mock-funding): `fresh`, `stages`, `failed`, `failed_ran_out`, `catalogue`, `catalogue_off` or `unoffered` |
+| `MOCK_RECORDING_CHECK` | `none`                   | the latest check of the recordings, as [below](#the-mock-recording-check): `none`, `running`, `done` or `stopped`                                    |
+| `MOCK_DEFAULT_THEME`   | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                        |
+| `VIEWER_BASE_URL`      | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                       |
 
 #### The mock streams
 
@@ -120,6 +120,8 @@ as the API works them out, names an open one in `openBulkId`, `openStampBulkId` 
   - `stages`: a 720p purchase restarting, with a stage line in each state: waiting for a broadcast,
     unknown, other settings waiting, applied, failed (with Check again), set by hand, stopped.
   - `failed`: a 720p purchase whose batch was bought and did not become usable in time.
+  - `failed_ran_out`: the same purchase, its bought batch gone from the node since, so the row
+    offers Buy new again and the line says why, with no Check again.
   - `catalogue`: the catalogue batch has run out, the move is on, and a purchase of its replacement
     is moving the catalogue.
   - `catalogue_off`: the catalogue batch has run out and the move is off, so its row says so.
@@ -397,8 +399,10 @@ wallet, so there is no password, only a confirm dialog.
   line per stage whose uploader takes the batch, in the common `BATCH_PURCHASE_APPLY_TEXT`. Restart
   now, on a stage that waits for a broadcast, asks first with `BATCH_PURCHASE_RESTART_CONFIRM`. Check
   again takes up what stopped, and buys nothing. A catalogue purchase shows its move, the slots
-  done, and the thumbnails it cleared. While a purchase is under way, or waits for Check again, its
-  row offers no other. The purchases are read again every 10 seconds while one is under way, and
+  done, and the thumbnails it cleared. While a purchase is under way, or waits for Check again with
+  its bought batch still on the node, its row offers no other (the common `batchPurchaseHoldsNode`).
+  Once that batch has expired or left the node, Check again goes, the line says a new one can be
+  bought, and the row offers Buy new again. The purchases are read again every 10 seconds while one is under way, and
   the view once one ends.
 - **Archive stamps** are the immutable batches that recordings are archived onto, from
   `GET /api/archive/stamps`. Each row shows the stamp's label in place of a node's card, the node

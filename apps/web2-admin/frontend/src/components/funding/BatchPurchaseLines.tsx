@@ -3,7 +3,9 @@ import { Alert, Box, Button, LinearProgress, Stack, Typography } from '@mui/mate
 import {
   BATCH_PURCHASE_APPLY_TEXT,
   BATCH_PURCHASE_RESTART_CONFIRM,
+  batchPurchaseOffersCheck,
   batchPurchaseStageRestartable,
+  boughtBatchRanOut,
   type BatchPurchase,
   type BatchPurchaseMove,
   type BatchPurchaseStage,
@@ -13,7 +15,7 @@ import { errorMessage } from '../../errors';
 import { shortHex } from '../../format';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { ClearedThumbnails } from '../stages/ClearedThumbnails';
-import { purchaseOpen, purchaseStateText, purchaseWhat } from './batchPurchases';
+import { BOUGHT_BATCH_RAN_OUT, purchaseOpen, purchaseStateText, purchaseWhat } from './batchPurchases';
 
 /** The colour of a stage's line: red when its restart failed, orange while it waits on something, green once applied. */
 function applyColor(apply: BatchPurchaseStage['apply']): string {
@@ -96,7 +98,8 @@ function StageLine({
 /**
  * The latest purchase of a node, under its row on the Stamps tab: what was bought and where it stands, a line for each
  * stage whose uploader takes a rung's new batch, with Restart now while it waits for a broadcast, and for the catalogue
- * the move with its slots and the thumbnails it cleared. Check again is offered while the purchase says it can be.
+ * the move with its slots and the thumbnails it cleared. Check again is offered as the common `batchPurchaseOffersCheck`
+ * says: not once the batch a failed purchase bought has run out, when the line says a new one can be bought.
  * Restart now asks first, in the common `BATCH_PURCHASE_RESTART_CONFIRM`.
  */
 export function BatchPurchaseLines({
@@ -137,6 +140,11 @@ export function BatchPurchaseLines({
         {purchaseStateText(purchase)}
       </Typography>
       {waiting ? <LinearProgress aria-label="Purchase progress" /> : null}
+      {boughtBatchRanOut(purchase) ? (
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {BOUGHT_BATCH_RAN_OUT}
+        </Typography>
+      ) : null}
 
       {purchase.stages.length > 0 ? (
         <Stack component="ul" spacing={0.75} aria-label="Stages" sx={{ m: 0, pl: 2 }}>
@@ -166,7 +174,7 @@ export function BatchPurchaseLines({
         </Stack>
       ) : null}
 
-      {purchase.canCheckAgain ? (
+      {batchPurchaseOffersCheck(purchase) ? (
         <Stack direction="row">
           <Button
             size="small"

@@ -29,6 +29,9 @@ export const PURCHASE_UNDER_WAY = 'A new batch is being bought for this node.';
 /** Said in a row whose last purchase stopped after its batch was bought: Check again takes it up, and buys nothing. */
 export const PURCHASE_TO_CHECK = 'Its new batch is bought. Check again below puts it to use.';
 
+/** Said under a stopped purchase whose bought batch has run out since: no check can put it to use. */
+export const BOUGHT_BATCH_RAN_OUT = 'Its bought batch is no longer on the node, so a new one can be bought.';
+
 /** Said in a row with no batch at all, where Buy new buys the first. */
 export const NO_BATCH_SET = 'No batch is set on this node.';
 
@@ -40,14 +43,6 @@ export function purchasesReadFailed(error: string): string {
 /** Whether a purchase is still under way: bought, waiting, being put to use. */
 export function purchaseOpen(purchase: Pick<BatchPurchase, 'state'>): boolean {
   return BATCH_PURCHASE_OPEN_STATES.includes(purchase.state);
-}
-
-/**
- * Whether a purchase still holds its node, so the row offers no other: it is under way, or it stopped after its batch
- * was bought and Check again takes it up. A second purchase then would pay for a batch twice.
- */
-export function purchaseHoldsNode(purchase: Pick<BatchPurchase, 'state' | 'canCheckAgain'>): boolean {
-  return purchaseOpen(purchase) || (purchase.state === 'failed' && purchase.canCheckAgain);
 }
 
 /** The latest purchase of each node, by when it was started. */

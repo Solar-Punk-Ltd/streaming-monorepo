@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Alert, Box, Button, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import {
+  batchPurchaseHoldsNode,
   XBZZ_DECIMALS,
   type BatchBuyChoice,
   type FundingDiluteSteps,
@@ -15,14 +16,7 @@ import { formatShort, formatUnits } from './amounts';
 import { ArchiveStampsFooter, useArchiveStamps } from './ArchiveStamps';
 import { fundNeeds, type FundNeed } from './balance';
 import { BatchBuyDialog } from './BatchBuyDialog';
-import {
-  buyOfferOf,
-  latestPurchases,
-  purchaseHoldsNode,
-  purchasesReadFailed,
-  useBatchPurchases,
-  type BuyOffer,
-} from './batchPurchases';
+import { buyOfferOf, latestPurchases, purchasesReadFailed, useBatchPurchases, type BuyOffer } from './batchPurchases';
 import { BatchTable, type BuyControls } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
@@ -270,7 +264,7 @@ function useBuyNew(view: FundingView | null, load: () => void) {
       (each) => each?.nodeId === buyingNodeId,
     );
     const held = latest.get(buyingNodeId);
-    if (!node || (held && purchaseHoldsNode(held))) return null;
+    if (!node || (held && batchPurchaseHoldsNode(held))) return null;
     return buyOfferOf(node, catalogueNodeId);
   }, [buyingNodeId, view, latest, catalogueNodeId]);
 
