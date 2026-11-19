@@ -99,7 +99,16 @@ function serve({ check = () => ({ check: null, startRefusal: null, removalRefusa
         return 'check' in answer ? jsonOk(answer) : answer;
       },
     },
-    { path: CHECK, method: 'POST', respond: () => jsonOk(makeCheck({ state: 'running', round: 1 }), 202) },
+    {
+      path: CHECK,
+      method: 'POST',
+      respond: () =>
+        jsonOk({
+          check: makeCheck({ state: 'running', round: 1 }),
+          startRefusal: 'A check is running.',
+          removalRefusal: null,
+        }),
+    },
     {
       path: REMOVAL,
       method: 'POST',

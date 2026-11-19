@@ -291,7 +291,7 @@ describe('Buy new on the Stamps tab', () => {
 
   it('shows the refusal in the dialog and reads the view again, so it prices at the new price', async () => {
     const message = 'The price of postage moved, and this batch now costs 1 PLUR. Confirm it again at that cost.';
-    const fetchMock = serve({ buy: () => jsonError(409, { error: 'batch_purchase_refused', message }) });
+    const fetchMock = serve({ buy: () => jsonError(409, { error: 'funding_refused', problem: 'price', message }) });
     await openStamps();
     fireEvent.click(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' }));
     fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
