@@ -219,6 +219,9 @@ MANAGER_API_TOKEN_SETTING="$(sed -n 's/^MANAGER_API_TOKEN=//p' "$ENV_FILE" | tai
 if [ -z "$(printf '%s' "$MANAGER_API_TOKEN_SETTING" | tr -d '[:space:]')" ]; then
     MANAGER_API_TOKEN_KEY=FUNDING_API_TOKEN
     MANAGER_API_TOKEN_SETTING="$(sed -n 's/^FUNDING_API_TOKEN=//p' "$ENV_FILE" | tail -n 1 | tr -d '\r"' | tr -d "'")"
+    if [ -n "$MANAGER_API_TOKEN_SETTING" ]; then
+        echo "WARNING: FUNDING_API_TOKEN is the former name of MANAGER_API_TOKEN, and is read while MANAGER_API_TOKEN is unset. Rename it in $ENV_FILE." >&2
+    fi
 fi
 if [ -n "$MANAGER_API_TOKEN_SETTING" ] && { [ "${#MANAGER_API_TOKEN_SETTING}" -lt 32 ] || [[ "$MANAGER_API_TOKEN_SETTING" =~ [[:space:]] ]]; }; then
     echo "ERROR: $MANAGER_API_TOKEN_KEY in $ENV_FILE must be 32 characters or more with no space inside, or left unset to turn the funding API off." >&2
