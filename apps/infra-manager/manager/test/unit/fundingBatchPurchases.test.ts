@@ -1244,4 +1244,26 @@ describe('the archive-only route of an older admin', () => {
     });
     fundingStampPurchaseStatusSchema.parse(status);
   });
+
+  it('answers 404 unknown_request for a rung’s or the catalogue’s purchase, which only the batch route reads', async () => {
+    const journal = new InMemoryFundingStampPurchaseJournal();
+    journal.rows.set(
+      REQUEST,
+      journalled({ purpose: 'rung', nodeId: RUNG, immutable: false, nodeLabel: purchaseNodeLabel('rung', REQUEST) }),
+    );
+    journal.rows.set(
+      OTHER_REQUEST,
+      journalled({
+        requestId: OTHER_REQUEST,
+        purpose: 'catalogue',
+        nodeLabel: purchaseNodeLabel('catalogue', OTHER_REQUEST),
+      }),
+    );
+    const { bee, service } = setup({ journal });
+    for (const requestId of [REQUEST, OTHER_REQUEST]) {
+      await refusedWith(service.archiveStatus(requestId), 'unknown_request', /No archive stamp purchase/);
+    }
+    assert.equal(bee.listReads + bee.stampReads, 0, 'nothing is read for it on the older route');
+    assert.equal((await service.status(REQUEST)).purpose, 'rung', 'the batch route reads it');
+  });
 });

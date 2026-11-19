@@ -107,6 +107,8 @@ const BUYING =
 const OTHER_OPERATION =
   'Another operation of the funding API is under way on this node, a top-up, a dilution or a chequebook move, and both would spend the same wallet. Try again once it is done.';
 const OTHER_PURCHASE = 'This request id names another batch purchase.';
+const NOT_AN_ARCHIVE_PURCHASE =
+  'No archive stamp purchase was journalled under this request id. A batch purchase of another purpose is read on the batch purchase route.';
 const LABEL_TAKEN =
   'Another purchase’s request id begins with the same twelve hex digits, which the batch’s label on its node is made of. Send this purchase under a new request id.';
 const NOT_REACHED = 'The node’s Bee API could not be reached, so it was asked nothing.';
@@ -372,6 +374,11 @@ export class FundingBatchPurchaseService {
    * purchase that is `failed` or `unknown`, and null for one that is `confirmed`, as that route always answered it.
    */
   async archiveStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
+    // The older route read archive stamps alone, so a purchase of another purpose is none of its.
+    const row = await this.deps.journal.find(requestId);
+    if (row !== null && row.purpose !== 'archive') {
+      throw new FundingApiError('unknown_request', NOT_AN_ARCHIVE_PURCHASE);
+    }
     const status = await this.status(requestId);
     return {
       requestId: status.requestId,
