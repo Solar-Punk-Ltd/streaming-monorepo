@@ -290,6 +290,34 @@ describe('exporting a recording', () => {
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'clear' });
   });
 
+  it('warns in the choose view, in the one alert on the kept file, when that file is out of date', async () => {
+    mockFetch(
+      pageRoutes(
+        recorded(),
+        makeExport({
+          state: 'done',
+          fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+          sizeBytes: 2_100_000_000,
+          finishedAt: '2026-11-10T10:20:00.000Z',
+          outdated: 'recorded_again',
+          actions: ['dismiss', 'clear'],
+        }),
+        [{ path: `/api/streams/${ID}/export`, respond: () => jsonOk(OPTIONS) }],
+      ),
+    );
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Download' }));
+    const panel = await screen.findByRole('dialog');
+    const kept = (await within(panel).findByText(/This quality is on the server already/)).closest('[role="alert"]');
+    expect(kept).toHaveClass('MuiAlert-colorWarning');
+    expect(kept?.textContent).toMatch(
+      new RegExp(`^${EXPORT_OUTDATED_TEXT.recorded_again} This quality is on the server already: `),
+    );
+    expect(within(panel).getAllByRole('alert')).toHaveLength(1);
+    expect(within(panel).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
   it('opens the panel from its indicator with a button a keyboard reaches, while an export runs', async () => {
     mockFetch(pageRoutes(recorded(), makeExport()));
     renderPage();
