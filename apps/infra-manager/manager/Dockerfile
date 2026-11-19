@@ -12,7 +12,7 @@
 # builds that commit on the host under the versions root at boot
 # (StackVersionService.ensureBundledBuild).
 
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 WORKDIR /repo
 RUN corepack enable
 
@@ -40,8 +40,14 @@ RUN pnpm --filter @streaming-infra-manager/api... build
 RUN pnpm deploy --filter=@streaming-infra-manager/api --prod /out
 
 # --- runtime stage ----------------------------------------------------------
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 WORKDIR /app
+
+# The base image's zlib, OpenSSL and musl at the versions Alpine has fixed since
+# the image was built, and no npm: the service runs `node` alone, and the
+# packages npm bundles are what an image scan counts against it.
+RUN apk upgrade --no-cache zlib libssl3 libcrypto3 musl musl-utils \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # git is for manager/scripts/stack-version-build.sh, which clones and updates
 # the checkout of every added stack version.

@@ -6,7 +6,7 @@
 #
 # Two stages, as in the manager (apps/infra-manager): install + build the workspace,
 # then `pnpm deploy` a self-contained prod tree into the runtime image.
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53 AS build
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 WORKDIR /repo
 # pnpm comes from the root package.json's `packageManager` field via corepack;
 # the prompt has to be off or the non-interactive build stalls on it.
@@ -42,8 +42,14 @@ RUN pnpm --filter @streaming-monorepo/web2-admin-backend... build
 RUN pnpm deploy --legacy --filter=@streaming-monorepo/web2-admin-backend --prod /out
 
 # --- runtime stage ----------------------------------------------------------
-FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
+FROM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 WORKDIR /app
+
+# The base image's zlib, OpenSSL and musl at the versions Alpine has fixed since
+# the image was built, and no npm: the service runs `node` alone, and the
+# packages npm bundles are what an image scan counts against it.
+RUN apk upgrade --no-cache zlib libssl3 libcrypto3 musl musl-utils \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # ffmpeg joins an exported recording's segments into an MP4 (docs/architecture/web2-admin.md, "Exporting a
 # recording"), from the Alpine release this base image pins. The exports folder is made here, owned by the user the
