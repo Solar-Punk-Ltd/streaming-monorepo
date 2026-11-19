@@ -1836,6 +1836,16 @@ port, and asks the manager nothing. A check that would put a purchase under
 way beside another on its node is refused with `problem: "node"`. Nothing is
 ever bought a second time.
 
+**The hold.** A purchase that failed with its batch bought holds its node:
+the Stamps tab offers Check again in its row, not Buy new
+(`batchPurchaseHoldsNode` of `web2-admin-common`). The list, and a check of
+it, read its status from the manager for `batchState`, the state of the bought
+batch on its node, which each answer carries as `BatchPurchase.batchState`
+and which is kept in the process as last answered. Once it reads `expired` or
+`gone`, no check can put the batch to use: the purchase holds the node no
+more, the list stops reading it, and a check of it is refused with
+`problem: "batch"`. A batch the manager did not read keeps the hold.
+
 Audit rows ([Audit log](#audit-log)): `funding.purchase.request` (the operator,
 with the purchase's id, purpose, node, depth, kind, days, amount, cost, the
 batch replaced and the price of postage it was worked out at),

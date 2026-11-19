@@ -17,6 +17,7 @@ import {
   type BatchPurchase,
   type BatchPurchaseRequest,
   batchBuyAmountPerChunkPlur,
+  batchPurchaseHoldsNode,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { FundingManagerUnavailableError, FundingRefusedError } from '../../src/domain/errors/index.js';
@@ -567,6 +568,95 @@ describe("BatchPurchaseService: the catalogue's purchase", () => {
     assert.deepEqual(manager.checks, []);
     assert.equal(checked?.move?.state, 'running');
     assert.equal(checked?.canCheckAgain, false);
+  });
+});
+
+describe("BatchPurchaseService: a failed purchase's bought batch", () => {
+  /** A rung purchase that failed with its batch bought, which holds its node. */
+  async function held(): Promise<BatchPurchase> {
+    const started = await service.start(TEST_OPERATOR, rung());
+    managerSays(started, { step: 'failed', error: 'The batch was not usable within an hour.' });
+    const purchase = await read(started.id);
+    assert.deepEqual([purchase.state, purchase.batchId, purchase.canCheckAgain], ['failed', BOUGHT, true]);
+    return purchase;
+  }
+
+  const listed = async (id: string) => (await service.list()).purchases.find((purchase) => purchase.id === id)!;
+
+  it('lifts the hold on its node once the manager reports the bought batch expired or gone', async () => {
+    for (const state of ['expired', 'gone'] as const) {
+      const purchase = await held();
+      managerSays(purchase, { step: 'failed', error: 'The batch was not usable within an hour.', batchState: state });
+
+      const shown = await listed(purchase.id);
+
+      assert.equal(shown.batchState, state, state);
+      assert.equal(batchPurchaseHoldsNode(shown), false, state);
+      assert.equal(shown.canCheckAgain, true, 'canCheckAgain stays as it is; the console gates on the contract');
+    }
+  });
+
+  it('keeps the hold while the manager has not read the bought batch, or reads it with time left', async () => {
+    const purchase = await held();
+
+    let shown = await listed(purchase.id);
+    assert.equal(shown.batchState, undefined);
+    assert.equal(batchPurchaseHoldsNode(shown), true, 'an unread batch has not run out');
+
+    managerSays(purchase, { step: 'failed', error: 'The batch was not usable within an hour.', batchState: 'active' });
+    shown = await listed(purchase.id);
+    assert.equal(shown.batchState, 'active');
+    assert.equal(batchPurchaseHoldsNode(shown), true);
+
+    // The manager reads it no more: the state it last gave is dropped, and the hold stays.
+    managerSays(purchase, { step: 'failed', error: 'The batch was not usable within an hour.' });
+    shown = await listed(purchase.id);
+    assert.equal(shown.batchState, undefined);
+    assert.equal(batchPurchaseHoldsNode(shown), true);
+  });
+
+  it('asks the manager only about the failed purchases that still hold their node', async () => {
+    const purchase = await held();
+    manager.sendFailure = new ManagerFundingError(
+      'stamp_refused',
+      422,
+      'The node holds less xBZZ than the batch costs.',
+    );
+    const boughtNothing = await service.start(TEST_OPERATOR, catalogue());
+    manager.sendFailure = null;
+    manager.statusReads.length = 0;
+
+    await service.list();
+    assert.deepEqual(manager.statusReads, [purchase.id], 'the one that bought nothing is not asked about');
+
+    managerSays(purchase, { step: 'failed', error: 'The batch was not usable within an hour.', batchState: 'gone' });
+    await service.list();
+    manager.statusReads.length = 0;
+    await service.list();
+    assert.deepEqual(manager.statusReads, [], 'one whose batch ran out holds nothing, and is asked about no more');
+    assert.equal(boughtNothing.batchState, undefined);
+  });
+
+  it('refuses a check of a purchase whose bought batch has run out, asking the manager to check nothing', async () => {
+    const purchase = await held();
+    managerSays(purchase, { step: 'failed', error: 'The batch was not usable within an hour.', batchState: 'expired' });
+
+    const refused = await refusal(() => service.check(TEST_OPERATOR, purchase.id));
+
+    assert.equal(refused.problem, 'batch');
+    assert.match(refused.message, /has run out/);
+    assert.deepEqual(manager.checks, []);
+    assert.equal(audit.withAction('funding.purchase.check').length, 0);
+  });
+
+  it('checks a held purchase whose bought batch is still there, and carries the state the check answered', async () => {
+    const purchase = await held();
+    managerSays(purchase, { step: 'waiting_usable', batchState: 'pending' });
+
+    const checked = await service.check(TEST_OPERATOR, purchase.id);
+
+    assert.deepEqual(manager.checks, [purchase.id]);
+    assert.deepEqual([checked?.state, checked?.batchState], ['waiting_usable', 'pending']);
   });
 });
 
