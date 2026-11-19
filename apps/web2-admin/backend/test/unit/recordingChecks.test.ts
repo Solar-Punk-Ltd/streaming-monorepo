@@ -24,7 +24,9 @@ import {
   CHECK_RUNNING,
   CHECK_TOO_OLD,
   KEPT_BY_RULE,
+  NO_RECORDING_NOW,
   noCatalogueNode,
+  nodeFailedDuringRemoval,
   NONE_LOST,
   NOT_THE_LATEST_CHECK,
   NOT_THE_LIST,
@@ -360,6 +362,47 @@ describe('the removal of lost recordings', () => {
     const { check, removalRefusal } = await checks.status();
     assert.deepEqual(check?.lost, []);
     assert.equal(removalRefusal, NONE_LOST);
+  });
+
+  it('refuses, and writes nothing, when the node falls under the peers floor while it reads them once more', async () => {
+    const gone = recorded({ title: 'Gone' }, { gone: true });
+    const back = recorded({ title: 'Back' });
+    store.finished(
+      CHECK,
+      [gone, back].map((stream) => ({ streamId: stream.id, title: stream.title, verdict: 'lost' })),
+      new Date(now - 60_000),
+    );
+    store.marks.set(back.id, 'lost');
+    const read = reads.playlist.bind(reads);
+    reads.playlist = (node, feed) => {
+      reads.peerCount = 1;
+      return read(node, feed);
+    };
+
+    await refusedWith(
+      service().removeLost(TEST_OPERATOR, { checkId: CHECK, streamIds: [gone.id, back.id] }),
+      nodeFailedDuringRemoval(tooFewPeers(1, 4)),
+    );
+
+    assert.equal(writer.calls.length, 0, 'nothing left the catalogue');
+    assert.ok(streams.rows.has(gone.id), 'nothing was deleted');
+    assert.equal(store.marks.get(back.id), 'lost', 'and nothing was recorded of what was read');
+    assert.deepEqual(
+      (await store.streams(CHECK)).map((row) => row.removal),
+      [null, null],
+    );
+  });
+
+  it('keeps a listed stream that holds no finished recording now', async () => {
+    const empty = streams.add(streamRow({ status: 'draft', manifest_index: null, title: 'Empty' }));
+    store.finished(CHECK, [{ streamId: empty.id, title: 'Empty', verdict: 'lost' }], new Date(now - 60_000));
+
+    const answer = await service().removeLost(TEST_OPERATOR, { checkId: CHECK, streamIds: [empty.id] });
+
+    assert.deepEqual(answer.kept, [{ streamId: empty.id, title: 'Empty', reason: NO_RECORDING_NOW }]);
+    assert.deepEqual(answer.removed, []);
+    assert.equal(writer.calls.length, 0);
+    assert.ok(streams.rows.has(empty.id), 'not deleted');
   });
 
   it('refuses another list, a check that is not the latest or too old, and a catalogue that cannot be written', async () => {

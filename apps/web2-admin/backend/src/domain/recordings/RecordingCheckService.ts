@@ -127,6 +127,12 @@ export const ADMIN_RESTARTED = 'The admin restarted while the check ran. Start a
 export const GONE_ALREADY = 'It was deleted meanwhile.';
 export const READS_NOW = 'It could be read now, so it is not removed.';
 export const CHANGED_MEANWHILE = 'It changed meanwhile, so it was not deleted.';
+export const NO_RECORDING_NOW = 'It holds no finished recording now, so it is not removed.';
+
+/** Why a removal stops after reading the recordings once more: the node fell out of health while it read them. */
+export function nodeFailedDuringRemoval(problem: string): string {
+  return `${problem} It was so after the recordings were read once more, so those reads do not count and nothing was removed. Try again once the node is healthy.`;
+}
 
 /** Why a stream the removal asked the rule about again is kept. */
 export const KEPT_BY_RULE: Readonly<Record<RecordingSkipReason, string>> = {
@@ -311,29 +317,40 @@ export class RecordingCheckService {
         await this.deps.store.recordRemoval(latest.id, row.streamId, 'kept', reason);
       };
 
-      // Each one asked the rule again and read once more: one that may not be judged now, or reads now, is kept.
+      // Each one asked the rule again and read once more: one that may not be judged now, holds no recording now, or
+      // reads now, is kept. Nothing is written until the node is found healthy again after the reads.
       const going: StreamRow[] = [];
+      const keeping: { row: RecordingCheckStreamRow; reason: string; readsNow: boolean }[] = [];
       for (const row of lost) {
         const stream = await this.deps.streams.findById(row.streamId);
         if (!stream) {
-          await keep(row, GONE_ALREADY);
+          keeping.push({ row, reason: GONE_ALREADY, readsNow: false });
           continue;
         }
         const skip = recordingSkipReason(recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes), now);
         if (skip !== null) {
-          await keep(row, KEPT_BY_RULE[skip]);
+          keeping.push({ row, reason: KEPT_BY_RULE[skip], readsNow: false });
           continue;
         }
         const parts = recordingPartsOf(stream, await this.deps.renditions.listByStream(stream.id));
-        if (parts) {
-          const readings = await readRecordingRound(this.deps.reads, node, parts, { master: [], qualities: [] });
-          if (!lostInOneRead(readings)) {
-            await keep(row, READS_NOW);
-            await this.deps.store.clearVerdict(stream.id);
-            continue;
-          }
+        if (!parts) {
+          keeping.push({ row, reason: NO_RECORDING_NOW, readsNow: false });
+          continue;
+        }
+        const readings = await readRecordingRound(this.deps.reads, node, parts, { master: [], qualities: [] });
+        if (!lostInOneRead(readings)) {
+          keeping.push({ row, reason: READS_NOW, readsNow: true });
+          continue;
         }
         going.push(stream);
+      }
+
+      // The reads once more count only while the node stayed healthy through them, as a check's round does.
+      const after = await this.health(true);
+      if (after.problem !== null) throw new RecordingsRefusedError(nodeFailedDuringRemoval(after.problem));
+      for (const { row, reason, readsNow } of keeping) {
+        await keep(row, reason);
+        if (readsNow) await this.deps.store.clearVerdict(row.streamId);
       }
 
       // The rest leave the catalogue in one write.
