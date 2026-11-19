@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   BACKGROUND_READ_HEADER,
   BACKGROUND_READ_VALUE,
+  EXPORT_OUTDATED_TEXT,
   type ExportOptionsResponse,
   type ExportSummary,
   type Stream,
@@ -369,6 +370,69 @@ describe('exporting a recording', () => {
     expect(JSON.parse(String(post?.[1]?.body))).toEqual({ action: 'dismiss' });
     // The file stays on the page to save again.
     expect(screen.getByRole('region', { name: 'downloaded file' })).toBeInTheDocument();
+  });
+
+  it('says on the card, in the panel and in the indicator that a kept file is out of date once the stream recorded again', async () => {
+    mockFetch(
+      pageRoutes(
+        recorded(),
+        makeExport({
+          state: 'done',
+          fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+          sizeBytes: 2_100_000_000,
+          finishedAt: '2026-11-10T10:20:00.000Z',
+          partial: true,
+          outdated: 'recorded_again',
+          actions: ['dismiss', 'clear'],
+        }),
+      ),
+    );
+    renderPage();
+    const sentence = EXPORT_OUTDATED_TEXT.recorded_again;
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    expect(within(card).getByText('Part of the recording')).toBeInTheDocument();
+    expect(within(card).getByText(sentence)).toBeInTheDocument();
+    // The file's buttons stay as they are.
+    expect(within(card).getByRole('link', { name: /Save file/ })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+
+    const widget = screen.getByRole('status', { name: 'export' });
+    expect(within(widget).getByText(sentence)).toBeInTheDocument();
+    expect(within(widget).getByRole('link', { name: 'Save file' })).toBeInTheDocument();
+
+    fireEvent.click(within(widget).getByRole('button', { name: 'open the export' }));
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText(sentence)).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
+  it('says the kept file holds the earlier recording while the stream is live again, and nothing once it is current', async () => {
+    const done = makeExport({
+      state: 'done',
+      fileName: 'opening-keynote-2026-11-05-1080p.mp4',
+      sizeBytes: 2_100_000_000,
+      finishedAt: '2026-11-10T10:20:00.000Z',
+      outdated: 'live',
+      actions: ['dismiss', 'clear'],
+    });
+    mockFetch(pageRoutes(makeStream({ id: ID, status: 'live', manifestIndex: null }), done));
+    const { unmount } = renderPage();
+
+    const card = await screen.findByRole('region', { name: 'downloaded file' });
+    expect(within(card).getByText(EXPORT_OUTDATED_TEXT.live)).toBeInTheDocument();
+    const widget = screen.getByRole('status', { name: 'export' });
+    expect(within(widget).getByText(EXPORT_OUTDATED_TEXT.live)).toBeInTheDocument();
+    unmount();
+
+    mockFetch(pageRoutes(recorded(), { ...done, outdated: null }));
+    renderPage();
+    const current = await screen.findByRole('region', { name: 'downloaded file' });
+    expect(within(current).queryByText(EXPORT_OUTDATED_TEXT.live)).not.toBeInTheDocument();
+    expect(within(current).queryByText(EXPORT_OUTDATED_TEXT.recorded_again)).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole('status', { name: 'export' })).getByText('Ready to save, 2.1 GB'),
+    ).toBeInTheDocument();
   });
 
   it('offers Clear under Save file on the kept file card when the export allows it, and not when it does not', async () => {

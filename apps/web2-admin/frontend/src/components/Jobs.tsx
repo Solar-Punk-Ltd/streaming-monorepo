@@ -16,7 +16,7 @@ import {
   archiveWidgetLine,
 } from './archive/archiveJobText';
 import { ExportProvider, useExport } from './export/ExportProvider';
-import { needsDecision, percentRead, widgetLine } from './export/exportText';
+import { needsDecision, outdatedLine, percentRead, widgetLine } from './export/exportText';
 import { useSnackbar } from './Snackbar';
 
 /** The export and the archive on the server, which every page and every signed-in user shares. */
@@ -75,6 +75,7 @@ function ExportIndicator({ narrow }: { narrow: boolean }) {
       tone={needsDecision(current) ? 'warning' : active ? 'primary' : 'success'}
       name={`${current.streamTitle} · ${current.quality}`}
       line={widgetLine(current)}
+      lineWarning={outdatedLine(current) !== null}
       progress={active ? percentRead(current) : undefined}
       narrow={narrow}
       onOpen={() => openPanel(null)}
@@ -146,6 +147,8 @@ interface JobIndicatorProps {
   name: string;
   /** Where the job stands, in a few words. */
   line: string;
+  /** Shows the line as a warning while the job's tone does not: a kept export file that is out of date. */
+  lineWarning?: boolean;
   /** The bar while the job moves: how far, 0 to 100, null while that is unknown; undefined for no bar. */
   progress: number | null | undefined;
   narrow: boolean;
@@ -161,7 +164,19 @@ interface JobIndicatorProps {
  * `sm` it is the icon, with a dot when the job needs a decision or is done and a label that gives the stream and where
  * it stands, and a finished job keeps its close button beside it.
  */
-function JobIndicator({ job, Icon, tone, name, line, progress, narrow, onOpen, onClose, save }: JobIndicatorProps) {
+function JobIndicator({
+  job,
+  Icon,
+  tone,
+  name,
+  line,
+  lineWarning = false,
+  progress,
+  narrow,
+  onOpen,
+  onClose,
+  save,
+}: JobIndicatorProps) {
   const close = onClose ? (
     // Narrow, it sits close to its own icon, so it reads as that job's and not the next one's.
     <IconButton
@@ -221,7 +236,8 @@ function JobIndicator({ job, Icon, tone, name, line, progress, narrow, onOpen, o
           variant="caption"
           component="div"
           noWrap
-          sx={{ lineHeight: 1.3, color: tone === 'warning' ? 'warning.main' : 'text.secondary' }}
+          title={line}
+          sx={{ lineHeight: 1.3, color: tone === 'warning' || lineWarning ? 'warning.main' : 'text.secondary' }}
         >
           {line}
         </Typography>

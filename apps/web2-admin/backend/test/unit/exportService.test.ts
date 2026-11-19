@@ -512,6 +512,64 @@ describe('ExportService', () => {
     assert.equal(done?.fileName, 'unicode-friends-day-2-2026-11-06-720p.mp4');
   });
 
+  it('marks a kept file while its stream is live again, and out of date once its quality recorded again', async () => {
+    const stream = recordedLadder();
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    assert.equal((await service.current(null))?.outdated, null, 'the 1080p rung still holds playlist 4');
+
+    // Another quality recording again says nothing of this file.
+    const rungs = () => renditions.rows.get(stream.id)!;
+    renditions.rows.set(
+      stream.id,
+      rungs().map((rung) => (rung.name === '720p' ? { ...rung, manifest_index: 7 } : rung)),
+    );
+    assert.equal((await service.current(null))?.outdated, null);
+
+    streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'live' });
+    const live = await service.current(null);
+    assert.equal(live?.outdated, 'live');
+    assert.deepEqual(live?.actions, ['dismiss', 'clear'], 'the file can be saved and cleared as before');
+    assert.equal((await service.optionsFor(stream.id, null)).current?.outdated, 'live');
+
+    streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'vod', manifest_index: 8 });
+    renditions.rows.set(
+      stream.id,
+      rungs().map((rung) => ({ ...rung, manifest_index: 9 })),
+    );
+    const recorded = await service.current(null);
+    assert.equal(recorded?.state, 'done');
+    assert.equal(recorded?.outdated, 'recorded_again');
+  });
+
+  it("marks a single-quality file out of date once the stream's own playlist index is another, or none", async () => {
+    const stream = streamRow({ status: 'vod', manifest_index: 2, duration_seconds: 4, title: 'One quality' });
+    streams.rows.set(stream.id, stream);
+    const refs = [21, 22].map(ref);
+    source.playlist(stream.topic, 2, playlistOf(refs));
+    refs.forEach((reference) => source.segment(reference));
+    await service.start(TEST_OPERATOR, stream.id, 'source');
+    await service.settled();
+    assert.equal((await service.current(null))?.outdated, null);
+
+    streams.rows.set(stream.id, { ...stream, manifest_index: 3 });
+    assert.equal((await service.current(null))?.outdated, 'recorded_again');
+    streams.rows.set(stream.id, { ...stream, manifest_index: null });
+    assert.equal((await service.current(null))?.outdated, 'recorded_again');
+  });
+
+  it('never marks an export that has not finished out of date', async () => {
+    const stream = recordedLadder();
+    source.failing.add(ref(3));
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+    streams.rows.set(stream.id, { ...streams.rows.get(stream.id)!, status: 'live' });
+
+    const paused = await service.current(null);
+    assert.equal(paused?.state, 'paused');
+    assert.equal(paused?.outdated, null);
+  });
+
   it('closes the widget of a finished export for the user who closes it only', async () => {
     const stream = recordedLadder();
     const started = await service.start(TEST_OPERATOR, stream.id, '1080p');

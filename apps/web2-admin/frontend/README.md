@@ -44,7 +44,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
 | `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
 | `MOCK_ARCHIVE`        | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`               |
-| `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done` or `off`                                      |
+| `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done`, `outdated` or `off`                          |
 | `MOCK_ARCHIVE_STAMPS` | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                  |
 | `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
 | `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
@@ -129,6 +129,7 @@ seeded recording:
 - `paused`: one the seeded user started, which pauses on segments it could not read, so the panel
   comes to front. Every export started from the panel then pauses the same way part-way.
 - `done`: a kept file, above the OBS panel of its stream and in the header.
+- `outdated`: a kept file its stream recorded again after, which says it is out of date.
 - `off`: none.
 
 Save file answers a stand-in file under the export's name, not a video.
@@ -259,7 +260,8 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   on the server, with Save file and, under it, Clear, which asks first and deletes the kept file from
   the server for everyone; when its export started and finished, and how long it took, pauses
   included; or the export of it while it runs, with when it started. Both times are in UTC, to the
-  second.
+  second. A kept file that is out of date says so in an orange chip, as the panel and the header's
+  indicator do: the stream is live again, or it recorded again after the export.
 - On a finished recording, or a stream with an archive, the archive card, above the downloaded file:
   each quality with its state, "Archived", "Archived, reduced protection", "Archive stamp not
   listed", "Archive incomplete", "Archive outdated", "Archive expired" or "Not archived", and what
