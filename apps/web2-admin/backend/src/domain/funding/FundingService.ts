@@ -10,6 +10,9 @@ import type {
 } from '@streaming-monorepo/contracts';
 import {
   type AdminFundingNode,
+  type BatchPurchase,
+  type BatchPurchaseRequest,
+  type BatchPurchasesResponse,
   type FundingBulkAnswer,
   type FundingChequebookBulkAnswer,
   type FundingChequebookOperationsAnswer,
@@ -42,6 +45,7 @@ import {
 } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 
+import type { BatchPurchaseService } from './BatchPurchaseService.js';
 import type { BrandWallet, BrandWalletTransaction } from './BrandWallet.js';
 import type { FundingChequebookService } from './FundingChequebookService.js';
 import type { FundingPinRow, FundingPinStore, NewFundingPin } from './FundingPinRepository.js';
@@ -118,6 +122,9 @@ export type FundingStamps = Pick<FundingStampService, 'request' | 'bulk' | 'refr
  * chequebook bulks.
  */
 export type FundingChequebooks = Pick<FundingChequebookService, 'request' | 'bulk' | 'refreshAsked' | 'openBulkId'>;
+
+/** What the service uses of the purchase service: the batch purchase routes it answers. */
+export type FundingPurchases = Pick<BatchPurchaseService, 'list' | 'get' | 'start' | 'restart' | 'check'>;
 
 /**
  * The codes a relay is refused with for good: the manager checked the transfer and will refuse the same bytes again.
@@ -267,6 +274,8 @@ export interface FundingServiceDeps {
    * bulk from.
    */
   chequebooks: FundingChequebooks;
+  /** The batch purchases of the Stamps tab, which it answers the purchase routes with. */
+  purchases?: FundingPurchases;
   audit: AuditLog;
   /** A new request id or bulk id: `randomUUID` by default. */
   newId?: () => string;
@@ -284,6 +293,7 @@ export class FundingService {
   private readonly pins: FundingPinStore;
   private readonly stamps: FundingStamps;
   private readonly chequebooks: FundingChequebooks;
+  private readonly purchases: FundingPurchases | null;
   private readonly audit: AuditLog;
   private readonly newId: () => string;
   private readonly now: () => number;
@@ -297,6 +307,7 @@ export class FundingService {
     this.pins = deps.pins;
     this.stamps = deps.stamps;
     this.chequebooks = deps.chequebooks;
+    this.purchases = deps.purchases ?? null;
     this.audit = deps.audit;
     this.newId = deps.newId ?? randomUUID;
     this.now = deps.now ?? Date.now;
@@ -586,6 +597,41 @@ export class FundingService {
   /** `GET /api/funding/chequebook-operations?bulkId=`: the items of a chequebook bulk, refreshed from the manager. */
   chequebookBulk(bulkId: string): Promise<FundingChequebookBulkAnswer> {
     return this.chequebooks.bulk(bulkId);
+  }
+
+  /** `GET /api/funding/batch-purchases`: the purchases under way, and those that ended in the last day. */
+  batchPurchases(): Promise<BatchPurchasesResponse> {
+    return this.requirePurchases().list();
+  }
+
+  /**
+   * `POST /api/funding/batch-purchases`, behind the page's confirm dialog and no password: the purchase service's
+   * start, which buys a new batch on a node, paid from its own wallet.
+   */
+  startBatchPurchase(actor: OperatorActor, request: BatchPurchaseRequest): Promise<BatchPurchase> {
+    return this.requirePurchases().start(actor, request);
+  }
+
+  /** `GET /api/funding/batch-purchases/:id`: one purchase, or null for none. */
+  batchPurchase(id: string): Promise<BatchPurchase | null> {
+    return this.requirePurchases().get(id);
+  }
+
+  /** `POST /api/funding/batch-purchases/:id/restart`, behind the page's confirm dialog. Null for no such purchase. */
+  restartBatchPurchase(actor: OperatorActor, id: string, stageId: string): Promise<BatchPurchase | null> {
+    return this.requirePurchases().restart(actor, id, stageId);
+  }
+
+  /** `POST /api/funding/batch-purchases/:id/check`. Null for no such purchase. */
+  checkBatchPurchase(actor: OperatorActor, id: string): Promise<BatchPurchase | null> {
+    return this.requirePurchases().check(actor, id);
+  }
+
+  private requirePurchases(): FundingPurchases {
+    if (!this.purchases) {
+      throw new FundingRefusedError('not_set_up', 'The admin was started without batch purchases.');
+    }
+    return this.purchases;
   }
 
   /**
