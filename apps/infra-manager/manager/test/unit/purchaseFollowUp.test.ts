@@ -427,6 +427,42 @@ describe('one look at a stage', () => {
     assert.deepEqual(world.applied, [], 'no second Apply');
   });
 
+  it('keeps the failed Apply of each purchase that follows the stage, so a deploy that keeps failing is not applied again', async () => {
+    const SECOND = 'd'.repeat(64);
+    world.profiles.push(
+      makeProfile({ name: 'pool-720p', kind: 'custom', components: ['bee-uploader'], stamp_id: SECOND }),
+    );
+    world.followers.set('pool-720p', [{ stage: stageProfile('main'), following: true }]);
+    const both = beePublishersValue([
+      { rungName: '360p', url: 'http://192.0.2.10:10025', batchId: BOUGHT },
+      { rungName: '720p', url: 'http://192.0.2.10:10035', batchId: SECOND },
+    ]);
+    world.catalogs.set('main', catalogOf({ value: both }));
+    const ports = world.ports();
+    const lookFor = (batchId: string) =>
+      ports.stages.look({ stageId: 'main-instance', batchId, force: false, retryFailed: false });
+    /** The deploy an Apply started ends in an error. */
+    const failDeploy = () => {
+      world.clock += 1_000;
+      Object.assign(world.profiles[1]!, {
+        status: 'ERROR',
+        last_error: 'the uploader exited',
+        last_error_at: new Date(world.clock),
+      });
+    };
+
+    assert.equal((await lookFor(BOUGHT)).apply, 'applying');
+    failDeploy();
+    assert.equal((await lookFor(SECOND)).apply, 'applying');
+    failDeploy();
+
+    for (let round = 0; round < 3; round += 1) {
+      assert.equal((await lookFor(BOUGHT)).apply, 'failed');
+      assert.equal((await lookFor(SECOND)).apply, 'failed');
+    }
+    assert.equal(world.applied.length, 2, 'one Apply for each purchase, none after');
+  });
+
   it('answers failed with the reason an Apply did not start', async () => {
     world.applyError = new Error('The stack refuses the engine settings.');
     assert.deepEqual(await look(), {
