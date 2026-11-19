@@ -433,6 +433,22 @@ export class FakeStreamStore
     }
   }
 
+  /** As the SQL is: a lost thumbnail cleared, as an edit, on every row that names it and holds no bytes of it. */
+  async clearLostThumbnail(reference: string): Promise<{ streamId: string; title: string }[]> {
+    const cleared: { streamId: string; title: string }[] = [];
+    for (const row of [...this.rows.values()]) {
+      if (row.thumbnail_ref?.toLowerCase() !== reference.toLowerCase() || this.thumbnails.has(row.id)) continue;
+      this.patch(row.id, {
+        thumbnail_mime: null,
+        thumbnail_ref: null,
+        thumbnail_batch_id: null,
+        content_edited_at: new Date('2026-09-11T11:00:00.000Z'),
+      });
+      cleared.push({ streamId: row.id, title: row.title });
+    }
+    return cleared;
+  }
+
   /** The SQL's `CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END`. */
   private thumbnailBatchAfter(id: string, thumbnailRef: string | null): { thumbnail_batch_id?: null } {
     return this.rows.get(id)?.thumbnail_ref === thumbnailRef ? {} : { thumbnail_batch_id: null };

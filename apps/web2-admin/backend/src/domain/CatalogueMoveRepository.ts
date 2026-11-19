@@ -1,4 +1,4 @@
-import type { CatalogueMoveState } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueMoveState, ClearedThumbnail } from '@streaming-monorepo/web2-admin-common';
 import { Pool, PoolClient } from 'pg';
 
 async function inTransaction<T>(pool: Pool, work: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -27,6 +27,11 @@ export interface CatalogueMoveRow {
   restampedSlots: number;
   skippedSlots: number;
   thumbnails: number;
+  /**
+   * The streams whose thumbnail the move cleared, in the order it cleared them (migration 030): after the batch it
+   * moves from lapsed, a thumbnail no stream holds the bytes of and the network gives no more.
+   */
+  clearedThumbnails: ClearedThumbnail[];
   error: string | null;
   startedBy: string;
   startedAt: Date;
@@ -79,6 +84,11 @@ export interface CatalogueMoveStore {
   ): Promise<CatalogueMoveRow | null>;
   finish(id: string, thumbnails: number): Promise<CatalogueMoveRow | null>;
   fail(id: string, error: string): Promise<CatalogueMoveRow | null>;
+  /**
+   * Adds streams to the list of those whose thumbnail the move cleared, each stream once, while the move runs; null
+   * otherwise, and nothing is written.
+   */
+  recordClearedThumbnails(id: string, cleared: readonly ClearedThumbnail[]): Promise<CatalogueMoveRow | null>;
 }
 
 interface Row {
@@ -91,6 +101,7 @@ interface Row {
   restamped_slots: number;
   skipped_slots: number;
   thumbnails: number;
+  cleared_thumbnails: ClearedThumbnail[];
   error: string | null;
   started_by: string;
   started_at: Date;
@@ -99,7 +110,7 @@ interface Row {
 }
 
 const COLUMNS = `id::text AS id, target_batch_id, from_batch_id, state, next_index, head_index, restamped_slots,
-  skipped_slots, thumbnails, error, started_by, started_at, updated_at, finished_at`;
+  skipped_slots, thumbnails, cleared_thumbnails, error, started_by, started_at, updated_at, finished_at`;
 
 function rowOf(row: Row): CatalogueMoveRow {
   return {
@@ -112,6 +123,7 @@ function rowOf(row: Row): CatalogueMoveRow {
     restampedSlots: row.restamped_slots,
     skippedSlots: row.skipped_slots,
     thumbnails: row.thumbnails,
+    clearedThumbnails: row.cleared_thumbnails ?? [],
     error: row.error,
     startedBy: row.started_by,
     startedAt: row.started_at,
@@ -266,6 +278,30 @@ export class CatalogueMoveRepository implements CatalogueMoveStore {
         WHERE id = $1 AND state = 'running'
         RETURNING ${COLUMNS}`,
       [id, error],
+    );
+    return result.rows[0] ? rowOf(result.rows[0]) : null;
+  }
+
+  async recordClearedThumbnails(id: string, cleared: readonly ClearedThumbnail[]): Promise<CatalogueMoveRow | null> {
+    // A stream already on the list stays where it is; one listed twice in `cleared` is added once.
+    const result = await this.pool.query<Row>(
+      `UPDATE catalogue_moves
+          SET cleared_thumbnails = cleared_thumbnails || COALESCE((
+                SELECT jsonb_agg(jsonb_build_object('streamId', item.stream_id, 'title', item.title) ORDER BY item.at)
+                  FROM (
+                    SELECT DISTINCT ON (added->>'streamId')
+                           added->>'streamId' AS stream_id, added->>'title' AS title, position AS at
+                      FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS listed (added, position)
+                     ORDER BY added->>'streamId', position
+                  ) AS item
+                 WHERE NOT EXISTS (
+                   SELECT 1 FROM jsonb_array_elements(catalogue_moves.cleared_thumbnails) AS have
+                    WHERE have->>'streamId' = item.stream_id)
+              ), '[]'::jsonb),
+              updated_at = NOW()
+        WHERE id = $1 AND state = 'running'
+        RETURNING ${COLUMNS}`,
+      [id, JSON.stringify(cleared.map(({ streamId, title }) => ({ streamId, title })))],
     );
     return result.rows[0] ? rowOf(result.rows[0]) : null;
   }
