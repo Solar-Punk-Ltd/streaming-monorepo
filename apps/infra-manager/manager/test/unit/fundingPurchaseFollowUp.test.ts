@@ -379,6 +379,25 @@ describe('a rung purchase', () => {
     ]);
   });
 
+  it('keeps a stage whose look was refused as it was, never failed, and takes a later look’s answer', async () => {
+    const { applies, current, followUp, ports, usable } = setup([row('rung')]);
+    ports.followers = [{ stageId: STAGE_ONE, name: 'stage-one', following: true }];
+    ports.answer(STAGE_ONE, 'applied');
+    ports.unreadable.add(STAGE_ONE);
+    usable();
+    await followUp.advance(REQUEST);
+    assert.deepEqual(
+      applies(),
+      [['stage-one', 'pending']],
+      'a refused look is no answer, so the stage stays as it was',
+    );
+    assert.equal(current().step, 'set');
+    ports.unreadable.delete(STAGE_ONE);
+    await followUp.advance(REQUEST);
+    assert.deepEqual(applies(), [['stage-one', 'applied']], 'another purchase’s deploy applied it meanwhile');
+    assert.equal(current().step, 'done');
+  });
+
   it('stops as failed with the port’s sentence when the batch could not be set, and a check sets it', async () => {
     const { current, followUp, ports, usable } = setup([row('rung')]);
     ports.setFailure = new Error('Another batch was set on pool-720p meanwhile, so this one is left unset.');

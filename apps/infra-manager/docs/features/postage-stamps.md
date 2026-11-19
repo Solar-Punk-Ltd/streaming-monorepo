@@ -316,7 +316,15 @@ designation and the release as `the batch purchase <requestId>`
 The admin's **Restart now** runs the Apply of a stage in `waiting_live` or `waiting_unknown` at
 once (`POST …/batch-purchases/:requestId/restart`). The batch is the only setting it carries, since
 a stage with other settings waiting is in `waiting_settings`. The manager applies a stage for the
-admin for nothing but a purchase.
+admin for nothing but a purchase. A look at a stage that could not be made leaves the stage as it
+was, never `failed`, and the next pass looks again.
+
+The admin's buy dialog opens with the inventory's `replacement` for the node: the depth and kind of
+the batch being replaced, as its node reports them, or as the manager last read them while it runs.
+Once the node holds that batch no more and the manager has restarted since, neither is known, and
+the dialog opens with what the Buy form suggests: a rung's depth by its place in the ladder, 17 for
+a stage's own node, mutable, and immutable at 18 or deeper for the catalogue. The admin changes the
+values in the dialog before buying.
 
 A purchase is refused before the node is asked when the batch it names as replaced is another than
 the one set now, and when that batch still works (`purchaseReplaceProblem`): a batch with time left
