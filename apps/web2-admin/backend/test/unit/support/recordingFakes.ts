@@ -127,6 +127,16 @@ export class InMemoryRecordingCheckStore implements RecordingCheckStore {
     this.marks.delete(streamId);
   }
 
+  async unlisted(): Promise<{ streamId: string; removedAt: Date }[]> {
+    const latest = new Map<string, Date>();
+    for (const row of this.checks.flatMap((check) => check.rows)) {
+      if (row.removal !== 'unlisted' || !row.removedAt) continue;
+      const known = latest.get(row.streamId);
+      if (!known || known < row.removedAt) latest.set(row.streamId, row.removedAt);
+    }
+    return [...latest].map(([streamId, removedAt]) => ({ streamId, removedAt }));
+  }
+
   /** A finished check that ended at `endedAt`, with these verdicts, for the removal's tests. */
   finished(
     id: string,

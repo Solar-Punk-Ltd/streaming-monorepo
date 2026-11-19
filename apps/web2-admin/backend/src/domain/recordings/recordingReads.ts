@@ -192,17 +192,35 @@ export function failedQualitiesOf(readings: RecordingReadings): string[] {
 }
 
 /**
+ * Whether a removal kept the stream as a draft off the catalogue for its export file, at `unlistedAt`, and it has not
+ * changed since: still a draft, still marked lost, and its row not updated after that removal. Going live, a publish
+ * and an edit each change it, and a check judges it again.
+ */
+export function stillUnlisted(stream: StreamRow, unlistedAt: Date | undefined): boolean {
+  return (
+    unlistedAt !== undefined &&
+    stream.status === 'draft' &&
+    stream.recording_verdict === 'lost' &&
+    stream.updated_at.getTime() <= unlistedAt.getTime()
+  );
+}
+
+/**
  * What the one rule, `recordingSkipReason`, reads of a stream: its status, its restart window as the stream list
- * shows it, and whether an export or an archive of it is under way. A stream's test flag is read here once it has one.
+ * shows it, whether an export or an archive of it is under way, and whether a removal kept it as a draft for its
+ * export file and it has not changed since (`unlistedAt`, by stream id). A stream's test flag is read here once it has
+ * one.
  */
 export function recordingJudgeInputOf(
   stream: StreamRow,
   openJobs: ReadonlySet<string>,
   restartWindowMinutes: number,
+  unlistedAt: ReadonlyMap<string, Date>,
 ): RecordingJudgeInput {
   return {
     status: stream.status,
     restartUntil: restartUntilOf(stream, restartWindowMinutes)?.toISOString() ?? null,
     hasOpenJob: openJobs.has(stream.id),
+    unlisted: stillUnlisted(stream, unlistedAt.get(stream.id)),
   };
 }

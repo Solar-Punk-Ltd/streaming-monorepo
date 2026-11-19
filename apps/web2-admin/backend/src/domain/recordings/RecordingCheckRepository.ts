@@ -72,6 +72,11 @@ export interface RecordingCheckStore {
   recordRemoval(checkId: string, streamId: string, removal: RecordingRemoval, keptReason: string | null): Promise<void>;
   /** Takes the mark off a stream's row: a read once more found its recording. */
   clearVerdict(streamId: string): Promise<void>;
+  /**
+   * The streams a removal kept as a draft off the catalogue for their export file, each with when the latest such
+   * removal was recorded.
+   */
+  unlisted(): Promise<{ streamId: string; removedAt: Date }[]>;
 }
 
 interface CheckRow {
@@ -280,6 +285,16 @@ export class RecordingCheckRepository implements RecordingCheckStore {
         WHERE check_id = $1 AND stream_id = $2 AND removal IS NULL`,
       [checkId, streamId, removal, removal === 'kept' ? keptReason : null],
     );
+  }
+
+  async unlisted(): Promise<{ streamId: string; removedAt: Date }[]> {
+    const result = await this.pool.query<{ stream_id: string; removed_at: Date }>(
+      `SELECT stream_id::text AS stream_id, MAX(removed_at) AS removed_at
+         FROM recording_check_streams
+        WHERE removal = 'unlisted'
+        GROUP BY stream_id`,
+    );
+    return result.rows.map((row) => ({ streamId: row.stream_id, removedAt: row.removed_at }));
   }
 
   async clearVerdict(streamId: string): Promise<void> {

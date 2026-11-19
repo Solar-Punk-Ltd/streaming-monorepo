@@ -253,11 +253,12 @@ export class RecordingCheckService {
 
       const now = new Date(this.now());
       const jobs = await this.deps.jobs.openJobStreams();
+      const unlistedAt = await this.unlistedAt();
       const judged: { streamId: string; title: string; status: StreamStatus }[] = [];
       let unjudged = 0;
       for (const stream of await this.deps.streams.list()) {
         if (stream.manifest_index === null) continue;
-        const input = recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes);
+        const input = recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes, unlistedAt);
         if (recordingSkipReason(input, now) !== null) {
           unjudged += 1;
           continue;
@@ -311,6 +312,7 @@ export class RecordingCheckService {
       const node = health.node!;
       const now = new Date(this.now());
       const jobs = await this.deps.jobs.openJobStreams();
+      const unlistedAt = await this.unlistedAt();
       const files = await this.deps.jobs.exportFileStreams();
       const kept: LostRecordingsRemovalResponse['kept'] = [];
       const keep = async (row: { streamId: string; title: string }, reason: string) => {
@@ -328,7 +330,10 @@ export class RecordingCheckService {
           keeping.push({ row, reason: GONE_ALREADY, readsNow: false });
           continue;
         }
-        const skip = recordingSkipReason(recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes), now);
+        const skip = recordingSkipReason(
+          recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes, unlistedAt),
+          now,
+        );
         if (skip !== null) {
           keeping.push({ row, reason: KEPT_BY_RULE[skip], readsNow: false });
           continue;
@@ -523,6 +528,7 @@ export class RecordingCheckService {
     const rows = await this.deps.store.streams(checkId);
     const now = new Date(this.now());
     const jobs = await this.deps.jobs.openJobStreams();
+    const unlistedAt = await this.unlistedAt();
     const files = await this.deps.jobs.exportFileStreams();
     let unjudged = check.unjudged;
     const verdicts: StreamVerdict[] = [];
@@ -531,7 +537,8 @@ export class RecordingCheckService {
       const judged =
         stream !== null &&
         stream.manifest_index !== null &&
-        recordingSkipReason(recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes), now) === null;
+        recordingSkipReason(recordingJudgeInputOf(stream, jobs, this.options.restartWindowMinutes, unlistedAt), now) ===
+          null;
       if (!judged) unjudged += 1;
       verdicts.push({
         streamId: row.streamId,
@@ -550,6 +557,14 @@ export class RecordingCheckService {
       action: 'recording.check.finish',
       details: { checkId, state: 'done', lost, partlyLost, unjudged },
     });
+  }
+
+  /**
+   * When a removal last kept each stream as a draft for its export file, by stream id: what the one rule reads, with
+   * the stream's row, to leave one out until it changes.
+   */
+  private async unlistedAt(): Promise<Map<string, Date>> {
+    return new Map((await this.deps.store.unlisted()).map((one) => [one.streamId, one.removedAt]));
   }
 
   /** The node to read through, healthy now; otherwise the check stops with why. */
