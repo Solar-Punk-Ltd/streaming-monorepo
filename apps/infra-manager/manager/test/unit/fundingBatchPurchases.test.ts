@@ -322,6 +322,7 @@ function setup(options: SetupOptions = {}) {
       },
     },
     otherOperationOpen: async () => options.otherOperation ?? false,
+    catalogue: { read: async () => designation },
     archiveSlotsTaken: options.slotsTaken,
     now: () => now,
   });
@@ -727,6 +728,20 @@ describe('POST /api/admin-funding/batch-purchases for a rung', () => {
 });
 
 describe('POST /api/admin-funding/batch-purchases for the catalogue', () => {
+  it('refuses while a move of the catalogue is pending, before anything is journalled or bought', async () => {
+    const { bee, currents, designation, journal, service } = setup();
+    Object.assign(designation, {
+      movingFromProfileName: 'catalogue',
+      movingFromBatchId: ANOTHERS,
+      movingFromBatchDepth: DEPTH,
+      moveStartedAt: new Date(START),
+    });
+    await refusedWith(service.purchase(catalogueRequest()), 'stamp_refused', /still moving/);
+    assert.equal(bee.bought.length + journal.rows.size, 0);
+    assert.deepEqual(currents, [], 'refused before the batch set now is read');
+    assert.equal((await service.purchase(rungRequest())).state, 'confirmed', 'a rung’s purchase is not held back');
+  });
+
   it('buys an immutable batch on the catalogue node in place of the designated one, and records no archive batch', async () => {
     const { bee, currents, designator, journal, service } = setup();
     assert.equal((await service.purchase(catalogueRequest())).state, 'confirmed');
@@ -924,6 +939,7 @@ describe('a purchase through the real BeeClient', () => {
       },
       rungs: { current: async () => ({ batchId: REPLACED, state: 'expired' }) },
       catalogueBatches: { current: async () => ({ batchId: CATALOGUE_BATCH, state: 'gone' }) },
+      catalogue: { read: async () => emptyCatalogueDesignationRow() },
       now: () => START,
     });
   }

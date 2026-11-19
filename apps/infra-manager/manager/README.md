@@ -767,9 +767,11 @@ three purposes, and the manager follows each purchase up in the background
 - **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded: the node is
   one the purpose names (404 `unknown_node` for a node this manager does not run);
   `replacesBatchId` is the batch set there now; for a rung and the catalogue that batch is expired,
-  gone or none (`purchaseReplaceProblem`); the cost, `amountPerChunkPlur × 2^depth`, is within the
-  node's xBZZ; the wallet holds some xDAI; and the amount buys the postage contract's floor of life
-  or more at the price read now. An archive stamp keeps the check of the record's 200 places.
+  gone or none (`purchaseReplaceProblem`); for the catalogue, no move of the catalogue is pending,
+  since the designation takes no third batch until the batch moved from is released; the cost,
+  `amountPerChunkPlur × 2^depth`, is within the node's xBZZ; the wallet holds some xDAI; and the
+  amount buys the postage contract's floor of life or more at the price read now. An archive stamp
+  keeps the check of the record's 200 places.
 - **The node** for a rung is a stage's node the inventory offers a `replacement` for: a rung's node,
   or a single-node stage's own node. The batch set there now is read through the follow-up's port,
   as is the designated catalogue batch for the catalogue.

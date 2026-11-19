@@ -629,6 +629,7 @@ async function main(): Promise<void> {
     followUp,
     rungs: purchasePorts.rungs,
     catalogueBatches: purchasePorts.catalogue,
+    catalogue: catalogueDesignation,
     otherOperationOpen: async (nodeId, profileName) => {
       if ((await stampOperationJournal.openOn(nodeId)) !== null) return true;
       const [latest] = (await chequebookPath.history({ profileName, limit: 1 })).operations;
