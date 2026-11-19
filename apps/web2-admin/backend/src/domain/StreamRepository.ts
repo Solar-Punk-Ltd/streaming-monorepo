@@ -461,6 +461,10 @@ export class StreamRepository {
    * reset at boot put back to `published` therefore loses its mark when it
    * goes live again, and the sweep finishes it in its turn.
    *
+   * A check's verdict on the recording (`recording_verdict`, migration 031)
+   * goes with every `live` report: the recording it judged is being written
+   * again.
+   *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
    * cannot both win.
@@ -490,6 +494,8 @@ export class StreamRepository {
                 ended_at = NULL,
                 finished_at = CASE WHEN status = 'live' THEN finished_at ELSE NULL END,
                 publish_error = NULL,
+                recording_verdict = NULL,
+                recording_checked_at = NULL,
                 updated_at = NOW()
           WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
           RETURNING ${STREAM_COLUMNS}

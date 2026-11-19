@@ -44,6 +44,12 @@ export type AuditAction =
   | 'catalogue.move.start'
   | 'catalogue.move.done'
   | 'catalogue.move.failed'
+  // Checking the recordings: a check started and how it ended, and each lost recording a removal deleted, or kept as a
+  // draft off the catalogue for the export file the server keeps of it.
+  | 'recording.check.start'
+  | 'recording.check.finish'
+  | 'recording.lost.delete'
+  | 'recording.lost.unlist'
   // Exporting a recording into an MP4: what a user did to it, its pauses on a problem, and the finished file saved.
   | 'export.start'
   | 'export.pause'

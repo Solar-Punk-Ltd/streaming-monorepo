@@ -1609,3 +1609,41 @@ describe('PublishService and the edited-since-published notice', () => {
     assert.equal(hasUnpublishedEdits(store.get(row.id)), false);
   });
 });
+
+describe('PublishService.takeOffCatalogue', () => {
+  it('takes the streams off the catalogue in one write and leaves each a draft, a live one kept with why', async () => {
+    const { store, gateway, service } = setup();
+    const first = store.add(streamRow({ title: 'First' }));
+    const second = store.add(streamRow({ title: 'Second' }));
+    const staying = store.add(streamRow({ title: 'Staying' }));
+    const onAir = store.add(streamRow({ title: 'On air' }));
+    for (const row of [first, second, staying, onAir]) await service.publish(TEST_OPERATOR, row.id);
+    store.add({ ...store.get(onAir.id), status: 'live' });
+    const draft = store.add(streamRow({ title: 'Never published' }));
+    const before = gateway.writes.length;
+
+    const taken = await service.takeOffCatalogue(TEST_OPERATOR, [first.id, second.id, onAir.id, draft.id]);
+
+    assert.equal(gateway.writes.length, before + 1, 'one write');
+    assert.equal(taken.index, before);
+    assert.deepEqual(
+      entriesOf(gateway)
+        .map((entry) => entry.title)
+        .sort(),
+      ['On air', 'Staying'],
+    );
+    assert.equal(store.get(first.id).status, 'draft');
+    assert.equal(store.get(second.id).status, 'draft');
+    assert.equal(store.get(onAir.id).status, 'live');
+    assert.equal(store.get(draft.id).status, 'draft');
+    assert.deepEqual(taken.kept, [{ streamId: onAir.id, reason: 'It is live now, so it was left on the catalogue.' }]);
+  });
+
+  it('writes nothing when none of them is on the catalogue', async () => {
+    const { store, gateway, service } = setup();
+    const draft = store.add(streamRow());
+
+    assert.deepEqual(await service.takeOffCatalogue(TEST_OPERATOR, [draft.id]), { index: null, kept: [] });
+    assert.equal(gateway.writes.length, 0);
+  });
+});

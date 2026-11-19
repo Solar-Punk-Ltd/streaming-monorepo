@@ -91,6 +91,13 @@ export interface StreamRow {
    * from an archive stamp. False unless a user turned it on.
    */
   archived_only: boolean;
+  /**
+   * What the latest finished check of the recordings found of this one (migration 031): `lost` or `partly_lost`, or
+   * null for one that read, one never checked, and one that went live again since.
+   */
+  recording_verdict: 'lost' | 'partly_lost' | null;
+  /** When that check ended; null with the verdict. */
+  recording_checked_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }

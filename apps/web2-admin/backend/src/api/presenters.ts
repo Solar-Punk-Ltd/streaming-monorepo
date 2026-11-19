@@ -70,6 +70,9 @@ export function toStream(row: StreamRow, archive?: StreamArchiveSummary): Stream
     hasUnpublishedEdits: hasUnpublishedEdits(row),
     stageId: row.stage_id,
     ...(archive ? { archive } : {}),
+    ...(row.recording_verdict && row.recording_checked_at
+      ? { recording: row.recording_verdict, recordingCheckedAt: row.recording_checked_at.toISOString() }
+      : {}),
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
