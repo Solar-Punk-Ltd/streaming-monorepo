@@ -570,6 +570,30 @@ describe('BatchPurchaseService: the list and the background reads', () => {
     );
   });
 
+  it('keeps a purchase that failed with its batch bought listed past a day, until a later one of its node is done', async () => {
+    const bought = await service.start(TEST_OPERATOR, rung());
+    managerSays(bought, { step: 'failed', error: 'The batch was not usable within an hour.' });
+    await read(bought.id);
+    manager.sendFailure = new ManagerFundingError(
+      'stamp_refused',
+      422,
+      'The node holds less xBZZ than the batch costs.',
+    );
+    const refused = await service.start(TEST_OPERATOR, catalogue());
+    assert.deepEqual([refused.state, refused.batchId], ['failed', null]);
+    manager.sendFailure = null;
+
+    clock = START + 30 * 86_400_000;
+    let listed = (await service.list()).purchases.map((purchase) => purchase.id);
+    assert.deepEqual(listed, [bought.id], 'the bought batch stays listed; the purchase that bought nothing does not');
+
+    const later = await service.start(TEST_OPERATOR, rung());
+    managerSays(later, { step: 'done', usable: true });
+    await read(later.id);
+    listed = (await service.list()).purchases.map((purchase) => purchase.id);
+    assert.equal(listed.includes(bought.id), false, 'a later purchase of the node is done');
+  });
+
   it('reads the purchases under way in the background once booted, and stops on shutdown', async () => {
     const polled = makeService({ pollMs: 20 });
     const started = await polled.start(TEST_OPERATOR, rung());

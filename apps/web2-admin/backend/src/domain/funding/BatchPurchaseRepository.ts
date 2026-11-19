@@ -76,6 +76,15 @@ export interface BatchPurchaseChange {
 /** The states in which a purchase is under way, as migration 030's partial index names them. */
 const OPEN_SQL = `state IN ('buying', 'waiting_usable', 'restarting', 'moving')`;
 
+/**
+ * A purchase that failed with its batch bought, as long as no later purchase of its node is done: the batch was paid
+ * for and never put to use, and the Stamps tab offers Check again on it rather than Buy new, whatever its age. Written
+ * against the outer query's row, `purchase`.
+ */
+const BOUGHT_UNUSED_SQL = `purchase.state = 'failed' AND purchase.batch_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM batch_purchases later
+   WHERE later.node_id = purchase.node_id AND later.state = 'done' AND later.started_at > purchase.started_at)`;
+
 /** The index that keeps one purchase under way on a node. */
 const ONE_OPEN_PER_NODE = 'batch_purchases_one_open_per_node';
 
@@ -84,7 +93,10 @@ export interface BatchPurchaseStore {
   /** Writes a new purchase, `buying` and not sent. Null when another purchase is under way on its node. */
   create(purchase: NewBatchPurchase): Promise<BatchPurchaseRow | null>;
   get(id: string): Promise<BatchPurchaseRow | null>;
-  /** The purchases under way, and those that started or finished at `since` or later, the latest first. */
+  /**
+   * The purchases under way, those that started or finished at `since` or later, and, whatever their age, those that
+   * failed with their batch bought while no later purchase of their node is done; the latest first.
+   */
   listSince(since: Date): Promise<BatchPurchaseRow[]>;
   /** The purchases under way, the oldest first. */
   listOpen(): Promise<BatchPurchaseRow[]>;
@@ -197,8 +209,8 @@ export class BatchPurchaseRepository implements BatchPurchaseStore {
 
   async listSince(since: Date): Promise<BatchPurchaseRow[]> {
     const result = await this.pool.query<Row>(
-      `SELECT ${COLUMNS} FROM batch_purchases
-        WHERE ${OPEN_SQL} OR started_at >= $1 OR finished_at >= $1
+      `SELECT ${COLUMNS} FROM batch_purchases purchase
+        WHERE ${OPEN_SQL} OR started_at >= $1 OR finished_at >= $1 OR (${BOUGHT_UNUSED_SQL})
         ORDER BY started_at DESC, id`,
       [since],
     );
