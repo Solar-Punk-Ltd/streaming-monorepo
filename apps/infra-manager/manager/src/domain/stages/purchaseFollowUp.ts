@@ -189,9 +189,16 @@ class RungBatches implements PurchasedRungBatches {
 
 /** An Apply this process started for a purchase, and how it ended when it ended without the batch. */
 interface StartedApply {
-  batchId: string;
   at: number;
   error: string | null;
+}
+
+/**
+ * The Applies a look started are kept by stage and batch: several rung purchases can follow one stage, and each keeps
+ * its own, so one purchase's look never takes another's failed Apply for none and starts the Apply again.
+ */
+function startedKey(stageId: string, batchId: string): string {
+  return `${stageId}:${batchId}`;
 }
 
 /**
@@ -201,6 +208,7 @@ interface StartedApply {
  * forgotten them, and starts the Apply again where one is due.
  */
 class StageApplier implements PurchaseStageApplier {
+  /** By {@link startedKey}. */
   private readonly started = new Map<string, StartedApply>();
   private readonly pause: (ms: number) => Promise<void>;
   private readonly now: () => number;
@@ -220,7 +228,7 @@ class StageApplier implements PurchaseStageApplier {
     const profiles = await this.deps.profiles.list();
     const stage = profiles.find((profile) => profile.instance_id === input.stageId);
     if (!stage) {
-      this.started.delete(input.stageId);
+      this.started.delete(startedKey(input.stageId, batchId));
       return { apply: 'stopped', message: 'The stage is no longer on this manager.' };
     }
     if ((TRANSITIONAL_STATUSES as readonly string[]).includes(stage.status)) {
@@ -229,11 +237,11 @@ class StageApplier implements PurchaseStageApplier {
 
     const catalog = await this.deps.settings.catalog(stage.name);
     if (runsWithBatch(catalog.entries, batchId)) {
-      this.started.delete(input.stageId);
+      this.started.delete(startedKey(input.stageId, batchId));
       return { apply: 'applied', message: null };
     }
     if (!catalog.running) {
-      this.started.delete(input.stageId);
+      this.started.delete(startedKey(input.stageId, batchId));
       return { apply: 'stopped', message: 'The stage does not run. Its next start pays with the new batch.' };
     }
     if (!(await this.follows(stage, batchId, profiles))) {
@@ -252,11 +260,11 @@ class StageApplier implements PurchaseStageApplier {
       };
     }
 
-    const earlier = this.started.get(input.stageId);
-    if (earlier && earlier.batchId === batchId) {
+    const earlier = this.started.get(startedKey(input.stageId, batchId));
+    if (earlier) {
       if (!input.retryFailed) return { apply: 'failed', message: earlier.error ?? this.endedWithout(stage, earlier) };
       // Asked to check again: the failure is taken up, and a wait for a broadcast before the Apply is no failure.
-      this.started.delete(input.stageId);
+      this.started.delete(startedKey(input.stageId, batchId));
     }
 
     if (!input.force) {
@@ -323,11 +331,11 @@ class StageApplier implements PurchaseStageApplier {
         return { apply: 'applying', message: null };
       }
       const error = `The Apply did not start: ${getErrorMessage(err)}`;
-      this.started.set(stage.instance_id, { batchId, at, error });
+      this.started.set(startedKey(stage.instance_id, batchId), { at, error });
       logger.warn(`[BatchPurchase] ${stage.name}: ${error}`);
       return { apply: 'failed', message: error };
     }
-    this.started.set(stage.instance_id, { batchId, at, error: null });
+    this.started.set(startedKey(stage.instance_id, batchId), { at, error: null });
     logger.info(`[BatchPurchase] ${stage.name}: applied for batch ${shortBatch(batchId)}`);
     return { apply: 'applying', message: null };
   }
