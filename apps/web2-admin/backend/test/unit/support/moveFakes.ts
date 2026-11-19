@@ -3,6 +3,8 @@
  * migration 014, and `catalogue_moves`, with the same conditional updates the SQL makes. The integration suite
  * `catalogueMoves.test.ts` holds the SQL to the same answers.
  */
+import type { ClearedThumbnail } from '@streaming-monorepo/web2-admin-common';
+
 import type {
   CatalogueMoveRow,
   CatalogueMoveStore,
@@ -115,6 +117,7 @@ export class InMemoryCatalogueMoveStore implements CatalogueMoveStore {
       restampedSlots: 0,
       skippedSlots: 0,
       thumbnails: 0,
+      clearedThumbnails: [],
       error: null,
       startedBy: move.startedBy,
       startedAt: at,
@@ -171,6 +174,18 @@ export class InMemoryCatalogueMoveStore implements CatalogueMoveStore {
     return this.copy(move);
   }
 
+  async recordClearedThumbnails(id: string, cleared: readonly ClearedThumbnail[]): Promise<CatalogueMoveRow | null> {
+    const move = this.find(id);
+    if (!move || move.state !== 'running') return null;
+    for (const { streamId, title } of cleared) {
+      if (!move.clearedThumbnails.some((listed) => listed.streamId === streamId)) {
+        move.clearedThumbnails.push({ streamId, title });
+      }
+    }
+    move.updatedAt = new Date();
+    return this.copy(move);
+  }
+
   private find(id: string) {
     return this.moves.find((move) => move.id === id);
   }
@@ -181,16 +196,32 @@ export class InMemoryCatalogueMoveStore implements CatalogueMoveStore {
   }
 }
 
-/** The thumbnails streams name, by reference, with their bytes (null once a row lost them), and the batch each was recorded under. */
+/**
+ * The thumbnails streams name, by reference, with their bytes (null once a row lost them), and the batch each was
+ * recorded under. `streams` names the streams a lost thumbnail is cleared on; one with none clears on no stream.
+ */
 export class FakeThumbnailStore {
-  readonly byRef = new Map<string, { thumbnail: Buffer | null; thumbnail_mime: string | null; topic: string }>();
+  readonly byRef = new Map<
+    string,
+    { thumbnail: Buffer | null; thumbnail_mime: string | null; topic: string; streams?: ClearedThumbnail[] }
+  >();
   readonly batches = new Map<string, string>();
+  /** Every reference cleared as lost, in order. */
+  readonly cleared: string[] = [];
 
   async listStoredThumbnails(): Promise<StoredThumbnail[]> {
-    return [...this.byRef].map(([reference, stored]) => ({ reference, ...stored }));
+    return [...this.byRef].map(([reference, { streams: _streams, ...stored }]) => ({ reference, ...stored }));
   }
 
   async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
     if (this.byRef.has(reference)) this.batches.set(reference, batchId);
+  }
+
+  async clearLostThumbnail(reference: string): Promise<ClearedThumbnail[]> {
+    const stored = this.byRef.get(reference);
+    if (!stored || stored.thumbnail !== null) return [];
+    this.byRef.delete(reference);
+    this.cleared.push(reference);
+    return structuredClone(stored.streams ?? []);
   }
 }

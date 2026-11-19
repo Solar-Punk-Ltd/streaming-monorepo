@@ -1,4 +1,8 @@
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  ClearedThumbnail as LostThumbnailStream,
+  MediaType,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
@@ -253,6 +257,27 @@ export class StreamRepository {
   /** Records that the thumbnail `reference` names is under `batchId` now, on every stream that names it. */
   async recordThumbnailBatch(reference: string, batchId: string): Promise<void> {
     await this.pool.query(`UPDATE streams SET thumbnail_batch_id = $2 WHERE thumbnail_ref = $1`, [reference, batchId]);
+  }
+
+  /**
+   * Clears the thumbnail `reference` on every stream that names it and holds no bytes of it, and answers those
+   * streams. The network holds the image no more, so each takes a new one on its page; it is an edit, which the
+   * catalogue entry carries once it is written again. A row that holds the bytes keeps its reference, since its
+   * next publish uploads the image again. Moving the catalogue after the batch it moves from lapsed.
+   */
+  async clearLostThumbnail(reference: string): Promise<LostThumbnailStream[]> {
+    const result = await this.pool.query<LostThumbnailStream>(
+      `UPDATE streams
+          SET thumbnail_mime = NULL,
+              thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
+              content_edited_at = ${CONTENT_EDITED_NOW},
+              updated_at = NOW()
+        WHERE lower(thumbnail_ref) = lower($1) AND thumbnail IS NULL
+        RETURNING id::text AS "streamId", title`,
+      [reference],
+    );
+    return result.rows;
   }
 
   /**

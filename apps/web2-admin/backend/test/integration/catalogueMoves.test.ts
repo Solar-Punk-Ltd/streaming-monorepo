@@ -215,6 +215,23 @@ describe('catalogue_moves', () => {
     assert.equal(await moves.coveredBelow(OWNER, TOPIC, OLD), 0);
   });
 
+  it('lists each stream whose thumbnail a running move cleared once, in the order cleared, and only while it runs', async () => {
+    const move = (await start())!;
+    assert.deepEqual(move.clearedThumbnails, []);
+    const first = { streamId: randomUUID(), title: 'First' };
+    const second = { streamId: randomUUID(), title: 'Second' };
+
+    const once = await moves.recordClearedThumbnails(move.id, [first, second, first]);
+    assert.deepEqual(once?.clearedThumbnails, [first, second]);
+    const again = await moves.recordClearedThumbnails(move.id, [second, { ...first, title: 'Renamed' }]);
+    assert.deepEqual(again?.clearedThumbnails, [first, second], 'a stream already listed stays as it was listed');
+    assert.deepEqual((await moves.latest(OWNER, TOPIC))?.clearedThumbnails, [first, second]);
+
+    await moves.fail(move.id, 'the node answered 500');
+    assert.equal(await moves.recordClearedThumbnails(move.id, [{ streamId: randomUUID(), title: 'Late' }]), null);
+    assert.deepEqual((await moves.latest(OWNER, TOPIC))?.clearedThumbnails, [first, second]);
+  });
+
   it('refuses half a state: a failure with no reason, a finish time on a running move, half a restamp mark', async () => {
     const move = (await start())!;
     await assert.rejects(
@@ -395,5 +412,44 @@ describe('a thumbnail by its reference', () => {
       /check constraint/,
       'a batch with no reference',
     );
+  });
+
+  it('is cleared as lost, as an edit, on every stream that names it without its bytes, and kept where they are', async () => {
+    const insert = (title: string) =>
+      streams.insert({
+        user_id: userId,
+        topic: randomUUID(),
+        owner: '90f8bf6a479f320ead074411a4b0e7944ea8c9c1',
+        title,
+        description: 'a stream whose image the network gives no more',
+        tags: [],
+        media_type: 'video',
+        scheduled_start_time: null,
+        publish_key: newPublishKey(),
+        stage_id: null,
+      });
+    const one = await insert('itest lost one');
+    const two = await insert('itest lost two');
+    const holding = await insert('itest holding');
+    const reference = 'fc'.repeat(32);
+    await streams.recordThumbnailRef(one.id, reference, OLD);
+    await streams.recordThumbnailRef(two.id, reference, OLD);
+    await streams.setThumbnail(holding.id, Buffer.from([7]), 'image/png', EDITABLE_STATUSES);
+    await streams.recordThumbnailRef(holding.id, reference, OLD);
+
+    const cleared = await streams.clearLostThumbnail(reference);
+    assert.deepEqual(
+      cleared.map((stream) => [stream.streamId, stream.title]).sort(),
+      [
+        [one.id, 'itest lost one'],
+        [two.id, 'itest lost two'],
+      ].sort(),
+    );
+    const after = await streams.findById(one.id);
+    assert.equal(after?.thumbnail_ref, null);
+    assert.equal(after?.thumbnail_batch_id, null);
+    assert.notEqual(after?.content_edited_at ?? null, null, 'an edit, which the entry carries once written again');
+    assert.equal((await streams.findById(holding.id))?.thumbnail_ref, reference, 'a row with the bytes keeps it');
+    assert.deepEqual(await streams.clearLostThumbnail(reference), []);
   });
 });

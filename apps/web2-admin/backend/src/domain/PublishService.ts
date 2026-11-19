@@ -451,6 +451,44 @@ export class PublishService {
   }
 
   /**
+   * Writes the catalogue once more, in one write, with the entries of `streamIds` rebuilt from their rows: a catalogue
+   * move calls it right after its switch, for the streams whose thumbnail it cleared, so the entry written then goes
+   * with the new batch and names no lost image. Only a stream on the catalogue whose entry the head carries is
+   * rebuilt, and an entry the head already carries as it would be written is left as it is. Answers the index
+   * written, or null when no entry changed and nothing was written. The caller audits.
+   *
+   * ⛔ The caller holds the publish mutex. This takes no lock of its own, so the move that calls it from its last step
+   * never waits on itself.
+   */
+  async rewriteEntriesHeld(actor: Actor, streamIds: readonly string[]): Promise<number | null> {
+    const target = await this.catalogue.forWrite(actor);
+    const base = await this.baseSnapshot(target);
+    let entries = base.entries;
+    const rebuilt: StreamRow[] = [];
+    for (const id of new Set(streamIds)) {
+      const row = await this.streams.findById(id);
+      if (!row || !ON_FEED_STATUSES.includes(row.status)) continue;
+      if (!removeEntry(entries, row.owner, row.topic).removed) continue;
+      const { entry } = await this.entryFor(row, row.thumbnail_ref);
+      if (carriesEntry(entries, entry)) continue;
+      entries = upsertEntry(entries, entry);
+      rebuilt.push(row);
+    }
+    if (rebuilt.length === 0) return null;
+
+    const index = await this.writeFeed(entries, base.index, target);
+    await this.recordRebuiltEntries(
+      rebuilt,
+      rebuilt.map((row) => row.topic),
+      index,
+    );
+    logger.info(
+      `[Publish] ${describeActor(actor)} wrote the catalogue at feed index ${index} with ${rebuilt.length} entr${rebuilt.length === 1 ? 'y' : 'ies'} rebuilt from ${rebuilt.length === 1 ? 'its row' : 'their rows'}: ${rebuilt.map((row) => describeStream(row)).join(', ')}`,
+    );
+    return index;
+  }
+
+  /**
    * Boot-time cross-check of the one assumption the new index scheme rests on:
    * that this process is the only writer of this feed key.
    *
