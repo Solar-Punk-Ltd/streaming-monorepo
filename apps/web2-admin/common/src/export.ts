@@ -74,6 +74,37 @@ export const EXPORT_ACTIONS: readonly ExportAction[] = [
   'clear',
 ];
 
+/**
+ * Why a kept file is out of date, which only a finished export can be:
+ * - `live`: the stream is live again, so the file holds the recording as it was before this broadcast.
+ * - `recorded_again`: the stream went live again and finished after the export, so its recording is another one now.
+ */
+export type ExportOutdated = 'live' | 'recorded_again';
+
+/** What the console says of a kept file that is out of date, on its card, in the panel and in the widget. */
+export const EXPORT_OUTDATED_TEXT: Readonly<Record<ExportOutdated, string>> = {
+  live: 'The stream is live again, so this file holds the earlier recording.',
+  recorded_again: 'Out of date: the stream recorded again after this export.',
+};
+
+/**
+ * Whether a kept file is out of date, and why, or null. A finished export stores the feed index of the recording
+ * playlist it read. The stream's quality holds another one once it recorded again, and none while it is live. An
+ * export that is not finished is never out of date: it pauses when its stream goes live, and reads the new recording
+ * once it waited for it.
+ *
+ * @param exported the export's state and the playlist index it read, `stream_exports.manifest_index`
+ * @param now whether the stream is live, and the playlist index its exported quality holds now, null for none
+ */
+export function exportOutdated(
+  exported: { state: ExportState; manifestIndex: number },
+  now: { live: boolean; manifestIndex: number | null },
+): ExportOutdated | null {
+  if (exported.state !== 'done') return null;
+  if (now.live) return 'live';
+  return now.manifestIndex === exported.manifestIndex ? null : 'recorded_again';
+}
+
 /** The export on the server, as every user sees it. */
 export interface ExportSummary {
   id: string;
@@ -102,6 +133,12 @@ export interface ExportSummary {
   sizeBytes: number | null;
   /** The file was saved from part of the recording. */
   partial: boolean;
+  /**
+   * Why the kept file is out of date, as {@link exportOutdated} says, or null while it holds the stream's recording as
+   * it is now. Absent is read as null. The file can be saved and cleared either way, and a new export of the quality
+   * replaces it.
+   */
+  outdated?: ExportOutdated | null;
   /** Who started it, as the audit log names them. */
   startedBy: string;
   /** Whether the user asking started it: the panel comes to front for them when it pauses on a problem. */
