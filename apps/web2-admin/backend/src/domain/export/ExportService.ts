@@ -5,9 +5,11 @@ import path from 'node:path';
 
 import {
   EXPORT_ACTIVE_STATES,
+  exportOutdated,
   holdsFinishedRecording,
   type ExportAction,
   type ExportOptionsResponse,
+  type ExportOutdated,
   type ExportPauseReason,
   type ExportQuality,
   type ExportRefusal,
@@ -227,7 +229,7 @@ export class ExportService {
   /** The export on the server, as the user asking sees it, or null when there is none. */
   async current(userId: string | null): Promise<ExportSummary | null> {
     const view = await this.store.view(userId);
-    return view ? summaryOf(view, userId) : null;
+    return view ? this.summarize(view, userId) : null;
   }
 
   /**
@@ -252,7 +254,7 @@ export class ExportService {
       durationSeconds: stream.duration_seconds,
       qualities: qualities.map((quality) => quality.option),
       refusal: await this.refusalFor(stream, view),
-      current: view ? summaryOf(view, userId) : null,
+      current: view ? await this.summarize(view, userId) : null,
     };
   }
 
@@ -1066,6 +1068,22 @@ export class ExportService {
     return estimate;
   }
 
+  /** The export as the user asking sees it, with whether its kept file still holds the stream's recording as it is now. */
+  private async summarize(view: ExportView, userId: string | null): Promise<ExportSummary> {
+    return summaryOf(view, userId, view.state === 'done' ? await this.outdatedOf(view) : null);
+  }
+
+  /** Why a finished export's file is out of date, or null: the stream is live again, or its quality recorded again. */
+  private async outdatedOf(row: ExportRow): Promise<ExportOutdated | null> {
+    const stream = await this.streams.findById(row.stream_id);
+    if (!stream) return null;
+    const feed = stream.status === 'live' ? null : await this.feedOf(stream, row.rendition);
+    return exportOutdated(
+      { state: row.state, manifestIndex: row.manifest_index },
+      { live: stream.status === 'live', manifestIndex: feed?.index ?? null },
+    );
+  }
+
   /** The feed of the quality as the stream points at it now, or null when that quality holds no finished recording. */
   private async feedOf(stream: StreamRow, rendition: string): Promise<RecordingFeed | null> {
     if (rendition === SOURCE_RENDITION) {
@@ -1238,7 +1256,7 @@ export class ExportService {
   }
 }
 
-function summaryOf(view: ExportView, userId: string | null): ExportSummary {
+function summaryOf(view: ExportView, userId: string | null, outdated: ExportOutdated | null): ExportSummary {
   return {
     id: view.id,
     streamId: view.stream_id,
@@ -1258,6 +1276,7 @@ function summaryOf(view: ExportView, userId: string | null): ExportSummary {
     fileName: view.file_name,
     sizeBytes: view.size_bytes,
     partial: view.partial,
+    outdated,
     startedBy: view.started_by,
     startedByYou: userId !== null && view.started_by_user_id === userId,
     startedAt: view.started_at.toISOString(),

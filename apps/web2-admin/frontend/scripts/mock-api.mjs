@@ -60,7 +60,7 @@
  * widget shows it moving; `paused` is one the seeded user started, which pauses
  * at once on segments it could not read, so the panel comes to front, and every
  * export started from the panel pauses the same way part-way; `done` is a kept
- * file; `off` seeds none. Save file answers a stand-in file, not a video.
+ * file; `outdated` is a kept file its stream recorded again after; `off` seeds none. Save file answers a stand-in file, not a video.
  *
  * Archiving a recording works as the API holds it: one archive at a time,
  * which shares the place a job has with the export. It measures for 6 seconds,
@@ -1469,6 +1469,8 @@ function newExport(row, rendition, startedBy, extra = {}) {
     startedByUserId: startedBy.id,
     startedAt: new Date().toISOString(),
     dismissedBy: new Set(),
+    /** The recording playlist's index the export read: once the stream holds another, the kept file is out of date. */
+    manifestIndex: row.manifestIndex,
     ...extra,
   };
 }
@@ -1561,6 +1563,7 @@ function exportSummary(e, user) {
     fileName: e.fileName,
     sizeBytes: e.sizeBytes,
     partial: e.partial,
+    outdated: exportOutdated(e, row),
     startedBy: e.startedBy,
     startedByYou: user.id === e.startedByUserId,
     startedAt: e.startedAt,
@@ -1568,6 +1571,13 @@ function exportSummary(e, user) {
     dismissed,
     actions: exportActions(e, dismissed),
   };
+}
+
+/** As `exportOutdated` in the API's common package: only a kept file, `live` while its stream is live again. */
+function exportOutdated(e, row) {
+  if (e.state !== 'done') return null;
+  if (row.status === 'live') return 'live';
+  return row.manifestIndex === e.manifestIndex ? null : 'recorded_again';
 }
 
 function exportRefusal(row) {
@@ -1622,6 +1632,10 @@ function exportOptions(row, user) {
     mockExport = newExport(recording, '1080p', seeded, { failAt: 0.05 });
   } else if (recording && MOCK_EXPORT === 'done') {
     mockExport = newExport(recording, '1080p', EXPORT_OTHER_USER);
+    finishExport(mockExport);
+  } else if (recording && MOCK_EXPORT === 'outdated') {
+    // A kept file of the recording before the last one: the stream recorded again after it.
+    mockExport = newExport(recording, '1080p', EXPORT_OTHER_USER, { manifestIndex: recording.manifestIndex - 1 });
     finishExport(mockExport);
   } else if (recording && MOCK_EXPORT !== 'off') {
     mockExport = newExport(recording, '720p', EXPORT_OTHER_USER);

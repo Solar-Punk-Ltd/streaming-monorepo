@@ -1731,7 +1731,10 @@ says why it is shaped this way.
   ([The one place](#the-one-place)).
 - **The kept file.** A finished export stays on the server, for every user to
   save, until the next export starts and deletes it. Saving it reads nothing
-  from Swarm.
+  from Swarm. Its summary's `outdated` says when it no longer holds the
+  stream's recording as it is now: `live` while the stream is live again, and
+  `recorded_again` once the quality's playlist index is another than the
+  export's `manifest_index`, or none.
 - **Where it reads.** Through the catalogue node, the node the catalogue is
   read through (`CatalogueBatchService.forRead`). With none designated, every
   start is refused with problem `no_node`.

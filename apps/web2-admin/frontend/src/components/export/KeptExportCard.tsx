@@ -2,7 +2,7 @@ import { EXPORT_ACTIVE_STATES } from '@streaming-monorepo/web2-admin-common';
 import { Box, Button, Chip, LinearProgress, Paper, Stack, Typography } from '@mui/material';
 
 import { ClearFileButton, SaveFileButton } from './ExportPanel';
-import { formatBytes, formatTook, formatUtc, percentRead, statusLine } from './exportText';
+import { formatBytes, formatTook, formatUtc, outdatedLine, percentRead, statusLine } from './exportText';
 import { useExport } from './ExportProvider';
 
 /**
@@ -16,6 +16,7 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
   const active = EXPORT_ACTIVE_STATES.includes(current.state);
   const percent = percentRead(current);
   const took = formatTook(current.startedAt, current.finishedAt);
+  const outdated = outdatedLine(current);
 
   return (
     <Paper sx={{ p: 3 }} component="section" aria-label="downloaded file">
@@ -52,6 +53,15 @@ export function KeptExportCard({ streamId }: { streamId: string }) {
             </Typography>
           </Box>
           {current.partial ? <Chip size="small" color="warning" label="Part of the recording" /> : null}
+          {outdated ? (
+            // A sentence, so it wraps where a short chip label would not need to.
+            <Chip
+              size="small"
+              color="warning"
+              label={outdated}
+              sx={{ height: 'auto', py: 0.25, '& .MuiChip-label': { whiteSpace: 'normal' } }}
+            />
+          ) : null}
           <Stack spacing={1}>
             <SaveFileButton current={current} />
             {current.actions.includes('clear') ? <ClearFileButton /> : null}

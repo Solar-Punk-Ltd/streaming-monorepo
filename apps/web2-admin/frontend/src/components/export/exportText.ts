@@ -1,4 +1,9 @@
-import { pauseNeedsDecision, type ExportAction, type ExportSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  EXPORT_OUTDATED_TEXT,
+  pauseNeedsDecision,
+  type ExportAction,
+  type ExportSummary,
+} from '@streaming-monorepo/web2-admin-common';
 
 /** Sizes as the API's sentences give them: decimal, so 6.6 GB is 6,600,000,000 bytes. */
 export function formatBytes(bytes: number | null | undefined): string {
@@ -74,7 +79,12 @@ export function statusLine(current: ExportSummary): string {
   }
 }
 
-/** A short line for the widget. */
+/** What the card, the panel and the widget say of a kept file that is out of date, or null while it is not. */
+export function outdatedLine(current: ExportSummary): string | null {
+  return current.state === 'done' && current.outdated ? EXPORT_OUTDATED_TEXT[current.outdated] : null;
+}
+
+/** A short line for the widget. A kept file that is out of date says so instead. */
 export function widgetLine(current: ExportSummary): string {
   switch (current.state) {
     case 'reading': {
@@ -88,7 +98,7 @@ export function widgetLine(current: ExportSummary): string {
     case 'waiting':
       return 'Waiting for the stream to finish';
     case 'done':
-      return `Ready to save, ${formatBytes(current.sizeBytes)}`;
+      return outdatedLine(current) ?? `Ready to save, ${formatBytes(current.sizeBytes)}`;
   }
 }
 

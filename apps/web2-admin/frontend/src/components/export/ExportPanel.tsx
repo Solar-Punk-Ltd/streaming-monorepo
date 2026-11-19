@@ -40,6 +40,7 @@ import {
   formatUtc,
   isPlainClick,
   needsDecision,
+  outdatedLine,
   percentRead,
   statusLine,
   STREAM_PAGE_LINK_LABEL,
@@ -341,6 +342,7 @@ export function ExportPanel() {
                       {formatBytes(current.bytesRead)}.
                     </Typography>
                   ) : null}
+                  {outdatedLine(current) ? <Alert severity="warning">{outdatedLine(current)}</Alert> : null}
                   {current.state === 'done' && current.partial ? (
                     <Alert severity="warning">
                       Saved from part of the recording: where a stretch is missing, the file cuts to the next one.
