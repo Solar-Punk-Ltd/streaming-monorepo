@@ -1,42 +1,33 @@
-import { useCallback, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  InputAdornment,
-  Paper,
-  Slider,
-  Stack,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { Alert, Box, Button, Paper, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import {
   XBZZ_DECIMALS,
+  type BatchBuyChoice,
   type FundingDiluteSteps,
   type FundingStampItem,
   type FundingStampOperationKind,
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
+import * as api from '../../api';
+import { purchaseRefusal } from '../archive/archiveText';
 import { formatShort, formatUnits } from './amounts';
 import { ArchiveStampsFooter, useArchiveStamps } from './ArchiveStamps';
 import { fundNeeds, type FundNeed } from './balance';
-import { BatchTable } from './BatchTable';
+import { BatchBuyDialog } from './BatchBuyDialog';
+import { buyOfferOf, latestPurchases, purchasesReadFailed, useBatchPurchases, type BuyOffer } from './batchPurchases';
+import { BatchTable, type BuyControls } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
 import { StampDialog } from './StampDialog';
 import { StampProgress } from './StampProgress';
+import { DaysPicker } from './DaysPicker';
 import {
-  acceptsDaysTyping,
   batchCount,
   batchGroups,
   checkStamps,
   dayCount,
   DAYS_MIN,
-  DAYS_PRESETS,
-  DAYS_SLIDER_MAX,
   readDays,
   reportsBatches,
   stepCount,
@@ -83,8 +74,6 @@ function StampControls({
   onSteps: (steps: FundingDiluteSteps) => void;
 }) {
   const read = readDays(days);
-  const slider = read.kind === 'ok' ? Math.min(read.days, DAYS_SLIDER_MAX) : DAYS_MIN;
-  const preset = read.kind === 'ok' && DAYS_PRESETS.includes(read.days) ? read.days : null;
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Stack spacing={2}>
@@ -103,53 +92,13 @@ function StampControls({
         </ToggleButtonGroup>
 
         {operation === 'topup' ? (
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} sx={{ alignItems: { md: 'center' } }}>
-            <Slider
-              aria-label="Days to top up by"
-              min={DAYS_MIN}
-              max={DAYS_SLIDER_MAX}
-              value={slider}
-              marks={DAYS_PRESETS.map((value) => ({ value }))}
-              valueLabelDisplay="auto"
-              onChange={(_event, value) => {
-                if (typeof value === 'number') onDays(String(value));
-              }}
-              sx={{ flexGrow: 1, minWidth: 200 }}
-            />
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={preset}
-              aria-label="Days presets"
-              onChange={(_event, next: number | null) => {
-                if (next !== null) onDays(String(next));
-              }}
-            >
-              {DAYS_PRESETS.map((value) => (
-                <ToggleButton key={value} value={value}>
-                  {dayCount(value)}
-                </ToggleButton>
-              ))}
-            </ToggleButtonGroup>
-            <TextField
-              size="small"
-              value={days}
-              onChange={(e) => {
-                if (acceptsDaysTyping(e.target.value)) onDays(e.target.value);
-              }}
-              error={read.kind === 'invalid'}
-              title={read.kind === 'invalid' ? read.problem : undefined}
-              slotProps={{
-                htmlInput: { inputMode: 'numeric', 'aria-label': 'Days' },
-                input: { endAdornment: <InputAdornment position="end">days</InputAdornment> },
-              }}
-              sx={{
-                width: 140,
-                flexShrink: 0,
-                '& .MuiInputBase-input': { textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
-              }}
-            />
-          </Stack>
+          <DaysPicker
+            days={days}
+            onDays={onDays}
+            least={DAYS_MIN}
+            sliderLabel="Days to top up by"
+            problem={read.kind === 'invalid' ? read.problem : null}
+          />
         ) : (
           <ToggleButtonGroup
             exclusive
@@ -266,6 +215,94 @@ function StampBar({
 }
 
 /**
+ * Buy new on the Stamps tab: the purchases, read with the view and again while one is under way; whether the catalogue
+ * move is switched off, read from `GET /api/catalogue-stamp` with the view, since a catalogue purchase is put to use by
+ * that move; the dialog's offer, its refusal and whether it is sending; and the controls the tables take. A purchase
+ * that ends reads the view again, so its row shows the new batch. A refused purchase reads the view again too, so the
+ * dialog, still open with the refusal, prices the batch at the price the manager reads now.
+ */
+function useBuyNew(view: FundingView | null, load: () => void) {
+  const purchases = useBatchPurchases(view, load);
+  const { reload } = purchases;
+  const [moveOff, setMoveOff] = useState(false);
+  const [offer, setOffer] = useState<BuyOffer | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!view?.configured) return undefined;
+    let current = true;
+    api
+      .fetchCatalogueState()
+      .then(({ move }) => {
+        if (current) setMoveOff(move?.enabled === false);
+      })
+      // Not read, the row offers Buy new, and the API refuses a purchase the move cannot follow.
+      .catch(() => {
+        if (current) setMoveOff(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [view]);
+
+  const latest = useMemo(() => latestPurchases(purchases.purchases ?? []), [purchases.purchases]);
+  const catalogueNodeId = view?.catalogue?.nodeId ?? null;
+
+  const controls: BuyControls = useMemo(
+    () => ({
+      offerOf: (node) => buyOfferOf(node, catalogueNodeId),
+      purchaseOf: (nodeId) => latest.get(nodeId),
+      moveOff,
+      onBuy: (next) => {
+        setRefusal(null);
+        setOffer(next);
+      },
+      onRestart: async (purchaseId, stageId) => {
+        await api.restartPurchaseStage(purchaseId, stageId);
+        reload();
+      },
+      onCheck: async (purchaseId) => {
+        await api.checkPurchaseAgain(purchaseId);
+        reload();
+      },
+    }),
+    [catalogueNodeId, latest, moveOff, reload],
+  );
+
+  const confirm = async (choice: BatchBuyChoice) => {
+    if (!offer) return;
+    setBusy(true);
+    setRefusal(null);
+    try {
+      await api.buyBatch({
+        ...choice,
+        purpose: offer.purpose,
+        nodeId: offer.node.nodeId,
+        replacesBatchId: offer.replacesBatchId,
+      });
+      setOffer(null);
+      reload();
+    } catch (e: unknown) {
+      setRefusal(purchaseRefusal(e));
+      load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Said only where it matters: while a row offers Buy new, or once purchases were read and are now out of date.
+  const offers = view
+    ? [view.catalogue, ...view.stages.flatMap((stage) => stage.nodes)].some(
+        (node) => node !== null && buyOfferOf(node, catalogueNodeId) !== null,
+      )
+    : false;
+  const readError = purchases.error && (offers || purchases.purchases !== null) ? purchases.error : null;
+
+  return { controls, offer, busy, refusal, confirm, close: () => setOffer(null), readError };
+}
+
+/**
  * The Stamps tab: top up or dilute the batches the nodes upload with, each node paying from its own wallet. The
  * catalogue batch comes on top, then the archive stamps from `GET /api/archive/stamps`, with their room and the
  * qualities on them and "Buy archive stamp" under them, then each stage's batches. Each archive stamp is paid for by
@@ -280,6 +317,10 @@ function StampBar({
  * ticks, since a dilution cannot be undone. Select all, above the tables, ticks every batch that has a tick box, the
  * catalogue's among them, and Clear unticks them all; the tick box in front of a group's name ticks or clears the
  * group's.
+ *
+ * A batch that no longer pays, expired or gone from its node, and a node with no batch, offer Buy new in their row
+ * instead, which buys its replacement in a dialog of its own; the purchase is followed under the row, stage by stage
+ * or through the catalogue's move. `docs/architecture/funding.md`, "Buying a new batch".
  *
  * The operation, the days, the steps and the ticks, `selection`, are the Funding page's, so they stay while another
  * tab is shown; the operations sent clear the ticks. The tab reads the view again each time it is shown, and a tick
@@ -314,6 +355,7 @@ export function StampsTab({
     [view, archive.stamps],
   );
   const groups = useMemo(() => (inventory ? batchGroups(inventory) : []), [inventory]);
+  const buyNew = useBuyNew(view, load);
   const tickable = useMemo(
     () => [...new Set(groups.flatMap((group) => tickableBatches(group, operation)))],
     [groups, operation],
@@ -383,6 +425,7 @@ export function StampsTab({
             </Paper>
           ) : null}
           {groups.length > 0 && !reportsBatches(view) ? <Alert severity="info">{NO_BATCHES_REPORTED}</Alert> : null}
+          {buyNew.readError ? <Alert severity="warning">{purchasesReadFailed(buyNew.readError)}</Alert> : null}
           {groups.length > 0 ? (
             <SelectAllBar keys={tickable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
           ) : null}
@@ -400,7 +443,7 @@ export function StampsTab({
                     warningDays: archive.stamps?.ttlWarningDays ?? null,
                     footer: <ArchiveStampsFooter read={archive} onBought={load} />,
                   }
-                : {})}
+                : { buy: buyNew.controls })}
             />
           ))}
           {check ? (
@@ -415,6 +458,19 @@ export function StampsTab({
             />
           ) : null}
         </>
+      ) : null}
+
+      {buyNew.offer ? (
+        <BatchBuyDialog
+          open
+          offer={buyNew.offer}
+          postage={view?.postage ?? null}
+          busy={buyNew.busy}
+          refusal={buyNew.refusal}
+          onConfirm={(choice) => void buyNew.confirm(choice)}
+          onClose={buyNew.close}
+          onFund={onFund}
+        />
       ) : null}
 
       {confirming && check ? (

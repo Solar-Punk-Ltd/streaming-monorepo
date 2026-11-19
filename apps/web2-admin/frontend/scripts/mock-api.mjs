@@ -50,6 +50,19 @@
  * is the catalogue node no longer; `unoffered`, a purchase route that answers
  * as a manager that offers no purchases.
  *
+ * MOCK_BATCH_PURCHASES decides Buy new on the Stamps tab, as below at its
+ * constants: `fresh`, the default, a rung whose batch ran out and one with
+ * none, each offering Buy new; `stages`, a purchase restarting with a stage
+ * line in every state; `failed`, one to take up with Check again;
+ * `catalogue`, the catalogue batch run out and its purchase moving the
+ * catalogue, a thumbnail cleared on the way; `catalogue_off`, the same batch
+ * run out with the move switched off; `unoffered`, a purchase route that
+ * answers as a manager that offers none.
+ *
+ * MOCK_RECORDING_CHECK decides the latest check of the recordings on the
+ * Streams page: `none`, the default; `running`; `done`, two lost and one
+ * partly lost; `stopped`. A check started from the page runs in seconds.
+ *
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
@@ -245,7 +258,8 @@ function fundingNode(
  * under it, whose node cannot pay a deposit to a target over 5.4 xBZZ; a rung's, every digit of 3.1234567890123456
  * xBZZ, over it; a rung's at it, whose node holds no xDAI for the gas of a move to another target; a rung's its node
  * could not be read about; the light gateway's, which the tab shows read-only; and the other gateway, an ultra-light
- * node, with none. The catalogue node's chequebook, 1 xBZZ, is listed first.
+ * node, with none. The catalogue node's chequebook, 1 xBZZ, is listed first. A 480p rung has no batch and no
+ * chequebook, so its row offers Buy new.
  */
 const fundingNodes = new Map(
   [
@@ -301,6 +315,13 @@ const fundingNodes = new Map(
       null,
       { ...fundingBatch(`0x${'10'.repeat(32)}`, 20, false, 20, 0.3), readError: 'The node did not answer in time.' },
       fundingChequebook(null, null, 'The node did not answer in time.'),
+    ),
+    fundingNode(
+      `${MOCK_STAGE_ID}:480p`,
+      'mock-pool-480p',
+      'rung',
+      '0x3333333333333333333333333333333333333333',
+      '0x3333333333333333333333333333333333333333',
     ),
     fundingNode(`${MOCK_STAGE_ID}:gateway`, 'mock-gateway', 'gateway', null, null, 'The node did not answer.'),
     fundingNode(
@@ -624,6 +645,7 @@ function batchAnswer(batch) {
     ttlSeconds,
     fillRatio: batch.fillRatio,
     readError: null,
+    state: ttlSeconds === 0 ? 'expired' : 'active',
   };
 }
 
@@ -644,6 +666,18 @@ function chequebookAnswer(chequebook) {
   };
 }
 
+/**
+ * What the manager recommends in place of a node's batch: its depth and kind, the catalogue's immutable and 18 deep at
+ * least, depth 20 for a node with no batch or one not read, and nothing for a gateway.
+ */
+function replacementOf(node) {
+  if (node.role === 'gateway') return null;
+  const read = node.batch !== null && !node.batch.readError;
+  const depth = read ? node.batch.depth : 20;
+  if (node.nodeId === 'catalogue:bee-uploader') return { depth: Math.max(18, depth), immutable: true };
+  return { depth, immutable: read ? node.batch.immutable : false };
+}
+
 function adminFundingNode(node) {
   const read = node.walletAddress !== null;
   return {
@@ -656,6 +690,7 @@ function adminFundingNode(node) {
     readError: node.readError,
     batch: batchAnswer(node.batch),
     chequebook: chequebookAnswer(node.chequebook),
+    replacement: replacementOf(node),
     pin: pinOf(node),
     pinnedAddress: node.pinnedAddress,
   };
@@ -995,6 +1030,7 @@ function fundingView() {
   settleFundingTransfers();
   settleStampOperations();
   settleChequebookOperations();
+  settleBatchPurchases();
   const nodesOf = (stageId) => [...fundingNodes.values()].filter((node) => node.nodeId.startsWith(`${stageId}:`));
   return {
     configured: true,
@@ -1090,6 +1126,8 @@ const LOCKOUT_SECONDS = 60;
 const sessions = new Map();
 /** id -> stream row (plus the thumbnail bytes, which the API never returns) */
 const streams = new Map();
+/** streamId -> what the latest check of the recordings found of it, as `GET /api/streams` marks a row. */
+const recordingMarks = new Map();
 let feedIndex = -1;
 let feedEntries = 0;
 
@@ -1170,6 +1208,7 @@ function publicStream(row) {
     hasUnpublishedEdits: editsNotOnFeed && ON_FEED_STATUSES.includes(row.status),
     restartUntil: restartUntil(row),
     ...(archive ? { archive } : {}),
+    ...(recordingMarks.get(row.id) ?? {}),
   };
 }
 
@@ -2411,6 +2450,459 @@ function seedArchivedRecording(title, description, endedMinutesAgo) {
   if (recording && Object.hasOwn(seeds, MOCK_ARCHIVE)) mockArchive = seeds[MOCK_ARCHIVE]();
 }
 
+/*
+ * Buying a new batch on the Stamps tab (`docs/architecture/funding.md`, "Buying a new batch"), with what the manager
+ * and the admin do after it, sped up: a purchase is bought 5 seconds after it is asked for and usable 12 seconds
+ * after that. A rung's batch is then set on its node, and the mock stage's uploader restarts in 4 seconds, or waits
+ * while a stream is live on the stage, which the seeded live stream is, until Restart now. The catalogue's is then
+ * moved onto, a slot a second, clearing one thumbnail on the way, and the previous batch is released 3 seconds after
+ * the move ends. MOCK_BATCH_PURCHASES seeds them:
+ *
+ * - `fresh`, the default: none. The 720p rung's batch has run out and the 480p rung has none, so both offer Buy new.
+ * - `stages`: a 720p purchase restarting, with a stage line in each state Restart now and Check again act on.
+ * - `failed`: a 720p purchase whose batch was bought and did not become usable in time; Check again takes it up.
+ * - `catalogue`: the catalogue batch has run out, and a purchase of its replacement is moving the catalogue.
+ * - `catalogue_off`: the catalogue batch has run out, and the move is switched off, so its row says so.
+ * - `unoffered`: a purchase answers as an admin whose manager offers none.
+ */
+const BATCH_PURCHASE_SEED = process.env.MOCK_BATCH_PURCHASES ?? 'fresh';
+const BATCH_BOUGHT_AFTER_MS = 5_000;
+const BATCH_USABLE_AFTER_MS = 12_000;
+const BATCH_APPLY_MS = 4_000;
+const BATCH_MOVE_SLOT_MS = 1_000;
+const BATCH_RELEASE_AFTER_MS = 3_000;
+const BATCH_PURCHASES_NOT_OFFERED =
+  'The manager does not offer batch purchases. A manager older than this page buys batches on its own pages.';
+/** Whether the catalogue move is switched on, as `CATALOGUE_MOVE_ENABLED` is, in the catalogue seeds. */
+const CATALOGUE_MOVE_ON = BATCH_PURCHASE_SEED === 'catalogue';
+
+/** id -> purchase, as the admin keeps them; `phase` is its state, and each settles by the clock on every read. */
+const batchPurchases = new Map();
+
+function batchAmountPerChunk(days) {
+  const block = BigInt(FUNDING_POSTAGE.blockSeconds);
+  const blocks = (BigInt(days) * 86_400n + block - 1n) / block;
+  return blocks * BigInt(FUNDING_POSTAGE.pricePerChunkPerBlockPlur);
+}
+
+/** Whether a stream is live on a stage, as the manager reads it twice before it restarts the stage's uploader. */
+function liveOnStage(stageId) {
+  return [...streams.values()].some((row) => row.status === 'live' && row.stageId === stageId);
+}
+
+/** Whether a node's row offers Buy new: it is no gateway, and it has no batch, or one that has run out. */
+function batchOffered(node) {
+  return node.role !== 'gateway' && (node.batch === null || (!node.batch.readError && ttlOf(node.batch) === 0));
+}
+
+function newBatchPurchase(node, fields) {
+  const purchase = {
+    id: randomUUID(),
+    purpose: node.nodeId === ARCHIVE_CATALOGUE_NODE_ID ? 'catalogue' : 'rung',
+    nodeId: node.nodeId,
+    nodeLabel: node.label,
+    depth: 20,
+    immutable: false,
+    days: 30,
+    replacesBatchId: node.batch?.batchId ?? null,
+    phase: 'buying',
+    phaseSince: Date.now(),
+    batchId: null,
+    error: null,
+    stages: [],
+    move: null,
+    startedBy: 'admin',
+    startedAt: new Date().toISOString(),
+    ...fields,
+  };
+  batchPurchases.set(purchase.id, purchase);
+  return purchase;
+}
+
+/** The new batch on its node: set on a rung once usable, written with by the catalogue once the move is done. */
+function setPurchasedBatch(purchase) {
+  const node = fundingNodes.get(purchase.nodeId);
+  if (node) node.batch = fundingBatch(purchase.batchId, purchase.depth, purchase.immutable, purchase.days, 0);
+}
+
+/** A purchase's batch is usable: a rung's is set and its stage lined up, the catalogue's is moved onto. */
+function putToUse(purchase, at) {
+  if (purchase.purpose === 'rung') {
+    setPurchasedBatch(purchase);
+    purchase.stages = stages
+      .filter((stage) => purchase.nodeId.startsWith(`${stage.stageId}:`))
+      .map((stage) => ({ stageId: stage.stageId, name: stage.name, apply: 'pending', message: null, since: at }));
+    purchase.phase = 'restarting';
+  } else {
+    const titled = [...streams.values()].find((row) => row.status === 'vod');
+    purchase.move = {
+      state: 'running',
+      slotsDone: 0,
+      slotsTotal: Math.max(6, feedIndex + 1),
+      message: null,
+      clearedThumbnails: [],
+      released: false,
+      startedAt: at,
+      doneAt: null,
+      clears: titled ? { streamId: titled.id, title: titled.title } : null,
+    };
+    purchase.phase = 'moving';
+  }
+  purchase.phaseSince = at;
+}
+
+function settleRestarts(purchase, now) {
+  for (const line of purchase.stages) {
+    // The mock's own stage only: the made-up ones of a seed wait on what they are seeded with.
+    const known = stages.some((stage) => stage.stageId === line.stageId);
+    if (known && (line.apply === 'pending' || line.apply === 'waiting_live')) {
+      line.apply = liveOnStage(line.stageId) ? 'waiting_live' : 'applying';
+      line.since = now;
+    }
+    if (line.apply === 'applying' && now - line.since >= BATCH_APPLY_MS) line.apply = 'applied';
+  }
+  if (purchase.stages.every((line) => ['applied', 'not_following', 'stopped'].includes(line.apply))) {
+    purchase.phase = 'done';
+  }
+}
+
+function settleMove(purchase, now) {
+  const { move } = purchase;
+  if (move.state === 'running') {
+    move.slotsDone = Math.min(move.slotsTotal, Math.floor((now - move.startedAt) / BATCH_MOVE_SLOT_MS));
+    if (move.clears && move.slotsDone >= 2 && move.clearedThumbnails.length === 0) {
+      move.clearedThumbnails.push(move.clears);
+    }
+    if (move.slotsDone >= move.slotsTotal) {
+      move.state = 'done';
+      move.doneAt = move.startedAt + move.slotsTotal * BATCH_MOVE_SLOT_MS;
+      setPurchasedBatch(purchase);
+    }
+  }
+  if (move.state === 'done' && now - move.doneAt >= BATCH_RELEASE_AFTER_MS) {
+    move.released = true;
+    purchase.phase = 'done';
+  }
+}
+
+function settleBatchPurchases(now = Date.now()) {
+  for (const purchase of batchPurchases.values()) {
+    if (purchase.phase === 'buying' && now - purchase.phaseSince >= BATCH_BOUGHT_AFTER_MS) {
+      purchase.batchId = `0x${hex(32)}`;
+      purchase.phase = 'waiting_usable';
+      purchase.phaseSince += BATCH_BOUGHT_AFTER_MS;
+    }
+    if (purchase.phase === 'waiting_usable' && now - purchase.phaseSince >= BATCH_USABLE_AFTER_MS) {
+      putToUse(purchase, purchase.phaseSince + BATCH_USABLE_AFTER_MS);
+    }
+    if (purchase.phase === 'restarting') settleRestarts(purchase, now);
+    if (purchase.phase === 'moving' && purchase.move) settleMove(purchase, now);
+  }
+}
+
+function batchPurchaseAnswer(purchase) {
+  const amount = batchAmountPerChunk(purchase.days);
+  return {
+    id: purchase.id,
+    purpose: purchase.purpose,
+    nodeId: purchase.nodeId,
+    nodeLabel: purchase.nodeLabel,
+    depth: purchase.depth,
+    immutable: purchase.immutable,
+    days: purchase.days,
+    amountPerChunkPlur: amount.toString(),
+    costPlur: (amount << BigInt(purchase.depth)).toString(),
+    replacesBatchId: purchase.replacesBatchId,
+    state: purchase.phase,
+    batchId: purchase.batchId,
+    error: purchase.error,
+    stages: purchase.stages.map(({ stageId, name, apply, message }) => ({ stageId, name, apply, message })),
+    move: purchase.move && {
+      state: purchase.move.state,
+      slotsDone: purchase.move.slotsDone,
+      slotsTotal: purchase.move.slotsTotal,
+      message: purchase.move.message,
+      clearedThumbnails: purchase.move.clearedThumbnails,
+      released: purchase.move.released,
+    },
+    canCheckAgain:
+      (purchase.phase === 'failed' && purchase.batchId !== null) ||
+      purchase.stages.some((line) => line.apply === 'failed'),
+    startedBy: purchase.startedBy,
+    startedAt: purchase.startedAt,
+  };
+}
+
+/** Why a purchase is refused, the API's sentence, or null. Nothing is spent on a refusal. */
+function batchPurchaseRefusal(body) {
+  if (BATCH_PURCHASE_SEED === 'unoffered') return BATCH_PURCHASES_NOT_OFFERED;
+  const node = fundingNodes.get(String(body.nodeId));
+  if (!node) return 'The manager lists no such node now. Refresh the page.';
+  if (!batchOffered(node)) return "This node's batch still pays for uploads. Top it up or dilute it instead.";
+  if ((node.batch?.batchId ?? null) !== (body.replacesBatchId ?? null)) {
+    return "This node's batch changed since the page read it. Refresh the page.";
+  }
+  if ([...batchPurchases.values()].some((p) => p.nodeId === node.nodeId && !['done', 'failed'].includes(p.phase))) {
+    return 'A purchase on this node is under way.';
+  }
+  const catalogue = node.nodeId === ARCHIVE_CATALOGUE_NODE_ID;
+  if ((body.purpose === 'catalogue') !== catalogue) return 'The purpose is not the one of this node.';
+  if (catalogue && !CATALOGUE_MOVE_ON) {
+    return 'A new catalogue batch is put to use by a move of the catalogue, which is switched off on this installation.';
+  }
+  const least = catalogue ? 18 : 17;
+  if (!Number.isInteger(body.depth) || body.depth < least || body.depth > 40) return `The depth is ${least} to 40.`;
+  if (catalogue && body.immutable !== true) return 'The catalogue is written with an immutable batch.';
+  if (!Number.isInteger(body.days) || body.days < 2) return 'A new batch lasts 2 days or more.';
+  const cost = batchAmountPerChunk(body.days) << BigInt(body.depth);
+  if (String(body.costPlur) !== cost.toString()) {
+    return `The price of postage moved, and this batch now costs ${cost} PLUR. Confirm it again at that cost.`;
+  }
+  if (node.xbzzPlur < cost) {
+    return `The node's wallet is ${cost - node.xbzzPlur} PLUR short of the batch's cost. Send it xBZZ on the Balance tab.`;
+  }
+  if (node.xdaiWei === 0n) return "The node's wallet holds no xDAI for the gas. Send it xDAI on the Balance tab.";
+  return null;
+}
+
+/** The catalogue move as the Stages page reads it while a catalogue purchase is moving or has moved the catalogue. */
+function purchaseMoveSummary() {
+  const purchase = [...batchPurchases.values()].reverse().find((p) => p.purpose === 'catalogue' && p.move);
+  if (!purchase) return null;
+  const { move } = purchase;
+  return {
+    id: purchase.id,
+    state: move.state === 'done' ? 'done' : 'running',
+    targetBatchId: purchase.batchId,
+    fromBatchId: purchase.replacesBatchId,
+    slotsDone: move.slotsDone,
+    slotsTotal: move.slotsTotal,
+    restamped: move.slotsDone,
+    skipped: 0,
+    thumbnails: move.clearedThumbnails.length,
+    clearedThumbnails: move.clearedThumbnails,
+    error: null,
+    startedBy: 'batch purchase',
+    startedAt: new Date(move.startedAt).toISOString(),
+    finishedAt: move.doneAt === null ? null : new Date(move.doneAt).toISOString(),
+  };
+}
+
+{
+  const now = Date.now();
+  const rung = fundingNodes.get(`${MOCK_STAGE_ID}:720p`);
+  const catalogue = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  if (BATCH_PURCHASE_SEED === 'catalogue' || BATCH_PURCHASE_SEED === 'catalogue_off') {
+    catalogue.batch = fundingBatch(catalogue.batch.batchId, 20, true, 0, 0.12);
+  }
+  if (BATCH_PURCHASE_SEED === 'stages') {
+    const purchase = newBatchPurchase(rung, { phase: 'restarting', batchId: `0x${hex(32)}` });
+    setPurchasedBatch(purchase);
+    const line = (stageId, name, apply, message = null) => ({ stageId, name, apply, message, since: now });
+    purchase.stages = [
+      line(MOCK_STAGE_ID, 'Mock stage', 'waiting_live'),
+      line(randomUUID(), 'Remote stage', 'waiting_unknown'),
+      line(randomUUID(), 'Side stage', 'waiting_settings', 'The ingest port waits to be applied as well.'),
+      line(randomUUID(), 'Night stage', 'applied'),
+      line(randomUUID(), 'Late stage', 'failed', 'The uploader did not come back within two minutes.'),
+      line(randomUUID(), 'Hand-set stage', 'not_following'),
+      line(randomUUID(), 'Quiet stage', 'stopped'),
+    ];
+  }
+  if (BATCH_PURCHASE_SEED === 'failed') {
+    newBatchPurchase(rung, {
+      phase: 'failed',
+      batchId: `0x${hex(32)}`,
+      error: 'The new batch did not become usable within an hour.',
+    });
+  }
+  if (BATCH_PURCHASE_SEED === 'catalogue') {
+    const purchase = newBatchPurchase(catalogue, {
+      depth: 18,
+      immutable: true,
+      batchId: `0x${hex(32)}`,
+    });
+    putToUse(purchase, now);
+  }
+}
+
+/*
+ * Checking the recordings and removing the lost ones (`docs/architecture/web2-admin.md`, "Lost recordings"), sped up:
+ * a check reads a recording a second, and waits 5 seconds between its rounds where the API waits ten minutes. Among the
+ * seeded recordings, "Ended days ago" and "Last year's meetup" read as lost, the first with an export file kept on the
+ * server as far as the check is told, and "Panel discussion" as partly lost, its 1080p unread. MOCK_RECORDING_CHECK
+ * seeds the latest check: `none`, the default, none yet; `running`, one started at start; `done`, one that has ended
+ * with that result; `stopped`, one that stopped on the catalogue node's peers.
+ */
+const RECORDING_CHECK_SEED = process.env.MOCK_RECORDING_CHECK ?? 'none';
+const RECORDING_READ_MS = 1_000;
+const RECORDING_ROUND_GAP_MS = 5_000;
+const RECORDING_CHECK_VALID_MS = 6 * 60 * 60 * 1000;
+const LOST_TITLES = new Set(['Ended days ago', "Last year's meetup"]);
+const PARTLY_LOST = new Map([['Panel discussion', ['1080p']]]);
+const KEPT_EXPORT_TITLES = new Set(['Ended days ago']);
+
+let recordingCheck = null;
+
+/** Whether the one rule lets a check judge a stream: a finished recording with no job of its own under way. */
+function judgeable(row) {
+  if (row.status !== 'vod' || row.finishedAt === null) return false;
+  if (mockExport?.streamId === row.id && mockExport.state !== 'done') return false;
+  return mockArchive?.streamId !== row.id;
+}
+
+function checkedRecording(row, verdict, failedQualities) {
+  return {
+    streamId: row.id,
+    title: row.title,
+    status: row.status,
+    verdict,
+    failedQualities,
+    hasExportFile: KEPT_EXPORT_TITLES.has(row.title),
+  };
+}
+
+function newRecordingCheck(startedAt, fields = {}) {
+  const recordings = [...streams.values()].filter((row) => row.status === 'live' || row.status === 'vod');
+  const judged = recordings.filter(judgeable);
+  recordingCheck = {
+    id: randomUUID(),
+    startedAt,
+    startedBy: 'admin',
+    state: 'running',
+    stopMessage: null,
+    judged: judged.map((row) => row.id),
+    unjudged: recordings.length - judged.length,
+    failing: judged.filter((row) => LOST_TITLES.has(row.title) || PARTLY_LOST.has(row.title)).length,
+    lost: [],
+    partlyLost: [],
+    finishedAt: null,
+    ...fields,
+  };
+}
+
+/** Where a running check stands by the clock: its round, what it read of it, when the next starts, or its end. */
+function recordingCheckProgress(check, now) {
+  const total = check.judged.length;
+  const counts = [total, check.failing, check.failing];
+  let at = check.startedAt;
+  for (let round = 1; round <= 3; round += 1) {
+    const length = counts[round - 1] * RECORDING_READ_MS;
+    if (now < at + length) return { round, read: Math.floor((now - at) / RECORDING_READ_MS), nextRoundAt: null };
+    at += length;
+    if (round === 3) break;
+    if (now < at + RECORDING_ROUND_GAP_MS) {
+      return { round, read: counts[round - 1], nextRoundAt: at + RECORDING_ROUND_GAP_MS };
+    }
+    at += RECORDING_ROUND_GAP_MS;
+  }
+  return { round: 3, read: check.failing, nextRoundAt: null, endedAt: at };
+}
+
+function settleRecordingCheck(now = Date.now()) {
+  const check = recordingCheck;
+  if (!check || check.state !== 'running') return;
+  const progress = recordingCheckProgress(check, now);
+  if (progress.endedAt === undefined) return;
+  check.state = 'done';
+  check.finishedAt = progress.endedAt;
+  const rows = check.judged.map((id) => streams.get(id)).filter(Boolean);
+  check.lost = rows.filter((row) => LOST_TITLES.has(row.title)).map((row) => checkedRecording(row, 'lost', []));
+  check.partlyLost = rows
+    .filter((row) => PARTLY_LOST.has(row.title))
+    .map((row) => checkedRecording(row, 'partly_lost', PARTLY_LOST.get(row.title)));
+  const recordingCheckedAt = new Date(check.finishedAt).toISOString();
+  recordingMarks.clear();
+  for (const recording of [...check.lost, ...check.partlyLost]) {
+    recordingMarks.set(recording.streamId, { recording: recording.verdict, recordingCheckedAt });
+  }
+}
+
+/** Why the latest check's lost recordings cannot be removed now, or null. */
+function lostRemovalRefusal(check, now = Date.now()) {
+  if (!check || check.state !== 'done') return 'The check has not ended, so it lists nothing to remove yet.';
+  if (check.lost.length === 0) return 'The check lists no lost recordings.';
+  if (now - check.finishedAt > RECORDING_CHECK_VALID_MS) {
+    return 'This check ended more than six hours ago. Run a new check first.';
+  }
+  const catalogue = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  if (catalogue?.batch && ttlOf(catalogue.batch) === 0) {
+    return "The catalogue batch has run out, so the catalogue cannot be written. Buy a new catalogue batch on the Funding page's Stamps tab first.";
+  }
+  return null;
+}
+
+function recordingCheckAnswer(now = Date.now()) {
+  settleRecordingCheck(now);
+  const check = recordingCheck;
+  const progress = check?.state === 'running' ? recordingCheckProgress(check, now) : null;
+  const iso = (ms) => (ms === null ? null : new Date(ms).toISOString());
+  return {
+    check: check && {
+      id: check.id,
+      state: check.state,
+      stopMessage: check.stopMessage,
+      round: progress ? progress.round : 3,
+      nextRoundAt: progress ? iso(progress.nextRoundAt) : null,
+      total: check.judged.length,
+      readThisRound: progress ? progress.read : check.failing,
+      unjudged: check.unjudged,
+      lost: check.lost,
+      partlyLost: check.partlyLost,
+      startedBy: check.startedBy,
+      startedAt: iso(check.startedAt),
+      finishedAt: iso(check.finishedAt),
+    },
+    startRefusal: check?.state === 'running' ? 'A check is running. Wait for it to end.' : null,
+    removalRefusal: lostRemovalRefusal(check, now),
+  };
+}
+
+/** Takes the check's lost recordings off the catalogue in one write: each is deleted, or kept as a draft for its file. */
+function removeLostRecordings(check, streamIds) {
+  const removed = [];
+  const unlisted = [];
+  let onFeed = 0;
+  for (const recording of check.lost.filter((r) => streamIds.includes(r.streamId))) {
+    const row = streams.get(recording.streamId);
+    if (!row) continue;
+    if (ON_FEED_STATUSES.includes(row.status)) onFeed += 1;
+    if (recording.hasExportFile) {
+      Object.assign(row, { status: 'draft', publishedAt: null, publishedFeedIndex: null });
+      row.updatedAt = new Date().toISOString();
+      unlisted.push({ streamId: row.id, title: row.title });
+    } else {
+      streams.delete(row.id);
+      archiveCopies.delete(row.id);
+      archivedOnlyStreams.delete(row.id);
+      removed.push({ streamId: row.id, title: row.title });
+    }
+    recordingMarks.delete(row.id);
+  }
+  if (onFeed > 0) {
+    feedEntries = Math.max(0, feedEntries - onFeed);
+    feedIndex += 1;
+  }
+  check.lost = check.lost.filter((r) => !streamIds.includes(r.streamId));
+  return { removed, unlisted, kept: [], feedIndex: onFeed > 0 ? feedIndex : null };
+}
+
+{
+  const now = Date.now();
+  if (RECORDING_CHECK_SEED === 'running') newRecordingCheck(now);
+  if (RECORDING_CHECK_SEED === 'stopped') {
+    newRecordingCheck(now - 60_000, {
+      state: 'stopped',
+      stopMessage: 'The catalogue node fell under 4 peers, so nothing it read would count.',
+      finishedAt: now - 30_000,
+    });
+  }
+  if (RECORDING_CHECK_SEED === 'done') {
+    newRecordingCheck(now - 60 * 60 * 1000);
+    settleRecordingCheck(now);
+  }
+}
+
 const server = createServer((req, res) => {
   void handle(req, res).catch((e) => {
     send(res, 500, { error: 'internal_error', message: String(e) });
@@ -2700,6 +3192,85 @@ async function handle(req, res) {
     return send(res, 200, { user });
   }
 
+  if (path === '/api/funding/batch-purchases' || path.startsWith('/api/funding/batch-purchases/')) {
+    settleBatchPurchases();
+  }
+  if (path === '/api/funding/batch-purchases' && method === 'GET') {
+    const dayAgo = Date.now() - DAY_MS;
+    const shown = [...batchPurchases.values()].filter(
+      (p) => !['done', 'failed'].includes(p.phase) || Date.parse(p.startedAt) >= dayAgo,
+    );
+    return send(res, 200, { purchases: shown.map(batchPurchaseAnswer) });
+  }
+  // No password: the node pays from its own wallet, as for a top-up.
+  if (path === '/api/funding/batch-purchases' && method === 'POST') {
+    const body = await readJson(req);
+    const refusal = batchPurchaseRefusal(body);
+    if (refusal) return send(res, 409, { error: 'batch_purchase_refused', message: refusal });
+    const node = fundingNodes.get(body.nodeId);
+    node.xbzzPlur -= batchAmountPerChunk(body.days) << BigInt(body.depth);
+    node.xdaiWei = node.xdaiWei > STAMP_GAS_WEI ? node.xdaiWei - STAMP_GAS_WEI : 0n;
+    const purchase = newBatchPurchase(node, {
+      depth: body.depth,
+      immutable: body.immutable,
+      days: body.days,
+      startedBy: user.username,
+    });
+    return send(res, 202, batchPurchaseAnswer(purchase));
+  }
+  const purchaseRoute = path.match(/^\/api\/funding\/batch-purchases\/([^/]+)(\/(restart|check))?$/);
+  if (purchaseRoute) {
+    const purchase = batchPurchases.get(decodeURIComponent(purchaseRoute[1]));
+    if (!purchase) return send(res, 404, { error: 'not_found' });
+    if (!purchaseRoute[3] && method === 'GET') return send(res, 200, batchPurchaseAnswer(purchase));
+    if (purchaseRoute[3] === 'restart' && method === 'POST') {
+      const { stageId } = await readJson(req);
+      const line = purchase.stages.find((candidate) => candidate.stageId === stageId);
+      if (!line || !['waiting_live', 'waiting_unknown'].includes(line.apply)) {
+        return send(res, 409, {
+          error: 'batch_purchase_refused',
+          message: 'This stage does not wait for a broadcast, so it is not restarted now.',
+        });
+      }
+      Object.assign(line, { apply: 'applying', since: Date.now() });
+      return send(res, 200, batchPurchaseAnswer(purchase));
+    }
+    if (purchaseRoute[3] === 'check' && method === 'POST') {
+      if (!batchPurchaseAnswer(purchase).canCheckAgain) {
+        return send(res, 409, { error: 'batch_purchase_refused', message: 'Nothing of this purchase is to check.' });
+      }
+      if (purchase.phase === 'failed') {
+        Object.assign(purchase, { phase: 'waiting_usable', phaseSince: Date.now(), error: null });
+      }
+      for (const line of purchase.stages) {
+        if (line.apply === 'failed') Object.assign(line, { apply: 'applying', since: Date.now(), message: null });
+      }
+      return send(res, 200, batchPurchaseAnswer(purchase));
+    }
+  }
+
+  if (path === '/api/recordings/check' && method === 'GET') return send(res, 200, recordingCheckAnswer());
+  if (path === '/api/recordings/check' && method === 'POST') {
+    const answer = recordingCheckAnswer();
+    if (answer.startRefusal) return send(res, 409, { error: 'check_refused', message: answer.startRefusal });
+    newRecordingCheck(Date.now(), { startedBy: user.username });
+    return send(res, 202, recordingCheckAnswer());
+  }
+  if (path === '/api/recordings/lost/removal' && method === 'POST') {
+    const { checkId, streamIds } = await readJson(req);
+    const answer = recordingCheckAnswer();
+    if (answer.removalRefusal) return send(res, 409, { error: 'removal_refused', message: answer.removalRefusal });
+    const listed = recordingCheck.lost.map((r) => r.streamId).sort();
+    const asked = Array.isArray(streamIds) ? [...streamIds].sort() : [];
+    if (checkId !== recordingCheck.id || listed.join() !== asked.join()) {
+      return send(res, 409, {
+        error: 'removal_refused',
+        message: "The list differs from the check's list of lost recordings. Read the check again.",
+      });
+    }
+    return send(res, 200, removeLostRecordings(recordingCheck, asked));
+  }
+
   if (path === '/api/funding' && method === 'GET') return send(res, 200, fundingView());
 
   if (path === '/api/archive/stamps' && method === 'GET') return send(res, 200, archiveStampsAnswer());
@@ -2924,23 +3495,29 @@ async function handle(req, res) {
   // FEED_GATEWAY=fake, so My Streams shows no refusal.
   if (path === '/api/stages' && method === 'GET') return send(res, 200, { stages });
   if (path === '/api/catalogue-stamp' && method === 'GET') {
+    settleBatchPurchases();
+    const latest = purchaseMoveSummary();
     return send(res, 200, {
       catalogueStamp: null,
       catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
       // Nothing to move without a catalogue stamp, and the move is off by default, as CATALOGUE_MOVE_ENABLED is.
+      // The catalogue seed of MOCK_BATCH_PURCHASES switches it on, and shows the move its purchase started.
       catalogueMove: {
-        enabled: false,
+        enabled: CATALOGUE_MOVE_ON,
         waiting: null,
         refusal: null,
-        latest: null,
-        designatedBatchId: null,
-        pinnedBatchId: null,
+        latest,
+        designatedBatchId: latest?.targetBatchId ?? null,
+        pinnedBatchId: latest?.state === 'done' ? latest.targetBatchId : (latest?.fromBatchId ?? null),
       },
     });
   }
 
   // The sweep, before anything about a stream is answered.
-  if (path === '/api/streams' || path.startsWith('/api/streams/')) finishEnded();
+  if (path === '/api/streams' || path.startsWith('/api/streams/')) {
+    finishEnded();
+    settleRecordingCheck();
+  }
 
   if (path === '/api/streams' && method === 'GET') {
     const list = [...streams.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(publicStream);

@@ -9,14 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   InputAdornment,
-  Radio,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
 } from '@mui/material';
@@ -27,11 +20,11 @@ import {
   archiveBuyProblem,
   archiveBuyQuote,
   type ArchiveBuyChoice,
-  type ArchiveBuyQuote,
   type ArchiveBuyTerms,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { formatShort, formatUnits } from '../funding/amounts';
+import { DepthRows } from '../funding/DepthRows';
 import { dayCount } from '../funding/stamps';
 import type { BuyStampDialogProps } from './archiveSeams';
 import { chunkCount, formatCapacity } from './archiveText';
@@ -83,69 +76,6 @@ function walletLine(terms: ArchiveBuyTerms): string {
 
 function xbzz(plur: string): string {
   return `${formatShort(plur, XBZZ_DECIMALS)} xBZZ`;
-}
-
-/** One row per depth, with what it holds and what it costs; the row picked is the one to buy. */
-function DepthRows({
-  quote,
-  depth,
-  onPick,
-  disabled,
-}: {
-  quote: ArchiveBuyQuote;
-  depth: number | null;
-  onPick: (depth: number) => void;
-  disabled: boolean;
-}) {
-  return (
-    <TableContainer sx={{ maxHeight: 320 }}>
-      <Table size="small" stickyHeader aria-label="Depths">
-        <TableHead>
-          <TableRow>
-            <TableCell padding="checkbox" />
-            <TableCell>Depth</TableCell>
-            <TableCell align="right">Holds</TableCell>
-            <TableCell align="right">Costs</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {quote.rows.map((row) => {
-            const picked = row.depth === depth;
-            return (
-              <TableRow
-                key={row.depth}
-                hover={!disabled}
-                selected={picked}
-                onClick={disabled ? undefined : () => onPick(row.depth)}
-                sx={{ cursor: disabled ? 'default' : 'pointer' }}
-              >
-                <TableCell padding="checkbox">
-                  <Radio
-                    size="small"
-                    checked={picked}
-                    disabled={disabled}
-                    onChange={() => onPick(row.depth)}
-                    slotProps={{ input: { 'aria-label': `Depth ${row.depth}` } }}
-                  />
-                </TableCell>
-                <TableCell>{row.depth}</TableCell>
-                <TableCell align="right" title={chunkCount(row.effectiveChunks)}>
-                  {formatCapacity(row.effectiveBytes)}
-                </TableCell>
-                <TableCell
-                  align="right"
-                  title={`${formatUnits(row.costPlur, XBZZ_DECIMALS)} xBZZ`}
-                  sx={{ fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {xbzz(row.costPlur)}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </TableContainer>
-  );
 }
 
 /** The dialog's content, mounted afresh each time it opens, so a second purchase starts from the defaults again. */
@@ -246,7 +176,17 @@ function BuyDialogBody({
             <Typography variant="body2">{sizedFor(quote.chunksNeeded)}</Typography>
           ) : null}
           {quote && quote.rows.length > 0 ? (
-            <DepthRows quote={quote} depth={depth} onPick={setPicked} disabled={busy} />
+            <DepthRows
+              rows={quote.rows.map((r) => ({
+                depth: r.depth,
+                bytes: r.effectiveBytes,
+                chunks: r.effectiveChunks,
+                costPlur: r.costPlur,
+              }))}
+              depth={depth}
+              onPick={setPicked}
+              disabled={busy}
+            />
           ) : null}
           <TextField
             size="small"

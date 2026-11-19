@@ -103,7 +103,7 @@ describe('the Funding page', () => {
     renderWithProviders(<FundingPage />);
 
     expect(await screen.findByText('Not set up')).toBeInTheDocument();
-    expect(screen.getByText(/MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN/)).toBeInTheDocument();
+    expect(screen.getByText(/MANAGER_FUNDING_URL and MANAGER_API_TOKEN/)).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Brand wallet' })).not.toBeInTheDocument();
   });
 
