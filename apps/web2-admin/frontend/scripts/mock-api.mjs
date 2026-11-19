@@ -2633,35 +2633,80 @@ function batchPurchaseAnswer(purchase) {
   };
 }
 
-/** Why a purchase is refused, the API's sentence, or null. Nothing is spent on a refusal. */
+/**
+ * Why a purchase is refused, as the API answers it, `409 funding_refused` with the problem's kind and the API's
+ * sentence, or null. Nothing is spent on a refusal.
+ */
 function batchPurchaseRefusal(body) {
-  if (BATCH_PURCHASE_SEED === 'unoffered') return BATCH_PURCHASES_NOT_OFFERED;
+  const refused = (problem, message) => ({ problem, message });
+  if (BATCH_PURCHASE_SEED === 'unoffered') return refused('node', BATCH_PURCHASES_NOT_OFFERED);
   const node = fundingNodes.get(String(body.nodeId));
-  if (!node) return 'The manager lists no such node now. Refresh the page.';
-  if (!batchOffered(node)) return "This node's batch still pays for uploads. Top it up or dilute it instead.";
-  if ((node.batch?.batchId ?? null) !== (body.replacesBatchId ?? null)) {
-    return "This node's batch changed since the page read it. Refresh the page.";
-  }
-  if ([...batchPurchases.values()].some((p) => p.nodeId === node.nodeId && !['done', 'failed'].includes(p.phase))) {
-    return 'A purchase on this node is under way.';
+  if (!node) {
+    return refused(
+      'node',
+      `The manager runs no stage node ${body.nodeId} now. Read the page again. Nothing was bought.`,
+    );
   }
   const catalogue = node.nodeId === ARCHIVE_CATALOGUE_NODE_ID;
-  if ((body.purpose === 'catalogue') !== catalogue) return 'The purpose is not the one of this node.';
-  if (catalogue && !CATALOGUE_MOVE_ON) {
-    return 'A new catalogue batch is put to use by a move of the catalogue, which is switched off on this installation.';
+  if (body.purpose === 'catalogue' && !CATALOGUE_MOVE_ON) {
+    return refused(
+      'not_set_up',
+      'A new catalogue batch is put to use by a move of the catalogue, which is switched off on this installation.',
+    );
+  }
+  if ((body.purpose === 'catalogue') !== catalogue) {
+    return refused(
+      'node',
+      catalogue
+        ? "The catalogue node's batch is bought as the catalogue batch, not as a rung's. Nothing was bought."
+        : `${node.nodeId} is not the catalogue node the manager names now, so no catalogue batch is bought on it. Nothing was bought.`,
+    );
+  }
+  if (node.role === 'gateway') return refused('node', `${node.label} stamps nothing, so no batch is bought for it.`);
+  if ((node.batch?.batchId ?? null) !== (body.replacesBatchId ?? null)) {
+    return refused(
+      'batch',
+      `The batch of ${node.label} changed since the page showed it. Read the page again. Nothing was bought.`,
+    );
+  }
+  if (!batchOffered(node)) {
+    return refused(
+      'batch',
+      `The batch of ${node.label} still pays, so it is topped up or diluted rather than replaced. Nothing was bought.`,
+    );
   }
   const least = catalogue ? 18 : 17;
-  if (!Number.isInteger(body.depth) || body.depth < least || body.depth > 40) return `The depth is ${least} to 40.`;
-  if (catalogue && body.immutable !== true) return 'The catalogue is written with an immutable batch.';
-  if (!Number.isInteger(body.days) || body.days < 2) return 'A new batch lasts 2 days or more.';
+  if (!Number.isInteger(body.depth) || body.depth < least || body.depth > 40) {
+    return refused(
+      'batch',
+      catalogue ? `A catalogue batch's depth is ${least} to 40.` : `A batch's depth is ${least} to 40.`,
+    );
+  }
+  if (catalogue && body.immutable !== true)
+    return refused('batch', 'The catalogue is written with an immutable batch.');
+  if (!Number.isInteger(body.days) || body.days < 2) return refused('batch', 'A new batch lasts 2 days or more.');
   const cost = batchAmountPerChunk(body.days) << BigInt(body.depth);
   if (String(body.costPlur) !== cost.toString()) {
-    return `The price of postage moved, and this batch now costs ${cost} PLUR. Confirm it again at that cost.`;
+    return refused(
+      'price',
+      `The price of postage moved, and this batch now costs ${cost} PLUR. Confirm it again at that cost.`,
+    );
   }
   if (node.xbzzPlur < cost) {
-    return `The node's wallet is ${cost - node.xbzzPlur} PLUR short of the batch's cost. Send it xBZZ on the Balance tab.`;
+    return refused(
+      'insufficient_funds',
+      `The node's wallet is ${cost - node.xbzzPlur} PLUR short of the batch's cost. Send it xBZZ on the Balance tab.`,
+    );
   }
-  if (node.xdaiWei === 0n) return "The node's wallet holds no xDAI for the gas. Send it xDAI on the Balance tab.";
+  if (node.xdaiWei === 0n) {
+    return refused(
+      'insufficient_funds',
+      "The node's wallet holds no xDAI for the gas. Send it xDAI on the Balance tab.",
+    );
+  }
+  if ([...batchPurchases.values()].some((p) => p.nodeId === node.nodeId && !['done', 'failed'].includes(p.phase))) {
+    return refused('node', 'A purchase is under way on this node. One runs on a node at a time.');
+  }
   return null;
 }
 
@@ -3206,7 +3251,7 @@ async function handle(req, res) {
   if (path === '/api/funding/batch-purchases' && method === 'POST') {
     const body = await readJson(req);
     const refusal = batchPurchaseRefusal(body);
-    if (refusal) return send(res, 409, { error: 'batch_purchase_refused', message: refusal });
+    if (refusal) return send(res, 409, { error: 'funding_refused', ...refusal });
     const node = fundingNodes.get(body.nodeId);
     node.xbzzPlur -= batchAmountPerChunk(body.days) << BigInt(body.depth);
     node.xdaiWei = node.xdaiWei > STAMP_GAS_WEI ? node.xdaiWei - STAMP_GAS_WEI : 0n;
@@ -3220,16 +3265,25 @@ async function handle(req, res) {
   }
   const purchaseRoute = path.match(/^\/api\/funding\/batch-purchases\/([^/]+)(\/(restart|check))?$/);
   if (purchaseRoute) {
-    const purchase = batchPurchases.get(decodeURIComponent(purchaseRoute[1]));
-    if (!purchase) return send(res, 404, { error: 'not_found' });
+    const id = decodeURIComponent(purchaseRoute[1]).toLowerCase();
+    const purchase = batchPurchases.get(id);
+    if (!purchase) return send(res, 404, { error: 'purchase_not_found', id });
     if (!purchaseRoute[3] && method === 'GET') return send(res, 200, batchPurchaseAnswer(purchase));
     if (purchaseRoute[3] === 'restart' && method === 'POST') {
       const { stageId } = await readJson(req);
+      if (purchase.purpose !== 'rung' || purchase.phase !== 'restarting') {
+        return send(res, 409, {
+          error: 'funding_refused',
+          problem: 'batch',
+          message: 'This purchase has no stage that waits to restart.',
+        });
+      }
       const line = purchase.stages.find((candidate) => candidate.stageId === stageId);
       if (!line || !['waiting_live', 'waiting_unknown'].includes(line.apply)) {
         return send(res, 409, {
-          error: 'batch_purchase_refused',
-          message: 'This stage does not wait for a broadcast, so it is not restarted now.',
+          error: 'funding_refused',
+          problem: 'batch',
+          message: 'This stage does not wait for a broadcast to end, so there is nothing to restart now.',
         });
       }
       Object.assign(line, { apply: 'applying', since: Date.now() });
@@ -3237,7 +3291,11 @@ async function handle(req, res) {
     }
     if (purchaseRoute[3] === 'check' && method === 'POST') {
       if (!batchPurchaseAnswer(purchase).canCheckAgain) {
-        return send(res, 409, { error: 'batch_purchase_refused', message: 'Nothing of this purchase is to check.' });
+        return send(res, 409, {
+          error: 'funding_refused',
+          problem: 'batch',
+          message: 'Nothing of this purchase stopped, so there is nothing to check again.',
+        });
       }
       if (purchase.phase === 'failed') {
         Object.assign(purchase, { phase: 'waiting_usable', phaseSince: Date.now(), error: null });
@@ -3252,19 +3310,19 @@ async function handle(req, res) {
   if (path === '/api/recordings/check' && method === 'GET') return send(res, 200, recordingCheckAnswer());
   if (path === '/api/recordings/check' && method === 'POST') {
     const answer = recordingCheckAnswer();
-    if (answer.startRefusal) return send(res, 409, { error: 'check_refused', message: answer.startRefusal });
+    if (answer.startRefusal) return send(res, 409, { error: 'recordings_refused', message: answer.startRefusal });
     newRecordingCheck(Date.now(), { startedBy: user.username });
-    return send(res, 202, recordingCheckAnswer());
+    return send(res, 200, recordingCheckAnswer());
   }
   if (path === '/api/recordings/lost/removal' && method === 'POST') {
     const { checkId, streamIds } = await readJson(req);
     const answer = recordingCheckAnswer();
-    if (answer.removalRefusal) return send(res, 409, { error: 'removal_refused', message: answer.removalRefusal });
+    if (answer.removalRefusal) return send(res, 409, { error: 'recordings_refused', message: answer.removalRefusal });
     const listed = recordingCheck.lost.map((r) => r.streamId).sort();
     const asked = Array.isArray(streamIds) ? [...streamIds].sort() : [];
     if (checkId !== recordingCheck.id || listed.join() !== asked.join()) {
       return send(res, 409, {
-        error: 'removal_refused',
+        error: 'recordings_refused',
         message: "The list differs from the check's list of lost recordings. Read the check again.",
       });
     }
