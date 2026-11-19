@@ -640,9 +640,12 @@ export type FundingStampOperationStatus = z.infer<typeof fundingStampOperationSt
  * The manager refuses with `stamp_refused`, and asks nothing of the node, when the node is not one the purpose names
  * in its current inventory; when `replacesBatchId` is another batch than the one set there now; when, for a rung or
  * the catalogue, that batch is neither expired nor gone, since a batch that still works is topped up or diluted; when
- * the amount buys less life than the postage contract's floor; and when the wallet holds less than the cost. A node
- * on which another purchase is `buying` or `waiting_usable`, or another operation of this API is under way, answers
- * 409 `conflict`.
+ * the amount buys less life than the postage contract's floor; and when the wallet holds less than the cost. A rung's
+ * or the catalogue's purchase is refused the same way while the node's latest purchase for that purpose bought a batch
+ * and stopped as `failed` before it was put to use, for as long as the node still holds that batch with time left:
+ * a check puts it to use, and a new purchase would pay for a second one. A node that could not be read about that
+ * batch keeps the refusal. A node on which another purchase is `buying` or `waiting_usable`, or another operation of
+ * this API is under way, answers 409 `conflict`.
  *
  * The manager journals the request before it asks the node. The same `requestId` sent again answers the purchase's
  * state and never buys twice. What the manager does once the batch is bought is in
@@ -741,6 +744,12 @@ export type FundingPurchaseCatalogue = z.infer<typeof fundingPurchaseCatalogueSc
  *
  * `stages` is empty for every purpose but `rung`, and before the batch is set. `catalogue` is null for every purpose
  * but `catalogue`, and before the batch is designated.
+ *
+ * `batchState` is the state of the bought batch on its node, as the manager read it for this answer, in the words the
+ * inventory gives a batch: `pending` until it is usable, `active`, `expired` once it has no time left, `gone` once
+ * the node holds it no more. It is absent while there is no batch, and when the node could not be read about it. A
+ * purchase that stopped as `failed` with its batch bought holds its node against a second purchase only until this
+ * reads `expired` or `gone`.
  */
 export const fundingBatchPurchaseStatusSchema = z.object({
   requestId: uuid,
@@ -754,6 +763,7 @@ export const fundingBatchPurchaseStatusSchema = z.object({
   error: z.string().nullable(),
   stages: z.array(fundingPurchaseStageSchema),
   catalogue: fundingPurchaseCatalogueSchema.nullable(),
+  batchState: z.enum(STAGE_STAMP_STATES).optional(),
 });
 export type FundingBatchPurchaseStatus = z.infer<typeof fundingBatchPurchaseStatusSchema>;
 

@@ -162,7 +162,15 @@ One purchase runs on a node at a time. Every purchase, restart and release gets 
 
 A purchase that failed after its batch was bought holds its row, whatever its age: the batch was
 paid for and never put to use, so the row offers **Check again** in place of **Buy new**, until a
-later purchase of that node is done.
+later purchase of that node is done. The hold lasts only while the bought batch is still on its node
+with time left:
+
+- The manager itself refuses a second purchase for that node and that purpose, with a sentence that
+  names the check, while its node still holds the bought batch with time left. A node it cannot read
+  keeps the refusal.
+- The purchase carries the bought batch's state as the manager last read it (`batchState`). Once it
+  reads expired or gone, no check can put the batch to use, and the row offers **Buy new** again.
+  While the state is absent, the purchase holds its row.
 
 A release the manager refuses ends the catalogue purchase as done, with the manager's sentence on
 its row: the catalogue is written with the new batch, and the previous one is released on the
