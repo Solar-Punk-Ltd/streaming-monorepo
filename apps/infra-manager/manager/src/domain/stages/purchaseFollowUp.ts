@@ -1,4 +1,5 @@
 import {
+  type CatalogueNodeAnswer,
   type DeploymentSettingEntry,
   type DeploymentSettingsCatalog,
   getErrorMessage,
@@ -363,6 +364,7 @@ class CatalogueBatches implements PurchasedCatalogueBatches {
       if (answer.designation?.batchId === batchId && answer.designation.profileName === input.profileName) {
         return { previousBatchId: answer.movingFrom?.batchId ?? null };
       }
+      await this.refuseWorkingDesignation(answer.designation);
       const pinned = answer.pinned?.batchId ?? null;
       try {
         const saved = await this.deps.catalogue.designate(
@@ -380,6 +382,23 @@ class CatalogueBatches implements PurchasedCatalogueBatches {
         if (err instanceof ManagerSettingsChangedError && attempt < REVISION_ATTEMPTS) continue;
         throw err;
       }
+    }
+  }
+
+  /**
+   * Refuses to move the catalogue off a designated batch that still works: the designation runs long after the
+   * purchase was checked, an hour later or after a check days later, and a batch designated meanwhile by another hand
+   * stays. One that expired, that its node holds no more, or none, is moved off.
+   */
+  private async refuseWorkingDesignation(designation: CatalogueNodeAnswer['designation']): Promise<void> {
+    if (!designation) return;
+    const holder = await this.deps.profiles.findByName(designation.profileName);
+    const state = holder ? (await this.deps.stamps.stampHealthFor(holder, designation.batchId)).state : 'unknown';
+    const problem = purchaseReplaceProblem('catalogue', state);
+    if (problem) {
+      throw new Error(
+        `The bought batch was not designated, because batch ${shortBatch(designation.batchId)} is the catalogue batch now. ${problem}`,
+      );
     }
   }
 

@@ -475,6 +475,8 @@ describe('the catalogue batch', () => {
       changed: () => {},
     });
     ports = world.ports(service);
+    // A purchase replaces a catalogue batch that no longer pays.
+    world.states.set(OLD, 'expired');
   });
 
   it('reads the designated batch on its node with its verdict, and none on another node or with none designated', async () => {
@@ -505,9 +507,29 @@ describe('the catalogue batch', () => {
     assert.equal(store.row.revision, revision, 'designated again, nothing written');
   });
 
+  it('leaves a catalogue batch that works, designated meanwhile, and rejects with a sentence', async () => {
+    await ports.catalogue.designate({ profileName: NODE, batchId: OLD, requestId: REQUEST });
+    world.states.set(OLD, 'active');
+    const revision = store.row.revision;
+
+    await assert.rejects(
+      ports.catalogue.designate({ profileName: NODE, batchId: BOUGHT, requestId: REQUEST }),
+      /^Error: The bought batch was not designated, because batch 11111111… is the catalogue batch now\. The catalogue batch still pays for uploads\./,
+    );
+    assert.equal(store.row.batchId, OLD);
+    assert.equal(store.row.revision, revision, 'nothing written');
+
+    // Once it has expired, the bought batch moves the catalogue off it.
+    world.states.set(OLD, 'expired');
+    assert.deepEqual(await ports.catalogue.designate({ profileName: NODE, batchId: BOUGHT, requestId: REQUEST }), {
+      previousBatchId: OLD,
+    });
+  });
+
   it("rejects with the designation's own sentence while another move is pending", async () => {
     await ports.catalogue.designate({ profileName: NODE, batchId: OLD, requestId: REQUEST });
     await ports.catalogue.designate({ profileName: NODE, batchId: OTHER, requestId: REQUEST });
+    world.states.set(OTHER, 'expired');
 
     await assert.rejects(
       ports.catalogue.designate({ profileName: NODE, batchId: BOUGHT, requestId: REQUEST }),
@@ -525,6 +547,7 @@ describe('the catalogue batch', () => {
     assert.equal(store.row.releasedBy, `the batch purchase ${REQUEST}`);
     await ports.catalogue.release({ batchId: BOUGHT, previousBatchId: OLD, requestId: REQUEST });
 
+    world.states.set(BOUGHT, 'gone');
     await ports.catalogue.designate({ profileName: NODE, batchId: OTHER, requestId: REQUEST });
     await assert.rejects(
       ports.catalogue.release({ batchId: BOUGHT, previousBatchId: OLD, requestId: REQUEST }),
