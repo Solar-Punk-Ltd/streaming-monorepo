@@ -316,9 +316,11 @@ refused because a deploy of the stage started meanwhile, another purchase's Appl
 without a second Apply. A batch that works, set on the rung or designated as the catalogue batch by
 another hand while the purchase waited, stays, and the follow-up stops as failed with the reason.
 The Apply is logged as run by a batch purchase, and the set, the designation and the release as `the
-batch purchase <requestId>` (`manager/src/domain/stages/purchaseFollowUp.ts`). What a purchase reports to
-the admin names no host and no address: an Apply's error, a deploy's error and any other failure
-that can carry one go to the manager's log, and the admin reads that the log says why.
+batch purchase <requestId>` (`manager/src/domain/stages/purchaseFollowUp.ts`). What a purchase
+reports to the admin names no host and no address: an Apply's error, a deploy's error and any other
+failure that can carry one go to the manager's log, and the admin reads that the log says why. An
+Apply refused for the stored engine settings passes on that refusal's own sentence, which says what
+to fix, unless it names an address.
 
 The admin's **Restart now** runs the Apply of a stage in `waiting_live` or `waiting_unknown` at
 once (`POST …/batch-purchases/:requestId/restart`). The batch is the only setting it carries, since

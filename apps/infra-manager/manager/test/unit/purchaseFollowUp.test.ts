@@ -25,10 +25,14 @@ import {
 } from '@streaming-infra-manager/common';
 
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
-import { ProfileBusyError } from '../../src/domain/errors/index.js';
+import { ProfileBusyError, ProfileConfigError } from '../../src/domain/errors/index.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
-import { DeploymentSettingsBeyondError } from '../../src/domain/settings/DeploymentSettingsService.js';
 import {
+  DeploymentSettingsBeyondError,
+  EngineSettingsRefusedError,
+} from '../../src/domain/settings/DeploymentSettingsService.js';
+import {
+  namesAnAddress,
   PURCHASE_BATCH_KEYS,
   PurchaseFollowUpError,
   purchaseFollowUpPorts,
@@ -483,6 +487,32 @@ describe('one look at a stage', () => {
     assert.equal(world.applied.length, 2, 'one Apply for each purchase, none after');
   });
 
+  it("passes on the engine settings refusal's own sentence, which says what to fix, when it names no address", async () => {
+    world.applyError = new EngineSettingsRefusedError('main', 'HLS_FRAGMENT must be at least 1 second on this host.');
+    assert.deepEqual(await look(), {
+      apply: 'failed',
+      message: 'The Apply did not start: HLS_FRAGMENT must be at least 1 second on this host.',
+    });
+  });
+
+  it('keeps the engine settings refusal plain when it names an address, and any other refusal plain', async () => {
+    const plain = { apply: 'failed', message: 'The Apply did not start. The manager’s log says why.' };
+    for (const error of [
+      new EngineSettingsRefusedError('main', 'The SRS API at http://203.0.113.9:1985 did not answer.'),
+      new EngineSettingsRefusedError('main', 'The host deploy@stage.example.org refuses the setting.'),
+      new ProfileConfigError('main', 'The deploy root is missing.'),
+    ]) {
+      world.applyError = error;
+      assert.deepEqual(
+        await world
+          .ports()
+          .stages.look({ stageId: 'main-instance', batchId: BOUGHT, force: false, retryFailed: false }),
+        plain,
+        error.message,
+      );
+    }
+  });
+
   it('answers failed, without the error that can name a host, for an Apply that did not start', async () => {
     world.applyError = new Error('ssh: connect to host 203.0.113.9 port 22: Connection refused');
     assert.deepEqual(await look(), {
@@ -512,6 +542,28 @@ describe('one look at a stage', () => {
     world.catalogs.set('main', catalogOf({ value: `360p@http://192.0.2.10:10025<${OLD}>` }));
     assert.equal((await look()).apply, 'failed');
     assert.deepEqual(world.applied, []);
+  });
+});
+
+describe('a text that names an address', () => {
+  it('is any IPv4 or IPv6 address, URL, user@host, host:port or dotted host name, and not a plain sentence', () => {
+    for (const text of [
+      'at 203.0.113.9',
+      'at [2001:db8::1]',
+      'at 2001:db8::1',
+      'from http://node/api',
+      'as deploy@stage',
+      'on stage-host:1633',
+      'on stage.example.org',
+    ]) {
+      assert.equal(namesAnAddress(text), true, text);
+    }
+    for (const text of [
+      'HLS_FRAGMENT must be at least 1 second on this host.',
+      'The segment length is 2 seconds, over the ceiling of 1.',
+    ]) {
+      assert.equal(namesAnAddress(text), false, text);
+    }
   });
 });
 
