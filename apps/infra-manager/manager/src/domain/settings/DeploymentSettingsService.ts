@@ -57,6 +57,17 @@ import { versionSettingsFilesAt, versionValuesOf } from './versionSettingsFiles.
 const logger = Logger.getInstance();
 
 /**
+ * An Apply refused because the deploy would refuse the stored engine settings, with the sentence that says which and
+ * how to fix them. A `ProfileConfigError`, which the API answers as one.
+ */
+export class EngineSettingsRefusedError extends ProfileConfigError {
+  constructor(profileName: string, reason: string) {
+    super(profileName, reason);
+    this.name = 'EngineSettingsRefusedError';
+  }
+}
+
+/**
  * An Apply that names the keys it may roll out found the running containers
  * behind on others as well, and applied nothing. `keys` are the others.
  */
@@ -190,7 +201,7 @@ export class DeploymentSettingsService {
     const only = options.only;
     const beyond = only ? drift.keys.filter((key) => !only.includes(key)) : [];
     if (beyond.length > 0) throw new DeploymentSettingsBeyondError(name, beyond);
-    if (engineSettingsProblem) throw new ProfileConfigError(name, engineSettingsProblem);
+    if (engineSettingsProblem) throw new EngineSettingsRefusedError(name, engineSettingsProblem);
 
     const services = drift.fullRedeploy ? undefined : drift.services;
     await this.orchestrator.startDeploy(profile, services);

@@ -30,6 +30,7 @@ import type { ProfileRepository } from '../ProfileRepository.js';
 import {
   type DeploymentSettingsService,
   DeploymentSettingsBeyondError,
+  EngineSettingsRefusedError,
 } from '../settings/DeploymentSettingsService.js';
 import type { StampService } from '../StampService.js';
 
@@ -120,6 +121,25 @@ export class PurchaseFollowUpError extends Error {
     this.name = 'PurchaseFollowUpError';
   }
 }
+
+/**
+ * Whether a text names a host or an address: an IPv4 or IPv6 address, a URL, a `user@host`, a `host:port`, or a
+ * dotted name ending in a label of letters. A sentence that does is never passed on to the web2 admin as it is. It
+ * errs towards yes, so a file name such as `srs.conf` counts as well.
+ */
+export function namesAnAddress(text: string): boolean {
+  return ADDRESS_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+const ADDRESS_PATTERNS: readonly RegExp[] = [
+  /\b\d{1,3}(?:\.\d{1,3}){3}\b/,
+  /\[[0-9a-f:.]+\]/i,
+  /\b[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,}\b/i,
+  /\b[a-z][a-z0-9+.-]*:\/\//i,
+  /[^\s@]+@[a-z0-9-]+(?:\.[a-z0-9-]+)*/i,
+  /\b[a-z0-9-]+:\d{2,5}\b/i,
+  /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i,
+];
 
 /** What the admin reads where the manager's log holds the detail. */
 const SEE_THE_LOG = 'The manager’s log says why.';
@@ -407,7 +427,10 @@ class StageApplier implements PurchaseStageApplier {
         logger.info(`[BatchPurchase] ${stage.name}: a deploy of it is under way, so it was not applied again`);
         return { apply: 'applying', message: null };
       }
-      const error = `The Apply did not start. ${SEE_THE_LOG}`;
+      // The engine settings refusal says what to fix, and is passed on unless it names an address; any other refusal can
+      // carry a host's, from a deploy or an ssh failure.
+      const passed = err instanceof EngineSettingsRefusedError && !namesAnAddress(err.reason);
+      const error = passed ? `The Apply did not start: ${err.reason}` : `The Apply did not start. ${SEE_THE_LOG}`;
       this.started.set(startedKey(stage.instance_id, batchId), { at, error, logged: true });
       logger.warn(`[BatchPurchase] ${stage.name}: the Apply did not start: ${getErrorMessage(err)}`);
       return { apply: 'failed', message: error };
