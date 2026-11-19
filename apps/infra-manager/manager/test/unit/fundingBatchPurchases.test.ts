@@ -185,6 +185,8 @@ class FakeNode {
   stamps: BeeStamp[] | Error = [];
   /** What `GET /stamps/{id}` answers for the bought batch, or the failure it throws. */
   stamp: BeeStamp | Error = beeStamp(BOUGHT);
+  /** What `GET /stamps/{id}` answers for another batch, by its id without `0x`, or the failure it throws. */
+  readonly others = new Map<string, BeeStamp | Error>();
   listReads = 0;
   stampReads = 0;
 
@@ -206,6 +208,9 @@ class FakeNode {
         return this.stamps;
       },
       getStamp: async (batchId) => {
+        const other = this.others.get(batchId);
+        if (other instanceof Error) throw other;
+        if (other) return other;
         this.stampReads += 1;
         assert.equal(batchId, BOUGHT, 'the batch is read by its id without 0x');
         if (this.stamp instanceof Error) throw this.stamp;
@@ -309,6 +314,7 @@ function setup(options: SetupOptions = {}) {
     followUp: {
       settle: (row, apiUrl) => followUp.settle(row, apiUrl),
       usable: (batchId, apiUrl) => followUp.usable(batchId, apiUrl),
+      stillHeld: (batchId, apiUrl) => followUp.stillHeld(batchId, apiUrl),
       designateArchive: (row, profileName) => followUp.designateArchive(row, profileName),
       advance: async (requestId) => void advanced.push(requestId),
       restart: async (requestId, stageId) => void calls.push(`restart ${requestId} ${stageId}`),
@@ -765,6 +771,7 @@ describe('POST /api/admin-funding/batch-purchases for a rung', () => {
     const journal = new InMemoryFundingStampPurchaseJournal();
     await journal.insert(boughtUnused('rung', RUNG));
     const { bee, service } = setup({ journal });
+    bee.others.set(UNUSED, beeStamp(UNUSED));
     await refusedWith(
       service.purchase(rungRequest()),
       'stamp_refused',
@@ -849,6 +856,7 @@ describe('POST /api/admin-funding/batch-purchases for the catalogue', () => {
       }),
     );
     const { bee, service } = setup({ journal });
+    bee.others.set(UNUSED, beeStamp(UNUSED));
     await refusedWith(
       service.purchase(catalogueRequest()),
       'stamp_refused',
@@ -863,6 +871,58 @@ describe('POST /api/admin-funding/batch-purchases for the catalogue', () => {
       await journal.insert(boughtUnused('archive', CATALOGUE));
       const { service } = setup({ journal });
       assert.equal((await service.purchase(purchase)).state, 'confirmed', purchase.purpose);
+    }
+  });
+});
+
+describe('a purchase while the node’s last one for the purpose holds a batch it never put to use', () => {
+  const purposes = [
+    ['rung', RUNG, rungRequest],
+    ['catalogue', CATALOGUE, catalogueRequest],
+  ] as const;
+
+  /** A node whose last purchase for the purpose bought UNUSED and stopped, and what its node answers about UNUSED now. */
+  async function lastBoughtUnused(purpose: 'rung' | 'catalogue', nodeId: string, answer: BeeStamp | Error) {
+    const journal = new InMemoryFundingStampPurchaseJournal();
+    await journal.insert(boughtUnused(purpose, nodeId));
+    const setUp = setup({ journal });
+    setUp.bee.others.set(UNUSED, answer);
+    return setUp;
+  }
+
+  it('is refused while the node holds that batch with time left, usable or not yet', async () => {
+    for (const [purpose, nodeId, asked] of purposes) {
+      for (const usable of [false, true]) {
+        const { bee, service } = await lastBoughtUnused(purpose, nodeId, beeStamp(UNUSED, { usable }));
+        await refusedWith(service.purchase(asked()), 'stamp_refused', /Check again on that purchase/);
+        assert.equal(bee.bought.length, 0, `${purpose}, usable ${usable}`);
+      }
+    }
+  });
+
+  it('goes through once the node answers 404 for that batch, gives it no time left, or reports it gone', async () => {
+    const answers: Array<[string, BeeStamp | Error]> = [
+      ['a 404', new BeeHttpError(404, 'issuer does not exist')],
+      ['no time left', beeStamp(UNUSED, { batchTTL: 0 })],
+      ['reported gone', beeStamp(UNUSED, { exists: false })],
+    ];
+    for (const [purpose, nodeId, asked] of purposes) {
+      for (const [name, answer] of answers) {
+        const { service } = await lastBoughtUnused(purpose, nodeId, answer);
+        assert.equal((await service.purchase(asked())).state, 'confirmed', `${purpose}: ${name}`);
+      }
+    }
+  });
+
+  it('is refused while the node could not be read about that batch, and says so', async () => {
+    for (const failure of [new Error('connect ECONNREFUSED'), new BeeHttpError(500, 'internal error')]) {
+      const { bee, service } = await lastBoughtUnused('rung', RUNG, failure);
+      await refusedWith(
+        service.purchase(rungRequest()),
+        'stamp_refused',
+        `The last rung purchase on this node, ${OTHER_REQUEST}, bought 0x${UNUSED} and stopped before the batch was put to use, and the node could not be read about that batch, so whether it still holds it is not known. Try again once the node answers, or Check again on that purchase.`,
+      );
+      assert.equal(bee.bought.length, 0, failure.message);
     }
   });
 });
@@ -1034,6 +1094,7 @@ describe('a purchase through the real BeeClient', () => {
       followUp: {
         settle: (row, apiUrl) => followUp.settle(row, apiUrl),
         usable: (batchId, apiUrl) => followUp.usable(batchId, apiUrl),
+        stillHeld: (batchId, apiUrl) => followUp.stillHeld(batchId, apiUrl),
         designateArchive: (row, profileName) => followUp.designateArchive(row, profileName),
         advance: async () => undefined,
         restart: unreachable,
