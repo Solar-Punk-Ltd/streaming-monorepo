@@ -800,10 +800,10 @@ The admin buys archive stamps, one purchase per request: a new immutable batch o
 node, which that node buys through its own Bee API and pays for from its own wallet, xBZZ for the
 batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive-batches)).
 
-| Method | Path                                            | Answer                                                                                                             |
-| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/api/admin-funding/stamp-purchases`            | 202 `{ requestId, state, batchId, txHash }`. Takes `{ requestId, nodeId, depth, amountPerChunkPlur, label }`       |
-| GET    | `/api/admin-funding/stamp-purchases/:requestId` | `{ requestId, state, batchId, txHash, usable, error }`, `no-store`. 404 `unknown_request` for an id never recorded |
+| Method | Path                                            | Answer                                                                                                                                                                                          |
+| ------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/stamp-purchases`            | 202 `{ requestId, state, batchId, txHash }`. Takes `{ requestId, nodeId, depth, amountPerChunkPlur, label }`                                                                                    |
+| GET    | `/api/admin-funding/stamp-purchases/:requestId` | `{ requestId, state, batchId, txHash, usable, error }`, `no-store`. 404 `unknown_request` for an id never recorded, and for a purchase of another purpose, which the batch purchase route reads |
 
 - **A request id already recorded** answers that purchase's state when it is the same purchase
   (the same node, depth, amount and label), and 409 `conflict` otherwise.
