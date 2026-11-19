@@ -217,7 +217,8 @@ export type FundingPurchaseStep = (typeof FUNDING_PURCHASE_STEPS)[number];
  *   nothing, and the stage takes the batch with the Apply an operator runs in the manager.
  * - `applying`: the Apply runs, and the uploader is being recreated.
  * - `applied`: the uploader runs and pays with the new batch, whoever applied it.
- * - `failed`: the Apply did not go through, and `message` says why. A check takes it up again.
+ * - `failed`: the Apply did not go through, and `message` says why. A check takes it up again, and so does a manager
+ *   that restarted, once.
  * - `not_following`: the stage's pool string is another than the pool's own, so the manager changes nothing on it.
  * - `stopped`: the stage does not run. It takes the batch at its next start.
  */
@@ -432,8 +433,9 @@ export type FundingReplacement = z.infer<typeof fundingReplacementSchema>;
  * read chequebooks still parses.
  *
  * `replacement` is what the manager recommends for a batch bought in place of the node's own: see
- * {@link fundingReplacementSchema}. It is null for a gateway, which stamps nothing, and optional, so the answer of a
- * manager that offers no purchases of this kind still parses, and absent is read as no purchase offered.
+ * {@link fundingReplacementSchema}. It is null for a node whose batch pays for nothing, a gateway and the own node of
+ * a stage that uploads through a pool, and optional, so the answer of a manager that offers no purchases of this kind
+ * still parses, and absent is read as no purchase offered.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
