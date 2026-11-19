@@ -205,7 +205,11 @@ export class FakePurchaseManager implements BatchPurchaseManager {
     };
   }
 
+  /** The purchases whose status was read, in order. */
+  readonly statusReads: string[] = [];
+
   async batchPurchaseStatus(requestId: string): Promise<FundingBatchPurchaseStatus> {
+    this.statusReads.push(requestId);
     const status = this.statuses.get(requestId);
     if (status === 'unknown_request') throw new ManagerFundingError('unknown_request', 404, 'No such purchase.');
     const request = this.requests.find((each) => each.requestId === requestId);

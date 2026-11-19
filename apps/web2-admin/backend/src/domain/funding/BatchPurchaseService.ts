@@ -7,6 +7,7 @@ import {
   type FundingNode,
   type FundingPostage,
   fundingPurchaseRestartable,
+  type StageStampState,
 } from '@streaming-monorepo/contracts';
 import {
   BATCH_PURCHASE_MOVE_OFF,
@@ -21,6 +22,7 @@ import {
   batchBuyAmountPerChunkPlur,
   batchBuyProblem,
   batchOffersPurchase,
+  batchPurchaseHoldsNode,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { getErrorMessage } from '../../utils/errorUtils.js';
@@ -131,8 +133,15 @@ function unreadMove(state: BatchPurchaseState): PurchasedMoveReading {
   };
 }
 
-/** A purchase as the Stamps tab shows it, with its move as last read. */
-export function toBatchPurchase(row: BatchPurchaseRow, move: PurchasedMoveReading | null): BatchPurchase {
+/**
+ * A purchase as the Stamps tab shows it, with its move as last read and the state of its bought batch as the manager
+ * last answered it, `batchState`, absent while the manager has not said.
+ */
+export function toBatchPurchase(
+  row: BatchPurchaseRow,
+  move: PurchasedMoveReading | null,
+  batchState?: StageStampState,
+): BatchPurchase {
   const movesCatalogue = row.purpose === 'catalogue' && (row.state === 'moving' || row.state === 'done');
   const reading = movesCatalogue ? (move ?? unreadMove(row.state)) : null;
   const shown: BatchPurchaseMove | null = reading ? { ...reading, released: row.releasedAt !== null } : null;
@@ -155,6 +164,7 @@ export function toBatchPurchase(row: BatchPurchaseRow, move: PurchasedMoveReadin
     canCheckAgain: purchaseCanCheckAgain(row, reading),
     startedBy: row.startedBy,
     startedAt: row.startedAt.toISOString(),
+    ...(batchState === undefined ? {} : { batchState }),
   };
 }
 
@@ -300,6 +310,10 @@ export class BatchPurchaseService {
   private readonly looks = new Map<string, Promise<void>>();
   /** The move of each catalogue purchase as last read in this process. */
   private readonly moves = new Map<string, PurchasedMoveReading>();
+  /** The state of each purchase's bought batch as the manager last answered it in this process. */
+  private readonly batchStates = new Map<string, StageStampState>();
+  /** The read of a held purchase's status running on each purchase, which every caller shares. */
+  private readonly stateReads = new Map<string, Promise<void>>();
   private poller: ReturnType<typeof setInterval> | null = null;
 
   constructor(deps: BatchPurchaseServiceDeps) {
@@ -334,14 +348,19 @@ export class BatchPurchaseService {
   }
 
   /**
-   * `GET /api/funding/batch-purchases`: the purchases under way and those that ended in the last day, the latest
-   * first, read from the manager first, waiting {@link BATCH_PURCHASE_WAIT_MS} at most.
+   * `GET /api/funding/batch-purchases`: the purchases the store lists, the latest first, read from the manager
+   * first, waiting {@link BATCH_PURCHASE_WAIT_MS} at most: each purchase under way is followed up, and for each
+   * failed one that holds its node (`batchPurchaseHoldsNode`) the state of its bought batch is read.
    */
   async list(): Promise<BatchPurchasesResponse> {
+    const since = new Date(this.now() - BATCH_PURCHASE_RECENT_MS);
+    const held = (await this.store.listSince(since)).filter((row) => this.holdsAsFailed(row));
     const open = await this.store.listOpen();
-    await this.within(Promise.all(open.map((row) => this.look(row.id))));
-    const rows = await this.store.listSince(new Date(this.now() - BATCH_PURCHASE_RECENT_MS));
-    return { purchases: rows.map((row) => toBatchPurchase(row, this.moves.get(row.id) ?? null)) };
+    await this.within(
+      Promise.all([...open.map((row) => this.look(row.id)), ...held.map((row) => this.readBatchState(row.id))]),
+    );
+    const rows = await this.store.listSince(since);
+    return { purchases: rows.map((row) => this.toView(row)) };
   }
 
   /** `GET /api/funding/batch-purchases/:id`: one purchase, read from the manager first, or null for none. */
@@ -457,8 +476,9 @@ export class BatchPurchaseService {
 
   /**
    * `POST /api/funding/batch-purchases/:id/check`: takes up again what stopped after the batch was bought, the
-   * manager's follow-up or the move of the catalogue, and answers the purchase. Nothing is bought a second time. Null
-   * for no such purchase.
+   * manager's follow-up or the move of the catalogue, and answers the purchase. Nothing is bought a second time. A
+   * failed purchase's bought batch is read first, and one that has run out, which no check can put to use, holds its
+   * node no more and is refused. Null for no such purchase.
    */
   async check(actor: OperatorActor, id: string): Promise<BatchPurchase | null> {
     const manager = this.requireManager();
@@ -468,6 +488,23 @@ export class BatchPurchaseService {
       const move = this.moves.get(id) ?? null;
       if (!purchaseCanCheckAgain(row, move)) {
         throw new FundingRefusedError('batch', 'Nothing of this purchase stopped, so there is nothing to check again.');
+      }
+      if (row.state === 'failed') {
+        // A status that cannot be read leaves the state as last answered; the check then goes to the manager.
+        await manager
+          .batchPurchaseStatus(id)
+          .then((status) => this.noteBatchState(id, status))
+          .catch((error: unknown) =>
+            logger.warn(
+              `[Funding] could not read the batch of purchase ${id} before a check: ${getErrorMessage(error)}`,
+            ),
+          );
+        if (!this.holdsAsFailed(row)) {
+          throw new FundingRefusedError(
+            'batch',
+            'The batch this purchase bought has run out, so a check cannot put it to use. Buy a new batch instead.',
+          );
+        }
       }
       const movingAgain = row.state === 'moving' && move?.state === 'failed';
       let status: FundingBatchPurchaseStatus;
@@ -490,7 +527,41 @@ export class BatchPurchaseService {
   /** The purchase as the Stamps tab shows it now, or null. */
   private async view(id: string): Promise<BatchPurchase | null> {
     const row = await this.store.get(id);
-    return row ? toBatchPurchase(row, this.moves.get(id) ?? null) : null;
+    return row ? this.toView(row) : null;
+  }
+
+  /** A row as the Stamps tab shows it, with what this process last read of its move and its bought batch. */
+  private toView(row: BatchPurchaseRow): BatchPurchase {
+    return toBatchPurchase(row, this.moves.get(row.id) ?? null, this.batchStates.get(row.id));
+  }
+
+  /** Whether a failed purchase holds its node, by `batchPurchaseHoldsNode` on what was last read of its batch. */
+  private holdsAsFailed(row: BatchPurchaseRow): boolean {
+    return row.state === 'failed' && batchPurchaseHoldsNode(this.toView(row));
+  }
+
+  /** Keeps the state of a purchase's bought batch the manager answered, and drops it when the manager said none. */
+  private noteBatchState(id: string, status: Pick<FundingBatchPurchaseStatus, 'batchState'>): void {
+    if (status.batchState === undefined) this.batchStates.delete(id);
+    else this.batchStates.set(id, status.batchState);
+  }
+
+  /**
+   * Reads the status of a failed purchase that holds its node, for the state of its bought batch, shared with the
+   * read under way. Never rejects: a status that cannot be read leaves the state as last answered.
+   */
+  private readBatchState(id: string): Promise<void> {
+    const manager = this.manager;
+    if (!manager) return Promise.resolve();
+    const running = this.stateReads.get(id);
+    if (running) return running;
+    const read = this.exclusive(id, async () => this.noteBatchState(id, await manager.batchPurchaseStatus(id)))
+      .catch((error: unknown) => {
+        logger.warn(`[Funding] could not read the batch of purchase ${id} on the manager: ${getErrorMessage(error)}`);
+      })
+      .finally(() => this.stateReads.delete(id));
+    this.stateReads.set(id, read);
+    return read;
   }
 
   /** One look at each purchase under way. Never rejects. */
@@ -583,6 +654,7 @@ export class BatchPurchaseService {
     const batchId = status.batchId ? bare(status.batchId) : before.batchId;
     const stages = status.stages.map(stageOf);
     const known = { batchId, txHash: status.txHash ?? before.txHash, stages };
+    this.noteBatchState(before.id, status);
     if (status.state === 'failed' || status.step === 'failed') {
       const error = status.error?.trim() || FAILED_WITHOUT_REASON;
       await this.settle(before, { ...known, state: 'failed', error }, actor);
