@@ -160,6 +160,14 @@ purchase and says so.
 
 One purchase runs on a node at a time. Every purchase, restart and release gets an audit entry.
 
+A purchase that failed after its batch was bought holds its row, whatever its age: the batch was
+paid for and never put to use, so the row offers **Check again** in place of **Buy new**, until a
+later purchase of that node is done.
+
+A release the manager refuses ends the catalogue purchase as done, with the manager's sentence on
+its row: the catalogue is written with the new batch, and the previous one is released on the
+manager's own page.
+
 ## Who does what
 
 | Action                | Who signs                      | Paid from                   | Carried out by                                                               |

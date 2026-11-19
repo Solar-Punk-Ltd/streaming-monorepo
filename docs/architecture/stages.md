@@ -391,7 +391,9 @@ the purchase in place of a person:
 - The old batch has lapsed, so every slot comes from the bytes the admin recorded, and a slot with
   no recorded bytes refuses the start with `lapsed`.
 - A thumbnail whose bytes the stream's row holds is uploaded from them. One the row does not hold is
-  read from the network, which after a lapse may hold it no more. The move then clears the thumbnail
+  read from the network, which after a lapse may hold it no more. The node's 404 says so, and counts
+  only while the node is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`); a 404 from a
+  node with fewer stops the move, which a check starts again. The move then clears the thumbnail
   on its stream, lists the stream (`catalogue_moves.cleared_thumbnails`), and goes on. The entry
   written at the switch carries no image for that stream, and the stream takes a new one on its
   page. A move from a batch with time left stops before the switch on a thumbnail it cannot read.
