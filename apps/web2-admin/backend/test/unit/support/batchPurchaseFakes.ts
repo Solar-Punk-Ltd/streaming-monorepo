@@ -124,10 +124,18 @@ export class InMemoryBatchPurchaseStore implements BatchPurchaseStore {
   }
 
   async listSince(since: Date): Promise<BatchPurchaseRow[]> {
-    return [...this.rows.values()]
+    const all = [...this.rows.values()];
+    const boughtUnused = (row: BatchPurchaseRow) =>
+      row.state === 'failed' &&
+      row.batchId !== null &&
+      !all.some((later) => later.nodeId === row.nodeId && later.state === 'done' && later.startedAt > row.startedAt);
+    return all
       .filter(
         (row) =>
-          OPEN.includes(row.state) || row.startedAt >= since || (row.finishedAt !== null && row.finishedAt >= since),
+          OPEN.includes(row.state) ||
+          row.startedAt >= since ||
+          (row.finishedAt !== null && row.finishedAt >= since) ||
+          boughtUnused(row),
       )
       .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
       .map((row) => ({ ...row }));
