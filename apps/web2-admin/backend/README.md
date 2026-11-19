@@ -615,8 +615,9 @@ recorded bytes keeps `lapsed`. With nothing to move it answers `done`.
 clears a thumbnail the network gives no more. A lapse is read from the batch's
 last reading: expired, gone, or out of time by its clock; after the switch,
 from the record's `previous`. The thumbnail is cleared when no stream holds its
-bytes and the catalogue node answers 404 for it (`HEAD /bzz/<reference>/`). It
-is cleared, as an edit, on every stream that names it: `streams.thumbnail_ref`,
+bytes and the catalogue node answers 404 for it (`HEAD /bzz/<reference>/`)
+while it is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`). It is
+cleared, as an edit, on every stream that names it: `streams.thumbnail_ref`,
 its batch and its type are set to null. The stream is added to
 `catalogue_moves.cleared_thumbnails` (migration `030`), and the move goes on.
 Right after the switch, still holding the publish mutex, the move writes the
@@ -2145,9 +2146,10 @@ The Streams page checks the recordings and removes the lost ones:
 
 - **Which streams.** Every stream that holds a finished recording
   (`manifest_index` set), asked the one rule, `recordingSkipReason`. A live
-  stream, one inside its restart window, and one with an export or an archive
-  under way are left unjudged. The rule also leaves out a stream its input
-  marks as a test, and the admin marks none.
+  stream, one inside its restart window, one with an export or an archive under
+  way, and a stream a removal kept as a draft for its export file, until it
+  changes: an edit, a publish or going live, are left unjudged. The rule also
+  leaves out a stream its input marks as a test, and the admin marks none.
 - **What it reads**, through the catalogue node: each recording's own playlist
   (a ladder's master), and each quality's playlist and the first 64 KiB of its
   first segment. A stream with no ladder is one quality, itself.
@@ -2173,8 +2175,10 @@ hours after it ended (`RECORDING_CHECK_VALID_SECONDS`). It takes only the
 check's own list, in any order.
 
 - Each is asked the rule again and read once more. One that may not be judged
-  now, or that reads now, is kept and named with the reason; one that reads now
-  also loses its mark.
+  now, holds no finished recording now, or reads now is kept and named with the
+  reason; one that reads now also loses its mark.
+- The node's peers are read again after those reads and before anything is
+  written; under the floor the removal refuses and nothing is removed.
 - The rest leave the catalogue in one write: `PublishService.takeOffCatalogue`
   claims each as an unpublish does and leaves it a draft.
 - One the server keeps a finished export file of stays, as a draft. Every other
