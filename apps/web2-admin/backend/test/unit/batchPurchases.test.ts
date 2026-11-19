@@ -521,6 +521,29 @@ describe("BatchPurchaseService: the catalogue's purchase", () => {
     assert.equal(manager.releases.length, 2);
   });
 
+  it("stops asking for a release the manager refuses for good, and shows the manager's sentence", async () => {
+    const started = await service.start(TEST_OPERATOR, catalogue());
+    move.reading = { state: 'done', slotsDone: 4, slotsTotal: 4, message: null, clearedThumbnails: [] };
+    managerSays(started, {
+      step: 'set',
+      usable: true,
+      catalogue: { previousBatchId: BATCH_CATALOGUE, released: false },
+    });
+    manager.callFailure = new ManagerFundingError('stamp_refused', 422, 'The previous batch is released already.');
+
+    let purchase = await read(started.id);
+
+    assert.equal(purchase.state, 'done', 'the catalogue moved, so the purchase is over');
+    assert.match(purchase.error ?? '', /The previous batch is released already\./);
+    assert.equal(purchase.move?.released, false);
+    assert.equal(manager.releases.length, 1);
+    purchase = await read(started.id);
+    await service.list();
+    assert.equal(manager.releases.length, 1, 'never asked again');
+    assert.equal(audit.withAction('funding.purchase.done').length, 1);
+    assert.equal(audit.withAction('funding.purchase.release').length, 0);
+  });
+
   it('starts a failed move again on a check, from where it stopped, without asking the manager to check', async () => {
     const started = await service.start(TEST_OPERATOR, catalogue());
     move.reading = {

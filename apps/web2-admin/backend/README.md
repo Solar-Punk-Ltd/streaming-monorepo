@@ -1823,7 +1823,10 @@ of the routes, one look at a time per purchase, and records the manager's step:
 | `set` or `done`, for the catalogue | `moving`: the admin's catalogue move runs onto the batch through the port, `ensure`, which starts it once the manager's record designates the batch and answers where it stands. Once the move is done, the admin asks the manager to release the batch moved from, when there was one, and the purchase is `done` |
 | `failed`                           | `failed`, with the manager's sentence, and its batch when one was bought                                                                                                                                                                                                                                           |
 
-A release that does not go through is asked again at the next look.
+A release the manager refuses (`stamp_refused`) is not asked again: the
+catalogue has moved, so the purchase is `done`, its previous batch not
+released, with the manager's sentence as its `error`. Any other failure of a
+release is asked again at the next look.
 **Restart now** goes to the manager for a stage in `waiting_live` or
 `waiting_unknown`, and **Check again** for a purchase that failed with its
 batch bought or a stage whose restart failed; for a catalogue move that

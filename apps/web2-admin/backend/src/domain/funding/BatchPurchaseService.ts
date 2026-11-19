@@ -604,7 +604,9 @@ export class BatchPurchaseService {
 
   /**
    * Moves the catalogue onto a designated batch through the move, and once the move is done, releases the batch it
-   * moved from through the manager, when there was one, and the purchase is done.
+   * moved from through the manager, when there was one, and the purchase is done. A release the manager refuses
+   * (`stamp_refused`) is not asked again: the purchase is done, unreleased, with the manager's sentence. Any other
+   * failure of the release leaves the purchase moving, and the next look asks again.
    */
   private async moveOn(
     manager: BatchPurchaseManager,
@@ -620,6 +622,12 @@ export class BatchPurchaseService {
       try {
         await manager.batchPurchaseRelease(row.id);
       } catch (error) {
+        if (managerCode(error) === 'stamp_refused') {
+          const sentence = `The catalogue moved onto the new batch, and the manager refused to release the previous one: ${(error as Error).message}`;
+          logger.warn(`[Funding] purchase ${row.id}: ${sentence}`);
+          await this.settle(row, { state: 'done', error: sentence }, FUNDING_SYSTEM);
+          return;
+        }
         logger.warn(
           `[Funding] could not release batch ${shortBatch(previous)} for purchase ${row.id}, it is asked again: ${getErrorMessage(error)}`,
         );
