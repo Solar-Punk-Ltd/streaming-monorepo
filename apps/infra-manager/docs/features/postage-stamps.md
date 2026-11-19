@@ -292,16 +292,24 @@ that restarts goes on from the step it had reached (`step`: `buying`, `waiting_u
    runs the stage's settings Apply, the one **Apply now** runs, when the batch is the only setting
    the running uploader is behind on and no broadcast is live.
 
-| A stage's state    | When                                                                                                   |
-| ------------------ | ------------------------------------------------------------------------------------------------------ |
-| `applied`          | The uploader runs and pays with the new batch, whoever applied it                                      |
-| `applying`         | The Apply runs                                                                                         |
-| `waiting_live`     | SRS reported a publisher in one of two readings 15 seconds apart (`PURCHASE_LIVE_READ_GAP_MS`)         |
-| `waiting_unknown`  | The manager cannot tell: an engine other than SRS, a log it could not read, an ingest read that failed |
-| `waiting_settings` | Other saved settings wait for an Apply beside the batch. An operator applies the stage here            |
-| `failed`           | The Apply did not go through, with its reason. A check starts it again                                 |
-| `not_following`    | The stage's pool string is a pasted one that names this rung's node. The manager leaves it             |
-| `stopped`          | The stage does not run. Its next start writes the pool's current string                                |
+| A stage's state    | When                                                                                                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `applied`          | The uploader runs and pays with the new batch, whoever applied it                                                                       |
+| `applying`         | The Apply runs                                                                                                                          |
+| `waiting_live`     | SRS reported a publisher in one of two readings 15 seconds apart (`PURCHASE_LIVE_READ_GAP_MS`)                                          |
+| `waiting_unknown`  | The manager cannot tell: an engine other than SRS, a log it could not read, an ingest read that failed, RTMP reports that name no vhost |
+| `waiting_settings` | Other saved settings wait for an Apply beside the batch. An operator applies the stage here                                             |
+| `failed`           | The Apply did not go through, with its reason, or the saved settings do not name the batch. A check starts it again                     |
+| `not_following`    | The stage's pool string is a pasted one that names this rung's node. The manager leaves it                                              |
+| `stopped`          | The stage does not run, or is no longer on the manager. Its next start writes the pool's current string                                 |
+
+Each look at a stage moves it one step at most, and the manager remembers the Applies it started
+while it runs. One that ended without the batch is `failed`, with the deploy's error where it left
+one, until a check. A manager that restarted starts the Apply again where one is due. A batch that
+works, set on the rung by another hand while the purchase waited, stays, and the follow-up stops as
+failed with the reason. The Apply is logged as run by a batch purchase, and the set, the
+designation and the release as `the batch purchase <requestId>`
+(`manager/src/domain/stages/purchaseFollowUp.ts`).
 
 The admin's **Restart now** runs the Apply of a stage in `waiting_live` or `waiting_unknown` at
 once (`POST …/batch-purchases/:requestId/restart`). The batch is the only setting it carries, since
