@@ -352,7 +352,9 @@ bought its batch and stopped as failed before putting it to use, and the node st
 with time left, read once with `GET /stamps/{id}`. The refusal names that purchase: its Check again
 puts the batch to use, where a new purchase would pay for a second batch. Once the node answers 404
 for the batch, gives it no time left or reports it gone, a new purchase goes through. A node that
-could not be read about the batch keeps the refusal, which says so.
+could not be read about the batch keeps the refusal, which says so. The purchase's status gives the
+same reading as `batchState`, the bought batch's state in the inventory's words, left out while
+there is no batch and when the node could not be read about it.
 
 `manager/src/domain/funding/purchaseFollowUpPorts.ts` is the seam between the purchase and the
 parts of the manager that set a batch, apply a stage and designate the catalogue batch.

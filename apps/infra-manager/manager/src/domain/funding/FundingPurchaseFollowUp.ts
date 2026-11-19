@@ -1,7 +1,6 @@
 import {
   ARCHIVE_PURCHASE_SETTLE_MS,
   getErrorMessage,
-  isDeadStampState,
   PURCHASE_CHECK_NOTHING_REFUSAL,
   PURCHASE_FOLLOW_UP_MS,
   PURCHASE_NOT_USABLE_ERROR,
@@ -9,7 +8,7 @@ import {
   PURCHASE_RESTART_NOT_WAITING_REFUSAL,
   PURCHASE_USABLE_POLL_MS,
   purchaseStepOnceSet,
-  stampHealthFrom,
+  type StampState,
 } from '@streaming-infra-manager/common';
 import {
   FUNDING_PURCHASE_USABLE_WAIT_SECONDS,
@@ -20,7 +19,6 @@ import {
 
 import type { Profile } from '../../types/index.js';
 import type { BeeStamp } from '../BeeClient.js';
-import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { ArchiveBatchRefusedError } from '../errors/index.js';
 import { Logger } from '../Logger.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from '../stages/archiveBatchPorts.js';
@@ -28,6 +26,7 @@ import { type CatalogueDesignationRow, isDesignated, isMoving } from '../stages/
 import { addressFree } from './addressFree.js';
 import { FundingApiError } from './FundingApiError.js';
 import { FUNDING_STATUS_READ_MS } from './FundingChainService.js';
+import { batchFrom, saysNotHeld } from './FundingInventoryService.js';
 import type {
   FundingPurchaseStageRow,
   FundingPurchaseStepPatch,
@@ -108,8 +107,23 @@ export function usableOf(stamp: BeeStamp | null, batchId: string): boolean | nul
   return typeof stamp.usable === 'boolean' ? stamp.usable : null;
 }
 
-/** Where a batch a purchase bought stands on its node: still held with time left, gone or spent, or not read. */
-export type BoughtBatchOnNode = 'held' | 'gone' | 'unread';
+/**
+ * A batch a purchase bought, as its node answered about it: whether the node calls it usable, and its state in the
+ * words the inventory gives a batch (`batchFrom`), `gone` when the node answered 404 for it and `unknown` when it
+ * could not be read about it.
+ */
+export interface BoughtBatchOnNode {
+  usable: boolean | null;
+  state: StampState;
+}
+
+/**
+ * A bought batch, `0x` and 64 hex digits, as one answer of its node reads it, a `GET /stamps/{id}` or an entry of its
+ * `GET /stamps`: the inventory's verdict on it, and whether the node calls it usable.
+ */
+export function boughtBatchOf(batchId: string, stamp: BeeStamp): BoughtBatchOnNode {
+  return { usable: usableOf(stamp, batchId), state: batchFrom(bareBatchId(batchId), stamp).state ?? 'unknown' };
+}
 
 /** What a settle knows of the batches a purchase's batch can never be: the catalogue's own and the archive batches. */
 interface TakenBatches {
@@ -340,24 +354,20 @@ export class FundingPurchaseFollowUp {
   }
 
   /**
-   * Whether the node still holds a bought batch with time left, read once with `GET /stamps/{id}`: `held` while it
-   * does, usable or not yet; `gone` once the node answers 404 for it, reports it gone, or gives it no time left, as
-   * `stampHealthFrom` reads a batch everywhere else; and `unread` when the node could not be read about it. Never
-   * throws.
+   * A bought batch on its node, read once with `GET /stamps/{id}` ({@link boughtBatchOf}): `gone` when the node answers
+   * 404 for it, as the inventory reads a 404, and `unknown`, with whether it is usable not known, when the node could
+   * not be read about it. Never throws.
    */
-  async stillHeld(batchId: string, apiUrl: string): Promise<BoughtBatchOnNode> {
-    let stamp: BeeStamp;
+  async onNode(batchId: string, apiUrl: string): Promise<BoughtBatchOnNode> {
     try {
-      stamp = await this.deps.reads(apiUrl).getStamp(bareBatchId(batchId));
+      return boughtBatchOf(batchId, await this.deps.reads(apiUrl).getStamp(bareBatchId(batchId)));
     } catch (err) {
-      if (err instanceof BeeHttpError && err.status === 404) return 'gone';
+      if (saysNotHeld(err)) return { usable: null, state: 'gone' };
       logger.debug(
-        `[Funding] could not read batch ${batchId} on its node (${err instanceof Error ? err.name : 'no error'}); answering whether it still holds it as not known`,
+        `[Funding] could not read batch ${batchId} on its node (${err instanceof Error ? err.name : 'no error'}); answering its state as not known`,
       );
-      return 'unread';
+      return { usable: null, state: 'unknown' };
     }
-    if (stamp === null || typeof stamp !== 'object' || batchIdFrom(stamp.batchID) !== batchId) return 'unread';
-    return isDeadStampState(stampHealthFrom(batchId, [stamp]).state) ? 'gone' : 'held';
   }
 
   /**

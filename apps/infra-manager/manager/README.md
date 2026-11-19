@@ -750,13 +750,13 @@ API and pays for from its own wallet, xBZZ for the batch and xDAI for the gas. O
 three purposes, and the manager follows each purchase up in the background
 ([Bought from the admin](../docs/features/postage-stamps.md#bought-from-the-admin)).
 
-| Method | Path                                                    | Answer                                                                                                                                                             |
-| ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/api/admin-funding/batch-purchases`                    | 202 `{ requestId, purpose, state, batchId, txHash }`. Takes `{ requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId }`         |
-| GET    | `/api/admin-funding/batch-purchases/:requestId`         | `{ requestId, purpose, nodeId, state, batchId, txHash, usable, step, error, stages, catalogue }`, `no-store`. 404 `unknown_request` for an id never recorded       |
-| POST   | `/api/admin-funding/batch-purchases/:requestId/restart` | The status. Takes `{ stageId }`. Runs the Apply of a stage in `waiting_live` or `waiting_unknown` now. 422 `stamp_refused` for a stage in any other state          |
-| POST   | `/api/admin-funding/batch-purchases/:requestId/check`   | The status. Takes up again a follow-up that stopped as failed after the batch was bought, and a stage whose Apply failed. 422 `stamp_refused` when nothing stopped |
-| POST   | `/api/admin-funding/batch-purchases/:requestId/release` | The status. Releases the batch a `catalogue` purchase moved the catalogue from. 422 `stamp_refused` for a purchase with none waiting                               |
+| Method | Path                                                    | Answer                                                                                                                                                                    |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/batch-purchases`                    | 202 `{ requestId, purpose, state, batchId, txHash }`. Takes `{ requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId }`                |
+| GET    | `/api/admin-funding/batch-purchases/:requestId`         | `{ requestId, purpose, nodeId, state, batchId, txHash, usable, step, error, stages, catalogue, batchState? }`, `no-store`. 404 `unknown_request` for an id never recorded |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/restart` | The status. Takes `{ stageId }`. Runs the Apply of a stage in `waiting_live` or `waiting_unknown` now. 422 `stamp_refused` for a stage in any other state                 |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/check`   | The status. Takes up again a follow-up that stopped as failed after the batch was bought, and a stage whose Apply failed. 422 `stamp_refused` when nothing stopped        |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/release` | The status. Releases the batch a `catalogue` purchase moved the catalogue from. 422 `stamp_refused` for a purchase with none waiting                                      |
 
 | `purpose`   | `nodeId`                                         | `depth`  | `immutable` | `replacesBatchId`                         | Once usable                                          |
 | ----------- | ------------------------------------------------ | -------- | ----------- | ----------------------------------------- | ---------------------------------------------------- |
@@ -778,6 +778,11 @@ three purposes, and the manager follows each purchase up in the background
   once with `GET /stamps/{id}`. The sentence names that purchase, whose Check puts its batch to use
   without paying for a second. A 404, no time left, or a batch the node reports as gone lets the
   purchase through. A node that could not be read about the batch keeps the refusal, which says so.
+- **`batchState`** in a purchase's status is the bought batch's state on its node in the inventory's
+  words (`pending`, `active`, `full`, `expired`, `gone`), from the same reading as `usable`: the
+  node's `GET /stamps/{id}`, or the list a lost answer was just settled from. It is left out while
+  there is no batch and when the node could not be read about it. The refusal above holds unless it
+  reads `expired` or `gone`.
 - **The node** for a rung is a stage's node the inventory offers a `replacement` for: a rung's node,
   or a single-node stage's own node. The batch set there now is read through the follow-up's port,
   as is the designated catalogue batch for the catalogue.

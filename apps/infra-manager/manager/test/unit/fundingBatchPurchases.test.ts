@@ -313,8 +313,7 @@ function setup(options: SetupOptions = {}) {
     // The follow-up's own reads and records, and its background step recorded rather than run.
     followUp: {
       settle: (row, apiUrl) => followUp.settle(row, apiUrl),
-      usable: (batchId, apiUrl) => followUp.usable(batchId, apiUrl),
-      stillHeld: (batchId, apiUrl) => followUp.stillHeld(batchId, apiUrl),
+      onNode: (batchId, apiUrl) => followUp.onNode(batchId, apiUrl),
       designateArchive: (row, profileName) => followUp.designateArchive(row, profileName),
       advance: async (requestId) => void advanced.push(requestId),
       restart: async (requestId, stageId) => void calls.push(`restart ${requestId} ${stageId}`),
@@ -925,6 +924,29 @@ describe('a purchase while the node’s last one for the purpose holds a batch i
       assert.equal(bee.bought.length, 0, failure.message);
     }
   });
+
+  it('says that batch’s state in the purchase’s status by the same reading, and none when the node does not answer', async () => {
+    const cases: Array<[string, BeeStamp | Error, StampState | undefined, boolean]> = [
+      ['not usable yet', beeStamp(UNUSED), 'pending', true],
+      ['usable', beeStamp(UNUSED, { usable: true }), 'active', true],
+      ['no time left', beeStamp(UNUSED, { batchTTL: 0 }), 'expired', false],
+      ['reported gone', beeStamp(UNUSED, { exists: false }), 'gone', false],
+      ['a 404', new BeeHttpError(404, 'issuer does not exist'), 'gone', false],
+      ['no answer', new Error('connect ECONNREFUSED'), undefined, true],
+    ];
+    for (const [name, answer, batchState, held] of cases) {
+      const { service } = await lastBoughtUnused('rung', RUNG, answer);
+      const status = await service.status(OTHER_REQUEST);
+      fundingBatchPurchaseStatusSchema.parse(status);
+      assert.equal(status.batchState, batchState, name);
+      assert.equal('batchState' in status, batchState !== undefined, `${name}: left out without a state`);
+      const refused = await service.purchase(rungRequest()).then(
+        () => false,
+        () => true,
+      );
+      assert.equal(refused, held, `${name}: the refusal holds unless the state is expired or gone`);
+    }
+  });
 });
 
 describe('a confirmed archive stamp made an archive batch', () => {
@@ -1093,8 +1115,7 @@ describe('a purchase through the real BeeClient', () => {
       node: (apiUrl) => new BeeClient(apiUrl),
       followUp: {
         settle: (row, apiUrl) => followUp.settle(row, apiUrl),
-        usable: (batchId, apiUrl) => followUp.usable(batchId, apiUrl),
-        stillHeld: (batchId, apiUrl) => followUp.stillHeld(batchId, apiUrl),
+        onNode: (batchId, apiUrl) => followUp.onNode(batchId, apiUrl),
         designateArchive: (row, profileName) => followUp.designateArchive(row, profileName),
         advance: async () => undefined,
         restart: unreachable,
@@ -1153,6 +1174,7 @@ describe('GET /api/admin-funding/batch-purchases/:requestId', () => {
       error: null,
       stages: [],
       catalogue: null,
+      batchState: 'pending',
     });
     fundingBatchPurchaseStatusSchema.parse(waiting);
     bee.stamp = beeStamp(BOUGHT, { usable: true });
@@ -1165,9 +1187,11 @@ describe('GET /api/admin-funding/batch-purchases/:requestId', () => {
     const { bee, service } = setup();
     await service.purchase(request());
     bee.stamp = new BeeHttpError(503, 'bee GET /stamps/x → 503: syncing');
-    assert.equal((await service.status(REQUEST)).usable, null);
+    const syncing = await service.status(REQUEST);
+    assert.deepEqual([syncing.usable, 'batchState' in syncing], [null, false]);
     bee.stamp = beeStamp(ANOTHERS);
-    assert.equal((await service.status(REQUEST)).usable, null);
+    const another = await service.status(REQUEST);
+    assert.deepEqual([another.usable, 'batchState' in another], [null, false]);
   });
 
   it('answers a failed purchase with no word on usability', async () => {
@@ -1179,6 +1203,7 @@ describe('GET /api/admin-funding/batch-purchases/:requestId', () => {
       [status.state, status.step, status.batchId, status.usable, status.error],
       ['failed', 'failed', null, null, 'The node refused it (402).'],
     );
+    assert.equal('batchState' in status, false, 'no batch, so no state');
     assert.equal(bee.stampReads + bee.listReads, 0);
   });
 
@@ -1240,7 +1265,8 @@ describe('GET /api/admin-funding/batch-purchases/:requestId', () => {
       [status.state, status.batchId, status.txHash, status.usable, status.step],
       ['confirmed', `0x${BOUGHT}`, null, true, 'waiting_usable'],
     );
-    assert.equal(bee.stampReads, 0, 'the usability is the one the list answered');
+    assert.equal(status.batchState, 'active');
+    assert.equal(bee.stampReads, 0, 'the usability and the state are the ones the list answered');
     assert.deepEqual(designator.asked, [
       {
         batchId: BOUGHT,
