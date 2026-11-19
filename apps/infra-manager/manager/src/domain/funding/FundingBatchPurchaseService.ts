@@ -1,6 +1,7 @@
 import {
   ARCHIVE_SLOTS_FULL_REFUSAL,
   formatTtl,
+  isDeadStampState,
   plurToBzzExact,
   purchaseNodeLabel,
   purchaseReplaceProblem,
@@ -26,7 +27,13 @@ import { BeeHttpError } from '../errors/BeeHttpError.js';
 import { Logger } from '../Logger.js';
 import { type CatalogueDesignationRow, isMoving } from '../stages/CatalogueDesignationRepository.js';
 import { FundingApiError } from './FundingApiError.js';
-import { bareBatchId, batchIdFrom, type FundingPurchaseFollowUp, usableOf } from './FundingPurchaseFollowUp.js';
+import {
+  bareBatchId,
+  batchIdFrom,
+  type BoughtBatchOnNode,
+  boughtBatchOf,
+  type FundingPurchaseFollowUp,
+} from './FundingPurchaseFollowUp.js';
 import type {
   FundingStampPurchaseJournal,
   FundingStampPurchasePatch,
@@ -56,7 +63,7 @@ export interface FundingBatchPurchaseDeps {
   /** The follow-up, which settles, reads and puts to use what a purchase bought, and takes the three calls. */
   followUp: Pick<
     FundingPurchaseFollowUp,
-    'settle' | 'usable' | 'stillHeld' | 'designateArchive' | 'advance' | 'restart' | 'check' | 'release'
+    'settle' | 'onNode' | 'designateArchive' | 'advance' | 'restart' | 'check' | 'release'
   >;
   /** The batch set on a rung's node or a single-node stage now, and its verdict (`purchaseFollowUpPorts.ts`). */
   rungs: Pick<PurchasedRungBatches, 'current'>;
@@ -320,7 +327,9 @@ export class FundingBatchPurchaseService {
   /**
    * Where a purchase stands. An `unknown` one is settled from the node's own list of batches, and a `confirmed` one is
    * answered with the node's word now about whether its batch is usable, read on every call, and null when the node
-   * could not be read about it. A `confirmed` archive stamp not marked as made an archive batch yet is designated now.
+   * could not be read about it. The same reading gives `batchState`, the inventory's verdict on the bought batch, which
+   * is left out while there is no batch and when the node could not be read about it. A `confirmed` archive stamp not
+   * marked as made an archive batch yet is designated now.
    */
   async status(requestId: string): Promise<FundingBatchPurchaseStatus> {
     const row = await this.deps.journal.find(requestId);
@@ -335,12 +344,15 @@ export class FundingBatchPurchaseService {
     const settled = row.state === 'unknown' ? await this.deps.followUp.settle(row, apiUrl) : { row, stamp: null };
     let current = settled.row;
     if (row.state === 'unknown' && current.state === 'confirmed') void this.deps.followUp.advance(requestId);
-    let usable: boolean | null = null;
+    let onNode: BoughtBatchOnNode | null = null;
     const bought = current.state === 'confirmed' ? current.batchId : null;
     if (bought !== null) {
       if (deployment) current = (await this.deps.followUp.designateArchive(current, deployment.name)).row;
-      usable = settled.stamp ? usableOf(settled.stamp, bought) : await this.deps.followUp.usable(bought, apiUrl);
+      // One reading of the node gives both: the batches it has just listed, or its `GET /stamps/{id}` now.
+      if (settled.stamp) onNode = boughtBatchOf(bought, settled.stamp);
+      else if (apiUrl !== null) onNode = await this.deps.followUp.onNode(bought, apiUrl);
     }
+    const batchState = onNode === null || onNode.state === 'unknown' ? null : onNode.state;
     const stages = current.purpose === 'rung' ? await this.deps.journal.stagesOf(requestId) : [];
     return {
       requestId: current.requestId,
@@ -349,7 +361,7 @@ export class FundingBatchPurchaseService {
       state: current.state,
       batchId: current.batchId,
       txHash: current.txHash,
-      usable,
+      usable: onNode?.usable ?? null,
       step: current.step,
       error: current.error,
       stages: stages.map(({ stageId, name, apply, message }) => ({ stageId, name, apply, message })),
@@ -357,6 +369,7 @@ export class FundingBatchPurchaseService {
         current.purpose === 'catalogue' && current.setAt !== null
           ? { previousBatchId: current.previousBatchId, released: current.releasedAt !== null }
           : null,
+      ...(batchState === null ? {} : { batchState }),
     };
   }
 
@@ -523,9 +536,10 @@ export class FundingBatchPurchaseService {
     if (request.purpose === 'archive') return;
     const last = await this.deps.journal.latestOn(request.nodeId, request.purpose);
     if (last === null || !boughtNeverPutToUse(last)) return;
-    const onNode = await this.deps.followUp.stillHeld(last.batchId, apiUrl);
-    if (onNode === 'gone') return;
-    throw refused(onNode === 'held' ? boughtUnused(last) : boughtUnusedUnread(last));
+    // The reading the purchase's status gives as its batchState.
+    const { state } = await this.deps.followUp.onNode(last.batchId, apiUrl);
+    if (isDeadStampState(state)) return;
+    throw refused(state === 'unknown' ? boughtUnusedUnread(last) : boughtUnused(last));
   }
 
   /**

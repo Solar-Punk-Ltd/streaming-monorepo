@@ -249,7 +249,7 @@ const BATCH_NOT_HELD = 'The node does not hold this batch: it expired and was dr
 const BATCH_GONE = 'The batch is gone from the chain: it expired.';
 
 /** Whether a failed batch read is the node's answer that it does not hold the batch, which Bee gives as 404. */
-function saysNotHeld(error: unknown): boolean {
+export function saysNotHeld(error: unknown): boolean {
   return error instanceof BeeHttpError && error.status === 404;
 }
 
@@ -336,9 +336,9 @@ function isDepth(value: unknown): value is number {
 /**
  * A node's `GET /stamps/{id}` answer as the inventory takes it, or the batch unread and why. The fill is the fullest
  * bucket's, worked out as the postage page works it out (`fullestBucketFillRatio`), and the verdict is the one the
- * manager's own pages give the batch (`stampHealthFrom`).
+ * manager's own pages give the batch (`stampHealthFrom`). The batch id is 64 hex digits without `0x`.
  */
-function batchFrom(batchId: string, stamp: BeeStamp): FundingBatch {
+export function batchFrom(batchId: string, stamp: BeeStamp): FundingBatch {
   const answered: Partial<Record<keyof BeeStamp, unknown>> = typeof stamp === 'object' && stamp !== null ? stamp : {};
   if (typeof answered.batchID !== 'string' || batchIdOf(answered.batchID) !== batchId) {
     return unreadBatch(batchId, NOT_A_BATCH);
