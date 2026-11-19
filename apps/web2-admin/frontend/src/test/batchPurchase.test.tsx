@@ -6,6 +6,7 @@ import {
   BATCH_PURCHASE_RESTART_CONFIRM,
   XBZZ_DECIMALS,
   type BatchPurchase,
+  type FundingBatch,
   type FundingView,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -26,7 +27,15 @@ import {
 } from '../components/funding/batchPurchases';
 import { moveText } from '../components/funding/BatchPurchaseLines';
 import { FundingPage } from '../pages/FundingPage';
-import { BATCH, makeArchiveStamps, makeBatch, makeNode, makeStampView, THIRTY_DAYS_DEPTH_20 } from './fundingFixtures';
+import {
+  BATCH,
+  DAY,
+  makeArchiveStamps,
+  makeBatch,
+  makeNode,
+  makeStampView,
+  THIRTY_DAYS_DEPTH_20,
+} from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders } from './helpers';
 
 const FUNDING = '/api/funding';
@@ -74,6 +83,18 @@ function buyView(): FundingView {
         ],
       },
     ],
+  };
+}
+
+/** {@link buyView} with the 720p rung's batch replaced by `batch`, as another reading of the page finds it. */
+function withRung720(batch: FundingBatch): FundingView {
+  const view = buyView();
+  return {
+    ...view,
+    stages: view.stages.map((stage) => ({
+      ...stage,
+      nodes: stage.nodes.map((node) => (node.nodeId === 'stage-1:720p' ? { ...node, batch } : node)),
+    })),
   };
 }
 
@@ -280,6 +301,53 @@ describe('Buy new on the Stamps tab', () => {
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Buy this batch?' })).toBeInTheDocument();
     await waitFor(() => expect(callsTo(fetchMock, FUNDING).length).toBeGreaterThan(views));
+  });
+
+  it('builds the offer again from the page read after a refusal, so the next confirm names the batch shown now', async () => {
+    const message = 'The batch of rung-720p changed since the page showed it. Read the page again. Nothing was bought.';
+    const another = `0x${'ef'.repeat(32)}`;
+    let changed = false;
+    const fetchMock = serve({
+      view: () => (changed ? withRung720(makeBatch({ batchId: another, usable: false, ttlSeconds: 0 })) : buyView()),
+      buy: () => {
+        if (changed) return jsonOk(makePurchase(), 202);
+        changed = true;
+        return jsonError(409, { error: 'funding_refused', problem: 'batch', message });
+      },
+    });
+    await openStamps();
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Buy for/ }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    await screen.findByText(new RegExp(`in place of batch ${another.slice(0, 8)}`));
+
+    fireEvent.click(screen.getByRole('button', { name: /^Buy for/ }));
+    await waitFor(() => expect(callsTo(fetchMock, PURCHASES, 'POST')).toHaveLength(2));
+    const second = JSON.parse(String(callsTo(fetchMock, PURCHASES, 'POST')[1][1]?.body)) as { replacesBatchId: string };
+    expect(second.replacesBatchId).toBe(another);
+  });
+
+  it('closes the dialog and says why once the row it was opened on offers Buy new no more', async () => {
+    const message =
+      'The batch of rung-720p still pays, so it is topped up or diluted rather than replaced. Nothing was bought.';
+    let changed = false;
+    serve({
+      view: () =>
+        changed ? withRung720(makeBatch({ batchId: `0x${'ef'.repeat(32)}`, ttlSeconds: 30 * DAY })) : buyView(),
+      buy: () => {
+        changed = true;
+        return jsonError(409, { error: 'funding_refused', problem: 'batch', message });
+      },
+    });
+    await openStamps();
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Next/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Buy for/ }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Buy a new batch for rung-720p' })).not.toBeInTheDocument();
   });
 
   it('says the catalogue cannot be replaced while the move is off, and buys an immutable one while it is on', async () => {

@@ -15,7 +15,14 @@ import { formatShort, formatUnits } from './amounts';
 import { ArchiveStampsFooter, useArchiveStamps } from './ArchiveStamps';
 import { fundNeeds, type FundNeed } from './balance';
 import { BatchBuyDialog } from './BatchBuyDialog';
-import { buyOfferOf, latestPurchases, purchasesReadFailed, useBatchPurchases, type BuyOffer } from './batchPurchases';
+import {
+  buyOfferOf,
+  latestPurchases,
+  purchaseHoldsNode,
+  purchasesReadFailed,
+  useBatchPurchases,
+  type BuyOffer,
+} from './batchPurchases';
 import { BatchTable, type BuyControls } from './BatchTable';
 import { followBulk, type FollowedBulk } from './BulkProgress';
 import { FundingFrame, useFundingView } from './FundingFrame';
@@ -49,6 +56,9 @@ export const TOP_UP_CAPTION = 'The days apply to every ticked batch, and each no
 /** What the steps of a dilution apply to, what one does, and when it is refused. */
 export const DILUTE_CAPTION =
   'The steps apply to every ticked batch. Each step doubles what a batch holds and halves its time left, and a dilution that would leave a batch under 7 days is refused.';
+
+/** Said when the row a buy dialog was open on offers no purchase any more, and no refusal said why. */
+export const ROW_OFFERS_NO_PURCHASE = 'That row offers no purchase now, so the dialog was closed.';
 
 /** Said when the manager names no node's batch at all, as one older than the Stamps tab answers. */
 export const NO_BATCHES_REPORTED =
@@ -218,16 +228,21 @@ function StampBar({
  * Buy new on the Stamps tab: the purchases, read with the view and again while one is under way; whether the catalogue
  * move is switched off, read from `GET /api/catalogue-stamp` with the view, since a catalogue purchase is put to use by
  * that move; the dialog's offer, its refusal and whether it is sending; and the controls the tables take. A purchase
- * that ends reads the view again, so its row shows the new batch. A refused purchase reads the view again too, so the
- * dialog, still open with the refusal, prices the batch at the price the manager reads now.
+ * that ends reads the view again, so its row shows the new batch. A refused purchase reads the view again too, and the
+ * dialog's offer is built from each reading: still open with the refusal, the dialog prices the batch at the price the
+ * manager reads now and names the batch the row shows now; once the row offers no purchase, it closes and the tab says
+ * why.
  */
 function useBuyNew(view: FundingView | null, load: () => void) {
   const purchases = useBatchPurchases(view, load);
   const { reload } = purchases;
   const [moveOff, setMoveOff] = useState(false);
-  const [offer, setOffer] = useState<BuyOffer | null>(null);
+  // The node the dialog is open on. Its offer is built from each reading of the page, so a purchase refused because
+  // the row changed is asked for again with what the page shows now.
+  const [buyingNodeId, setBuyingNodeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!view?.configured) return undefined;
@@ -249,6 +264,25 @@ function useBuyNew(view: FundingView | null, load: () => void) {
   const latest = useMemo(() => latestPurchases(purchases.purchases ?? []), [purchases.purchases]);
   const catalogueNodeId = view?.catalogue?.nodeId ?? null;
 
+  const offer: BuyOffer | null = useMemo(() => {
+    if (buyingNodeId === null || !view) return null;
+    const node = [view.catalogue, ...view.stages.flatMap((stage) => stage.nodes)].find(
+      (each) => each?.nodeId === buyingNodeId,
+    );
+    const held = latest.get(buyingNodeId);
+    if (!node || (held && purchaseHoldsNode(held))) return null;
+    return buyOfferOf(node, catalogueNodeId);
+  }, [buyingNodeId, view, latest, catalogueNodeId]);
+
+  // The row the dialog was opened on offers no purchase in this reading of the page: the dialog closes, and the tab
+  // says why, in the refusal that led to the reading when there was one.
+  useEffect(() => {
+    if (buyingNodeId === null || offer !== null) return;
+    setBuyingNodeId(null);
+    setNotice(refusal ?? ROW_OFFERS_NO_PURCHASE);
+    setRefusal(null);
+  }, [buyingNodeId, offer, refusal]);
+
   const controls: BuyControls = useMemo(
     () => ({
       offerOf: (node) => buyOfferOf(node, catalogueNodeId),
@@ -256,7 +290,8 @@ function useBuyNew(view: FundingView | null, load: () => void) {
       moveOff,
       onBuy: (next) => {
         setRefusal(null);
-        setOffer(next);
+        setNotice(null);
+        setBuyingNodeId(next.node.nodeId);
       },
       onRestart: async (purchaseId, stageId) => {
         await api.restartPurchaseStage(purchaseId, stageId);
@@ -281,7 +316,7 @@ function useBuyNew(view: FundingView | null, load: () => void) {
         nodeId: offer.node.nodeId,
         replacesBatchId: offer.replacesBatchId,
       });
-      setOffer(null);
+      setBuyingNodeId(null);
       reload();
     } catch (e: unknown) {
       setRefusal(purchaseRefusal(e));
@@ -299,7 +334,17 @@ function useBuyNew(view: FundingView | null, load: () => void) {
     : false;
   const readError = purchases.error && (offers || purchases.purchases !== null) ? purchases.error : null;
 
-  return { controls, offer, busy, refusal, confirm, close: () => setOffer(null), readError };
+  return {
+    controls,
+    offer,
+    busy,
+    refusal,
+    confirm,
+    close: () => setBuyingNodeId(null),
+    readError,
+    notice,
+    clearNotice: () => setNotice(null),
+  };
 }
 
 /**
@@ -426,6 +471,11 @@ export function StampsTab({
           ) : null}
           {groups.length > 0 && !reportsBatches(view) ? <Alert severity="info">{NO_BATCHES_REPORTED}</Alert> : null}
           {buyNew.readError ? <Alert severity="warning">{purchasesReadFailed(buyNew.readError)}</Alert> : null}
+          {buyNew.notice ? (
+            <Alert severity="info" onClose={buyNew.clearNotice}>
+              {buyNew.notice}
+            </Alert>
+          ) : null}
           {groups.length > 0 ? (
             <SelectAllBar keys={tickable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
           ) : null}
