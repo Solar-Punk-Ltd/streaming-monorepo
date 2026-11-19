@@ -146,4 +146,19 @@ export class PostgresFundingStampOperationJournal implements FundingStampOperati
     );
     return result.rowCount === 1;
   }
+
+  /**
+   * The stamp operation on this node that is still under way, `unknown` or `submitted`, or null. A batch purchase on
+   * the node waits until there is none, since both spend the node's wallet.
+   */
+  async openOn(nodeId: string): Promise<FundingStampOperationRow | null> {
+    const result = await this.pool.query<Row>(
+      `SELECT ${COLUMNS} FROM funding_stamp_operations
+        WHERE node_id = $1 AND state IN ('unknown', 'submitted')
+        ORDER BY created_at, request_id
+        LIMIT 1`,
+      [nodeId],
+    );
+    return result.rows[0] ? rowOf(result.rows[0]) : null;
+  }
 }

@@ -44,11 +44,13 @@ import { PostgresFundingTransferJournal } from './domain/funding/FundingTransfer
 import { createFundingStampRouter } from './api/routes/fundingStamps.js';
 import { createFundingChequebookRouter } from './api/routes/fundingChequebooks.js';
 import { fundingNodeApiUrl, fundingNodeDeployment } from './domain/funding/fundingNodeApi.js';
-import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
+import { chequebookMoveUnderWay, FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { PostgresFundingStampOperationJournal } from './domain/funding/FundingStampOperationJournal.js';
-import { createFundingStampPurchaseRouter } from './api/routes/fundingBatchPurchases.js';
-import { FundingStampPurchaseService } from './domain/funding/FundingBatchPurchaseService.js';
+import { createFundingBatchPurchaseRouter } from './api/routes/fundingBatchPurchases.js';
+import { FundingBatchPurchaseService } from './domain/funding/FundingBatchPurchaseService.js';
+import { FundingPurchaseFollowUp } from './domain/funding/FundingPurchaseFollowUp.js';
+import { purchaseFollowUpPorts } from './domain/stages/purchaseFollowUp.js';
 import { PostgresFundingStampPurchaseJournal } from './domain/funding/FundingStampPurchaseJournal.js';
 import type { ArchiveBatchDesignator, ArchiveBatchReader } from './domain/stages/archiveBatchPorts.js';
 import { ChainRpc } from './domain/chequebook/ChainRpc.js';
@@ -145,6 +147,7 @@ let streamRevalidation: StreamRevalidation | undefined;
 let chequebookOperations: ReturnType<typeof createChequebookOperationsService> | undefined;
 let stagePublisher: StagePublisher | undefined;
 let cataloguePublisher: CataloguePublisher | undefined;
+let purchaseFollowUp: FundingPurchaseFollowUp | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -176,13 +179,17 @@ async function gracefulShutdown(signal: string): Promise<void> {
       cataloguePublisher.stop();
       cataloguePublisher = undefined;
     }
-    const [apiClosed, transferCleanup] = await Promise.allSettled([
+    // A batch purchase's follow-up stops between steps; the next boot goes on from the step its row holds.
+    const [apiClosed, transferCleanup, followUpStopped] = await Promise.allSettled([
       apiServer?.close(),
       chequebookOperations?.shutdown(),
+      purchaseFollowUp?.stop(),
     ]);
     if (transferCleanup.status === 'rejected') throw new Error('Transfer session cleanup could not be verified.');
     if (apiClosed.status === 'rejected') throw new Error('API shutdown could not be verified.');
+    if (followUpStopped.status === 'rejected') throw new Error('The batch purchases’ follow-up did not stop.');
     apiServer = undefined;
+    purchaseFollowUp = undefined;
     if (database) {
       await database.close();
       database = undefined;
@@ -414,6 +421,14 @@ async function main(): Promise<void> {
   const managerAdminLink = new ManagerAdminLinkRepository(database.pool);
   // A deploy gives an uploader linked to this admin a token of its own. adminLink/ownAdminToken.ts.
   orchestrator.setManagerAdminLink(managerAdminLink);
+  // A deployment's saved settings and their Apply, which the console's routes and a batch purchase's follow-up share.
+  const deploymentSettingsService = new DeploymentSettingsService(
+    profileRepository,
+    containerRepository,
+    orchestrator,
+    stackVersionRepository,
+    managerAdminLink,
+  );
   const profileService = new ProfileService(
     profileRepository,
     containerRepository,
@@ -544,29 +559,14 @@ async function main(): Promise<void> {
   // archive batches, checked against the inventory and the postage contract read now, journalled in
   // funding_stamp_operations before the node is asked, and paid from the wallet of the node that holds the batch. The
   // node's Bee API is worked out the way the inventory works it out, and stays here.
+  const stampOperationJournal = new PostgresFundingStampOperationJournal(database.pool);
   const fundingStamps = new FundingStampService({
-    journal: new PostgresFundingStampOperationJournal(database.pool),
+    journal: stampOperationJournal,
     inventory: fundingInventory,
     nodeApiUrl: fundingNodeApiUrl({ profiles: profileRepository, uploaderApiUrl: beeApiUrlFor }),
     node: (apiUrl) => new BeeClient(apiUrl),
     chain: fundingRpc ? new ChainRpc(fundingRpc) : null,
     archiveBatchHolder: (batchId) => fundingInventory.archiveBatchHolder(batchId),
-  });
-  // The funding API's stamp purchases: an archive stamp, a new immutable batch on the catalogue node, checked against
-  // the inventory read now, journalled in funding_stamp_purchases before the node is asked, paid from the node's own
-  // wallet, and recorded as an archive batch once bought.
-  const fundingPurchases = new FundingStampPurchaseService({
-    journal: stampPurchaseJournal,
-    inventory: fundingInventory,
-    deployment: fundingNodeDeployment({ profiles: profileRepository }),
-    uploaderApiUrl: beeApiUrlFor,
-    node: (apiUrl) => new BeeClient(apiUrl),
-    reads: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS),
-    archiveBatches: archiveBatchPorts,
-    catalogue: catalogueDesignation,
-    designator: archiveBatchPorts,
-    archiveSlotsTaken: () => archiveBatchService.slotsTaken(),
-    lock: batchDesignationLock,
   });
   // The funding API's chequebook operations: a deposit into or a withdrawal from the chequebook of a stage's own Bee
   // node, a rung or the catalogue node, checked against the inventory read now, then carried out by the manager's own
@@ -589,6 +589,54 @@ async function main(): Promise<void> {
   });
   orchestrator.setPoolStrings((profile) => stagePoolStrings.withCurrentBatches(profile));
   stampService.setAfterStampSet((name) => stagePoolStrings.refreshStagesOf(name));
+  // The parts that put a batch bought through the funding API to use, over the services the console drives them with:
+  // a rung's batch set, a stage applied, the catalogue batch designated and released (domain/stages/purchaseFollowUp.ts).
+  const purchasePorts = purchaseFollowUpPorts({
+    profiles: profileRepository,
+    stamps: stampService,
+    poolStrings: stagePoolStrings,
+    settings: deploymentSettingsService,
+    ingest: ingestHealthService,
+    catalogue: catalogueService,
+  });
+  // What follows a batch purchase, in the background every 30 seconds and at boot, from the step its row holds: a
+  // usable batch set on its rung and the stages that follow it applied one at a time, designated for the catalogue, or
+  // recorded as an archive batch.
+  const followUp = new FundingPurchaseFollowUp({
+    journal: stampPurchaseJournal,
+    deployment: fundingNodeDeployment({ profiles: profileRepository }),
+    uploaderApiUrl: beeApiUrlFor,
+    reads: (apiUrl) => new BeeClient(apiUrl, FUNDING_NODE_READ_MS),
+    archiveBatches: archiveBatchPorts,
+    catalogue: catalogueDesignation,
+    designator: archiveBatchPorts,
+    rungs: purchasePorts.rungs,
+    stages: purchasePorts.stages,
+    catalogueBatches: purchasePorts.catalogue,
+  });
+  purchaseFollowUp = followUp;
+  // The funding API's batch purchases: a new batch for a rung, for the catalogue or as an archive stamp, checked
+  // against the inventory read now and the batch set in the role, journalled in funding_stamp_purchases before the node
+  // is asked, and paid from the node's own wallet. A node with another purchase, stamp operation or chequebook move
+  // under way is busy.
+  const chequebookPath = chequebookOperations;
+  const fundingPurchases = new FundingBatchPurchaseService({
+    journal: stampPurchaseJournal,
+    inventory: fundingInventory,
+    deployment: fundingNodeDeployment({ profiles: profileRepository }),
+    uploaderApiUrl: beeApiUrlFor,
+    node: (apiUrl) => new BeeClient(apiUrl),
+    followUp,
+    rungs: purchasePorts.rungs,
+    catalogueBatches: purchasePorts.catalogue,
+    otherOperationOpen: async (nodeId, profileName) => {
+      if ((await stampOperationJournal.openOn(nodeId)) !== null) return true;
+      const [latest] = (await chequebookPath.history({ profileName, limit: 1 })).operations;
+      return latest !== undefined && chequebookMoveUnderWay(latest);
+    },
+    archiveSlotsTaken: () => archiveBatchService.slotsTaken(),
+    lock: batchDesignationLock,
+  });
   // The pinned batch's node, and while a move is pending the node of the batch it moved from.
   orchestrator.setRemovalGuard((name) => catalogueService.assertRemovable(name));
   catalogue.start();
@@ -626,13 +674,7 @@ async function main(): Promise<void> {
       ingestHealthService,
       containerControl,
       engineConfigService,
-      deploymentSettingsService: new DeploymentSettingsService(
-        profileRepository,
-        containerRepository,
-        orchestrator,
-        stackVersionRepository,
-        managerAdminLink,
-      ),
+      deploymentSettingsService,
       managerAdminLinkService: new ManagerAdminLinkService(managerAdminLink),
       adminLinkTester: new AdminLinkTester(managerAdminLink, profileRepository, orchestrator, undefined, publisher),
       adminTokenRotation: new AdminTokenRotation(
@@ -660,7 +702,7 @@ async function main(): Promise<void> {
           createFundingInventoryRouter(fundingInventory),
           createFundingChainRouter(fundingChain),
           createFundingStampRouter(fundingStamps),
-          createFundingStampPurchaseRouter(fundingPurchases),
+          createFundingBatchPurchaseRouter(fundingPurchases),
           createFundingChequebookRouter(fundingChequebooks),
         ],
       },
@@ -670,6 +712,8 @@ async function main(): Promise<void> {
     config.port,
     config.host,
   );
+  // The batch purchases' follow-up sweeps once at boot, from the step each row holds, then every 30 seconds.
+  followUp.start();
 }
 
 function stop() {
