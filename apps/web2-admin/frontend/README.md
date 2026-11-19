@@ -241,7 +241,10 @@ its stream, a partly lost one with the qualities that failed, and how many strea
 unjudged. Remove lost recordings, or the reason it cannot be used now, opens a confirm with the
 common `LOST_RECORDINGS_REMOVAL_CONFIRM` and every recording it removes, a stream with an export
 file marked as kept as a draft; it sends that list, then says what was removed, kept as a draft or
-left, and reads the list again. An admin that answers no checks shows nothing of them.
+left, and reads the list again. A refused removal closes the confirm, says why, and reads the check
+again, so Remove follows what the admin says now. A read of the check that fails keeps the check
+last read, and its timer, and says it could not be read again. An admin that answers no checks
+shows nothing of them.
 
 ### Archive, `#/archive`
 
@@ -386,8 +389,10 @@ wallet, so there is no password, only a confirm dialog.
   today's price, the node's wallet, and what it is short of, with Fund it, which opens Balance with
   that entered. A rung's batch is mutable or immutable; the catalogue's is immutable. A confirm
   step names the batch, the exact cost and what follows, and there is no password: the node pays. A
-  refusal shows in the dialog, and the view is read again, so a moved price is quoted anew. The
-  catalogue's row says the move is switched off instead, while it is.
+  refusal shows in the dialog, and the view is read again; the dialog's offer is built from that
+  reading, so a moved price is quoted anew and a batch that changed on the row is named as it is
+  now. Once the row offers no purchase, the dialog closes and the tab says why. The catalogue's row
+  says the move is switched off instead, while it is.
 - Under a node's row comes its latest purchase: what was bought, where it stands, and for a rung a
   line per stage whose uploader takes the batch, in the common `BATCH_PURCHASE_APPLY_TEXT`. Restart
   now, on a stage that waits for a broadcast, asks first with `BATCH_PURCHASE_RESTART_CONFIRM`. Check

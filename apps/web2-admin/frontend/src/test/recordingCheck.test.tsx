@@ -11,10 +11,12 @@ import {
 import {
   ALL_READ,
   CHECK_INTRO,
+  checkReadFailed,
   KEPT_AS_DRAFT,
   PARTLY_LOST_NOTE,
   RECORDING_CHECK_POLL_MS,
   RECORDING_MARK,
+  removalFailed,
   removalLines,
   removalTitle,
   runningText,
@@ -257,16 +259,52 @@ describe('checking the recordings on the Streams page', () => {
     await waitFor(() => expect(callsTo(fetchMock, STREAMS).length).toBeGreaterThan(lists));
   });
 
-  it('shows a refused removal in the confirm', async () => {
+  it('reads the check again after a refused removal, so Remove follows what the admin says now', async () => {
     const message = 'The catalogue batch has run out. Buy a new catalogue batch on the Funding page first.';
-    serve({
-      check: () => ({ check: makeCheck({ lost: LOST }), startRefusal: null, removalRefusal: null }),
-      removal: () => jsonError(409, { error: 'removal_refused', message }),
+    let refusal: string | null = null;
+    const fetchMock = serve({
+      check: () => ({ check: makeCheck({ lost: LOST }), startRefusal: null, removalRefusal: refusal }),
+      removal: () => {
+        refusal = message;
+        return jsonError(409, { error: 'recordings_refused', message });
+      },
     });
     await openStreams();
     fireEvent.click(await screen.findByRole('button', { name: 'Remove lost recordings' }));
+    const reads = callsTo(fetchMock, CHECK).length;
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    expect(await within(screen.getByRole('dialog')).findByText(message)).toBeInTheDocument();
+
+    await waitFor(() => expect(callsTo(fetchMock, CHECK).length).toBeGreaterThan(reads));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove lost recordings' })).toBeDisabled());
+    expect(screen.getByText(removalFailed(message))).toBeInTheDocument();
+  });
+
+  it('keeps the check and says so when a read of it fails, and goes on reading it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const running = makeCheck({ state: 'running', round: 1, readThisRound: 1, total: 4, finishedAt: null });
+    let answer: RecordingCheckResponse | Response = {
+      check: running,
+      startRefusal: 'A check is running.',
+      removalRefusal: null,
+    };
+    serve({ check: () => answer });
+    await openStreams();
+    expect(await screen.findByText(runningText(running))).toBeInTheDocument();
+
+    answer = jsonError(502, { error: 'bad_gateway', message: 'The admin did not answer.' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECORDING_CHECK_POLL_MS);
+    });
+    expect(await screen.findByText(checkReadFailed('The admin did not answer.'))).toBeInTheDocument();
+    expect(screen.getByText(runningText(running))).toBeInTheDocument();
+
+    answer = { check: makeCheck({ lost: [LOST[0]] }), startRefusal: null, removalRefusal: null };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RECORDING_CHECK_POLL_MS);
+    });
+    expect(await screen.findByText('1 recording lost')).toBeInTheDocument();
+    expect(screen.queryByText(checkReadFailed('The admin did not answer.'))).not.toBeInTheDocument();
   });
 
   it('says why the lost recordings cannot be removed now', async () => {

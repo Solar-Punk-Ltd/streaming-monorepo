@@ -65,6 +65,16 @@ export const RECORDING_MARK = {
   partly_lost: 'Partly lost',
 } as const;
 
+/** Said over the check shown when it could not be read again, with why. */
+export function checkReadFailed(error: string): string {
+  return `The check could not be read again: ${error}`;
+}
+
+/** Said in the panel when a removal was refused, with the admin's sentence. */
+export function removalFailed(error: string): string {
+  return `Nothing was removed: ${error}`;
+}
+
 /** Where a running check stands, in a sentence. */
 export function runningText(check: RecordingCheck): string {
   return `Checking the recordings: round ${check.round} of ${RECORDING_CHECK_ROUNDS}, ${check.readThisRound} of ${check.total} read.`;
@@ -100,11 +110,13 @@ export function RecordingMark({ stream }: { stream: Pick<Stream, 'recording' | '
 
 /**
  * The latest check as the admin answers it, read once and again every {@link RECORDING_CHECK_POLL_MS} while it runs.
- * Null until it is read, and while it cannot be, as with an admin that has no checks: the page then shows nothing of
- * them. `onFinished` is called when a running check is read as ended, so the page marks the rows.
+ * Null until it is first read, so an admin that has no checks shows nothing of them. A read that fails after that
+ * keeps the check last read, and its timer, and `error` says why until a read answers again. `onFinished` is called
+ * when a running check is read as ended, so the page marks the rows.
  */
 function useRecordingCheck(onFinished: () => void) {
   const [answer, setAnswer] = useState<RecordingCheckResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const wasRunning = useRef(false);
   const finished = useRef(onFinished);
@@ -119,8 +131,9 @@ function useRecordingCheck(onFinished: () => void) {
       if (wasRunning.current && !running) finished.current();
       wasRunning.current = running;
       setAnswer(next);
-    } catch {
-      setAnswer(null);
+      setError(null);
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'The check could not be read.'));
     }
   }, []);
 
@@ -136,7 +149,7 @@ function useRecordingCheck(onFinished: () => void) {
   }, [running, read]);
 
   const reload = useCallback(() => setTick((n) => n + 1), []);
-  return { answer, reload };
+  return { answer, error, reload };
 }
 
 function RecordingItem({ recording }: { recording: CheckedRecording }) {
@@ -205,10 +218,11 @@ function CheckResult({ check }: { check: RecordingCheck }) {
  * running check's round and progress; a stopped one's reason; and a finished one's result, "N recordings lost" and the
  * partly lost, each a link to its stream. Remove lost recordings, or why it cannot be used now, asks first, listing
  * every recording it removes and which are kept as drafts for their export file, then sends that list, and says what
- * was removed, kept as a draft or left. `onChanged` reads the stream list again, after a check ends or a removal.
+ * was removed, kept as a draft or left. A refused removal closes the confirm, says why, and reads the check again, so
+ * Remove follows what the admin says now. `onChanged` reads the stream list again, after a check ends or a removal.
  */
 export function RecordingCheckPanel({ onChanged }: { onChanged: () => void }) {
-  const { answer, reload } = useRecordingCheck(onChanged);
+  const { answer, error: readError, reload } = useRecordingCheck(onChanged);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -246,7 +260,10 @@ export function RecordingCheckPanel({ onChanged }: { onChanged: () => void }) {
       onChanged();
       reload();
     } catch (e: unknown) {
+      // The check is read again, so Remove follows what the admin says of it now, and the confirm closes on it.
       setRemoveError(errorMessage(e, 'The lost recordings could not be removed.'));
+      setConfirming(false);
+      reload();
     } finally {
       setRemoving(false);
     }
@@ -273,6 +290,7 @@ export function RecordingCheckPanel({ onChanged }: { onChanged: () => void }) {
             {CHECK_INTRO}
           </Typography>
         ) : null}
+        {readError ? <Alert severity="warning">{checkReadFailed(readError)}</Alert> : null}
         {startError ? <Alert severity="error">{startError}</Alert> : null}
 
         {check?.state === 'running' ? (
@@ -317,6 +335,11 @@ export function RecordingCheckPanel({ onChanged }: { onChanged: () => void }) {
             ) : null}
           </Stack>
         ) : null}
+        {removeError ? (
+          <Alert severity="error" onClose={() => setRemoveError(null)}>
+            {removalFailed(removeError)}
+          </Alert>
+        ) : null}
 
         {check && check.unjudged > 0 ? (
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -352,7 +375,6 @@ export function RecordingCheckPanel({ onChanged }: { onChanged: () => void }) {
                   </li>
                 ))}
               </Stack>
-              {removeError ? <Alert severity="error">{removeError}</Alert> : null}
             </Stack>
           }
           confirmText={removing ? 'Removing…' : 'Remove'}
