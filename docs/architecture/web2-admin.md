@@ -395,7 +395,9 @@ and removes them.
   is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`). A node with fewer reads nothing
   whatever is on Swarm, so the check stops with no result and says so.
 - **Which streams.** One rule decides, `recordingSkipReason`: a live stream, a stream inside its
-  restart window and a stream with an export or an archive under way are left unjudged.
+  restart window and a stream with an export or an archive under way are left unjudged. So is a
+  stream an earlier removal kept as a draft for its export file, until it changes: an edit, a
+  publish or going live brings it back into the next check.
 - **The result.** **Lost**: the master playlist failed in every round, or every quality did.
   **Partly lost**: some quality failed in every round and another was read; it is listed with the
   qualities that failed and left alone. The stream's row carries the mark until the stream goes live
@@ -404,8 +406,10 @@ and removes them.
 **Remove lost recordings** opens a confirm that lists the lost recordings of the latest check, which
 is good for six hours (`RECORDING_CHECK_VALID_SECONDS`).
 
-- Each stream is asked the rule again and read once more, and one that reads now, or that may not
-  be judged now, is kept and named with the reason.
+- Each stream is asked the rule again and read once more. One that may not be judged now, one that
+  holds no finished recording now, and one that reads now are kept and named with the reason.
+- The node's peers are read again after those reads and before anything is written. Under the floor
+  of 4 peers the reads do not count, nothing is removed, and the removal says so.
 - The rest leave the catalogue in one write.
 - A stream with an export file on the server stays, as a draft off the catalogue, with its file.
   Every other is deleted.

@@ -22,7 +22,7 @@ import { SECONDS_PER_DAY } from './stampQuote.js';
  * An archive stamp is bought on the same tab through `archive.ts`, which keeps its own dialog and its own records.
  */
 
-/** GET lists the purchases under way and the ones that ended in the last day; POST starts one. */
+/** GET lists the purchases a node's row shows, as {@link BatchPurchasesResponse} says; POST starts one. */
 export const FUNDING_BATCH_PURCHASES_ADMIN_PATH = `${FUNDING_PATH}/batch-purchases`;
 
 /** GET: one purchase. */
@@ -297,6 +297,11 @@ export interface BatchPurchase {
   state: BatchPurchaseState;
   /** The batch, 64 hex digits with `0x`, once the node answered with it. */
   batchId: string | null;
+  /**
+   * Why a failed purchase stopped. On a done catalogue purchase, why the manager refused to release the batch the
+   * catalogue moved from: the catalogue is written with the new batch, and the previous one is released in the
+   * manager. Null otherwise.
+   */
   error: string | null;
   /** The stages of a rung purchase, empty before the batch is set and for the catalogue. */
   stages: BatchPurchaseStage[];
@@ -309,7 +314,11 @@ export interface BatchPurchase {
   startedAt: string;
 }
 
-/** `GET /api/funding/batch-purchases`: the purchases under way, and the ones that ended in the last day. */
+/**
+ * `GET /api/funding/batch-purchases`: the purchases under way, the ones that started or ended in the last day, and,
+ * whatever its age, a purchase that failed with its batch bought, for as long as no later purchase of its node is
+ * done. That batch was paid for and never put to use, so its row keeps Check again in place of Buy new.
+ */
 export interface BatchPurchasesResponse {
   purchases: BatchPurchase[];
 }
