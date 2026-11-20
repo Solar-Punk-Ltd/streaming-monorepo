@@ -312,10 +312,8 @@ names, and then writes with the new batch. bee-js puts a payload straight into t
 no timestamp, so the same bytes make the same chunks at the same addresses. The job is resumable and
 runs while the old batch still has days of life.
 
-The move is off by default. `CATALOGUE_MOVE_ENABLED=true` in the admin's env file turns it on, and it
-stays off on an installation until the move has been tried on a real node, by
-[Trying the move on a real node](#trying-the-move-on-a-real-node) below. Until then the Stages page
-says the move is not enabled on this installation. The manager's move and release work with the
+The move is on by default. `CATALOGUE_MOVE_ENABLED=false` in the admin's env file turns it off, and
+then the Stages page says the move is not enabled on this installation. The manager's move and release work with the
 admin's move off: they change which batch is designated and which is guarded, and while a move is
 pending the manager pushes the batch moved from as the record's `previous`, so the admin, which keeps
 writing with it, keeps its readings fresh.
@@ -403,8 +401,8 @@ the purchase in place of a person:
 
 ### Trying the move on a real node
 
-Do this once, before you turn `CATALOGUE_MOVE_ENABLED` on anywhere. Every unit and integration test
-of the move uses a fake Bee, so only this proves it against a real node.
+Every unit and integration test of the move uses a fake Bee, so only this proves it against a real
+node. The scratch admin needs no setting for it, since the move is on by default.
 
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of a
    scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
@@ -414,10 +412,9 @@ of the move uses a fake Bee, so only this proves it against a real node.
    until the feed has a dozen slots or more. Make at least one catalogue longer than 4096 bytes (a
    long description on several published streams does it), so a wrapped slot is in the history.
    Open the viewer built for the scratch feed and note what it lists.
-3. **Move.** In the manager, choose batch B on the catalogue node's card and confirm the move. In
-   the admin's env file set `CATALOGUE_MOVE_ENABLED=true` and restart the admin. On the Stages page,
-   choose "Move the catalogue to batch B…", confirm, and publish a stream while it runs. Wait for
-   "The catalogue was moved to batch B".
+3. **Move.** In the manager, choose batch B on the catalogue node's card and confirm the move. On
+   the admin's Stages page, choose "Move the catalogue to batch B…", confirm, and publish a stream
+   while it runs. Wait for "The catalogue was moved to batch B".
 4. **Check each slot under B.** For every index from 0 to the head, `GET /chunks/<slot address>` on
    the node answers the same bytes as before the move, and `GET /stamps/<B>` shows its utilisation
    grown by about the number of slots and data chunks. The admin's log has one
@@ -430,6 +427,5 @@ of the move uses a fake Bee, so only this proves it against a real node.
 6. **Release.** Press "Release the previous batch" in the manager, and remove batch A's node if it
    was another deployment.
 
-If every step holds, the move can be turned on where it is needed. If a slot or a thumbnail came out
-at another reference, the move stops before the switch, the admin keeps writing with A, and the log
-and the Stages page say which.
+If a slot or a thumbnail came out at another reference, the move stops before the switch, the admin
+keeps writing with A, and the log and the Stages page say which.

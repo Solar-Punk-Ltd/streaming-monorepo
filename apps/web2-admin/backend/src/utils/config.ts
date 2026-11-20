@@ -109,7 +109,7 @@ export interface AppConfig {
   internalApiToken: string;
   /**
    * `CATALOGUE_MOVE_ENABLED`: whether an operator may move the catalogue's history onto another batch from the
-   * Stages page. Off unless set, until the move has been tried on a real node (docs/architecture/stages.md).
+   * Stages page. On unless set to false or 0, which turns the move off (docs/architecture/stages.md).
    */
   catalogueMoveEnabled: boolean;
   /**
@@ -146,8 +146,9 @@ export interface AppConfig {
   version: VersionInfo;
 }
 
-function optionalFlag(name: string): boolean {
-  const raw = optional(name, 'false').trim().toLowerCase();
+/** `true` or `1` and `false` or `0`, in any case; `fallback` when unset or empty; anything else stops the start. */
+function optionalFlag(name: string, fallback: boolean): boolean {
+  const raw = optional(name, String(fallback)).trim().toLowerCase();
   if (raw === 'true' || raw === '1') return true;
   if (raw === 'false' || raw === '0') return false;
   throw new Error(`Env var ${name} must be true or false, got: ${raw}`);
@@ -255,7 +256,7 @@ export const config: AppConfig = {
   feedTopic: optional('FEED_TOPIC', 'swarm-stream'),
   viewerBaseUrl: optional('VIEWER_BASE_URL', ''),
   internalApiToken: requiredSecret('INTERNAL_API_TOKEN', INTERNAL_API_TOKEN_MIN_LENGTH),
-  catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED'),
+  catalogueMoveEnabled: optionalFlag('CATALOGUE_MOVE_ENABLED', true),
   brandWalletSecret: brandWalletSecret(),
   managerFunding: managerFunding(),
   streamRestartWindowMinutes: streamRestartWindowMinutes(),

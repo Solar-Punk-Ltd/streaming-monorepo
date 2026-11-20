@@ -61,13 +61,21 @@ describe('the config', () => {
 });
 
 describe('CATALOGUE_MOVE_ENABLED', () => {
-  it('is off when unset: the move is tried on a real node before it is turned on', async () => {
+  it('is on when unset or empty: false or 0 turns the move off', async () => {
     Object.assign(process.env, REQUIRED);
     delete process.env.CATALOGUE_MOVE_ENABLED;
 
     const config = await loadConfig('move-unset');
 
-    assert.equal(config.catalogueMoveEnabled, false);
+    assert.equal(config.catalogueMoveEnabled, true);
+    for (const [tag, value] of [
+      ['empty', ''],
+      ['blank', '   '],
+    ]) {
+      Object.assign(process.env, REQUIRED, { CATALOGUE_MOVE_ENABLED: value });
+      assert.equal((await loadConfig(`move-${tag}`)).catalogueMoveEnabled, true, tag);
+    }
+    delete process.env.CATALOGUE_MOVE_ENABLED;
   });
 
   it('is on for true or 1, and off for false or 0', async () => {

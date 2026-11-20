@@ -2475,8 +2475,8 @@ const BATCH_MOVE_SLOT_MS = 1_000;
 const BATCH_RELEASE_AFTER_MS = 3_000;
 const BATCH_PURCHASES_NOT_OFFERED =
   'The manager does not offer batch purchases. A manager older than this page buys batches on its own pages.';
-/** Whether the catalogue move is switched on, as `CATALOGUE_MOVE_ENABLED` is, in the catalogue seeds. */
-const CATALOGUE_MOVE_ON = BATCH_PURCHASE_SEED === 'catalogue';
+/** Whether the catalogue move is on, as `CATALOGUE_MOVE_ENABLED` is by default: in every seed but `catalogue_off`. */
+const CATALOGUE_MOVE_ON = BATCH_PURCHASE_SEED !== 'catalogue_off';
 
 /** id -> purchase, as the admin keeps them; `phase` is its state, and each settles by the clock on every read. */
 const batchPurchases = new Map();
@@ -3570,8 +3570,8 @@ async function handle(req, res) {
     return send(res, 200, {
       catalogueStamp: null,
       catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
-      // Nothing to move without a catalogue stamp, and the move is off by default, as CATALOGUE_MOVE_ENABLED is.
-      // The catalogue seed of MOCK_BATCH_PURCHASES switches it on, and shows the move its purchase started.
+      // Nothing to move without a catalogue stamp. The move is on, as CATALOGUE_MOVE_ENABLED is by default, except
+      // in the catalogue_off seed of MOCK_BATCH_PURCHASES. The catalogue seed shows the move its purchase started.
       catalogueMove: {
         enabled: CATALOGUE_MOVE_ON,
         waiting: null,

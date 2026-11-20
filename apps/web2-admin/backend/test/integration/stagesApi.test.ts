@@ -92,9 +92,9 @@ describe('the manager’s stage routes', () => {
     const unset = {
       catalogueStamp: null,
       catalogueWrite: { batch: null, refusal: null, moveWaitingTo: null, unrecordedHistory: null },
-      // CATALOGUE_MOVE_ENABLED is not set for the instance: the move is off by default.
+      // CATALOGUE_MOVE_ENABLED is not set for the instance: the move is on by default.
       catalogueMove: {
-        enabled: false,
+        enabled: true,
         waiting: null,
         refusal: null,
         latest: null,

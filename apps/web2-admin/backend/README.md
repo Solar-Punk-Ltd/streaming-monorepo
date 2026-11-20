@@ -118,7 +118,7 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `FEED_TOPIC`                          | `swarm-stream`     | raw topic of that feed                                                                                                                                                                                                                            |
 | `VIEWER_BASE_URL`                     | empty              | branded viewer built for this feed, for "open player catalogue" links                                                                                                                                                                             |
 | `INTERNAL_API_TOKEN`                  | required           | 32+ chars. The registrar token the manager pushes stages with on `/api/internal`. No uploader is given it, and the uploader's routes refuse it                                                                                                    |
-| `CATALOGUE_MOVE_ENABLED`              | `false`            | `true` lets an operator move the catalogue's history onto another batch from the Stages page. Try it on a scratch node before turning it on                                                                                                       |
+| `CATALOGUE_MOVE_ENABLED`              | `true`             | lets an operator move the catalogue's history onto another batch from the Stages page. `false` or `0` turns the move off                                                                                                                          |
 | `STREAM_RESTART_WINDOW_MINUTES`       | `30`               | how long after a stream ends it can go live again on its key: a whole number of minutes from 0 to 10080, or the start stops. Then the admin changes the key. 0 changes it as soon as the stream ends: [Finalizing a stream](#finalizing-a-stream) |
 | `EXPORT_DIR`                          | a temporary folder | where exported recordings are kept, one folder per export named by its id; only such folders are ever deleted in it. The production compose file sets it to the `exports` volume: [Exporting a recording](#exporting-a-recording)                 |
 | `EXPORT_PARALLEL_READS`               | `6`                | how many segments an export reads from the catalogue node at once, a whole number from 1 to 32, or the start stops                                                                                                                                |
@@ -534,11 +534,10 @@ id and needs nothing here. Another batch means stamping every slot again under
 it before the old one lapses: `src/domain/CatalogueMove.ts`, with its progress
 in `catalogue_moves` (migration `014`).
 
-**Off by default.** `CATALOGUE_MOVE_ENABLED=true` turns it on. Try it on a
-scratch node first (`docs/architecture/stages.md`, "Trying the move on a real
-node"). While it is off, the Stages page says the move is not yet enabled on
-this installation, and a start is refused with `problem: disabled` before
-anything else, a move left running included.
+**On by default.** `CATALOGUE_MOVE_ENABLED=false` turns it off. While it is
+off, the Stages page says the move is not yet enabled on this installation, and
+a start is refused with `problem: disabled` before anything else, a move left
+running included.
 
 **When a move waits.** When the feed has history and the pinned batch is not the
 designated one (another designated, `moveWaitingTo`, or a move back to one that

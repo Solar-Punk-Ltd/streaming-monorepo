@@ -173,8 +173,7 @@ export interface CatalogueWriteStatus {
 /**
  * Why a move of the catalogue to the designated batch cannot start now:
  *
- * - `disabled`: `CATALOGUE_MOVE_ENABLED` is off on this installation, which it is until the move has been tried on a
- *   real node.
+ * - `disabled`: `CATALOGUE_MOVE_ENABLED` is off on this installation, set to false or 0. It is on unless set.
  * - `none`, `cleared`: the manager designates no batch to move to.
  * - `nothing`: every slot is already under the designated batch, by the admin's record.
  * - `target`: the designated batch is expired, gone or mutable.

@@ -42,7 +42,7 @@ export function catalogueMoveRefusal(
   const target = detail.targetBatchId ? shortBatch(detail.targetBatchId) : '';
   switch (problem) {
     case 'disabled':
-      return 'Moving the catalogue to another batch is not yet enabled on this installation. It is turned on with CATALOGUE_MOVE_ENABLED=true; try the move on a scratch node first.';
+      return 'Moving the catalogue to another batch is not yet enabled on this installation. It is turned on with CATALOGUE_MOVE_ENABLED=true.';
     case 'none':
       return 'The manager has not designated a catalogue batch, so there is no batch to move the catalogue to.';
     case 'cleared':
@@ -281,7 +281,7 @@ export interface MoveEntryRewriter {
 }
 
 export interface CatalogueMoveOptions {
-  /** `CATALOGUE_MOVE_ENABLED`. Off by default: the move has to be tried on a real node first. */
+  /** `CATALOGUE_MOVE_ENABLED`. On unless set to false or 0. */
   enabled: boolean;
   now?: () => number;
   sliceSlots?: number;
