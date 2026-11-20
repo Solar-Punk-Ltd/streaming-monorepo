@@ -1364,7 +1364,7 @@ export class ArchiveService {
           topic: stream.topic,
           index: stream.manifest_index,
         });
-        await this.copyFrame(ctx, stream, rungs, items, master);
+        await this.copyFrame(ctx, stream, rungs, master);
       }
       const payload = await this.copier.copySlot(ctx, feed);
       if (slotsCounted) {
@@ -1417,21 +1417,20 @@ export class ArchiveService {
 
   /**
    * The stream card's frame, which the viewer takes from the quality the master playlist lists first: that quality's
-   * playlist slot and its first segment that is not a gap, copied under the first quality's tag and counters. Nothing
-   * is copied when that quality is one of the job's own. A frame that cannot be copied is said in the log and left
-   * out, and the job's own qualities still complete. A parity chunk the frame lost costs the quality nothing.
+   * playlist slot and its first segment that is not a gap, posted under the first quality's tag on every pass, whether
+   * or not that quality is one of the job's own. A chunk posted again under the same stamp takes no more room. The
+   * frame stays outside the quality's counts, its posts aside, which the tag counts. A frame that cannot be copied is
+   * said in the log and left out, and the job's own qualities still complete.
    */
   private async copyFrame(
     ctx: CopyContext,
     stream: StreamRow,
     rungs: readonly StreamRenditionRow[],
-    items: readonly ArchiveItemRow[],
     master: string,
   ): Promise<void> {
     const topic = firstVariantTopic(master);
     const rung = topic === null ? undefined : rungs.find((candidate) => candidate.topic === topic);
-    if (rung && items.some((item) => item.rendition === rung.name)) return;
-    const parityMissing = ctx.counters.parityMissing;
+    const before = { ...ctx.counters };
     try {
       const feed = rung ? this.feedOf(stream, rungs, rung.name) : null;
       if (!feed) {
@@ -1442,13 +1441,13 @@ export class ArchiveService {
         );
       }
       const [first] = parseRecordingPlaylist(await this.copier.copySlot(ctx, feed)).segments;
-      if (first!.reference.length !== 64) throw new Error('its segment is encrypted');
-      await this.copier.copyTree(ctx, first!.reference);
+      if (!first) throw new Error('its playlist names no segment');
+      await this.copier.copyTree(ctx, first.reference);
     } catch (error) {
       if (ctx.signal.aborted) throw error;
       logger.warn(`[Archive] the card frame of "${stream.title}" is not copied: ${getErrorMessage(error)}`);
     } finally {
-      ctx.counters.parityMissing = parityMissing;
+      Object.assign(ctx.counters, { ...before, posts: ctx.counters.posts });
     }
   }
 

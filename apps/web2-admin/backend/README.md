@@ -1824,11 +1824,12 @@ the design.
   `POST /soc` and the signature it carries; the root a playlist above 4096 bytes
   is wrapped in, rebuilt from the slot and posted with `POST /chunks`; the tree
   under it; and every segment the playlist names, its root, intermediates, data
-  and parity chunks. With the first quality, the master playlist's slot and the
+  and parity chunks. Every job starts with the master playlist's slot and the
   stream card's frame: the playlist slot, root and tree of the quality the master
-  lists first, and its first segment that is not a gap, unless the job archives
-  that quality itself. A frame that cannot be copied is logged and left out, and
-  the job carries on. Every post must answer the address the chunk was read at.
+  lists first, and its first segment that is not a gap. A chunk posted again under
+  the same stamp takes no more room. The frame stays outside the quality's counts,
+  and a frame that cannot be copied is logged and left out. Every post must
+  answer the address the chunk was read at.
 - **Measuring.** Before any postage is spent, each segment's root is read: its
   span gives the bytes and its erasure level the chunks, by Bee's parity tables
   (`treeShape` in `chunkTree.ts`). That is an upper bound, and it finds a root no
