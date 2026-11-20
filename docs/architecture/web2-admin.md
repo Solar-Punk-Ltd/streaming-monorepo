@@ -162,13 +162,19 @@ Every post must answer the address the job expected, and any other answer stops 
 
 An uploaded thumbnail and the catalogue already live on the catalogue batch. Feed slots below the recorded
 index stay with the stage, since a recording is read by index. The ladder's time markers serve a
-live stream alone: a player of a recording asks for the current period's marker, finds none, and
-reads by index.
+live stream alone, and a player of a recording reads none.
+
+The stack player reads an archived recording only at the slots the catalogue entry names: each
+quality's final playlist at its `renditions[].index`, which lists every segment, and a single-quality
+recording's at the entry's `index`. It reads no earlier slot and no feed head, so the recording plays
+after its stage batch has expired. A quality that was not archived is dropped once its stage batch
+has expired, and the archived ones play.
 
 | Reader                                                     | How it finds a quality's playlist                                     |
 | ---------------------------------------------------------- | --------------------------------------------------------------------- |
 | The export                                                 | `stream_renditions.manifest_index`, then the root through `/bytes`    |
 | The event viewer and the stack player, for a listed stream | the catalogue entry's `renditions[].index`, which is that same column |
+| The stack player, for a listed single-quality stream       | the catalogue entry's `index`                                         |
 | Any reader of an unlisted stream                           | the master feed's head                                                |
 
 The master playlist names every recorded quality with no slot, and the stage key signs it, so the
