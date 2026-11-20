@@ -200,6 +200,24 @@ function labelOf(rendition: string): string {
   return rendition === SOURCE_RENDITION ? 'Source' : rendition;
 }
 
+/**
+ * The feed topic of the first quality a master playlist lists, as the viewer reads it for a stream card's frame: the
+ * URI after the first `#EXT-X-STREAM-INF` that names an owner and a topic, `swarm://<owner>/<topic>` or the bare
+ * `<owner>/<topic>`. Null when it lists none.
+ */
+function firstVariantTopic(master: string): string | null {
+  const lines = master.split(/\r?\n/).map((line) => line.trim());
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]!.startsWith('#EXT-X-STREAM-INF')) continue;
+    const uri = lines[i + 1];
+    if (!uri || uri.startsWith('#')) continue;
+    const [owner, topic] = (uri.startsWith('swarm://') ? uri.slice('swarm://'.length) : uri).split('/');
+    if (owner && topic) return topic;
+    i++;
+  }
+  return null;
+}
+
 function statusWords(status: StreamRow['status']): string {
   switch (status) {
     case 'draft':
@@ -1339,8 +1357,14 @@ export class ArchiveService {
       const slotsCounted = counters.chunks > 0;
       const held = { ...counters };
       // The master playlist's slot, with the first quality: it names every quality, and stays as the stage signed it.
+      // The stream card's frame goes with it.
       if (item.position === 0 && rungs.length > 0 && stream.manifest_index !== null) {
-        await this.copier.copySlot(ctx, { owner: stream.owner, topic: stream.topic, index: stream.manifest_index });
+        const master = await this.copier.copySlot(ctx, {
+          owner: stream.owner,
+          topic: stream.topic,
+          index: stream.manifest_index,
+        });
+        await this.copyFrame(ctx, stream, rungs, items, master);
       }
       const payload = await this.copier.copySlot(ctx, feed);
       if (slotsCounted) {
@@ -1389,6 +1413,43 @@ export class ArchiveService {
       );
     }
     if (!(await this.store.transition(job.id, ['copying'], { state: 'verifying' }))) throw new MovedOn();
+  }
+
+  /**
+   * The stream card's frame, which the viewer takes from the quality the master playlist lists first: that quality's
+   * playlist slot and its first segment that is not a gap, copied under the first quality's tag and counters. Nothing
+   * is copied when that quality is one of the job's own. A frame that cannot be copied is said in the log and left
+   * out, and the job's own qualities still complete. A parity chunk the frame lost costs the quality nothing.
+   */
+  private async copyFrame(
+    ctx: CopyContext,
+    stream: StreamRow,
+    rungs: readonly StreamRenditionRow[],
+    items: readonly ArchiveItemRow[],
+    master: string,
+  ): Promise<void> {
+    const topic = firstVariantTopic(master);
+    const rung = topic === null ? undefined : rungs.find((candidate) => candidate.topic === topic);
+    if (rung && items.some((item) => item.rendition === rung.name)) return;
+    const parityMissing = ctx.counters.parityMissing;
+    try {
+      const feed = rung ? this.feedOf(stream, rungs, rung.name) : null;
+      if (!feed) {
+        throw new Error(
+          rung
+            ? `the ${labelOf(rung.name)} recording it is taken from is not finished`
+            : 'the master playlist names no recorded quality first',
+        );
+      }
+      const [first] = parseRecordingPlaylist(await this.copier.copySlot(ctx, feed)).segments;
+      if (first!.reference.length !== 64) throw new Error('its segment is encrypted');
+      await this.copier.copyTree(ctx, first!.reference);
+    } catch (error) {
+      if (ctx.signal.aborted) throw error;
+      logger.warn(`[Archive] the card frame of "${stream.title}" is not copied: ${getErrorMessage(error)}`);
+    } finally {
+      ctx.counters.parityMissing = parityMissing;
+    }
   }
 
   private itemCounters(counters: CopyCounters, segmentsDone: number, segmentsTotal: number): ArchiveItemChange {
