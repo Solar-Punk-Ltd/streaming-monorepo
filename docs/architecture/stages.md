@@ -416,14 +416,16 @@ node. The scratch admin needs no setting for it, since the move is on by default
    the admin's Stages page, choose "Move the catalogue to batch B…", confirm, and publish a stream
    while it runs. Wait for "The catalogue was moved to batch B".
 4. **Check each slot under B.** For every index from 0 to the head, `GET /chunks/<slot address>` on
-   the node answers the same bytes as before the move, and `GET /stamps/<B>` shows its utilisation
-   grown by about the number of slots and data chunks. The admin's log has one
-   `Restamped feed index=` line per slot, and none failed. A slot's address is
-   keccak256(identifier, owner), and the `ref=` of each `Wrote feed index=` line in the log is it.
-5. **Check the viewer.** Dilute batch A or let it lapse (on a testnet, a batch bought with the
-   smallest amount lapses in hours), or point the viewer at a node that never held A's chunks. The
-   viewer still lists every entry it listed in step 2, with its thumbnail, and the stream published
-   during the move.
+   the node answers the same bytes as before the move. The sum of `collisions` in
+   `GET /stamps/<B>/buckets` grows by the number of slots and their data chunks, to the same sum as
+   in `GET /stamps/<A>/buckets`. The `utilization` of `GET /stamps/<B>` is the fullest bucket's
+   count, so it barely moves. The admin's log has one `Restamped feed index=` line per slot, and
+   none failed. A slot's address is keccak256(identifier, owner), and the `ref=` of each
+   `Wrote feed index=` line in the log is it.
+5. **Check the viewer.** Let batch A lapse, which takes a day or more: the smallest batch lasts
+   about a day, and the postage contract refuses a dilution that would leave less than a day of
+   life. Or point the viewer at a node that never held A's chunks. The viewer still lists every
+   entry it listed in step 2, with its thumbnail, and the stream published during the move.
 6. **Release.** Press "Release the previous batch" in the manager, and remove batch A's node if it
    was another deployment.
 
