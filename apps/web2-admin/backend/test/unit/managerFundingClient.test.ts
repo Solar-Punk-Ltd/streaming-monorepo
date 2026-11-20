@@ -830,7 +830,7 @@ describe('ManagerFundingClient: the failures', () => {
     const error = await failure(() => client.inventory());
 
     assert.deepEqual([error.code, error.status], ['bad_answer', 302]);
-    assert.match(error.message, /redirect/);
+    assert.match(error.message, /redirect.*MANAGER_API_URL/);
     assert.equal(seen.length, 1);
   });
 
@@ -932,13 +932,13 @@ describe('ManagerFundingClient: what it is given', () => {
       [
         'plain http to another host',
         { url: 'http://funding.example.test:9876' },
-        'MANAGER_FUNDING_URL',
+        'MANAGER_API_URL',
         'funding.example.test',
       ],
       [
         'a user in the address',
         { url: 'https://operator:password-1234@manager.example.org' },
-        'MANAGER_FUNDING_URL',
+        'MANAGER_API_URL',
         'password-1234',
       ],
       ['a short token', { token: 'tiny-funding-token' }, 'MANAGER_API_TOKEN', 'tiny-funding-token'],

@@ -23,7 +23,8 @@ import {
   BRAND_WALLET_SECRET_KEY,
   brandWalletSecretProblem,
   managerApiTokenProblem,
-  MANAGER_FUNDING_URL_KEY,
+  managerApiUrlFrom,
+  MANAGER_API_URL_KEY,
   managerFundingBaseUrl,
   managerFundingUrlProblem,
 } from './fundingSettings.js';
@@ -79,6 +80,11 @@ const FEED_GATEWAY_KINDS: readonly FeedGatewayKind[] = ['bee', 'fake'];
 export interface ManagerFundingSettings {
   /** The manager's address, https or plain http to this host, with no trailing slash: the API's paths go after it. */
   url: string;
+  /**
+   * The name the address was read under: `MANAGER_API_URL`, or `MANAGER_FUNDING_URL`, its former name, read when the
+   * other is unset. The boot log names it.
+   */
+  urlKey: string;
   /** The manager's API token, its `MANAGER_API_TOKEN`, the same value. Never logged. */
   token: string;
   /**
@@ -112,8 +118,9 @@ export interface AppConfig {
    */
   brandWalletSecret: string | null;
   /**
-   * `MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN`, or null when neither is set, and then funding is not set up
-   * (docs/architecture/funding.md). The token is read as `MANAGER_FUNDING_TOKEN` when `MANAGER_API_TOKEN` is unset.
+   * `MANAGER_API_URL` and `MANAGER_API_TOKEN`, or null when neither is set, and then funding is not set up
+   * (docs/architecture/funding.md). The address is read as `MANAGER_FUNDING_URL` when `MANAGER_API_URL` is unset,
+   * and the token as `MANAGER_FUNDING_TOKEN` when `MANAGER_API_TOKEN` is unset.
    */
   managerFunding: ManagerFundingSettings | null;
   /**
@@ -184,31 +191,32 @@ function brandWalletSecret(): string | null {
 }
 
 /**
- * `MANAGER_FUNDING_URL` with the manager's API token, or null when neither is set. The token is `MANAGER_API_TOKEN`,
+ * The manager's address with its API token, or null when neither is set. The address is `MANAGER_API_URL`, and
+ * `MANAGER_FUNDING_URL`, its former name, when that is unset (`managerApiUrlFrom`). The token is `MANAGER_API_TOKEN`,
  * and `MANAGER_FUNDING_TOKEN`, its former name, when that is unset (`managerApiTokenFrom`). One without the other, an
  * address the funding rules refuse, a token they refuse, or the address without `BRAND_WALLET_SECRET` stops the
- * start, with a sentence that names the keys and never repeats a value. Funding signs every transfer with the brand
- * wallet, so it is not set up without one.
+ * start, with a sentence that names the keys read and never repeats a value. Funding signs every transfer with the
+ * brand wallet, so it is not set up without one.
  */
 function managerFunding(): ManagerFundingSettings | null {
-  const url = optional(MANAGER_FUNDING_URL_KEY, '').trim();
+  const address = managerApiUrlFrom(process.env);
   const read = managerApiTokenFrom(process.env, MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN);
-  if (url === '') {
+  if (address === null) {
     if (read === null) return null;
     throw new Error(
-      `Env var ${read.key} is set without ${MANAGER_FUNDING_URL_KEY}: set both to set funding up, or neither`,
+      `Env var ${read.key} is set without ${MANAGER_API_URL_KEY}: set both to set funding up, or neither`,
     );
   }
   const problem =
-    managerFundingUrlProblem(url) ??
+    managerFundingUrlProblem(address.value, address.key) ??
     (read === null
-      ? `${MANAGER_API_TOKEN_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: it is the manager's ${MANAGER_API_TOKEN_KEY}, the same value`
+      ? `${MANAGER_API_TOKEN_KEY} is required with ${address.key}: it is the manager's ${MANAGER_API_TOKEN_KEY}, the same value`
       : managerApiTokenProblem(read.value, read.key)) ??
     (optional(BRAND_WALLET_SECRET_KEY, '').trim() === ''
-      ? `${BRAND_WALLET_SECRET_KEY} is required with ${MANAGER_FUNDING_URL_KEY}: funding signs every transfer with the brand wallet, whose key is encrypted under it`
+      ? `${BRAND_WALLET_SECRET_KEY} is required with ${address.key}: funding signs every transfer with the brand wallet, whose key is encrypted under it`
       : null);
   if (problem) throw new Error(`Env var ${problem}`);
-  return { url: managerFundingBaseUrl(url), token: read!.value, tokenKey: read!.key };
+  return { url: managerFundingBaseUrl(address.value), urlKey: address.key, token: read!.value, tokenKey: read!.key };
 }
 
 /**

@@ -59,7 +59,7 @@ services:
       postgres:
         condition: service_healthy
     # A manager on the same host is reached as host.docker.internal in
-    # MANAGER_FUNDING_URL, since localhost inside this container is the
+    # MANAGER_API_URL, since localhost inside this container is the
     # container itself. The catalogue node's address comes from the manager's
     # push and needs nothing here.
     extra_hosts:

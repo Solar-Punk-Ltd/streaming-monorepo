@@ -41,7 +41,7 @@ import {
 } from '@streaming-monorepo/contracts';
 
 import {
-  MANAGER_FUNDING_URL_KEY,
+  MANAGER_API_URL_KEY,
   managerApiTokenProblem,
   managerFundingBaseUrl,
   managerFundingUrlProblem,
@@ -438,7 +438,7 @@ export class ManagerFundingClient {
         throw new ManagerFundingError(
           'bad_answer',
           status,
-          `The manager answered ${route} with a redirect, which the admin does not follow: ${MANAGER_FUNDING_URL_KEY} has to be the address the manager answers on itself.`,
+          `The manager answered ${route} with a redirect, which the admin does not follow: ${MANAGER_API_URL_KEY} has to be the address the manager answers on itself.`,
         );
       }
       bytes = await readAnswer(response, signal, this.#maxAnswerBytes, route);
@@ -474,7 +474,7 @@ export class ManagerFundingClient {
     throw new ManagerFundingError(
       'bad_answer',
       status,
-      `The manager answered ${route} with status ${status} and no funding API error: is ${MANAGER_FUNDING_URL_KEY} the manager's address, and does it run the funding API?`,
+      `The manager answered ${route} with status ${status} and no funding API error: is ${MANAGER_API_URL_KEY} the manager's address, and does it run the funding API?`,
     );
   }
 }

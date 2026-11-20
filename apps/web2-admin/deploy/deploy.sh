@@ -395,15 +395,22 @@ fi
 
 # Funding from the admin (docs/architecture/funding.md). The API's first start
 # with BRAND_WALLET_SECRET creates the brand wallet, its key encrypted under
-# the secret, so a secret is checked whenever it is set. MANAGER_FUNDING_URL
-# sets funding up, and then the secret is needed, to sign transfers, and so is
-# MANAGER_API_TOKEN, the manager's own MANAGER_API_TOKEN. The token is read as
-# MANAGER_FUNDING_TOKEN, its former name, while MANAGER_API_TOKEN is unset, as
-# the API reads it, and each sentence names the key it was read under. A token
-# without the address is refused, as the API refuses it. The address itself is
-# left to the API, which refuses one that is not https or plain http to this
-# host and says why in its log. No value is printed.
-MANAGER_FUNDING_URL="$(env_value MANAGER_FUNDING_URL)"
+# the secret, so a secret is checked whenever it is set. MANAGER_API_URL sets
+# funding up, and then the secret is needed, to sign transfers, and so is
+# MANAGER_API_TOKEN, the manager's own MANAGER_API_TOKEN. The address is read
+# as MANAGER_FUNDING_URL, and the token as MANAGER_FUNDING_TOKEN, their former
+# names, while the new ones are unset, as the API reads them, and each
+# sentence names the key it was read under. A token without the address is
+# refused, as the API refuses it. The address itself is left to the API, which
+# refuses one that is not https or plain http to this host and says why in its
+# log. No value is printed.
+MANAGER_API_URL_KEY=MANAGER_API_URL
+MANAGER_API_URL="$(env_value MANAGER_API_URL)"
+if [ -z "$MANAGER_API_URL" ] && [ -n "$(env_value MANAGER_FUNDING_URL)" ]; then
+    MANAGER_API_URL_KEY=MANAGER_FUNDING_URL
+    MANAGER_API_URL="$(env_value MANAGER_FUNDING_URL)"
+    warn "MANAGER_FUNDING_URL is the former name of MANAGER_API_URL, and is read while MANAGER_API_URL is unset. Rename it in $ENV_FILE_FROM_ROOT."
+fi
 BRAND_WALLET_SECRET="$(env_value BRAND_WALLET_SECRET)"
 MANAGER_API_TOKEN_KEY=MANAGER_API_TOKEN
 MANAGER_API_TOKEN="$(env_value MANAGER_API_TOKEN)"
@@ -413,8 +420,8 @@ if [ -z "$MANAGER_API_TOKEN" ] && [ -n "$(env_value MANAGER_FUNDING_TOKEN)" ]; t
     warn "MANAGER_FUNDING_TOKEN is the former name of MANAGER_API_TOKEN, and is read while MANAGER_API_TOKEN is unset. Rename it in $ENV_FILE_FROM_ROOT."
 fi
 if [ -z "$BRAND_WALLET_SECRET" ]; then
-    if [ -n "$MANAGER_FUNDING_URL" ]; then
-        problem "BRAND_WALLET_SECRET is missing or empty, and MANAGER_FUNDING_URL sets funding up. The brand wallet's key is encrypted under it: generate one with openssl rand -hex 32, and keep it."
+    if [ -n "$MANAGER_API_URL" ]; then
+        problem "BRAND_WALLET_SECRET is missing or empty, and $MANAGER_API_URL_KEY sets funding up. The brand wallet's key is encrypted under it: generate one with openssl rand -hex 32, and keep it."
     fi
 elif ! [[ "$BRAND_WALLET_SECRET" =~ ^[0-9a-fA-F]{64}$ ]]; then
     problem "BRAND_WALLET_SECRET must be 64 hex characters (32 bytes)."
@@ -422,7 +429,7 @@ elif [ "$(lower "$BRAND_WALLET_SECRET")" = "$SAMPLE_BRAND_WALLET_SECRET" ]; then
     sample_secret "BRAND_WALLET_SECRET is the placeholder earlier .env.sample files shipped. The brand wallet's key is encrypted under it, so generate a real one with openssl rand -hex 32 before the wallet is created."
 fi
 
-if [ -n "$MANAGER_FUNDING_URL" ]; then
+if [ -n "$MANAGER_API_URL" ]; then
     if [ "${#MANAGER_API_TOKEN}" -lt 32 ]; then
         problem "$MANAGER_API_TOKEN_KEY must be at least 32 characters (got ${#MANAGER_API_TOKEN}): the manager's MANAGER_API_TOKEN, the same value."
     # The C locale for this one test, so the range is bytes and a space, a
@@ -435,7 +442,7 @@ if [ -n "$MANAGER_FUNDING_URL" ]; then
         sample_secret "$MANAGER_API_TOKEN_KEY is the placeholder from .env.sample. It opens the manager's API, so give it the manager's own MANAGER_API_TOKEN."
     fi
 elif [ -n "$MANAGER_API_TOKEN" ]; then
-    problem "$MANAGER_API_TOKEN_KEY is set without MANAGER_FUNDING_URL. Set both to set funding up, or neither."
+    problem "$MANAGER_API_TOKEN_KEY is set without MANAGER_API_URL. Set both to set funding up, or neither."
 fi
 
 # The INGEST_* keys are no longer read: each stream's OBS details come from its
