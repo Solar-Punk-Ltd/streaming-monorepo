@@ -27,6 +27,7 @@ const fakes = vi.hoisted(() => {
         fakes.stopLadderWatch,
     ),
     registerLadder: vi.fn(),
+    registerRecording: vi.fn(),
     subscriptions,
     unsubscribed,
     detachStallReporter,
@@ -49,6 +50,7 @@ vi.mock('../src/components/SwarmHlsPlayer/CustomManifestLoader', () => ({
   manifestFetcher: {
     feedHealth: fakes.feedHealth,
     registerLadder: fakes.registerLadder,
+    registerRecording: fakes.registerRecording,
     unregisterLadder: vi.fn(),
     watchLadderCompletion: fakes.watchLadderCompletion,
     startsSlowly: () => fakes.startsSlowly.value,
@@ -92,6 +94,7 @@ beforeEach(() => {
   fakes.feedHealth.recordPlaybackStall.mockClear();
   fakes.attachStallReporter.mockClear();
   fakes.registerLadder.mockClear();
+  fakes.registerRecording.mockClear();
   fakes.watchLadderCompletion.mockClear();
   fakes.stopLadderWatch.mockClear();
   fakes.detachStallReporter.mockClear();
@@ -270,5 +273,52 @@ describe('the player watches its ladder markers for rungs the stream list did no
     root = createRoot(container);
 
     assert.equal(fakes.stopLadderWatch.mock.calls.length, 1);
+  });
+});
+
+/**
+ * A recording whose stage stamps ran out keeps only the archive's copy: each quality's final playlist at
+ * the slot its rendition names, and a one-quality stream's at the entry's own index. The player hands
+ * those slots on, and watches no ladder markers, which the archive does not copy.
+ */
+describe('the player reads a recording at the slots its entry names', () => {
+  const rendition = (name: string, height: number, index?: number): Rendition => ({
+    name,
+    width: (height * 16) / 9,
+    height,
+    topic: `rung-${name}`,
+    bandwidth: height * 1000,
+    avgBandwidth: height * 1000,
+    index,
+  });
+  const RECORDED = [rendition('360p', 360, 337), rendition('1080p', 1080, 332)];
+  const registeredSource = () => {
+    const resolve = fakes.registerLadder.mock.calls.at(-1)?.[1] as (() => { recorded?: boolean }) | undefined;
+    assert.ok(resolve, 'no ladder was registered');
+    return resolve();
+  };
+
+  it('registers a recording’s ladder as recorded, and starts no ladder watch', () => {
+    mount({ topicString: 'stream-a', renditions: RECORDED, recording: { index: 12 } });
+
+    assert.equal(registeredSource().recorded, true);
+    assert.equal(fakes.registerRecording.mock.calls.length, 0);
+    assert.equal(fakes.watchLadderCompletion.mock.calls.length, 0);
+  });
+
+  it('registers a one-quality recording at the entry’s index', () => {
+    mount({ topicString: 'stream-a', recording: { index: 41 } });
+
+    assert.deepEqual(fakes.registerRecording.mock.calls, [[`swarm://${OWNER}/stream-a`, 41]]);
+    assert.equal(fakes.registerLadder.mock.calls.length, 0);
+    assert.equal(fakes.watchLadderCompletion.mock.calls.length, 0);
+  });
+
+  it('registers a live ladder as not recorded, whatever index its rungs carry, and watches it', () => {
+    mount({ topicString: 'stream-a', renditions: RECORDED });
+
+    assert.equal(registeredSource().recorded, false);
+    assert.equal(fakes.registerRecording.mock.calls.length, 0);
+    assert.equal(fakes.watchLadderCompletion.mock.calls.length, 1);
   });
 });

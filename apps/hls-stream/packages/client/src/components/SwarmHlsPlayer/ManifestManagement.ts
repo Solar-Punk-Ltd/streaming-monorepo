@@ -6,6 +6,7 @@ import {
   HLS_PLAYLIST_TYPE,
   HLS_PLAYLIST_TYPE_EVENT,
   HLS_PLAYLIST_TYPE_VOD,
+  feedSlotPath,
   nextFeedRequest,
   parseManifest,
   type Segment,
@@ -432,6 +433,11 @@ function namesSegment(url: string, uri: string): boolean {
 interface LadderSource {
   owner: string;
   renditions: Rendition[];
+  /**
+   * The stream is a recording, so each rung is read at the final slot its rendition's `index` names.
+   * Read once, when the ladder is registered. A live stream's rungs are searched, whatever index they carry.
+   */
+  recorded?: boolean;
 }
 
 /**
@@ -642,6 +648,9 @@ export class ManifestFetcher {
   /** Each ladder's player clock, by the group topic its overlay watches. See {@link attachPlayhead}. */
   private readonly playheads = new Map<string, PlayheadClock>();
 
+  /** The final slot of each one-quality recording, by hex topic. See {@link registerRecording}. */
+  private readonly recordings = new Map<string, number>();
+
   constructor(
     private readonly stateManager: ManifestStateManager = ManifestStateManager.getInstance(),
     /** Shared with whatever renders the state, so both halves see one reading. */
@@ -796,9 +805,23 @@ export class ManifestFetcher {
       ladder.renditions.map((rendition) => ({
         topic: Topic.fromString(rendition.topic),
         bandwidth: rendition.bandwidth,
+        finalIndex: ladder.recorded ? rendition.index : undefined,
       })),
       groupHexOf(sourceUrl),
     );
+  }
+
+  /**
+   * Declares that the one-quality stream loaded from `sourceUrl` is a recording whose final playlist is
+   * at `finalIndex`, the index of its stream-list entry. Its playlist is read at that slot rather than by
+   * the feed's head lookup, which answers nothing once the feed's earlier slots are gone. Forgotten by
+   * {@link unregisterLadder}.
+   */
+  registerRecording(sourceUrl: string, finalIndex: number): void {
+    const hexTopic = groupHexOf(sourceUrl);
+    if (hexTopic !== null) {
+      this.recordings.set(hexTopic, finalIndex);
+    }
   }
 
   /**
@@ -810,6 +833,10 @@ export class ManifestFetcher {
    * with the stop, so a response still in flight cannot recreate the state it lands after.
    */
   unregisterLadder(sourceUrl: string): void {
+    const hexTopic = groupHexOf(sourceUrl);
+    if (hexTopic !== null) {
+      this.recordings.delete(hexTopic);
+    }
     const registered = this.ladders.get(sourceUrl);
     this.ladders.delete(sourceUrl);
 
@@ -855,9 +882,8 @@ export class ManifestFetcher {
     const generation = this.stateManager.generation(hexTopic);
     await this.awaitFeedBackoff(hexTopic);
 
-    const { path } = nextFeedRequest(source.owner, topic, null);
     try {
-      const res = await servedText(this.swarm.readFeedHead(source.owner, topic), path);
+      const { response: res, path } = await this.readNewest(source.owner, topic);
       const text = res.text;
 
       if (isMasterPlaylist(text)) {
@@ -1068,9 +1094,8 @@ export class ManifestFetcher {
     // it looks: an empty manifest reaches hls.js as a fatal parse error, which restarts the player
     // straight back into this method, and a gateway recorded as healthy imposes no backoff on that
     // loop and says nothing to the viewer. A 200 carrying a captive portal's HTML does exactly that.
-    const { path } = nextFeedRequest(owner, topic, null);
     try {
-      const res = await servedText(this.swarm.readFeedHead(owner, topic), path);
+      const { response: res, path } = await this.readNewest(owner, topic);
       this.assertTopicSurvived(hexTopic, generation);
 
       const manifest = this.ingestManifest(owner, topic, res, path);
@@ -1084,6 +1109,21 @@ export class ManifestFetcher {
       this.feedHealth.recordGatewayFailure(hexTopic, retryAfterMsOf(error));
       throw error;
     }
+  }
+
+  /**
+   * A feed's newest playlist, the read a mount starts from: the feed's head, or a one-quality
+   * recording's final slot, which is served with that slot as its index.
+   */
+  private async readNewest(owner: string, topic: Topic): Promise<{ response: ServedText; path: string }> {
+    const finalIndex = this.recordings.get(topic.toString());
+    if (finalIndex === undefined) {
+      const { path } = nextFeedRequest(owner, topic, null);
+      return { response: await servedText(this.swarm.readFeedHead(owner, topic), path), path };
+    }
+    const path = feedSlotPath(owner, topic, FeedIndex.fromBigInt(BigInt(finalIndex)));
+    const { text } = await servedText(this.swarm.readFeedEntry(owner, topic, finalIndex), path);
+    return { response: { text, feedIndex: finalIndex }, path };
   }
 
   /**

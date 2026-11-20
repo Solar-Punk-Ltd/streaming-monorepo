@@ -58,11 +58,23 @@ export const CANDIDATE_FIND_DEADLINE_MS = 15_000;
  */
 const MAX_READ_BACK_READS = 10;
 
+/**
+ * How many times a recording's final slot is read before its quality is dropped. A miss more than the
+ * first is a gateway that did not find the chunk in time rather than a slot nobody holds, and a few
+ * reads a poll interval apart cost a level request a second or two, inside its own deadline.
+ */
+const FINAL_SLOT_READS = 3;
+
 /** A rung as a ladder names it. */
 export interface LadderRung {
   readonly topic: Topic;
   /** Orders the rungs, so "the next lower rung" means something. Missing ranks lowest. */
   readonly bandwidth?: number;
+  /**
+   * The slot of the rung's final playlist, set only for a recording. Its final playlist lists every
+   * segment, so the rung is read there once, in place of every search, and never read back or followed.
+   */
+  readonly finalIndex?: number;
 }
 
 /** What a level request finds once it has waited for a rung. */
@@ -130,6 +142,8 @@ interface RungEntry {
   readonly hexTopic: string;
   readonly owner: string;
   readonly bandwidth: number;
+  /** See {@link LadderRung.finalIndex}. Null for a live rung, which is searched. */
+  readonly finalIndex: number | null;
   readonly ladder: LadderEntry;
   /** Null while the rung is registered but not followed. */
   walk: Walk | null;
@@ -218,7 +232,7 @@ export class LadderFeedPoller {
    */
   public register(owner: string, rungs: readonly LadderRung[], groupHexTopic: string | null = null): void {
     const ladder = this.ladderFor(groupHexTopic);
-    for (const { topic, bandwidth } of rungs) {
+    for (const { topic, bandwidth, finalIndex } of rungs) {
       const hexTopic = topic.toString();
       if (this.rungs.has(hexTopic)) {
         continue;
@@ -228,6 +242,7 @@ export class LadderFeedPoller {
         hexTopic,
         owner,
         bandwidth: bandwidth ?? 0,
+        finalIndex: finalIndex ?? null,
         ladder,
         walk: null,
         retired: false,
@@ -511,6 +526,10 @@ export class LadderFeedPoller {
    * it did. A turn with no marker asks the slot itself, which counts through the reader.
    */
   private countedMarkers(entry: RungEntry, walk: Walk, clock: FollowClock): HeadMarkers | undefined {
+    // A recording has none: the archive copies a rung's final playlist and not the ladder's markers.
+    if (entry.finalIndex !== null) {
+      return undefined;
+    }
     const markers = this.headMarkers(feedRungOf(entry), clock);
     if (markers === null) {
       return undefined;
@@ -625,9 +644,17 @@ export class LadderFeedPoller {
     }
 
     const found =
-      walk.seed ?? (await this.finder.findNewest(rung, playing ? this.hintFrom(playing) : null, () => walk.stopped));
+      walk.seed ??
+      (entry.finalIndex !== null
+        ? await this.readFinalSlot(entry, walk)
+        : await this.finder.findNewest(rung, playing ? this.hintFrom(playing) : null, () => walk.stopped));
     walk.seed = null;
     if (walk.stopped) {
+      return false;
+    }
+    if (found === null && entry.finalIndex !== null) {
+      // Never the wait for a first slot below, which would read slot 0 of a feed whose early slots are gone.
+      this.dropUnreadRecording(entry, playing);
       return false;
     }
     walk.waitingForFirstSlot = found === null;
@@ -651,7 +678,11 @@ export class LadderFeedPoller {
       }
     }
 
-    const older = playing && !walk.isCandidate ? await this.readBackToPlayhead(entry, walk, found) : [];
+    // A recording's final playlist already holds every segment, so there is nothing older to read.
+    const older =
+      playing && !walk.isCandidate && entry.finalIndex === null
+        ? await this.readBackToPlayhead(entry, walk, found)
+        : [];
     if (walk.stopped) {
       return false;
     }
@@ -682,6 +713,74 @@ export class LadderFeedPoller {
       this.feedHealth.forgetStaleEnd(entry.ladder.group);
     }
     return true;
+  }
+
+  /**
+   * A recording's final playlist, read at the slot the stream list names, up to {@link FINAL_SLOT_READS}
+   * times a poll interval apart while it is not served. A read the gateway did not answer throws, as
+   * every walk's read does, and the walk backs off and reads it again.
+   *
+   * @returns Null when the slot was not served by any read, or the walk stopped.
+   */
+  private async readFinalSlot(entry: RungEntry, walk: Walk): Promise<NewestIndex | null> {
+    for (let reads = 1; reads <= FINAL_SLOT_READS && !walk.stopped; reads++) {
+      const found = await this.finalSlotOf(entry, () => walk.stopped);
+      if (found !== null || walk.stopped) {
+        return found;
+      }
+      this.recordMiss(entry, walk, null);
+      if (reads < FINAL_SLOT_READS) {
+        await this.pauseFor(walk, this.pollIntervalMs);
+      }
+    }
+    return null;
+  }
+
+  /** One read of a recording's final slot, or null when it was not served. */
+  private async finalSlotOf(entry: RungEntry, isStopped: () => boolean): Promise<NewestIndex | null> {
+    if (entry.finalIndex === null) {
+      return null;
+    }
+    const reader = new RungFeedReader(this.reader, entry.owner, entry.topic, this.followClock.now, isStopped);
+    const read = await reader.read(entry.finalIndex);
+    const playlist = read.found ? reader.playlistOf(read.entry) : undefined;
+    if (playlist === undefined) {
+      return null;
+    }
+    return { index: FeedIndex.fromBigInt(BigInt(entry.finalIndex)), playlist };
+  }
+
+  /**
+   * A rung's newest playlist where a sibling is asked about: a recording's final slot, or the finder's
+   * search for a live rung.
+   */
+  private newestOf(entry: RungEntry, hint: SwitchHint | null, isStopped: () => boolean): Promise<NewestIndex | null> {
+    return entry.finalIndex !== null
+      ? this.finalSlotOf(entry, isStopped)
+      : this.finder.findNewest(feedRungOf(entry), hint, isStopped);
+  }
+
+  /**
+   * Drops a recorded quality whose final slot was not served, for the session, as a refused rung, so
+   * hls.js moves to a quality that remains: the one the viewer plays, or else the next lower one. The
+   * archive may not have copied it, and its stage's stamp may have run out.
+   *
+   * The last quality left is kept, since there is nothing to move to, and its final slot is read again
+   * after the walk's pause.
+   */
+  private dropUnreadRecording(entry: RungEntry, playing: RungEntry | null): void {
+    const to = playing ?? this.siblingOf(entry);
+    const reason = `its recording's final playlist, at index ${entry.finalIndex}, could not be read`;
+    if (to === null) {
+      // Said at every round, so quietly: the walk's own miss count warns once a run of them is long.
+      console.debug(`[SwarmHls] rung ${entry.hexTopic} is the only quality left and ${reason}, so it is read again`);
+      return;
+    }
+    // The walk that starts on the quality moved to becomes the playing one, as the first walk did.
+    if (entry.ladder.playing === entry) {
+      entry.ladder.playing = null;
+    }
+    this.refuse(entry, to, reason);
   }
 
   /** Where the playing rung stands, for a search of another rung to start from, or null before it has a slot. */
@@ -795,12 +894,14 @@ export class LadderFeedPoller {
   /**
    * Refuses a switch to a rung that has clearly stopped, and leaves the viewer on the rung they play.
    * The rung is announced once, for the player to take its level out.
+   *
+   * @param to The rung the viewer is moved to: the one they play, or a recording's next quality.
    */
-  private refuse(entry: RungEntry, playing: RungEntry, reason: string): void {
+  private refuse(entry: RungEntry, to: RungEntry, reason: string): void {
     entry.refused = true;
     entry.retired = true;
     this.deactivate(entry);
-    this.feedHealth.recordRungStopped(entry.hexTopic, { reason, failoverTo: playing.hexTopic });
+    this.feedHealth.recordRungStopped(entry.hexTopic, { reason, failoverTo: to.hexTopic });
   }
 
   /**
@@ -908,7 +1009,7 @@ export class LadderFeedPoller {
 
     let found: NewestIndex | null;
     try {
-      found = await this.finder.findNewest(feedRungOf(sibling), hint, () => !this.isCurrent(entry));
+      found = await this.newestOf(sibling, hint, () => !this.isCurrent(entry));
     } catch {
       // Nothing to confirm with. The playing rung's own ENDLIST is the stronger evidence.
       found = null;
