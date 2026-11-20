@@ -57,6 +57,7 @@ import { StreamService } from './domain/StreamService.js';
 import { StreamStateService } from './domain/StreamStateService.js';
 import { config } from './utils/config.js';
 import { getErrorStack } from './utils/errorUtils.js';
+import { MANAGER_API_URL_KEY } from './utils/fundingSettings.js';
 import { retiredEnvKeysSet } from './utils/retiredEnv.js';
 
 const logger = Logger.getInstance();
@@ -116,10 +117,15 @@ function logStartupConfig(owner: string, topicHex: string): void {
   logger.info(
     `[Boot]   manager funding: ${
       config.managerFunding
-        ? `${config.managerFunding.url}, with its token (${config.managerFunding.tokenKey})`
+        ? `${config.managerFunding.url} (${config.managerFunding.urlKey}), with its token (${config.managerFunding.tokenKey})`
         : '(unset → funding is not set up)'
     }`,
   );
+  if (config.managerFunding && config.managerFunding.urlKey !== MANAGER_API_URL_KEY) {
+    logger.warn(
+      `[Boot] the manager's address is read under ${config.managerFunding.urlKey}, its former name. Rename it ${MANAGER_API_URL_KEY} in the env file.`,
+    );
+  }
   if (config.managerFunding && config.managerFunding.tokenKey !== MANAGER_API_TOKEN_KEY) {
     logger.warn(
       `[Boot] the manager's API token is read under ${config.managerFunding.tokenKey}, its former name. Rename it ${MANAGER_API_TOKEN_KEY} in the env file.`,
@@ -333,7 +339,7 @@ async function main(): Promise<void> {
   });
   stageService.onCatalogueStampStored(() => void feedBootCheck.catalogueStampStored());
   // The brand wallet started above, its address null without BRAND_WALLET_SECRET, and the client of the manager's
-  // funding API, none without MANAGER_FUNDING_URL and MANAGER_API_TOKEN: then the Funding page answers that
+  // funding API, none without MANAGER_API_URL and MANAGER_API_TOKEN: then the Funding page answers that
   // funding is not set up, and every pin, send, stamp request and chequebook request is refused.
   const managerFunding = config.managerFunding ? new ManagerFundingClient(config.managerFunding) : null;
   // A new batch bought on the Stamps tab: written, sent to the manager and followed up, a catalogue batch moved onto

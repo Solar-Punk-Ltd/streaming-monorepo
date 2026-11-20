@@ -168,7 +168,7 @@ export function managerProblem(error: unknown): string {
     case 'chain_unreachable':
       return 'The manager could not reach the chain.';
     default:
-      return "The manager's answer could not be read. Is MANAGER_FUNDING_URL the manager's address, and does it run the funding API?";
+      return "The manager's answer could not be read. Is MANAGER_API_URL the manager's address, and does it run the funding API?";
   }
 }
 
@@ -797,7 +797,7 @@ export class FundingService {
     if (!this.manager) {
       throw new FundingRefusedError(
         'not_set_up',
-        'Funding is not set up: the admin has no MANAGER_FUNDING_URL and MANAGER_API_TOKEN.',
+        'Funding is not set up: the admin has no MANAGER_API_URL and MANAGER_API_TOKEN.',
       );
     }
     return this.manager;
