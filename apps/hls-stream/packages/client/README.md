@@ -421,7 +421,7 @@ and the registry of kinds stay behind it, so a new kind of provider changes noth
 
 Standard hls.js expects static manifest URLs. On Swarm, every manifest update produces a new content hash. The client solves this with custom loaders:
 
-1. **CustomManifestLoader.** Instead of fetching a static URL, it hands hls.js's playlist requests to the `ManifestFetcher`. The top-level playlist is built from the stream list when the list names the renditions, and is otherwise the source feed's head. A single-rendition stream is then followed by reading its next slots by number, and a rung of a ladder by `LadderFeedPoller` (item 4), which never uses Bee's feed lookup.
+1. **CustomManifestLoader.** Instead of fetching a static URL, it hands hls.js's playlist requests to the `ManifestFetcher`. The top-level playlist is built from the stream list when the list names the renditions, and is otherwise the source feed's head, or a one-quality recording's final slot. A single-rendition stream is then followed by reading its next slots by number, and a rung of a ladder by `LadderFeedPoller` (item 4), which never uses Bee's feed lookup.
 2. **CustomFragmentLoader.** Resolves segment references from the manifest (which contain Swarm hashes) into fetchable URLs, the ones the Swarm client's player reader gives.
 3. **ManifestStateManager.** Merges incoming live manifests into a growing EVENT-type playlist so segments remain available longer than the sliding window. Tracks feed indices, handles deduplication, and caches serialized output.
 4. **LadderFeedPoller.** For ABR streams, owns the feed walk of the rung hls.js plays, plus the one being switched to while a switch is under way. See [Following a rung's feed](#following-a-rungs-feed).
@@ -444,6 +444,8 @@ Every rung of the ladder is registered with `LadderFeedPoller`, and it reads onl
   - At the start, at a switch, and when a rung stops or finishes, the player reads the marker of the previous 10 seconds, and the one before if that is missing, then one round of eight slots from where it says. One marker read serves every rung for a few seconds, and a marker address found missing is never asked again.
   - The clock is the gateway's, taken from the `Date` header of every answer the Swarm client reads, so a viewer whose clock is wrong still finds the marker. A gateway on another origin has to list `Date` in `Access-Control-Expose-Headers` for the browser to show it, and without that the correction stays zero.
   - With no marker, it searches. At the start it reads eight slots at once, spread out to the feed's length, closing in on the newest in a few rounds. At a switch it starts from the playing rung's newest slot, usually one round. The new rung is read further back when the viewer is behind the live edge, at most ten reads.
+- **A recording** is read at the slots its stream-list entry names, never searched for. See
+  [Reading a recording](#reading-a-recording).
 - **A quality's first playlist** is waited for 20 s, the poller's 15 s search and 5 s more, and then
   that quality is failed so hls.js tries another, because a gateway that does not hold a quality never
   answers for it.
@@ -459,6 +461,32 @@ Every rung of the ladder is registered with `LadderFeedPoller`, and it reads onl
   - The player keeps reading from the source picked for it and never switches to another, and it makes
     no read more often than before. Until the first picture it says "This Swarm source answers slowly,
     so the video takes longer to start". On a source that is not slow nothing changes.
+
+### Reading a recording
+
+Once a stream's stage stamps run out, only the archive's copy of a recording stays on Swarm. That copy
+is the master slot at the entry's `index`, the card's frame, and each archived quality's final
+playlist at its rendition's `index`, with its segments. Every earlier slot of a feed, its head lookup
+and the ladder's time markers then answer 404. So the player reads a recording only where its entry
+says. A recording is an entry whose `state` is `vod`, and the watch page hands the player its `index`
+(`recordingOf` in `utils/playableRenditions.ts`).
+
+- **Each quality is one read.** Its final playlist is an EVENT playlist closed with `#EXT-X-ENDLIST`
+  that lists every segment, so the player reads it at its rendition's `index` and nothing else. This
+  holds at the start, at a switch, at a failover and when an end is checked on a sibling. Nothing is
+  searched, nothing is read back to the viewer's position, and no ladder time marker is read.
+- **A one-quality recording** is read at the entry's own `index` rather than by the feed head lookup.
+- **A quality whose final slot cannot be read** is read up to three times, a poll interval apart, and
+  then dropped for the session, as a refused rung, so hls.js moves to the qualities that remain. Its
+  archive may never have been made, and its stage stamp may have run out. The last quality left is
+  kept and read again.
+- **A broadcast that comes back** is still found: the player asks for the slot after the final one
+  about every 30 seconds, as for a live stream that finished. Once it rejoins the broadcast, that
+  player searches the feeds again, whatever the entry still says.
+- **A live entry is searched** as before, whatever index it carries, since a slot it names is an older
+  playlist. The stream card follows the same rule.
+- **A direct link** to a stream that has no entry in the stream list cannot play a recording whose
+  early feed slots are gone, since nothing names its final slots.
 
 ## weeb-3 runs in a SharedWorker
 

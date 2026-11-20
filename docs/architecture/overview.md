@@ -73,6 +73,11 @@ the feed following and the ladder marker layout in its `src/shared/`. So a chang
 format, the playlist feeds or the marker layout must land in stream-event-client's `src/shared/`
 too.
 
+The stack's own viewer reads a finished stream, an entry whose `state` is `vod`, only at the slots the
+catalogue entry names: each quality's final playlist at its `renditions[].index`, and a single-quality
+stream's at the entry's `index`. Once a stream's stage stamps run out, those slots, kept by the
+archive, are all that is left of it, so a change to what those indexes name changes the viewer too.
+
 Inside this repository, the admin reads the recording playlists as well, to export a recording into
 an MP4 (`apps/web2-admin/backend/src/domain/export/playlist.ts`), so a change to the playlist format
 changes it in the same pull request.
