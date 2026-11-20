@@ -7,7 +7,7 @@ import { watchPageCatalogPollMs } from '@/providers/catalogPoll';
 import { useCatalogPoll } from '@/providers/useCatalogPoll';
 import { ROUTES } from '@/routes';
 import { MEDIA_TYPE_AUDIO, MEDIA_TYPE_VIDEO, MediaType, STREAM_STATUS_SCHEDULED } from '@/types/stream';
-import { playableRenditions } from '@/utils/playableRenditions';
+import { playableRenditions, recordingOf } from '@/utils/playableRenditions';
 import { scheduledStartLabel } from '@/utils/scheduledStart';
 import { WATCH_VIEW_PLAYER, watchPageView } from '@/utils/watchPageView';
 
@@ -72,6 +72,7 @@ export function StreamWatcher() {
           mediaType={mediatype}
           enableQoeOverlay={enableQoeOverlay}
           renditions={playableRenditions(stream)}
+          recording={recordingOf(stream)}
           level={level}
           onLadderShort={readNextStreamListSlot}
         />

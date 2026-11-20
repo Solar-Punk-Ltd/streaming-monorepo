@@ -54,3 +54,12 @@ export interface Stream {
    */
   scheduledStartTime?: string | number | null;
 }
+
+/**
+ * A finished stream, as the player reads it: from its final playlists, at the slots its entry names.
+ * See `recordingOf`.
+ */
+export interface StreamRecording {
+  /** The slot of the entry's own final playlist, which for a one-quality stream is its media playlist. */
+  readonly index?: number;
+}

@@ -3,7 +3,7 @@ import { Topic } from '@ethersphere/bee-js';
 import { ABR_BANDWIDTH_FACTOR, ABR_BANDWIDTH_UP_FACTOR } from '@swarm-hls-stream/shared';
 import Hls, { ErrorDetails, type ErrorData, ErrorTypes, Events } from 'hls.js';
 
-import { MEDIA_TYPE_VIDEO, MediaType, Rendition } from '@/types/stream';
+import { MEDIA_TYPE_VIDEO, MediaType, Rendition, type StreamRecording } from '@/types/stream';
 
 import { FeedStateOverlay } from './overlays/feed/FeedStateOverlay';
 import { QoeOverlay } from './overlays/qoe/QoeOverlay';
@@ -267,6 +267,13 @@ interface HlsPlayerProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
    */
   renditions?: Rendition[];
   /**
+   * Present when the stream is a recording. Each rung is then read at the final slot its rendition's
+   * `index` names, and a one-quality stream at this `index`, rather than searched for. Read when the
+   * player starts and at each restart, so an entry that finishes while it plays changes nothing until
+   * then. A broadcast this player rejoined live is searched from then on.
+   */
+  recording?: StreamRecording;
+  /**
    * Rung to pin playback to, by name. Omitted, or {@link AUTO_LEVEL}, leaves the choice to ABR,
    * which is the default. Pinning is for isolating one rung, comparing it against the others, or
    * telling a bad rung apart from a bad switch. Ignored without a ladder.
@@ -307,6 +314,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   controls = true,
   enableQoeOverlay = false,
   renditions,
+  recording,
   level,
   hlsConfig,
   onLadderShort,
@@ -325,6 +333,12 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
   renditionsRef.current = renditions;
   const onLadderShortRef = useRef(onLadderShort);
   onLadderShortRef.current = onLadderShort;
+  // Read through a ref like the renditions, so an entry finishing mid-play does not rebuild the player.
+  const recordingRef = useRef(recording);
+  recordingRef.current = recording;
+  // The source this player rejoined live after it had finished. Its entry can still say it is a
+  // recording, and the final slots it names now hold an old playlist, so its restarts search instead.
+  const rejoinedLiveRef = useRef<string | null>(null);
   // Held by the component rather than the effect below, so a restart finds the budget its stream spent.
   const [liveGapBudgets] = useState(() => new LiveGapBudgetPerStream());
   // Held by the component for the same reason: the player a restart builds reads where the old one was.
@@ -366,6 +380,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
     const sourceUrl = buildSwarmUri(owner, topicString);
     const liveGapBudget = liveGapBudgets.forStream(sourceUrl);
     const ladder = renditionsRef.current;
+    const recorded = rejoinedLiveRef.current === sourceUrl ? undefined : recordingRef.current;
 
     // A ladder the stream list names. Its master is built from the list and the master feed is never
     // read. A stream the list names no renditions for is recognised by the loader from its feed.
@@ -375,16 +390,22 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       manifestFetcher.registerLadder(sourceUrl, () => ({
         owner,
         renditions: renditionsRef.current ?? ladder,
+        recorded: recorded !== undefined,
       }));
+    } else if (recorded?.index !== undefined) {
+      manifestFetcher.registerRecording(sourceUrl, recorded.index);
     }
     // The list is not polled once the player is mounted with its entry, so a viewer who joined while
-    // only some qualities had reported, or none, would keep that ladder for the whole talk.
-    const stopLadderWatch = manifestFetcher.watchLadderCompletion(
-      sourceUrl,
-      owner,
-      () => (renditionsRef.current ?? []).map((rendition) => Topic.fromString(rendition.topic).toString()),
-      () => onLadderShortRef.current?.(),
-    );
+    // only some qualities had reported, or none, would keep that ladder for the whole talk. A recording's
+    // entry names every quality it recorded, and the archive keeps no markers to watch.
+    const stopLadderWatch = recorded
+      ? () => {}
+      : manifestFetcher.watchLadderCompletion(
+          sourceUrl,
+          owner,
+          () => (renditionsRef.current ?? []).map((rendition) => Topic.fromString(rendition.topic).toString()),
+          () => onLadderShortRef.current?.(),
+        );
 
     let hls: Hls | null = null;
     // A caller that sets its own live target keeps it, whatever its value. Only the shipped one
@@ -581,6 +602,7 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
       hls && returnTopic
         ? attachReturningBroadcastRejoin(video, manifestFetcher.feedHealth, returnTopic, () => {
             console.info('[SwarmHls] the broadcast has come back and this viewer reached the end, rejoining it live');
+            rejoinedLiveRef.current = sourceUrl;
             setRestartTrigger((prev) => prev + 1);
           })
         : null;

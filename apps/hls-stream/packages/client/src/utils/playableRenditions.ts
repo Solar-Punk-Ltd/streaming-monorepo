@@ -1,4 +1,4 @@
-import { Rendition, Stream, STREAM_STATUS_VOD } from '@/types/stream';
+import { Rendition, Stream, STREAM_STATUS_VOD, type StreamRecording } from '@/types/stream';
 
 /**
  * The rungs of a catalog entry a viewer can be handed: every rung of a live ladder, and only the rungs
@@ -16,4 +16,19 @@ export function playableRenditions(stream: Pick<Stream, 'state' | 'renditions'> 
     return renditions;
   }
   return renditions.filter((rendition) => rendition.index !== undefined);
+}
+
+/**
+ * What the player reads a finished entry by, or undefined for any other entry, which is searched.
+ *
+ * ⛔ Once a stream's stage stamps run out, only the archive's copy is left on Swarm: the master at the
+ * entry's `index` and each rung's final playlist at its rendition's `index`. Every earlier slot and the
+ * feed head lookup answer 404, so a recording is read only at the slots its entry names. A live entry
+ * keeps the search, as the card's `finishedRungIndex` does, since a slot it names is an old playlist.
+ */
+export function recordingOf(stream: Pick<Stream, 'state' | 'index'> | undefined): StreamRecording | undefined {
+  if (stream?.state !== STREAM_STATUS_VOD) {
+    return undefined;
+  }
+  return { index: stream.index };
 }
