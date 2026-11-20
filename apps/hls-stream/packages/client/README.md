@@ -100,6 +100,10 @@ with a redeploy.
     or an unpublish, for the same reason as the stream browser.
   - If the stream is unpublished while the page waits, the page says it is no longer available and
     keeps reading the catalogue, so publishing it again reaches the page without a reload.
+- **A watch page without its entry.** While the catalogue the page holds has no entry for its
+  stream, because the first read failed or the link names a stream the catalogue lacks, the page
+  plays at once and reads the catalogue again once a minute. When the entry arrives the player
+  restarts with its renditions, and the reads stop.
 - **A broadcast that comes back.** In admin mode a declared stream's broadcaster can stop and later
   return to the same feeds, and the admin lists the stream as live again.
   - After a feed finishes, the player keeps asking for the slot after the finished playlist, about
