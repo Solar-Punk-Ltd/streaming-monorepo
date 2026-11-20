@@ -204,7 +204,7 @@ chain id is fixed in the admin.
 
 The manager serves the admin a funding API under `/api/admin-funding`, behind a bearer token, the
 manager's API token, `MANAGER_API_TOKEN`. The admin holds the manager's address in
-`MANAGER_FUNDING_URL` and the same token under the same name, `MANAGER_API_TOKEN`. Neither the token
+`MANAGER_API_URL` and the same token under the same name, `MANAGER_API_TOKEN`. Neither the token
 nor a session cookie works on the other's routes. With the token unset in the manager the API is
 off and every path under it answers 404.
 
@@ -278,13 +278,13 @@ the next send and the Funding page refresh the open one, and the page resumes it
 
 ## Settings
 
-| Setting               | Where                        | What it is                                                                                         |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under. Unset, no wallet exists   |
-| `MANAGER_FUNDING_URL` | the admin's env file         | the manager's address. Empty, funding is not set up and the Funding page says so                   |
-| `MANAGER_API_TOKEN`   | the admin's env file         | the manager's `MANAGER_API_TOKEN`, the same value. Read as `MANAGER_FUNDING_TOKEN` when unset      |
-| `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off |
-| `FUNDING_RPC_URL`     | the manager's `manager/.env` | the chain endpoint the funding API reads and broadcasts through. Unset, it is `BEE_RPC_ENDPOINT`   |
+| Setting               | Where                        | What it is                                                                                                                 |
+| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under. Unset, no wallet exists                           |
+| `MANAGER_API_URL`     | the admin's env file         | the manager's address. Read as `MANAGER_FUNDING_URL` when unset. Empty, funding is not set up and the Funding page says so |
+| `MANAGER_API_TOKEN`   | the admin's env file         | the manager's `MANAGER_API_TOKEN`, the same value. Read as `MANAGER_FUNDING_TOKEN` when unset                              |
+| `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off                         |
+| `FUNDING_RPC_URL`     | the manager's `manager/.env` | the chain endpoint the funding API reads and broadcasts through. Unset, it is `BEE_RPC_ENDPOINT`                           |
 
 The sample env files describe each setting in full, and the admin's deploy script refuses the
 sample values of the secret and the token.

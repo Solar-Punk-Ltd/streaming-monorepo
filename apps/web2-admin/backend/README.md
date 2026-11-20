@@ -127,8 +127,8 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`        | `0.1`              | under what the catalogue node's chequebook can pay, in BZZ, an archive pauses for `funds`; `0` never pauses                                                                                                                                       |
 | `ARCHIVE_TTL_WARNING_DAYS`            | `30`               | under what time left an archive stamp is shown with a warning, 1 to 365 days                                                                                                                                                                      |
 | `ARCHIVE_BUY_DEFAULT_DAYS`            | `30`               | how long a new archive stamp lasts unless the user says otherwise, 2 to 3650 days                                                                                                                                                                 |
-| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                          |
-| `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                   |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_API_URL`                                                                                                              |
+| `MANAGER_API_URL`                     | empty              | the manager's address for its funding API: https, or plain http to this host only. Read as `MANAGER_FUNDING_URL` when unset. Empty: funding is not set up                                                                                         |
 | `MANAGER_API_TOKEN`                   | with the URL       | 32+ chars, printable ASCII, no space: the manager's `MANAGER_API_TOKEN`. Read as `MANAGER_FUNDING_TOKEN` when unset. Refused without the URL. Never logged                                                                                        |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)                                                                                                                 |
 | `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                                                                                                                        |
@@ -1137,7 +1137,7 @@ which pays from its own wallet ([Stamp operations](#stamp-operations),
 - **Without the secret** there is no wallet: nothing is created, and a wallet
   already stored is left as it is, not shown, and named in a warning at boot.
   Nor can funding be set up: the API refuses to start with
-  `MANAGER_FUNDING_URL` and no secret.
+  `MANAGER_API_URL` and no secret.
 
 `src/domain/funding/BrandWallet.ts` is the module. The funding service uses
 `BrandWallet.start`, which `src/index.ts` calls right after the migrations,
@@ -1165,7 +1165,7 @@ deployment is in [deploy/README.md](../deploy/README.md).
 
 ### The manager's address and token
 
-`MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN` come together or not at all.
+`MANAGER_API_URL` and `MANAGER_API_TOKEN` come together or not at all.
 With neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
 required as well, since funding signs every transfer with the brand wallet:
 the API refuses to start with the address and no secret. Every request
@@ -1183,7 +1183,10 @@ characters or more, printable ASCII with no space, since it travels in a
 header. An env file that still names it `MANAGER_FUNDING_TOKEN`, its former
 name, is read the same while `MANAGER_API_TOKEN` is unset
 (`managerApiTokenFrom` of the contracts), a refusal names the key it was read
-under, and the boot log says to rename it.
+under, and the boot log says to rename it. The address is read the same way:
+as `MANAGER_FUNDING_URL`, its former name, while `MANAGER_API_URL` is unset
+(`managerApiUrlFrom`), a refusal names the key it was read under, and the boot
+log says to rename it.
 
 ### The client of the manager's funding API
 
@@ -1250,7 +1253,7 @@ A purchase and a restart have the stamp operations' deadline.
 The funding service reads the nodes, the wallet's balances, nonce and fees and
 every transfer's state from the manager through the client above, and signs
 with the brand wallet. `src/index.ts` builds it with the wallet it started and
-with the client, or with none while `MANAGER_FUNDING_URL` is unset.
+with the client, or with none while `MANAGER_API_URL` is unset.
 `src/domain/funding/FundingService.ts` is the service, and
 `src/api/routes/funding.ts` its routes, behind the session. The writes are
 behind the same-site check as well. The answers are the types of
@@ -1458,7 +1461,7 @@ nothing logs or audits it.
 | `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), `relayed_at` (when the manager's answer to its last relay came back, by the service's clock), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
 | `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                                                                                                                            |
 
-Without `MANAGER_FUNDING_URL` and `MANAGER_API_TOKEN` the page answers
+Without `MANAGER_API_URL` and `MANAGER_API_TOKEN` the page answers
 `configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet.
 Either way every send is refused as not set up, and a pin needs the manager.
 
