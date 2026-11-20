@@ -20,23 +20,29 @@ import {
 
 describe('when the watch page reads the catalog again', () => {
   it('reads it at the same pace as the browse page while the stream has not started, so a reschedule or a cancellation reaches the page', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_NOT_STARTED), CATALOG_POLL_INTERVAL_MS);
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_NOT_STARTED, true), CATALOG_POLL_INTERVAL_MS);
   });
 
   it('keeps reading it while the stream it waited for is missing, so a republish reaches the page', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_UNAVAILABLE), CATALOG_POLL_INTERVAL_MS);
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_UNAVAILABLE, false), CATALOG_POLL_INTERVAL_MS);
+  });
+
+  /** The player follows the stream's own feeds from then on, so there is nothing for a catalog poll to wait for. */
+  it('stops once the player is mounted with the entry for its stream', () => {
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER, true), null);
   });
 
   /**
-   * The player follows the stream's own feeds from then on, and that includes a deep link to a topic
-   * the catalog does not list, so there is nothing for a catalog poll to wait for.
+   * ⛔ A first catalog read that fails or times out still mounts the player, with no entry and so with
+   * no ladder. A recording kept only by its archive then has nothing to play from, and the page used
+   * to wait for a reload.
    */
-  it('stops once the player is mounted', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER), null);
+  it('keeps reading it at the same pace while the player has no entry for its stream', () => {
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_PLAYER, false), CATALOG_POLL_INTERVAL_MS);
   });
 
   it('adds no read of its own before the first one lands, which the app makes itself', () => {
-    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_LOADING), null);
+    assert.equal(watchPageCatalogPollMs(WATCH_VIEW_LOADING, false), null);
   });
 });
 

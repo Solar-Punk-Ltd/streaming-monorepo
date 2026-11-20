@@ -44,8 +44,8 @@ type AppContextState = {
    * and rebuild it the moment the ladder arrived, losing playback position on every deep link.
    *
    * ⛔ Not reset by a gateway switch, and that is deliberate. The ladder belongs to the broadcast
-   * rather than to the node serving it, and the watch page has no catalog poll of its own, so
-   * clearing this there would unmount the player and leave nothing to bring it back.
+   * rather than to the node serving it, and the watch page reads no catalog of its own while it
+   * shows loading, so clearing this there would unmount the player and leave nothing to bring it back.
    */
   isStreamListLoaded: boolean;
   /**
@@ -187,11 +187,12 @@ export const AppContextProvider = ({ children }: Props) => {
    *
    * ⛔ **The stream list is not cleared here, and that is the fix rather than an omission.** What a
    * switch changes is whose answer the list is, which the source held beside it already records, so
-   * the browse page stops showing it from this moment without anything being thrown away. Clearing
-   * it would reach the watch page too, where a player is mounted on a ladder read out of it and
-   * nothing polls the catalog to put one back: the viewer's own node would cost them the ladder, the
-   * playback position, or the whole player. It would also break the instrumentation handle's one
-   * promise, that a switch repoints every fetch without remounting anything.
+   * the browse page stops showing it from this moment without anything being thrown away. Clearing it
+   * would reach the watch page too, where a player is mounted on a ladder read out of it and only the
+   * page's next catalog read, up to a minute later, would put one back: the viewer's own node would
+   * cost them the ladder, the playback position, or the whole player. It would also break the
+   * instrumentation handle's one promise, that a switch repoints every fetch without remounting
+   * anything.
    */
   const applyChoices = useCallback((next: SourceChoices) => {
     choicesRef.current = next;

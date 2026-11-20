@@ -1,11 +1,17 @@
-import { WATCH_VIEW_NOT_STARTED, WATCH_VIEW_UNAVAILABLE, WatchPageView } from '@/utils/watchPageView';
+import {
+  WATCH_VIEW_NOT_STARTED,
+  WATCH_VIEW_PLAYER,
+  WATCH_VIEW_UNAVAILABLE,
+  WatchPageView,
+} from '@/utils/watchPageView';
 
 /**
  * How often a page that shows the catalog reads it again, in milliseconds.
  *
  * One number for every page that polls, and both read at the same pace: the browse page always, and
- * the watch page while what it shows depends on the catalog. Both use the same SWR key, so a viewer
- * moving between the two pages never has two polls running against the gateway.
+ * the watch page while what it shows depends on the catalog or it has no entry for its stream. Both
+ * use the same SWR key, so a viewer moving between the two pages never has two polls running against
+ * the gateway.
  *
  * ⛔ **Once a minute, never faster.** Every read asks the list's next slot, which is not written yet,
  * and the next change to the list is written to exactly that slot. Bee skips each peer asked for an
@@ -39,17 +45,30 @@ export const FIRST_LOAD_RETRY_MS = 5_000;
 /**
  * How often the watch page has to read the catalog again, or null when it need not.
  *
- * ⛔ **Only a message the catalog can take back needs it.** The page decides to show "This stream has
- * not started yet" from the catalog entry's `state`, and without a poll the catalog is read once, when
- * the app loads. While it waits, the ladder's markers prompt the read that takes it live, and the poll
- * carries a new start time, a title change or a cancellation. A stream that was unpublished while the
- * page waited on it is read for too: publishing it again only reaches a page that is still reading.
- * Once the player is mounted it follows the stream's own feeds, and the page deliberately keeps no
- * catalog poll for that case, see `isStreamListLoaded` in `providers/App.tsx`.
+ * ⛔ **Only a message the catalog can take back, or a page without its entry, needs it.** The page
+ * decides to show "This stream has not started yet" from the catalog entry's `state`, and without a
+ * poll the catalog is read once, when the app loads. While it waits, the ladder's markers prompt the
+ * read that takes it live, and the poll carries a new start time, a title change or a cancellation. A
+ * stream that was unpublished while the page waited on it is read for too: publishing it again only
+ * reaches a page that is still reading.
+ *
+ * ⛔ **A player mounted without its entry keeps the page reading.** The app marks the list loaded when
+ * its first read fails too, so a deep link still plays, and the player is then mounted with no ladder.
+ * A recording kept only by its archive has no master feed update to play from without one. The entry
+ * that arrives restarts the player with its renditions, and the reads stop. A deep link to a topic the
+ * catalog never had keeps reading at this same pace, once a minute.
+ *
+ * Once the player is mounted with its entry it follows the stream's own feeds, and the page
+ * deliberately keeps no catalog poll for that case, see `isStreamListLoaded` in `providers/App.tsx`.
  *
  * Only a ladder writes markers, so a page waiting on a scheduled single-rendition stream learns that it
  * went live from this poll alone, up to a minute late.
+ *
+ * @param isListed Whether the stream list the page holds has the entry for its stream.
  */
-export function watchPageCatalogPollMs(view: WatchPageView): number | null {
-  return view === WATCH_VIEW_NOT_STARTED || view === WATCH_VIEW_UNAVAILABLE ? CATALOG_POLL_INTERVAL_MS : null;
+export function watchPageCatalogPollMs(view: WatchPageView, isListed: boolean): number | null {
+  if (view === WATCH_VIEW_NOT_STARTED || view === WATCH_VIEW_UNAVAILABLE) {
+    return CATALOG_POLL_INTERVAL_MS;
+  }
+  return view === WATCH_VIEW_PLAYER && !isListed ? CATALOG_POLL_INTERVAL_MS : null;
 }

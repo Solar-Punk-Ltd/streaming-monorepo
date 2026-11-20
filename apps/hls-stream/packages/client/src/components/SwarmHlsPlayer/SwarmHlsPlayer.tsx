@@ -377,8 +377,8 @@ export const SwarmHlsPlayer: React.FC<HlsPlayerProps> = ({
         renditions: renditionsRef.current ?? ladder,
       }));
     }
-    // The list is not polled once the player is mounted, so a viewer who joined while only some
-    // qualities had reported, or none, would keep that ladder for the whole talk.
+    // The list is not polled once the player is mounted with its entry, so a viewer who joined while
+    // only some qualities had reported, or none, would keep that ladder for the whole talk.
     const stopLadderWatch = manifestFetcher.watchLadderCompletion(
       sourceUrl,
       owner,
