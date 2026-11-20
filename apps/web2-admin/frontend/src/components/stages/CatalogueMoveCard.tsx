@@ -12,16 +12,33 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import type { CatalogueMoveStatus, CatalogueMoveSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  CATALOGUE_MOVE_STARTED_BY_PURCHASE,
+  type CatalogueMoveStatus,
+  type CatalogueMoveSummary,
+} from '@streaming-monorepo/web2-admin-common';
 
 import { errorMessage } from '../../errors';
 import { shortHex } from '../../format';
+import { ClearedThumbnails } from './ClearedThumbnails';
+
+/** Said on a move the admin started by itself for a catalogue batch bought on the Stamps tab. */
+export const STARTED_BY_PURCHASE_TEXT =
+  "The admin started this move for the catalogue batch bought on the Funding page's Stamps tab, and releases the previous batch through that purchase once it is done.";
+
+/** Whether the admin started a move by itself, for a catalogue batch bought on the Stamps tab. */
+export function startedByPurchase(move: Pick<CatalogueMoveSummary, 'startedBy'>): boolean {
+  return move.startedBy === CATALOGUE_MOVE_STARTED_BY_PURCHASE;
+}
 
 /** What the card says once a move is done: the history is under the new batch, and what is left to do. */
 export function moveDoneText(move: NonNullable<CatalogueMoveStatus['latest']>): string {
   const slots = move.slotsTotal ?? move.slotsDone;
   const moved = `The catalogue was moved to batch ${shortHex(move.targetBatchId)}: ${slots} slot${slots === 1 ? '' : 's'}, and the admin writes with it now.`;
   if (move.fromBatchId && move.fromBatchId !== move.targetBatchId) {
+    if (startedByPurchase(move)) {
+      return `${moved} The previous batch, ${shortHex(move.fromBatchId)}, is released through the purchase that started the move.`;
+    }
     return `${moved} You can now release the previous batch, ${shortHex(move.fromBatchId)}, in the manager.`;
   }
   return moved;
@@ -41,7 +58,9 @@ export function moveIsCurrent(move: CatalogueMoveStatus, latest: CatalogueMoveSu
  * Moving the catalogue's history onto the batch the manager designated: shown on the Stages page while a move waits,
  * runs, failed or has just finished. The viewer walks the catalogue's slots and stops at the first it cannot read, so
  * every slot is uploaded again under the new batch before the old one lapses. The admin does it; the manager then
- * releases the old batch when the operator says so.
+ * releases the old batch when the operator says so. A move the admin started by itself for a catalogue batch bought on
+ * the Stamps tab says so, and its purchase releases the old batch. The streams whose thumbnail a move cleared, after
+ * the old batch lapsed, are listed with a link to each, where it takes a new one.
  */
 export function CatalogueMoveCard({
   move,
@@ -98,6 +117,11 @@ export function CatalogueMoveCard({
               Publishing goes on meanwhile, with the batch the catalogue is written with now. Keep that batch alive
               until the move is done.
             </Typography>
+            {startedByPurchase(latest) ? (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {STARTED_BY_PURCHASE_TEXT}
+              </Typography>
+            ) : null}
           </>
         ) : null}
 
@@ -148,6 +172,8 @@ export function CatalogueMoveCard({
         ) : null}
 
         {done && latest ? <Alert severity="success">{moveDoneText(latest)}</Alert> : null}
+
+        {latest && (running || done || failed) ? <ClearedThumbnails streams={latest.clearedThumbnails} /> : null}
       </Stack>
     </Paper>
   );

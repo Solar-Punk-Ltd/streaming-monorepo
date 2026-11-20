@@ -33,6 +33,7 @@ import { ArchiveBadge } from '../components/archive/ArchiveBadge';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { MediaTypeChip, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
+import { RecordingCheckPanel, RecordingMark } from '../components/recordings/RecordingCheckPanel';
 import { CatalogueWriteBanner } from '../components/stages/CatalogueWriteBanner';
 import { unknownStageLabel } from '../components/stages/StageField';
 
@@ -175,6 +176,8 @@ export function StreamsPage() {
 
       <CatalogueWriteBanner status={catalogueWrite} now={now} />
 
+      <RecordingCheckPanel onChanged={load} />
+
       {error ? (
         <Alert
           severity="error"
@@ -294,6 +297,7 @@ export function StreamsPage() {
                     <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
                       <StatusChip status={stream.status} publishError={stream.publishError} />
                       <ArchiveBadge archive={stream.archive} />
+                      <RecordingMark stream={stream} />
                     </Stack>
                   </TableCell>
                   <TableCell>{formatDateTime(stream.scheduledStartTime)}</TableCell>

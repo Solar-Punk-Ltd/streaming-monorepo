@@ -1,7 +1,8 @@
 /**
- * Migrations 016 to 020 against the real database: `funding_transfers`, `funding_node_pins`,
- * `funding_stamp_operations` and `funding_chequebook_operations`, and the repositories the funding services keep their
- * journals and their pins with. Needs Postgres, like the rest of this suite; `DATABASE_URL` overrides the connection.
+ * Migrations 016 to 020 and 030 against the real database: `funding_transfers`, `funding_node_pins`,
+ * `funding_stamp_operations`, `funding_chequebook_operations` and `batch_purchases`, and the repositories the funding
+ * services keep their journals, their pins and their purchases with. Needs Postgres, like the rest of this suite;
+ * `DATABASE_URL` overrides the connection.
  *
  * What the in-memory stores of the unit tests cannot stand in for is the SQL: that the send lock is one across
  * connections, taken without waiting and released when the work is over, failed or not; that a send's items are
@@ -29,6 +30,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
 import { Database } from '../../src/domain/Database.js';
+import { BatchPurchaseRepository, type NewBatchPurchase } from '../../src/domain/funding/BatchPurchaseRepository.js';
 import {
   FundingChequebookRepository,
   type NewFundingChequebookOperation,
@@ -83,6 +85,7 @@ beforeEach(async () => {
   await database.pool.query('DELETE FROM funding_node_pins');
   await database.pool.query('DELETE FROM funding_stamp_operations');
   await database.pool.query('DELETE FROM funding_chequebook_operations');
+  await database.pool.query('DELETE FROM batch_purchases');
 });
 
 function item(bulkId: string, nonce: number, over: Partial<NewFundingTransfer> = {}): NewFundingTransfer {
@@ -900,5 +903,82 @@ describe('the chequebook lock', () => {
       /the work failed/,
     );
     assert.deepEqual(await chequebooks.withChequebookLock(async () => 1), { locked: true, result: 1 });
+  });
+});
+
+describe('batch_purchases', () => {
+  const BATCH = 'e4'.repeat(32);
+
+  function purchase(nodeId: string, over: Partial<NewBatchPurchase> = {}): NewBatchPurchase {
+    return {
+      id: randomUUID(),
+      purpose: 'rung',
+      nodeId,
+      nodeLabel: `Node ${nodeId}`,
+      depth: 22,
+      immutable: false,
+      days: 10,
+      amountPerChunkPlur: '4147200000',
+      costPlur: '17394617548800000',
+      replacesBatchId: null,
+      startedByUserId: null,
+      startedBy: 'alice',
+      ...over,
+    };
+  }
+
+  /** Writes a purchase and moves it to `state`, started and ended `daysAgo` days ago. */
+  async function ended(
+    repository: BatchPurchaseRepository,
+    nodeId: string,
+    state: 'done' | 'failed',
+    batchId: string | null,
+    daysAgo: number,
+  ): Promise<string> {
+    const row = await repository.create(purchase(nodeId));
+    assert.ok(row);
+    await repository.update(row.id, { state, batchId, error: state === 'failed' ? 'It stopped.' : null });
+    await database.pool.query(
+      `UPDATE batch_purchases
+          SET started_at = NOW() - make_interval(days => $2), finished_at = NOW() - make_interval(days => $2)
+        WHERE id = $1`,
+      [row.id, daysAgo],
+    );
+    return row.id;
+  }
+
+  it('lists a purchase that failed with its batch bought whatever its age, until a later one of its node is done', async () => {
+    const repository = new BatchPurchaseRepository(database.pool);
+    const boughtUnused = await ended(repository, 'stage-1:rung-1', 'failed', BATCH, 30);
+    await ended(repository, 'stage-1:rung-2', 'failed', null, 30);
+    await ended(repository, 'stage-1:rung-3', 'done', BATCH, 30);
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    assert.deepEqual(
+      (await repository.listSince(since)).map((row) => row.id),
+      [boughtUnused],
+      'an old purchase that bought nothing, and an old one that is done, are off the list',
+    );
+
+    const failedAgain = await ended(repository, 'stage-1:rung-1', 'failed', 'f5'.repeat(32), 20);
+    assert.deepEqual(
+      (await repository.listSince(since)).map((row) => row.id),
+      [failedAgain, boughtUnused],
+      'a later purchase of the node that failed too leaves it listed',
+    );
+
+    const done = await ended(repository, 'stage-1:rung-1', 'done', 'a7'.repeat(32), 10);
+    assert.deepEqual(
+      (await repository.listSince(since)).map((row) => row.id),
+      [],
+      `a later purchase of the node is done (${done})`,
+    );
+  });
+
+  it('keeps one purchase under way on a node', async () => {
+    const repository = new BatchPurchaseRepository(database.pool);
+    assert.ok(await repository.create(purchase('stage-1:rung-1')));
+    assert.equal(await repository.create(purchase('stage-1:rung-1')), null);
+    assert.ok(await repository.create(purchase('stage-1:rung-2')));
   });
 });

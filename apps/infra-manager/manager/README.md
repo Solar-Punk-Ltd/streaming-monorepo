@@ -613,9 +613,10 @@ connection of its own (`docs/architecture/funding.md` at the repository root). T
 `/api/admin-funding`, ahead of the cross-site and session gates, and the console's nginx sends that
 path to the api. The shapes are in `packages/contracts/src/funding.ts`.
 
-- `FUNDING_API_TOKEN` unset: the API is off, and every path under it answers 404
-  `{ error: "funding_off" }`.
-- Set: a request needs `Authorization: Bearer <FUNDING_API_TOKEN>` and no session cookie, or it is
+- The token is `MANAGER_API_TOKEN`, and is read under its earlier name, `FUNDING_API_TOKEN`, when
+  that one is unset (`managerApiTokenFrom` in the contract). The log names the key it was read under.
+- Unset: the API is off, and every path under it answers 404 `{ error: "funding_off" }`.
+- Set: a request needs `Authorization: Bearer <MANAGER_API_TOKEN>` and no session cookie, or it is
   401 `unauthorized`. Both tokens are hashed with SHA-256 and compared in constant time, and neither
   is logged or answered.
 - Every other route refuses a request carrying a bearer with 401, so the token opens nothing but
@@ -625,12 +626,12 @@ path to the api. The shapes are in `packages/contracts/src/funding.ts`.
   `conflict` 409, `unknown_request` 404, `stamp_refused` 422, `node_unreachable` 502 and
   `chequebook_refused` 422.
 
-| Method | Path                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/admin-funding/inventory`            | `{ observedAt, chain: { chainId, bzzToken, postage }, stages: [{ stageId, name, nodes }], catalogue }`, `no-store`. A stage's nodes are its own Bee node, its gateway when that runs light, and its pool's rungs run by this manager, lowest first. Each node is `{ nodeId, label, role, walletAddress, xdaiWei, xbzzPlur, readError, batch, chequebook }`: an opaque `<instance_id>:<service>` id, its wallet read now (five seconds at most each), amounts in wei and PLUR as decimal strings, or nulls and a sentence saying why, and the [batch](#batches-and-the-price-of-postage) and [chequebook](#chequebooks) below. Never a Bee API address, an RPC endpoint or a key |
-| GET    | `/api/admin-funding/accounts/:address`    | `{ address, chainId, xdaiWei, xbzzPlur, nonce, maxFeePerGasWei, maxPriorityFeePerGasWei, gasNative, gasBzzTransfer }`, `no-store`: the address's xDAI and xBZZ, its pending nonce, a fee cap of twice the latest base fee plus the suggested tip, that tip, and the suggested gas limits, 21000 for xDAI and 65000 for an xBZZ `transfer`. 502 `chain_unreachable` when the chain does not answer or no endpoint is set                                                                                                                                                                                                                                                         |
-| POST   | `/api/admin-funding/transfers`            | 202 `{ requestId, state, txHash }`. Takes `{ requestId, nodeId, kind, to, amount, rawTransaction }`. See [Transfers](#transfers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| GET    | `/api/admin-funding/transfers/:requestId` | `{ requestId, state, txHash, blockNumber, error }`, `no-store`. See [Transfers](#transfers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Method | Path                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/admin-funding/inventory`            | `{ observedAt, chain: { chainId, bzzToken, postage }, stages: [{ stageId, name, nodes }], catalogue }`, `no-store`. A stage's nodes are its own Bee node, its gateway when that runs light, and its pool's rungs run by this manager, lowest first. Each node is `{ nodeId, label, role, walletAddress, xdaiWei, xbzzPlur, readError, batch, chequebook, replacement }`: an opaque `<instance_id>:<service>` id, its wallet read now (five seconds at most each), amounts in wei and PLUR as decimal strings, or nulls and a sentence saying why, and the [batch and replacement](#batches-and-the-price-of-postage) and [chequebook](#chequebooks) below. Never a Bee API address, an RPC endpoint or a key |
+| GET    | `/api/admin-funding/accounts/:address`    | `{ address, chainId, xdaiWei, xbzzPlur, nonce, maxFeePerGasWei, maxPriorityFeePerGasWei, gasNative, gasBzzTransfer }`, `no-store`: the address's xDAI and xBZZ, its pending nonce, a fee cap of twice the latest base fee plus the suggested tip, that tip, and the suggested gas limits, 21000 for xDAI and 65000 for an xBZZ `transfer`. 502 `chain_unreachable` when the chain does not answer or no endpoint is set                                                                                                                                                                                                                                                                                      |
+| POST   | `/api/admin-funding/transfers`            | 202 `{ requestId, state, txHash }`. Takes `{ requestId, nodeId, kind, to, amount, rawTransaction }`. See [Transfers](#transfers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| GET    | `/api/admin-funding/transfers/:requestId` | `{ requestId, state, txHash, blockNumber, error }`, `no-store`. See [Transfers](#transfers)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ### Transfers
 
@@ -673,11 +674,21 @@ node, which the inventory lists nowhere else. Each is read from the node that ho
 deployment was removed is answered unread, with the reason, under the name its row keeps for that
 deployment, and is not `writable`. With no archive batches the list is empty.
 
-- A batch is `{ batchId, depth, immutable, usable, ttlSeconds, fillRatio, readError }`: `0x` and
-  64 hex digits, Bee's depth, `immutableFlag` and `usable`, the seconds left (0 once it has
-  expired, null when Bee cannot work them out), and how full its fullest bucket is, from 0 to 1,
-  null when the node's counts do not make one.
+- A batch is `{ batchId, depth, immutable, usable, ttlSeconds, fillRatio, readError, state }`: `0x`
+  and 64 hex digits, Bee's depth, `immutableFlag` and `usable`, the seconds left (0 once it has
+  expired, null when Bee cannot work them out), how full its fullest bucket is, from 0 to 1, null
+  when the node's counts do not make one, and the manager's verdict on it, the one its own pages
+  give (`stampHealthFrom`): `active`, `pending`, `full` or `expired`, `gone` for a batch its node
+  answered it holds no more, and `unknown` for one the node did not answer about.
 - A batch that could not be read has every reading null and `readError` saying why in a sentence.
+- A node's `replacement` is what the manager recommends for a batch bought in place of its own
+  ([Batch purchases](#batch-purchases)), `{ depth, immutable }`: the depth and kind of the batch
+  the node pays with, as the node reports them, or as the manager last read them while it runs
+  once the node holds the batch no more, and otherwise the depth the manager's own Buy form
+  suggests, a rung's by its place in the ladder and 17 for a stage's own node, mutable. The
+  catalogue node's is immutable, at the depth its designation recorded when nothing better is
+  known, and 18 or deeper. It is null for a gateway, and for the own node of a stage that publishes
+  through a pool, whose batch pays for nothing. A purchase for a rung names a node offered one.
 - `chain.postage` is `{ pricePerChunkPerBlockPlur, blockSeconds, minimumValidityBlocks }`: the
   price from the `/chainstate` of the first listed node whose wallet reads on Gnosis Chain, 5
   seconds a block, and the postage contract's floor, 17280 blocks, a day. It is null when no such
@@ -732,16 +743,83 @@ from its own wallet: xBZZ for a top-up, xDAI for the gas of either.
   `newDepth` or deeper. With no sign of either thirty minutes after it was recorded, it is
   `failed`. The contract is read at most once every five seconds per request id.
 
+### Batch purchases
+
+The admin buys a new batch, one purchase per request, which the node named buys through its own Bee
+API and pays for from its own wallet, xBZZ for the batch and xDAI for the gas. One route buys for
+three purposes, and the manager follows each purchase up in the background
+([Bought from the admin](../docs/features/postage-stamps.md#bought-from-the-admin)).
+
+| Method | Path                                                    | Answer                                                                                                                                                                    |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/batch-purchases`                    | 202 `{ requestId, purpose, state, batchId, txHash }`. Takes `{ requestId, purpose, nodeId, depth, amountPerChunkPlur, immutable, label, replacesBatchId }`                |
+| GET    | `/api/admin-funding/batch-purchases/:requestId`         | `{ requestId, purpose, nodeId, state, batchId, txHash, usable, step, error, stages, catalogue, batchState? }`, `no-store`. 404 `unknown_request` for an id never recorded |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/restart` | The status. Takes `{ stageId }`. Runs the Apply of a stage in `waiting_live` or `waiting_unknown` now. 422 `stamp_refused` for a stage in any other state                 |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/check`   | The status. Takes up again a follow-up that stopped as failed after the batch was bought, and a stage whose Apply failed. 422 `stamp_refused` when nothing stopped        |
+| POST   | `/api/admin-funding/batch-purchases/:requestId/release` | The status. Releases the batch a `catalogue` purchase moved the catalogue from. 422 `stamp_refused` for a purchase with none waiting                                      |
+
+| `purpose`   | `nodeId`                                         | `depth`  | `immutable` | `replacesBatchId`                         | Once usable                                          |
+| ----------- | ------------------------------------------------ | -------- | ----------- | ----------------------------------------- | ---------------------------------------------------- |
+| `rung`      | a rung's node, or a single-node stage's Bee node | 17 to 40 | either      | the batch set on it now, or null for none | set on the rung, and the following uploaders applied |
+| `catalogue` | the catalogue node                               | 18 to 40 | true        | the designated batch, or null for none    | designated as a move                                 |
+| `archive`   | the catalogue node                               | 17 to 41 | true        | null                                      | an archive batch, recorded once `confirmed`          |
+
+- **The checks**, each 422 `stamp_refused` with a sentence before anything is recorded: the node is
+  one the purpose names (404 `unknown_node` for a node this manager does not run);
+  `replacesBatchId` is the batch set there now; for a rung and the catalogue that batch is expired,
+  gone or none (`purchaseReplaceProblem`); for the catalogue, no move of the catalogue is pending,
+  since the designation takes no third batch until the batch moved from is released; the cost,
+  `amountPerChunkPlur × 2^depth`, is within the node's xBZZ; the wallet holds some xDAI; and the
+  amount buys the postage contract's floor of life or more at the price read now. An archive stamp
+  keeps the check of the record's 200 places.
+- **A batch bought and never put to use**: a rung's or the catalogue's purchase is refused, 422
+  `stamp_refused`, while the node's last purchase for the purpose bought its batch and stopped as
+  failed before setting or designating it, and the node still holds that batch with time left, read
+  once with `GET /stamps/{id}`. The sentence names that purchase, whose Check puts its batch to use
+  without paying for a second. A 404, no time left, or a batch the node reports as gone lets the
+  purchase through. A node that could not be read about the batch keeps the refusal, which says so.
+- **`batchState`** in a purchase's status is the bought batch's state on its node in the inventory's
+  words (`pending`, `active`, `full`, `expired`, `gone`), from the same reading as `usable`: the
+  node's `GET /stamps/{id}`, or the list a lost answer was just settled from. It is left out while
+  there is no batch and when the node could not be read about it. The refusal above holds unless it
+  reads `expired` or `gone`.
+- **The node** for a rung is a stage's node the inventory offers a `replacement` for: a rung's node,
+  or a single-node stage's own node. The batch set there now is read through the follow-up's port,
+  as is the designated catalogue batch for the catalogue.
+- **A node with a purchase that is `buying` or `waiting_usable`**, or with another operation of the
+  API under way, a stamp operation or a chequebook move still open, answers 409 `conflict`.
+- **The record** is a row of `funding_stamp_purchases` with the purpose, the kind and the batch
+  replaced, written as `unknown` before the node is asked. The batch carries on its node the label
+  `<purpose>-` and the first twelve hex digits of the request id (`purchaseNodeLabel`), by which a
+  purchase whose answer was lost is found again, as below.
+- **The follow-up** runs in the manager, every 30 seconds and at boot, from the step the row holds,
+  and reads a bought batch every 3 seconds until it is usable. The stages of a rung purchase are rows
+  of `funding_purchase_stages`, taken in order with at most one Apply at a time: an Apply under way
+  is looked at first, and a pass ends at the look that starts one. A stage that waits, for a
+  broadcast or for other settings, holds none of the later ones back.
+- **Check** takes up a purchase that stopped after its batch was bought by reading the node once:
+  a usable batch is set or designated, and one still not usable leaves the purchase failed. It
+  starts again the Apply of each stage that failed, one at a time.
+- **The release** is taken as the admin's word that its move of the catalogue is done, which the
+  manager cannot see. It is logged with the request id.
+- **What the admin reads** of a port's sentence, a stage's Apply error and a refused release leaves
+  every node address out: a URL, a host and its port, and an IP address each read `<address>`
+  (`addressFree`). The manager's log keeps the words whole.
+
 ### Stamp purchases
+
+`POST /api/admin-funding/stamp-purchases` and its `GET` are the routes an admin older than
+[Batch purchases](#batch-purchases) buys an archive stamp on. The manager answers them as a batch
+purchase of purpose `archive`, and the rest of this section holds for that purpose on either route.
 
 The admin buys archive stamps, one purchase per request: a new immutable batch on the catalogue
 node, which that node buys through its own Bee API and pays for from its own wallet, xBZZ for the
 batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive-batches)).
 
-| Method | Path                                            | Answer                                                                                                             |
-| ------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/api/admin-funding/stamp-purchases`            | 202 `{ requestId, state, batchId, txHash }`. Takes `{ requestId, nodeId, depth, amountPerChunkPlur, label }`       |
-| GET    | `/api/admin-funding/stamp-purchases/:requestId` | `{ requestId, state, batchId, txHash, usable, error }`, `no-store`. 404 `unknown_request` for an id never recorded |
+| Method | Path                                            | Answer                                                                                                                                                                                          |
+| ------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/admin-funding/stamp-purchases`            | 202 `{ requestId, state, batchId, txHash }`. Takes `{ requestId, nodeId, depth, amountPerChunkPlur, label }`                                                                                    |
+| GET    | `/api/admin-funding/stamp-purchases/:requestId` | `{ requestId, state, batchId, txHash, usable, error }`, `no-store`. 404 `unknown_request` for an id never recorded, and for a purchase of another purpose, which the batch purchase route reads |
 
 - **A request id already recorded** answers that purchase's state when it is the same purchase
   (the same node, depth, amount and label), and 409 `conflict` otherwise.
@@ -780,7 +858,10 @@ batch and xDAI for the gas ([Archive batches](../docs/features/stages.md#archive
   `unknown`. The list is read at most once every five seconds per request id.
 - **`usable`** is read from the node on every `GET`, as the inventory reads a batch: false for the
   minutes after a purchase, true once the batch can stamp, and null while there is no batch or the
-  node did not answer. The manager waits for nothing in the background.
+  node did not answer. The follow-up of [Batch purchases](#batch-purchases) waits for it in the
+  background, and designates a batch the archive batches did not take yet at each of its looks.
+- **The older route's `GET`** answers no step: its `error` is the sentence of a purchase that is
+  `failed` or `unknown`, and null for one that is `confirmed`.
 
 ### Chequebook operations
 
@@ -1193,7 +1274,7 @@ keys an operator sets by hand. `docker-compose.yml` sets `SHLS_ROOT` and `BEE_DA
 | `FUNDING_RPC_URL`             | `BEE_RPC_ENDPOINT`                                | The chain endpoint the funding API reads through and broadcasts to, and the default for chequebook transfers. A secret like `BEE_RPC_ENDPOINT`: never logged or answered. A malformed value stops the manager at startup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `CHEQUEBOOK_RPC_ENDPOINTS`    | none                                              | A chain endpoint per chain id for chequebook transfers, ahead of the defaults. See [Funding a chequebook on a new host](#funding-a-chequebook-on-a-new-host)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `CHEQUEBOOK_FLOOR_BZZ`        | `0.5`                                             | The chequebook balance below which the manager warns, a decimal BZZ amount above zero with at most 16 decimal places. A malformed value stops the manager at startup                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `FUNDING_API_TOKEN`           | none, the API is off                              | The bearer token of the funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_FUNDING_TOKEN`. 32 characters or more with no space, or the manager stops at startup naming the variable. Never logged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `MANAGER_API_TOKEN`           | none, the API is off                              | The bearer token of the funding API under `/api/admin-funding`, the same value as the admin's `MANAGER_API_TOKEN`. Read under its earlier name, `FUNDING_API_TOKEN`, while unset, and the boot log names the key it was read under. 32 characters or more with no space, or the manager stops at startup naming the key. Never logged                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `ADMIN_LINK_ALLOW_PLAIN_HTTP` | `false`                                           | Whether the admin link may be plain `http` to another host than the manager's own. Off, the manager takes plain `http` only to a loopback address, `host.docker.internal` or the bridge address it resolves to, or a name in a Docker network of the api container. Set it only for a test setup: every push carries the registrar token and each stage's SRT passphrase                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `KNOWN_HOST_NETWORK_PORTS`    | none                                              | Host-network containers that count as known, by Compose project, with the ports each holds, as in `edge=80/tcp,443/tcp,443/udp`, projects separated by `;`. Docker reports no port map for such a container, so an unnamed one blocks every removal, port handover and firewall export on its host. A port left out counts as free. No deployment may carry a named project's name. A malformed value stops the manager at startup                                                                                                                                                                                                                                                                                                                                                                          |
 

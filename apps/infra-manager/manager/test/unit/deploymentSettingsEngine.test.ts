@@ -39,7 +39,9 @@ writeFileSync(join(root, 'engines', 'srs', '.env.sample'), '# === ABR ladder ===
 
 const { orchestratorHarness, untilRunning } = await import('../support/orchestratorHarness.js');
 const { createDeploymentSettingsRouter } = await import('../../src/api/routes/deploymentSettings.js');
-const { DeploymentSettingsService } = await import('../../src/domain/settings/DeploymentSettingsService.js');
+const { DeploymentSettingsService, EngineSettingsRefusedError } =
+  await import('../../src/domain/settings/DeploymentSettingsService.js');
+const { ProfileConfigError } = await import('../../src/domain/errors/index.js');
 const { call, startRouterTestApp } = await import('../support/routerTestApp.js');
 
 const INSTANCE_ID = '6f1c2b1e-3a4d-4c5e-9f60-7a8b9c0d1e2f';
@@ -74,7 +76,7 @@ async function running(over: Partial<Profile> = {}) {
     next();
   });
   outer.use(createDeploymentSettingsRouter(service));
-  return { app: await startRouterTestApp(outer), harness };
+  return { app: await startRouterTestApp(outer), harness, service };
 }
 
 type App = Awaited<ReturnType<typeof running>>['app'];
@@ -329,6 +331,21 @@ describe('engine settings this host no longer takes', () => {
 
       assert.equal(refused.status, 400, JSON.stringify(refused.body));
       assert.deepEqual(refused.body, { error: 'validation_error', errors: [REFUSED], name: 'stage' });
+      assert.equal(harness.runner.runs.length, 1, 'only the first deploy ran');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('refuses it as the engine settings refusal, which a batch purchase passes on', async () => {
+    const { app, harness, service } = await refusedByThisHost();
+    try {
+      await assert.rejects(service.apply('stage', INSTANCE_ID, 'a batch purchase'), (err: unknown) => {
+        assert.ok(err instanceof EngineSettingsRefusedError);
+        assert.ok(err instanceof ProfileConfigError, 'still answered as a ProfileConfigError');
+        assert.equal(err.reason, REFUSED);
+        return true;
+      });
       assert.equal(harness.runner.runs.length, 1, 'only the first deploy ran');
     } finally {
       await app.close();

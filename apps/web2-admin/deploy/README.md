@@ -87,14 +87,18 @@ with `--allow-sample-secrets`, and the script then warns about each one and
 deploys.
 
 Funding from the admin has three keys of its own (see "Funding" in
-[backend/README.md](../backend/README.md)). `MANAGER_FUNDING_URL` sets it up,
+[backend/README.md](../backend/README.md)). `MANAGER_API_URL` sets it up,
 and with it the script refuses a missing `BRAND_WALLET_SECRET` and a
-`MANAGER_FUNDING_TOKEN` under 32 characters or with anything in it but
+`MANAGER_API_TOKEN` under 32 characters or with anything in it but
 printable ASCII, a space included, as the API refuses them. A
 `BRAND_WALLET_SECRET` is held to 64 hex characters whenever it is set, since
 the API's first start with one creates the brand wallet under it, and a token
-without the address is refused, as the API refuses it. The sample's
-`MANAGER_FUNDING_TOKEN` placeholder, and the published placeholder secret
+without the address is refused, as the API refuses it. The address is read as
+`MANAGER_FUNDING_URL`, and the token as `MANAGER_FUNDING_TOKEN`, their former
+names, while `MANAGER_API_URL` and `MANAGER_API_TOKEN` are unset, as the API
+reads them: the script then warns to rename each, and a refusal names the key
+it was read under. The sample's
+`MANAGER_API_TOKEN` placeholder, and the published placeholder secret
 `0123456789abcdef` written four times over, are refused as the published values
 above are, and `--allow-sample-secrets` lets a test install keep them. The
 sample leaves `BRAND_WALLET_SECRET` commented out, so an env file copied from
@@ -132,7 +136,7 @@ Things that differ from running the API on your laptop:
   container itself, so the manager has to name one the control host's
   containers reach.
 - `WEB2_ADMIN_WEB_PORT` sets the console's port when there is no port slot.
-- In `MANAGER_FUNDING_URL`, a loopback address is the api container itself. A
+- In `MANAGER_API_URL`, a loopback address is the api container itself. A
   manager on the same host is `http://host.docker.internal:<port>`, which the
   compose file maps to the host, provided the manager's API listens where the
   host's containers reach it. Anywhere else, give its https address.
@@ -168,7 +172,7 @@ deploy.sh --host=<ssh-target> [--profile=<name>] [--portSlot=<N>] [--remote-path
   `/opt/streaming/streaming-monorepo`. It is not accepted with
   `--host=localhost`.
 - `--allow-sample-secrets` deploys an env file whose `FEED_PRIVATE_KEY`,
-  `INTERNAL_API_TOKEN`, `BRAND_WALLET_SECRET` or `MANAGER_FUNDING_TOKEN` is a
+  `INTERNAL_API_TOKEN`, `BRAND_WALLET_SECRET` or `MANAGER_API_TOKEN` is a
   published test value, with a warning for each. It is for a test install
   only. Without it, any of them refuses the deploy.
 - Services are `postgres`, `api` and `web`. None named means all three. Compose

@@ -217,6 +217,20 @@ function answerOf(operation: ChequebookOperation): FundingChequebookOperationAns
 }
 
 /**
+ * Whether a journalled chequebook move is still under way on its node, as the chequebook path's own admission counts
+ * one: `submitting`, `submitted` or `unknown`, or naming a transaction another move's evidence names too. A batch
+ * purchase on the node waits until it is not, since both spend the node's wallet.
+ */
+export function chequebookMoveUnderWay(operation: Pick<ChequebookOperation, 'state' | 'failureReason'>): boolean {
+  return (
+    operation.state === 'submitting' ||
+    operation.state === 'submitted' ||
+    operation.state === 'unknown' ||
+    operation.failureReason === 'hash_conflict'
+  );
+}
+
+/**
  * Whether a status read has the manager check an operation first: one `submitting` or `unknown`, which only a look at
  * the chain settles, and one `submitted` that the manager's receipt polling no longer reads, past its
  * `receiptPollUntil` or with none.

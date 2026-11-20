@@ -3,21 +3,36 @@ import { describe, it } from 'node:test';
 
 import {
   ADMIN_FUNDING_PATH,
+  FUNDING_BATCH_PURCHASE_PURPOSES,
+  FUNDING_BATCH_PURCHASES_PATH,
   FUNDING_CHEQUEBOOK_DIRECTIONS,
   FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_ERROR_CODES,
   FUNDING_ERROR_STATUS,
   FUNDING_INVENTORY_PATH,
   FUNDING_NODE_ROLES,
+  FUNDING_PURCHASE_APPLY_STATES,
+  FUNDING_PURCHASE_STEPS,
   FUNDING_STAMP_OPERATION_KINDS,
   FUNDING_STAMP_OPERATIONS_PATH,
   FUNDING_STAMP_PURCHASES_PATH,
   FUNDING_TRANSFER_KINDS,
   FUNDING_TRANSFER_STATES,
   FUNDING_TRANSFERS_PATH,
+  MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN,
+  MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER,
+  MANAGER_API_TOKEN_KEY,
   fundingAccountAnswerSchema,
   fundingAccountPath,
   fundingArchiveBatchSchema,
+  fundingBatchPurchaseAnswerSchema,
+  fundingBatchPurchaseCheckPath,
+  fundingBatchPurchasePath,
+  fundingBatchPurchaseReleasePath,
+  fundingBatchPurchaseRequestSchema,
+  fundingBatchPurchaseRestartPath,
+  fundingBatchPurchaseRestartRequestSchema,
+  fundingBatchPurchaseStatusSchema,
   fundingBatchSchema,
   fundingChainSchema,
   fundingChequebookOperationAnswerSchema,
@@ -29,6 +44,8 @@ import {
   fundingInventorySchema,
   fundingNodeSchema,
   fundingPostageSchema,
+  fundingPurchaseApplySettled,
+  fundingPurchaseRestartable,
   fundingStampOperationAnswerSchema,
   fundingStampOperationPath,
   fundingStampOperationRequestSchema,
@@ -41,6 +58,7 @@ import {
   fundingTransferPath,
   fundingTransferRequestSchema,
   fundingTransferStatusSchema,
+  managerApiTokenFrom,
 } from './funding.js';
 
 const STAGE_ID = '0b8f6a3e-2c4d-4e5f-8a9b-1c2d3e4f5a6b';
@@ -890,5 +908,278 @@ describe('a chequebook operation on the catalogue node', () => {
   it('is a request as any other, which the manager takes for the catalogue node since it copies recordings', () => {
     const request = { ...depositRequest(), nodeId: CATALOGUE_NODE_ID };
     assert.deepEqual(fundingChequebookOperationRequestSchema.parse(request), request);
+  });
+});
+
+describe("the manager's API token", () => {
+  const TOKEN = 'a'.repeat(40);
+  const FORMER = 'b'.repeat(40);
+
+  it('has one name in the manager and in the admin, and each app an earlier name of its own', () => {
+    assert.equal(MANAGER_API_TOKEN_KEY, 'MANAGER_API_TOKEN');
+    assert.equal(MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER, 'FUNDING_API_TOKEN');
+    assert.equal(MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN, 'MANAGER_FUNDING_TOKEN');
+  });
+
+  it('is read under its own name first, and under the earlier name when that one is unset or only spaces', () => {
+    const both = { MANAGER_API_TOKEN: TOKEN, FUNDING_API_TOKEN: FORMER };
+    assert.deepEqual(managerApiTokenFrom(both, MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER), {
+      key: 'MANAGER_API_TOKEN',
+      value: TOKEN,
+    });
+    assert.deepEqual(managerApiTokenFrom({ FUNDING_API_TOKEN: FORMER }, MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER), {
+      key: 'FUNDING_API_TOKEN',
+      value: FORMER,
+    });
+    assert.deepEqual(
+      managerApiTokenFrom(
+        { MANAGER_API_TOKEN: '   ', MANAGER_FUNDING_TOKEN: ` ${FORMER} ` },
+        MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN,
+      ),
+      { key: 'MANAGER_FUNDING_TOKEN', value: FORMER },
+    );
+  });
+
+  it("is none when neither name is set, and never read under the other app's earlier name", () => {
+    assert.equal(managerApiTokenFrom({}, MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN), null);
+    assert.equal(managerApiTokenFrom({ FUNDING_API_TOKEN: FORMER }, MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN), null);
+    assert.equal(managerApiTokenFrom({ MANAGER_FUNDING_TOKEN: FORMER }, MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER), null);
+  });
+});
+
+describe('a batch purchase', () => {
+  const RUNG_NODE_ID = 'pool-360p:bee-rung';
+  const OLD_BATCH_ID = `0x${'d4'.repeat(32)}`;
+  const OTHER_STAGE_ID = '1c9a7b4f-3d5e-4f6a-9bac-2d3e4f5a6b7c';
+
+  const rungRequest = () => ({
+    requestId: REQUEST_ID,
+    purpose: 'rung',
+    nodeId: RUNG_NODE_ID,
+    depth: 22,
+    amountPerChunkPlur: '414720000',
+    immutable: false,
+    label: null,
+    replacesBatchId: OLD_BATCH_ID,
+  });
+  const catalogueRequest = () => ({
+    ...rungRequest(),
+    purpose: 'catalogue',
+    nodeId: CATALOGUE_NODE_ID,
+    depth: 18,
+    immutable: true,
+  });
+  const archiveRequest = () => ({
+    ...catalogueRequest(),
+    purpose: 'archive',
+    depth: 24,
+    label: 'Day 2',
+    replacesBatchId: null,
+  });
+  const rungStatus = () => ({
+    requestId: REQUEST_ID,
+    purpose: 'rung',
+    nodeId: RUNG_NODE_ID,
+    state: 'confirmed',
+    batchId: BATCH_ID,
+    txHash: TX_HASH,
+    usable: true,
+    step: 'set',
+    error: null,
+    stages: [
+      { stageId: STAGE_ID, name: 'main stage', apply: 'applied', message: null },
+      { stageId: OTHER_STAGE_ID, name: 'second stage', apply: 'waiting_live', message: null },
+    ],
+    catalogue: null,
+  });
+
+  it('has one route for every purpose, and its three follow-up calls under the purchase', () => {
+    assert.equal(FUNDING_BATCH_PURCHASES_PATH, `${ADMIN_FUNDING_PATH}/batch-purchases`);
+    assert.deepEqual([...FUNDING_BATCH_PURCHASE_PURPOSES], ['rung', 'catalogue', 'archive']);
+    const path = `${FUNDING_BATCH_PURCHASES_PATH}/${REQUEST_ID}`;
+    assert.equal(fundingBatchPurchasePath(REQUEST_ID.toUpperCase()), path);
+    assert.equal(fundingBatchPurchaseRestartPath(REQUEST_ID), `${path}/restart`);
+    assert.equal(fundingBatchPurchaseCheckPath(REQUEST_ID), `${path}/check`);
+    assert.equal(fundingBatchPurchaseReleasePath(REQUEST_ID), `${path}/release`);
+    for (const bad of ['', 'not-a-uuid', `${REQUEST_ID}/x`, '../inventory']) {
+      assert.throws(() => fundingBatchPurchasePath(bad), /UUID/);
+      assert.throws(() => fundingBatchPurchaseRestartPath(bad), /UUID/);
+    }
+    assert.notEqual(FUNDING_BATCH_PURCHASES_PATH, FUNDING_STAMP_PURCHASES_PATH);
+  });
+
+  it('takes the same fields for a rung, the catalogue and an archive stamp', () => {
+    assert.deepEqual(fundingBatchPurchaseRequestSchema.parse(rungRequest()), rungRequest());
+    assert.deepEqual(fundingBatchPurchaseRequestSchema.parse(catalogueRequest()), catalogueRequest());
+    assert.deepEqual(fundingBatchPurchaseRequestSchema.parse(archiveRequest()), archiveRequest());
+    const upper = {
+      ...rungRequest(),
+      requestId: REQUEST_ID.toUpperCase(),
+      replacesBatchId: OLD_BATCH_ID.toUpperCase(),
+    };
+    assert.deepEqual(
+      fundingBatchPurchaseRequestSchema.parse({ ...upper, replacesBatchId: `0x${'D4'.repeat(32)}` }),
+      rungRequest(),
+    );
+    assert.equal(
+      fundingBatchPurchaseRequestSchema.parse({ ...rungRequest(), replacesBatchId: null }).replacesBatchId,
+      null,
+    );
+    assert.equal(fundingBatchPurchaseRequestSchema.parse({ ...rungRequest(), label: ' 360p ' }).label, '360p');
+  });
+
+  it('buys a rung batch of depth 17 to 40, of either kind', () => {
+    for (const depth of [17, 22, 40]) {
+      assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...rungRequest(), depth }).success, true, `${depth}`);
+    }
+    for (const depth of [16, 41, 22.5]) {
+      assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...rungRequest(), depth }).success, false, `${depth}`);
+    }
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...rungRequest(), immutable: true }).success, true);
+  });
+
+  it('buys a catalogue batch of depth 18 to 40, immutable only', () => {
+    for (const depth of [18, 40]) {
+      assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...catalogueRequest(), depth }).success, true);
+    }
+    for (const depth of [17, 41]) {
+      assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...catalogueRequest(), depth }).success, false);
+    }
+    assert.equal(
+      fundingBatchPurchaseRequestSchema.safeParse({ ...catalogueRequest(), immutable: false }).success,
+      false,
+    );
+  });
+
+  it('buys an archive stamp of a depth of the capacity table, immutable, replacing none', () => {
+    for (const depth of [17, 41]) {
+      assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...archiveRequest(), depth }).success, true);
+    }
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...archiveRequest(), depth: 42 }).success, false);
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...archiveRequest(), immutable: false }).success, false);
+    assert.equal(
+      fundingBatchPurchaseRequestSchema.safeParse({ ...archiveRequest(), replacesBatchId: OLD_BATCH_ID }).success,
+      false,
+    );
+  });
+
+  it('refuses a purpose it does not know, no amount, and a request without a said kind or replaced batch', () => {
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse({ ...rungRequest(), purpose: 'gateway' }).success, false);
+    assert.equal(
+      fundingBatchPurchaseRequestSchema.safeParse({ ...rungRequest(), amountPerChunkPlur: '0' }).success,
+      false,
+    );
+    const { immutable: _immutable, ...withoutKind } = rungRequest();
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse(withoutKind).success, false);
+    const { replacesBatchId: _replaces, ...withoutReplaced } = rungRequest();
+    assert.equal(fundingBatchPurchaseRequestSchema.safeParse(withoutReplaced).success, false);
+  });
+
+  it('is answered with its purpose and its state, and with the batch once the node gave one', () => {
+    const answer = { requestId: REQUEST_ID, purpose: 'rung', state: 'unknown', batchId: null, txHash: null };
+    assert.deepEqual(fundingBatchPurchaseAnswerSchema.parse(answer), answer);
+    const bought = { ...answer, state: 'confirmed', batchId: BATCH_ID, txHash: TX_HASH };
+    assert.deepEqual(fundingBatchPurchaseAnswerSchema.parse(bought), bought);
+  });
+
+  it('says its step, and for a rung each following stage and where its restart stands', () => {
+    assert.deepEqual([...FUNDING_PURCHASE_STEPS], ['buying', 'waiting_usable', 'set', 'done', 'failed']);
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(rungStatus()), rungStatus());
+    for (const apply of FUNDING_PURCHASE_APPLY_STATES) {
+      const status = { ...rungStatus(), stages: [{ stageId: STAGE_ID, name: 'main stage', apply, message: null }] };
+      assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(status), status);
+    }
+    const unknownApply = {
+      ...rungStatus(),
+      stages: [{ stageId: STAGE_ID, name: 'main stage', apply: 'paused', message: null }],
+    };
+    assert.equal(fundingBatchPurchaseStatusSchema.safeParse(unknownApply).success, false);
+  });
+
+  it('says for the catalogue which batch it moved from and whether that one is released', () => {
+    const designated = {
+      ...rungStatus(),
+      purpose: 'catalogue',
+      nodeId: CATALOGUE_NODE_ID,
+      stages: [],
+      catalogue: { previousBatchId: OLD_BATCH_ID, released: false },
+    };
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(designated), designated);
+    const first = { ...designated, step: 'done', catalogue: { previousBatchId: null, released: false } };
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(first), first);
+  });
+
+  it('has no batch, stage or catalogue word before the node answered, and an error when it failed', () => {
+    const buying = {
+      ...rungStatus(),
+      state: 'unknown',
+      batchId: null,
+      txHash: null,
+      usable: null,
+      step: 'buying',
+      stages: [],
+    };
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(buying), buying);
+    const failed = { ...buying, state: 'failed', step: 'failed', error: 'The node did not answer.' };
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(failed), failed);
+    const late = {
+      ...rungStatus(),
+      usable: false,
+      step: 'failed',
+      error: 'The batch was not usable after an hour.',
+      stages: [],
+    };
+    assert.deepEqual(fundingBatchPurchaseStatusSchema.parse(late), late);
+  });
+
+  it('says the state of the bought batch on its node, and parses an answer that gives none', () => {
+    for (const batchState of ['pending', 'active', 'expired', 'gone', 'unknown']) {
+      assert.equal(fundingBatchPurchaseStatusSchema.parse({ ...rungStatus(), batchState }).batchState, batchState);
+    }
+    assert.equal(fundingBatchPurchaseStatusSchema.parse(rungStatus()).batchState, undefined);
+    assert.equal(fundingBatchPurchaseStatusSchema.safeParse({ ...rungStatus(), batchState: 'lost' }).success, false);
+  });
+
+  it('drops what a newer manager adds, a node address among it', () => {
+    assert.deepEqual(
+      fundingBatchPurchaseStatusSchema.parse({ ...rungStatus(), beeApiUrl: 'http://bee:1633' }),
+      rungStatus(),
+    );
+  });
+
+  it('can be restarted only on a stage that waits for a broadcast, and is over on three states', () => {
+    const restartable = FUNDING_PURCHASE_APPLY_STATES.filter(fundingPurchaseRestartable);
+    assert.deepEqual(restartable, ['waiting_live', 'waiting_unknown']);
+    const settled = FUNDING_PURCHASE_APPLY_STATES.filter(fundingPurchaseApplySettled);
+    assert.deepEqual(settled, ['applied', 'not_following', 'stopped']);
+    assert.deepEqual(fundingBatchPurchaseRestartRequestSchema.parse({ stageId: STAGE_ID.toUpperCase() }), {
+      stageId: STAGE_ID,
+    });
+    assert.equal(fundingBatchPurchaseRestartRequestSchema.safeParse({}).success, false);
+  });
+});
+
+describe('what the inventory says for a purchase', () => {
+  it("carries the manager's verdict on a batch, and parses the answer of a manager that gives none", () => {
+    for (const state of ['expired', 'gone', 'active', 'full', 'pending', 'unknown', 'none']) {
+      assert.equal(fundingBatchSchema.parse({ ...batch(), state }).state, state);
+    }
+    assert.equal(fundingBatchSchema.parse(batch()).state, undefined);
+    assert.equal(fundingBatchSchema.safeParse({ ...batch(), state: 'lost' }).success, false);
+  });
+
+  it('carries the depth and kind a replacement opens with, null for a gateway, absent from an older manager', () => {
+    const replacement = { depth: 22, immutable: false };
+    assert.deepEqual(fundingNodeSchema.parse({ ...node(), replacement }).replacement, replacement);
+    assert.equal(fundingNodeSchema.parse({ ...node(), replacement: null }).replacement, null);
+    assert.equal(fundingNodeSchema.parse(node()).replacement, undefined);
+    assert.equal(
+      fundingNodeSchema.safeParse({ ...node(), replacement: { depth: 16, immutable: true } }).success,
+      false,
+    );
+    assert.equal(
+      fundingNodeSchema.safeParse({ ...node(), replacement: { depth: 41, immutable: true } }).success,
+      false,
+    );
   });
 });

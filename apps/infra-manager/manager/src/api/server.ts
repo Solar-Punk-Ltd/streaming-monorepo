@@ -110,8 +110,8 @@ export interface ApiDeps {
   /** The manager's own chain endpoint, BEE_RPC_ENDPOINT, or null for none. */
   beeRpcEndpoint: string | null;
   /**
-   * The web2 admin's funding API: its bearer token, FUNDING_API_TOKEN, or null when it is off, and the routers of its
-   * routes, mounted in order behind its gate.
+   * The web2 admin's funding API: its bearer token, the manager's API token, MANAGER_API_TOKEN or FUNDING_API_TOKEN
+   * while that one is unset, or null when it is off, and the routers of its routes, mounted in order behind its gate.
    */
   funding: { token: string | null; routes: readonly Router[] };
   /** The build this manager runs, as the deploy built it into the image. */

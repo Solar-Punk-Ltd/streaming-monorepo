@@ -1,9 +1,10 @@
 /**
  * Who gets into the funding API under /api/admin-funding, and who gets out of it into the operator's routes.
  *
- * The web2 admin calls this API with `Authorization: Bearer <FUNDING_API_TOKEN>` and nothing else. A session cookie is
- * not a way in, and the bearer is no way into an operator's route, so neither credential crosses into the other's
- * scope. Without a token the API is off and every path under it answers 404 `funding_off`.
+ * The web2 admin calls this API with `Authorization: Bearer <MANAGER_API_TOKEN>` and nothing else, the token read under
+ * its earlier name, `FUNDING_API_TOKEN`, while `MANAGER_API_TOKEN` is unset. A session cookie is not a way in, and the
+ * bearer is no way into an operator's route, so neither credential crosses into the other's scope. Without a token the
+ * API is off and every path under it answers 404 `funding_off`.
  *
  * Unit test, no database and no Docker: the real gate, router and operator-route refusal, assembled in the order
  * `api/server.ts` mounts them, with a fake inventory and a fake session. `pnpm test` in manager/.
@@ -24,7 +25,7 @@ import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
 import { createRequireSession } from '../../src/api/middleware/requireSession.js';
 import { createAdminFundingRouter, createFundingInventoryRouter } from '../../src/api/routes/adminFunding.js';
 import type { AuthService } from '../../src/domain/auth/AuthService.js';
-import { fundingApiToken } from '../../src/utils/config.js';
+import { managerApiToken } from '../../src/utils/config.js';
 
 const TOKEN = 'f'.repeat(24) + 'u'.repeat(24);
 
@@ -112,25 +113,46 @@ async function testApi(t: TestContext, token: string | null) {
   return { send, reads: () => reads };
 }
 
-describe('FUNDING_API_TOKEN', () => {
-  it('turns the API off when unset or empty', () => {
-    assert.equal(fundingApiToken(undefined), null);
-    assert.equal(fundingApiToken(''), null);
-    assert.equal(fundingApiToken('   '), null);
+describe('the manager’s API token', () => {
+  it('turns the API off when neither key is set, or each holds only spaces', () => {
+    assert.equal(managerApiToken({}), null);
+    assert.equal(managerApiToken({ MANAGER_API_TOKEN: undefined, FUNDING_API_TOKEN: undefined }), null);
+    assert.equal(managerApiToken({ MANAGER_API_TOKEN: '', FUNDING_API_TOKEN: '   ' }), null);
   });
 
-  it('takes a token of 32 characters or more', () => {
-    assert.equal(fundingApiToken('a'.repeat(32)), 'a'.repeat(32));
-    assert.equal(fundingApiToken(` ${TOKEN} `), TOKEN);
+  it('takes MANAGER_API_TOKEN of 32 characters or more, trimmed, and says it was read under that key', () => {
+    assert.deepEqual(managerApiToken({ MANAGER_API_TOKEN: 'a'.repeat(32) }), {
+      key: 'MANAGER_API_TOKEN',
+      value: 'a'.repeat(32),
+    });
+    assert.deepEqual(managerApiToken({ MANAGER_API_TOKEN: ` ${TOKEN} ` }), { key: 'MANAGER_API_TOKEN', value: TOKEN });
   });
 
-  it('stops the manager at startup on a shorter token, or one with a space inside, naming itself and not the value', () => {
-    for (const raw of ['a'.repeat(31), `${'a'.repeat(20)} ${'b'.repeat(20)}`]) {
-      assert.throws(
-        () => fundingApiToken(raw),
-        (err: Error) => /FUNDING_API_TOKEN/.test(err.message) && !err.message.includes(raw.trim()),
-        raw,
-      );
+  it('reads FUNDING_API_TOKEN, its earlier name, only while MANAGER_API_TOKEN is unset or blank', () => {
+    const fallback = { key: 'FUNDING_API_TOKEN', value: TOKEN };
+    assert.deepEqual(managerApiToken({ FUNDING_API_TOKEN: TOKEN }), fallback);
+    assert.deepEqual(managerApiToken({ MANAGER_API_TOKEN: '  ', FUNDING_API_TOKEN: TOKEN }), fallback);
+    const renamed = 'r'.repeat(40);
+    assert.deepEqual(managerApiToken({ MANAGER_API_TOKEN: renamed, FUNDING_API_TOKEN: TOKEN }), {
+      key: 'MANAGER_API_TOKEN',
+      value: renamed,
+    });
+    // An earlier value left beside a good token is not read, so its shape stops nothing.
+    assert.deepEqual(managerApiToken({ MANAGER_API_TOKEN: renamed, FUNDING_API_TOKEN: 'short' }), {
+      key: 'MANAGER_API_TOKEN',
+      value: renamed,
+    });
+  });
+
+  it('stops the manager at startup on a shorter token, or one with a space inside, naming the key and not the value', () => {
+    for (const key of ['MANAGER_API_TOKEN', 'FUNDING_API_TOKEN']) {
+      for (const raw of ['a'.repeat(31), `${'a'.repeat(20)} ${'b'.repeat(20)}`]) {
+        assert.throws(
+          () => managerApiToken({ [key]: raw }),
+          (err: Error) => err.message.startsWith(`${key} must be`) && !err.message.includes(raw.trim()),
+          `${key}: ${raw}`,
+        );
+      }
     }
   });
 });

@@ -400,6 +400,14 @@ no move pending it is refused with "No move of the catalogue is pending, so ther
 is no previous batch to release." You press it once the admin reports the move
 done. The manager cannot tell that itself.
 
+A catalogue batch the web2 admin bought through the funding API is designated as
+a move by the purchase's follow-up, once its node calls it usable, and released
+on the admin's call under that purchase, when its move is done
+([postage-stamps.md](postage-stamps.md#bought-from-the-admin)). Both are logged
+with the purchase's request id in place of a user. A catalogue batch that still
+works, designated meanwhile, is not moved off: the purchase stops as failed
+with the reason.
+
 The manager keeps no audit table. A designation, a move, a move back, a clear and
 a release are each logged with the user, and the row records who made the last of
 each and when.

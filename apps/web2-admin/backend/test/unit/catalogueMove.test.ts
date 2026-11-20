@@ -15,11 +15,17 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test';
 
 import type { CatalogueStampRecord } from '@streaming-monorepo/contracts';
+import { CATALOGUE_MOVE_STARTED_BY_PURCHASE } from '@streaming-monorepo/web2-admin-common';
 
 import type { Actor } from '../../src/domain/actor.js';
 import { BeeFeedGateway } from '../../src/domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from '../../src/domain/CatalogueBatch.js';
-import { CatalogueMoveService } from '../../src/domain/CatalogueMove.js';
+import {
+  CatalogueMoveService,
+  catalogueMoveRefusal,
+  notDesignatedYet,
+  type CatalogueMoveOptions,
+} from '../../src/domain/CatalogueMove.js';
 import { CatalogueMoveRefusedError } from '../../src/domain/errors/index.js';
 import { encodeFeedPayload } from '../../src/domain/FeedGateway.js';
 import { feedIdentityFrom } from '../../src/domain/feedIdentity.js';
@@ -160,6 +166,7 @@ beforeEach(() => {
   bee.files.clear();
   bee.failNext = null;
   bee.beforeAnswer = null;
+  bee.peerCount = 8;
   gateway = new BeeFeedGateway({ feedPrivateKey: KEY, feedTopic: TOPIC });
   stamps = new FakeCatalogueStampStore();
   writes = new FakeFeedWrites();
@@ -785,5 +792,229 @@ describe('a thumbnail after a move', () => {
 
     assert.equal(bee.under(OLD, 'file').length, before + 1, 'uploaded again under the catalogue’s batch');
     assert.equal(streams.get(row.id).thumbnail_batch_id, OLD);
+  });
+});
+
+describe('a thumbnail the network gives no more', () => {
+  /**
+   * Two streams published under OLD, each with a thumbnail, and then the manager designates NEW. The row of "Lost"
+   * holds its image's reference and no bytes, as a row from before the admin kept them; "Kept" holds both.
+   */
+  async function twoPublished(options: Partial<CatalogueMoveOptions> = {}) {
+    await stamps.upsert(record(OLD));
+    const renditions = new FakeRenditionStore();
+    const streams = new FakeStreamStore(renditions);
+    const batch = new CatalogueBatchService(stamps, writes, feed, audit, { stampRequired: true, now: () => NOW });
+    const publishing = new PublishService(
+      streams,
+      renditions,
+      stagesWithMain(),
+      writes,
+      gateway,
+      batch,
+      feed,
+      audit,
+      mutex,
+    );
+    const kept = streams.add(
+      streamRow({ owner: feed.owner, title: 'Kept', has_thumbnail: true, thumbnail_mime: 'image/png' }),
+      { thumbnail: Buffer.from([137, 80, 78, 71, 1]), thumbnail_mime: 'image/png' },
+    );
+    const lost = streams.add(
+      streamRow({ owner: feed.owner, title: 'Lost', has_thumbnail: true, thumbnail_mime: 'image/jpeg' }),
+      { thumbnail: Buffer.from([255, 216, 255, 2]), thumbnail_mime: 'image/jpeg' },
+    );
+    await publishing.publish(TEST_OPERATOR, kept.id);
+    await publishing.publish(TEST_OPERATOR, lost.id);
+    streams.thumbnails.delete(lost.id);
+    streams.add({ ...streams.get(lost.id), has_thumbnail: false });
+    await stamps.upsert(record(NEW, { observedAt: '2026-09-28T10:01:00.000Z' }));
+    const moving = new CatalogueMoveService(
+      store,
+      stamps,
+      writes,
+      streams,
+      gateway,
+      mutex,
+      feed,
+      audit,
+      { enabled: true, now: () => NOW, ...options },
+      publishing,
+    );
+    return { streams, publishing, moving, kept: streams.get(kept.id), lost: streams.get(lost.id) };
+  }
+
+  /** OLD lapses: its readings say so, and the network forgets everything only it stamped. */
+  function lapseOld(): void {
+    stamps.row!.active_record = { ...stamps.row!.active_record!, state: 'expired' };
+    bee.lapse(OLD);
+  }
+
+  it('is cleared on its stream after the old batch lapsed, listed, and the entry written at the switch has none', async () => {
+    const { streams, publishing, moving, kept, lost } = await twoPublished();
+    lapseOld();
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+    const written = writes.rows.length;
+    assert.equal(
+      await publishing.rewriteEntriesHeld(TEST_OPERATOR, [lost.id, kept.id]),
+      null,
+      'once the head carries both entries as they would be written, nothing is written again',
+    );
+    assert.equal(writes.rows.length, written);
+
+    const latest = (await moving.status()).latest;
+    assert.equal(latest?.state, 'done', latest?.error ?? '');
+    assert.deepEqual(latest?.clearedThumbnails, [{ streamId: lost.id, title: 'Lost' }]);
+    assert.equal(streams.get(lost.id).thumbnail_ref, null, 'the lost image is cleared on its stream');
+    assert.equal(streams.get(kept.id).thumbnail_batch_id, NEW, 'an image the row holds is under the new batch');
+
+    const last = writes.rows.at(-1)!;
+    assert.equal(last.batchId, NEW, 'the entry written at the switch goes with the new batch');
+    const entries = last.payload as { topic: string; thumbnail: string }[];
+    assert.equal(entries.find((entry) => entry.topic === lost.topic)?.thumbnail, '', 'and names no lost image');
+    assert.equal(entries.find((entry) => entry.topic === kept.topic)?.thumbnail, kept.thumbnail_ref);
+    assert.deepEqual(
+      streams.get(lost.id).entry_content_edited_at,
+      streams.get(lost.id).content_edited_at,
+      'the entry carries the clear, so nothing waits to be published',
+    );
+    const done = audit.entries.find((entry) => entry.action === 'catalogue.move.done');
+    assert.deepEqual(done?.details?.clearedThumbnails, [{ streamId: lost.id, title: 'Lost' }]);
+    assert.equal(done?.details?.entriesRewrittenAt, last.feedIndex);
+  });
+
+  it('stops the move before the switch while the old batch has time left, and clears nothing', async () => {
+    const { streams, moving, lost } = await twoPublished();
+    bee.files.delete(lost.thumbnail_ref!);
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    const latest = (await moving.status()).latest;
+    assert.equal(latest?.state, 'failed');
+    assert.match(latest?.error ?? '', new RegExp(`The thumbnail ${lost.thumbnail_ref} could not be uploaded again`));
+    assert.equal(latest?.clearedThumbnails, undefined);
+    assert.equal(streams.get(lost.id).thumbnail_ref, lost.thumbnail_ref, 'the stream keeps its image');
+    assert.equal(stamps.row?.active_batch_id, OLD, 'nothing was switched');
+  });
+
+  it('is not cleared after a lapse while the node has fewer peers than a check reads by, and the move stops', async () => {
+    const { streams, moving, lost } = await twoPublished();
+    lapseOld();
+    bee.peerCount = 2;
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    assert.equal((await moving.status()).latest?.state, 'failed');
+    assert.equal(streams.get(lost.id).thumbnail_ref, lost.thumbnail_ref, 'the stream keeps its image');
+    assert.equal(stamps.row?.active_batch_id, OLD, 'nothing was switched');
+  });
+
+  it('is not cleared after a lapse while the node cannot say whether it holds it', async () => {
+    const { streams, moving, lost } = await twoPublished({
+      thumbnailGone: () => Promise.reject(new Error('the node answered 503 when asked for the thumbnail')),
+    });
+    lapseOld();
+
+    await moving.start(TEST_OPERATOR, NEW);
+    await moving.settled();
+
+    assert.equal((await moving.status()).latest?.state, 'failed');
+    assert.equal(streams.get(lost.id).thumbnail_ref, lost.thumbnail_ref);
+    assert.equal(stamps.row?.active_batch_id, OLD, 'nothing was switched');
+  });
+});
+
+describe('a move for a catalogue batch bought on the Stamps tab', () => {
+  const PURCHASE = '6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+  const ask = (moving: CatalogueMoveService, over: { targetBatchId?: string; retryFailed?: boolean } = {}) =>
+    moving.ensure({ targetBatchId: NEW, purchaseId: PURCHASE, retryFailed: false, ...over });
+
+  it('starts once the record designates the batch, as the system named after the purchase, and says where it stands', async () => {
+    await history(3);
+    const moving = service();
+
+    const started = await ask(moving);
+    assert.equal(started.state, 'running');
+    assert.equal(started.slotsTotal, 3);
+    await moving.settled();
+
+    assert.deepEqual(await ask(moving), {
+      state: 'done',
+      slotsDone: 3,
+      slotsTotal: 3,
+      message: null,
+      clearedThumbnails: [],
+    });
+    assert.equal(store.moves.length, 1, 'started once, and asked after it was done without a second start');
+    assert.equal(store.moves[0]!.startedBy, CATALOGUE_MOVE_STARTED_BY_PURCHASE);
+    const start = audit.entries.find((entry) => entry.action === 'catalogue.move.start');
+    assert.deepEqual(start?.actor, { kind: 'system', reason: CATALOGUE_MOVE_STARTED_BY_PURCHASE });
+    assert.equal(start?.details?.purchaseId, PURCHASE);
+    assertEverySlotMoved(3);
+  });
+
+  it('waits, saying why, while the record names another batch, the move is off, or a lapse left a slot without bytes', async () => {
+    await history(3, { legacy: [1] });
+    const other = 'c3'.repeat(32);
+
+    assert.deepEqual(await ask(service(), { targetBatchId: other }), {
+      state: 'waiting',
+      slotsDone: 0,
+      slotsTotal: 3,
+      message: notDesignatedYet(other),
+      clearedThumbnails: [],
+    });
+    const off = await ask(service({ enabled: false }));
+    assert.equal(off.state, 'waiting');
+    assert.equal(off.message, catalogueMoveRefusal('disabled'));
+    stamps.row!.active_record = { ...stamps.row!.active_record!, state: 'expired' };
+    const lapsed = await ask(service());
+    assert.equal(lapsed.state, 'waiting');
+    assert.match(lapsed.message ?? '', /has lapsed, and 1 slot has no recorded bytes/);
+    assert.equal(store.moves.length, 0, 'nothing was started');
+  });
+
+  it('leaves a failed move as it is until a check, which takes it up where it stopped', async () => {
+    await history(4);
+    const moving = service({ sliceSlots: 2 });
+    let refused = false;
+    bee.beforeAnswer = (upload) => {
+      if (upload.batch === NEW && upload.address === addresses[2] && !refused) {
+        refused = true;
+        bee.failNext = { kind: 'soc', status: 500 };
+      }
+    };
+    await ask(moving);
+    await moving.settled();
+
+    const failed = await ask(moving);
+    assert.equal(failed.state, 'failed');
+    assert.equal(failed.slotsDone, 2);
+    assert.match(failed.message ?? '', /^Slot 2 could not be moved/);
+    assert.equal(store.moves[0]!.state, 'failed', 'not started again without a check');
+
+    assert.equal((await ask(moving, { retryFailed: true })).state, 'running');
+    await moving.settled();
+    assert.equal((await ask(moving)).state, 'done');
+    assert.equal(store.moves.length, 1, 'the same move, taken up where it stopped');
+    assert.equal(audit.entries.filter((entry) => entry.action === 'catalogue.move.start').length, 2);
+    assertEverySlotMoved(4);
+  });
+
+  it('is done at once when the feed has no slot to move', async () => {
+    await stamps.upsert(record(NEW));
+
+    assert.deepEqual(await ask(service()), {
+      state: 'done',
+      slotsDone: 0,
+      slotsTotal: 0,
+      message: null,
+      clearedThumbnails: [],
+    });
+    assert.equal(store.moves.length, 0);
   });
 });

@@ -761,7 +761,7 @@ export class FundingStampService {
     if (!this.manager) {
       throw new FundingRefusedError(
         'not_set_up',
-        'Funding is not set up: the admin has no MANAGER_FUNDING_URL and MANAGER_FUNDING_TOKEN.',
+        'Funding is not set up: the admin has no MANAGER_API_URL and MANAGER_API_TOKEN.',
       );
     }
     return this.manager;

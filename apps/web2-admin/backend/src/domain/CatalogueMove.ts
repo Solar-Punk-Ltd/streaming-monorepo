@@ -1,8 +1,11 @@
 import type { CatalogueStampRecord } from '@streaming-monorepo/contracts';
-import type {
-  CatalogueMoveProblem,
-  CatalogueMoveStatus,
-  CatalogueMoveSummary,
+import {
+  CATALOGUE_MOVE_STARTED_BY_PURCHASE,
+  RECORDING_CHECK_MIN_PEERS,
+  type CatalogueMoveProblem,
+  type CatalogueMoveStatus,
+  type CatalogueMoveSummary,
+  type ClearedThumbnail,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { isDesignated, type CatalogueStampRow } from '../types/index.js';
@@ -16,6 +19,7 @@ import { withoutCatalogueNode } from './catalogueNodeText.js';
 import { CatalogueMoveRefusedError } from './errors/index.js';
 import type { CatalogueRestamper, CatalogueTarget, ThumbnailFile } from './FeedGateway.js';
 import type { FeedIdentity } from './feedIdentity.js';
+import type { PurchasedCatalogueMove, PurchasedMoveReading } from './funding/batchPurchasePorts.js';
 import { Logger } from './Logger.js';
 import type { Mutex } from './Mutex.js';
 import { THUMBNAIL_FILE_EXTENSIONS } from './PublishService.js';
@@ -137,8 +141,30 @@ export function planCatalogueMove(input: CatalogueMoveInput): CatalogueMovePlan 
   return { waiting, refusal: null, target };
 }
 
-function lapsed(record: CatalogueStampRecord, now: number): boolean {
-  return record.state === 'expired' || record.state === 'gone' || expiredByClock(record, now);
+/** A batch's readings as the move judges a lapse by: its state, and its time to live at the moment it was read. */
+interface LapseReading {
+  state: string;
+  ttlSeconds: number | null;
+  observedAt: string;
+}
+
+function lapsed(reading: LapseReading, now: number): boolean {
+  return reading.state === 'expired' || reading.state === 'gone' || expiredByClock(reading, now);
+}
+
+/**
+ * Whether the batch a move goes from has lapsed, by the readings the admin holds of it: those of the pinned batch
+ * until the switch, and the record's `previous` after it, as the manager keeps reading the batch a move left. A batch
+ * the admin holds no readings of has not lapsed by its account.
+ */
+export function moveFromLapsed(row: CatalogueStampRow | null, fromBatchId: string | null, now: number): boolean {
+  if (row === null || fromBatchId === null) return false;
+  if (row.active_batch_id === fromBatchId && row.active_record) return lapsed(row.active_record, now);
+  const previous = row.record?.previous;
+  if (row.record && previous && previous.batchId === fromBatchId) {
+    return lapsed({ state: previous.state, ttlSeconds: previous.ttlSeconds, observedAt: row.record.observedAt }, now);
+  }
+  return false;
 }
 
 function summaryOf(move: CatalogueMoveRow | null): CatalogueMoveSummary | null {
@@ -153,11 +179,76 @@ function summaryOf(move: CatalogueMoveRow | null): CatalogueMoveSummary | null {
     restamped: move.restampedSlots,
     skipped: move.skippedSlots,
     thumbnails: move.thumbnails,
+    ...(move.clearedThumbnails.length > 0 ? { clearedThumbnails: move.clearedThumbnails } : {}),
     error: move.error,
     startedBy: move.startedBy,
     startedAt: move.startedAt.toISOString(),
     finishedAt: move.finishedAt?.toISOString() ?? null,
   };
+}
+
+/** A move as the purchase that bought its batch reads it. `head` is the feed's head when the row has none yet. */
+function purchaseReadingOf(move: CatalogueMoveRow, head: number | null): PurchasedMoveReading {
+  const total = move.headIndex ?? head;
+  return {
+    state: move.state === 'running' ? 'running' : move.state === 'done' ? 'done' : 'failed',
+    slotsDone: move.nextIndex,
+    slotsTotal: total === null ? null : total + 1,
+    message: move.state === 'failed' ? move.error : null,
+    clearedThumbnails: move.clearedThumbnails,
+  };
+}
+
+/** A move a purchase waits for, with why it has not started. */
+function waitingReading(message: string | null, head: number | null = null): PurchasedMoveReading {
+  return {
+    state: 'waiting',
+    slotsDone: 0,
+    slotsTotal: head === null ? null : head + 1,
+    message,
+    clearedThumbnails: [],
+  };
+}
+
+/** What the move waits with while the manager's record does not name the bought batch yet. */
+export function notDesignatedYet(targetBatchId: string): string {
+  return `The manager has not designated batch ${shortBatch(targetBatchId)} as the catalogue batch yet. The move starts once it does.`;
+}
+
+/** What the move waits with while another move of the catalogue runs. */
+export const ANOTHER_MOVE_RUNNING =
+  'Another move of the catalogue is running. The move to the new batch starts once that one stops.';
+
+/** How long the move waits for the node to say whether it holds a thumbnail. */
+const THUMBNAIL_PROBE_TIMEOUT_MS = 30_000;
+
+/**
+ * Whether the network holds a thumbnail no more: the target's node answers 404 for it while it is connected to
+ * {@link RECORDING_CHECK_MIN_PEERS} peers or more, the floor a check of the recordings reads by, since a node with
+ * fewer finds nothing whatever is on Swarm. A node that answers it has it says false. Any other answer throws, a 404
+ * from a node under the floor and a timeout among them: only a healthy node that answers can say a thing is gone.
+ */
+export async function thumbnailGoneFromNetwork(reference: string, target: CatalogueTarget): Promise<boolean> {
+  const base = target.beeApiUrl.replace(/\/+$/, '');
+  const response = await fetch(`${base}/bzz/${reference}/`, {
+    method: 'HEAD',
+    signal: AbortSignal.timeout(THUMBNAIL_PROBE_TIMEOUT_MS),
+  });
+  if (response.ok) return false;
+  if (response.status !== 404) throw new Error(`the node answered ${response.status} when asked for the thumbnail`);
+  const peers = await fetch(`${base}/peers`, { signal: AbortSignal.timeout(THUMBNAIL_PROBE_TIMEOUT_MS) });
+  if (!peers.ok) {
+    await peers.body?.cancel();
+    throw new Error(`the node answered ${peers.status} when asked for its peers`);
+  }
+  const listed = ((await peers.json()) as { peers?: unknown }).peers;
+  const count = Array.isArray(listed) ? listed.length : 0;
+  if (count < RECORDING_CHECK_MIN_PEERS) {
+    throw new Error(
+      `the node answered 404 for the thumbnail while connected to ${count} peer${count === 1 ? '' : 's'}, under the ${RECORDING_CHECK_MIN_PEERS} it needs to tell one that is gone`,
+    );
+  }
+  return true;
 }
 
 /** The slice of the feed write log the move reads: the head, and the entries written there. */
@@ -172,6 +263,21 @@ export interface MoveFeedHistory {
 export interface MoveThumbnailStore {
   listStoredThumbnails(): Promise<StoredThumbnail[]>;
   recordThumbnailBatch(reference: string, batchId: string): Promise<void>;
+  /**
+   * Clears the thumbnail `reference` on every stream that names it and holds no bytes of it, as an edit, and answers
+   * those streams: the image is lost, and each takes a new one on its page.
+   */
+  clearLostThumbnail(reference: string): Promise<ClearedThumbnail[]>;
+}
+
+/**
+ * Writes the catalogue once more with the entries of some streams rebuilt from their rows: PublishService. The move
+ * calls it in its last step, holding the publish mutex, right after the switch, for the streams whose thumbnail it
+ * cleared, so the entry written then carries no image for them.
+ */
+export interface MoveEntryRewriter {
+  /** The index written, or null when the head carried none of those entries or carried each as it would be written. */
+  rewriteEntriesHeld(actor: Actor, streamIds: readonly string[]): Promise<number | null>;
 }
 
 export interface CatalogueMoveOptions {
@@ -179,6 +285,11 @@ export interface CatalogueMoveOptions {
   enabled: boolean;
   now?: () => number;
   sliceSlots?: number;
+  /**
+   * Whether the network holds a thumbnail no more, asked through the target's node once uploading it again failed:
+   * {@link thumbnailGoneFromNetwork}, which a test replaces.
+   */
+  thumbnailGone?: (reference: string, target: CatalogueTarget) => Promise<boolean>;
 }
 
 /** Why the job stops before it has finished, in the sentence the console shows. */
@@ -200,14 +311,19 @@ const REFERENCE_RE = /^[0-9a-f]{64}([0-9a-f]{64})?$/i;
  * entry written last, and the switch to the new batch, in one go, so no slot is ever left under the old batch alone.
  *
  * Progress is in `catalogue_moves` after every slot, so a restart continues where it stopped, and a failure keeps its
- * reason and can be retried. Started by an operator from the Stages page, and only while `CATALOGUE_MOVE_ENABLED` is
- * on.
+ * reason and can be retried. Started by an operator from the Stages page, or by the admin itself for a catalogue batch
+ * bought on the Stamps tab (`ensure`), and only while `CATALOGUE_MOVE_ENABLED` is on.
+ *
+ * After the batch it moves from has lapsed, a thumbnail no stream holds the bytes of and the network gives no more is
+ * cleared on its streams, which are listed (`catalogue_moves.cleared_thumbnails`), and the move goes on; the entry
+ * written at the switch carries no image for them. A move from a batch with time left stops on it instead.
  */
-export class CatalogueMoveService {
+export class CatalogueMoveService implements PurchasedCatalogueMove {
   private job: Promise<void> | null = null;
   private stopping = false;
   private readonly now: () => number;
   private readonly sliceSlots: number;
+  private readonly thumbnailGone: (reference: string, target: CatalogueTarget) => Promise<boolean>;
 
   constructor(
     private readonly store: CatalogueMoveStore,
@@ -220,9 +336,20 @@ export class CatalogueMoveService {
     private readonly feed: FeedIdentity,
     private readonly audit: AuditLog,
     private readonly options: CatalogueMoveOptions,
+    /**
+     * Rewrites the entries of the streams whose thumbnail the move cleared, at the switch: PublishService. Without
+     * one, those entries keep naming the lost image until their stream is next written.
+     */
+    private readonly entries: MoveEntryRewriter | null = null,
   ) {
     this.now = options.now ?? Date.now;
     this.sliceSlots = Math.max(1, options.sliceSlots ?? MOVE_SLICE_SLOTS);
+    this.thumbnailGone = options.thumbnailGone ?? thumbnailGoneFromNetwork;
+  }
+
+  /** Whether the move is switched on on this installation, `CATALOGUE_MOVE_ENABLED`. */
+  enabled(): boolean {
+    return this.options.enabled;
   }
 
   async status(): Promise<CatalogueMoveStatus> {
@@ -272,6 +399,77 @@ export class CatalogueMoveService {
     // Another start won the race; it is running.
     if (!move) return this.status();
 
+    await this.begin(move, actor, retrying, head);
+    return this.status();
+  }
+
+  /**
+   * For a catalogue batch bought on the Stamps tab: makes sure the move onto it runs, and answers where it stands, as
+   * `PurchasedCatalogueMove` says. Started as the system, named after the purchase
+   * (`CATALOGUE_MOVE_STARTED_BY_PURCHASE`), once the manager's record designates the batch; a failed one is started
+   * again only when `retryFailed` is set; a running or finished one is left as it is. A start that cannot happen yet
+   * answers `waiting` with its sentence, and nothing else is done: the purchase asks again at its next turn. With
+   * nothing to move, the feed holding no slot that is not under the batch, the move is done.
+   */
+  async ensure(input: {
+    targetBatchId: string;
+    purchaseId: string;
+    retryFailed: boolean;
+  }): Promise<PurchasedMoveReading> {
+    const targetBatchId = input.targetBatchId.toLowerCase();
+    if (!this.options.enabled) return waitingReading(catalogueMoveRefusal('disabled'));
+    const actor: Actor = { kind: 'system', reason: CATALOGUE_MOVE_STARTED_BY_PURCHASE };
+    const { plan, latest, head, row } = await this.evaluate();
+    const designated = isDesignated(row) ? row.record.batchId : null;
+
+    if (latest && latest.targetBatchId === targetBatchId) {
+      if (latest.state === 'running') {
+        // Running here, or left running by a process that stopped and has not resumed it: go on with it.
+        if (!this.job) this.launch(latest, actor);
+        return purchaseReadingOf(latest, head);
+      }
+      if (latest.state === 'done' || !input.retryFailed) return purchaseReadingOf(latest, head);
+      const held = designated !== targetBatchId ? notDesignatedYet(targetBatchId) : plan.refusal?.message;
+      if (held) return { ...purchaseReadingOf(latest, head), message: held };
+      const retried = await this.store.retry(latest.id);
+      if (!retried) return waitingReading(ANOTHER_MOVE_RUNNING, head);
+      await this.begin(retried, actor, true, head, { purchaseId: input.purchaseId });
+      return purchaseReadingOf(retried, head);
+    }
+
+    if (designated !== targetBatchId) return waitingReading(notDesignatedYet(targetBatchId), head);
+    if (!plan.waiting) {
+      // Every slot is under the batch already, or the feed has none: nothing is left to move.
+      return {
+        state: 'done',
+        slotsDone: 0,
+        slotsTotal: head === null ? 0 : head + 1,
+        message: null,
+        clearedThumbnails: [],
+      };
+    }
+    if (plan.refusal) return waitingReading(plan.refusal.message, head);
+
+    const move = await this.store.create({
+      owner: this.feed.owner,
+      topic: this.feed.topicHex,
+      targetBatchId,
+      fromBatchId: plan.waiting.fromBatchId,
+      startedBy: CATALOGUE_MOVE_STARTED_BY_PURCHASE,
+    });
+    if (!move) return waitingReading(ANOTHER_MOVE_RUNNING, head);
+    await this.begin(move, actor, false, head, { purchaseId: input.purchaseId });
+    return purchaseReadingOf(move, head);
+  }
+
+  /** Logs and audits the start of a move, or its retry, and runs it in the background. */
+  private async begin(
+    move: CatalogueMoveRow,
+    actor: Actor,
+    retrying: boolean,
+    head: number | null,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
     const from = move.fromBatchId ? shortBatch(move.fromBatchId) : 'the batch before the catalogue stamp';
     logger.info(
       `[CatalogueMove] ${describeActor(actor)} ${retrying ? 'retried' : 'started'} moving the catalogue from ${from} to ${shortBatch(move.targetBatchId)}: ${(head ?? 0) + 1} slots, from slot ${move.nextIndex}`,
@@ -286,10 +484,10 @@ export class CatalogueMoveService {
         slots: (head ?? 0) + 1,
         fromSlot: move.nextIndex,
         retry: retrying,
+        ...details,
       },
     });
     this.launch(move, actor);
-    return this.status();
   }
 
   /**
@@ -413,7 +611,7 @@ export class CatalogueMoveService {
         const head = await this.head();
         if (head - progress.move.nextIndex + 1 <= this.sliceSlots) {
           // The thumbnails named now; the last step does the ones named since.
-          await this.restampThumbnails(slice, done);
+          await this.restampThumbnails(progress, slice, done);
           break;
         }
         await this.restampSlice(progress, slice, head, this.sliceSlots, covered);
@@ -428,20 +626,25 @@ export class CatalogueMoveService {
         if (progress.move.nextIndex <= head) {
           await this.restampSlice(progress, last, head, head - progress.move.nextIndex + 1, covered);
         }
-        await this.restampThumbnails(last, done);
+        await this.restampThumbnails(progress, last, done);
         const row = await this.stamps.get();
         if (!isDesignated(row) || row.record.batchId !== progress.move.targetBatchId) {
           throw new MoveStopped('The designation changed during the last step of the move.');
         }
         const switched = await this.stamps.pin(row.record);
+        // Written after the switch, so it goes with the new batch, and before the move is done, so a retry writes it.
+        const rewrittenAt = await this.rewriteCleared(actor, progress.move, last);
         const finishedMove = await this.store.finish(progress.move.id, done.size);
         if (!finishedMove) throw new MoveStopped('The move was no longer running when it finished.');
-        return { move: finishedMove, switched, head };
+        return { move: finishedMove, switched, head, rewrittenAt };
       });
 
       const from = finished.move.fromBatchId;
+      const cleared = finished.move.clearedThumbnails.length;
       logger.info(
-        `[CatalogueMove] the catalogue is moved to ${shortBatch(finished.move.targetBatchId)}: ${finished.head + 1} slots (${finished.move.restampedSlots} uploaded again, ${finished.move.skippedSlots} already under it), ${done.size} thumbnail${done.size === 1 ? '' : 's'}, and it is written with it from now on${
+        `[CatalogueMove] the catalogue is moved to ${shortBatch(finished.move.targetBatchId)}: ${finished.head + 1} slots (${finished.move.restampedSlots} uploaded again, ${finished.move.skippedSlots} already under it), ${done.size} thumbnail${done.size === 1 ? '' : 's'}${
+          cleared > 0 ? ` (cleared on ${cleared} stream${cleared === 1 ? '' : 's'})` : ''
+        }, and it is written with it from now on${
           from && from !== finished.move.targetBatchId
             ? `. Batch ${shortBatch(from)} can be released in the manager`
             : ''
@@ -459,6 +662,8 @@ export class CatalogueMoveService {
           skipped: finished.move.skippedSlots,
           thumbnails: done.size,
           switched: finished.switched,
+          clearedThumbnails: finished.move.clearedThumbnails,
+          entriesRewrittenAt: finished.rewrittenAt,
         },
       });
     } catch (error) {
@@ -548,6 +753,61 @@ export class CatalogueMoveService {
   }
 
   /**
+   * Writes the catalogue once more, holding the publish mutex, with the entries of the streams whose thumbnail the
+   * move cleared rebuilt from their rows, which name no image now. The index written, or null when there was nothing
+   * to rewrite. A write that fails stops the move with the reason; a retry writes it again.
+   */
+  private async rewriteCleared(actor: Actor, move: CatalogueMoveRow, target: CatalogueTarget): Promise<number | null> {
+    if (move.clearedThumbnails.length === 0 || !this.entries) return null;
+    try {
+      return await this.entries.rewriteEntriesHeld(
+        actor,
+        move.clearedThumbnails.map((stream) => stream.streamId),
+      );
+    } catch (error) {
+      throw new MoveStopped(
+        `The catalogue could not be written again without the thumbnails the move cleared: ${withoutCatalogueNode(getErrorMessage(error), target)}. The admin writes with batch ${shortBatch(move.targetBatchId)} already; retry the move to write it.`,
+      );
+    }
+  }
+
+  /**
+   * Whether a thumbnail the move could not upload again, and holds no bytes of, is lost for good: the batch the move
+   * goes from has lapsed, by the admin's readings or because this move already found so, and the target's node
+   * answers that it holds the image no more. A node that cannot say, and a batch with time left, are no loss.
+   */
+  private async lostAfterLapse(move: CatalogueMoveRow, reference: string, target: CatalogueTarget): Promise<boolean> {
+    const lapsedFrom =
+      move.clearedThumbnails.length > 0 || moveFromLapsed(await this.stamps.get(), move.fromBatchId, this.now());
+    if (!lapsedFrom) return false;
+    try {
+      return await this.thumbnailGone(reference, target);
+    } catch (error) {
+      logger.warn(
+        `[CatalogueMove] could not tell whether the network still holds the thumbnail ${reference}: ${withoutCatalogueNode(getErrorMessage(error), target)}`,
+      );
+      return false;
+    }
+  }
+
+  /** Clears a lost thumbnail on the streams that name it, and adds them to the move's list of cleared thumbnails. */
+  private async clearLost(progress: { move: CatalogueMoveRow }, reference: string): Promise<void> {
+    const cleared = await this.thumbnails.clearLostThumbnail(reference);
+    if (cleared.length === 0) {
+      logger.warn(
+        `[CatalogueMove] the thumbnail ${reference} is gone from the network since the batch the catalogue moves from lapsed, and no stream of the admin's names it; the entry that names it keeps it`,
+      );
+      return;
+    }
+    const recorded = await this.store.recordClearedThumbnails(progress.move.id, cleared);
+    if (!recorded) throw new MoveStopped('The move was stopped while it ran.');
+    progress.move = recorded;
+    logger.warn(
+      `[CatalogueMove] the thumbnail ${reference} is gone from the network since the batch the catalogue moves from lapsed: cleared on ${cleared.length} stream${cleared.length === 1 ? '' : 's'}, which take${cleared.length === 1 ? 's' : ''} a new one on ${cleared.length === 1 ? 'its' : 'their'} page`,
+    );
+  }
+
+  /**
    * Every thumbnail a stream names, published or not, and every one the latest entry names, uploaded again under the
    * target: a draft published again after the move names its thumbnail by the same reference, so it has to be under
    * the new batch too. The admin's stored bytes are used where a stream still holds the image, and the network
@@ -559,8 +819,15 @@ export class CatalogueMoveService {
    * whenever the bytes were to hand. Only one no entry names only warns when the network cannot give it or it comes
    * out elsewhere: its stream keeps the batch it had recorded, so its next publish uploads it again under the batch
    * the catalogue is written with.
+   *
+   * After the batch the move goes from has lapsed, a thumbnail whose bytes no stream holds and that the network holds
+   * no more is cleared on its streams and listed, and the move goes on (`lostAfterLapse`, `clearLost`).
    */
-  private async restampThumbnails(target: CatalogueTarget, done: Set<string>): Promise<void> {
+  private async restampThumbnails(
+    progress: { move: CatalogueMoveRow },
+    target: CatalogueTarget,
+    done: Set<string>,
+  ): Promise<void> {
     const last = await this.history.lastWrite(this.feed.owner, this.feed.topicHex);
     const named = new Set(thumbnailsNamedBy(last?.entries ?? []));
     const stored = new Map((await this.thumbnails.listStoredThumbnails()).map((t) => [t.reference.toLowerCase(), t]));
@@ -579,6 +846,11 @@ export class CatalogueMoveService {
       try {
         uploaded = (await this.gateway.restampThumbnail(reference, file, target)).toLowerCase();
       } catch (error) {
+        if (!file && (await this.lostAfterLapse(progress.move, reference, target))) {
+          await this.clearLost(progress, reference);
+          done.add(reference);
+          continue;
+        }
         if (named.has(reference) || row?.thumbnail) {
           throw new MoveStopped(
             `The thumbnail ${reference} could not be uploaded again under batch ${shortBatch(target.batchId)}: ${withoutCatalogueNode(getErrorMessage(error), target)}. Nothing was switched.`,

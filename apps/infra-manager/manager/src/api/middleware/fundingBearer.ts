@@ -23,7 +23,9 @@ function digest(value: string): Buffer {
 
 /**
  * The gate of the funding API under /api/admin-funding, which the web2 admin calls with
- * `Authorization: Bearer <FUNDING_API_TOKEN>`. Without a token the API is off and every path under it answers 404
+ * `Authorization: Bearer <MANAGER_API_TOKEN>`, the manager's API token, read as FUNDING_API_TOKEN while
+ * MANAGER_API_TOKEN is unset (`managerApiToken` in `utils/config.ts`). Without a token the API is off and every path
+ * under it answers 404
  * `funding_off`, whatever was presented. With one, a request needs that bearer and no session cookie: a cookie is the
  * operator's credential, and refusing it here keeps the two scopes apart even when a browser sends both.
  *

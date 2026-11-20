@@ -2,18 +2,18 @@ import { z } from 'zod';
 
 import { UUID_PATTERN } from './adminApi.js';
 import { ARCHIVE_MAX_DEPTH, ARCHIVE_MIN_DEPTH } from './archiveCapacity.js';
-import { ARCHIVE_BATCH_LABEL_MAX_LENGTH } from './stage.js';
+import { ARCHIVE_BATCH_LABEL_MAX_LENGTH, STAGE_STAMP_STATES } from './stage.js';
 
 /**
  * The manager's funding API, which the web2 admin calls to keep a brand's stages funded from the brand wallet: the
  * nodes with their wallets, batches and chequebooks, the brand account's balances and nonce, transfers the admin signs
- * and the manager checks and broadcasts, stamp operations, the top-ups and dilutions of the nodes' batches, stamp
- * purchases, the archive stamps bought on the catalogue node, and chequebook operations, the deposits into and
- * withdrawals from the nodes' chequebooks, which each node pays for from its own wallet. The admin has no chain
- * connection of its own. `docs/architecture/funding.md` is the design.
+ * and the manager checks and broadcasts, stamp operations, the top-ups and dilutions of the nodes' batches, batch
+ * purchases, the new batches a node buys for a rung, for the catalogue or as an archive stamp, and chequebook
+ * operations, the deposits into and withdrawals from the nodes' chequebooks, which each node pays for from its own
+ * wallet. The admin has no chain connection of its own. `docs/architecture/funding.md` is the design.
  *
- * Every route is under {@link ADMIN_FUNDING_PATH}, takes `Authorization: Bearer` with the manager's
- * `FUNDING_API_TOKEN`, and refuses a session cookie; the manager's operator routes refuse that bearer.
+ * Every route is under {@link ADMIN_FUNDING_PATH}, takes `Authorization: Bearer` with the manager's API token
+ * ({@link MANAGER_API_TOKEN_KEY}), and refuses a session cookie; the manager's operator routes refuse that bearer.
  *
  * Amounts are integer strings in base units: wei for xDAI (18 decimals) and PLUR for xBZZ (16 decimals), so no amount
  * is ever a float. Every object is a `z.object`, so a field a newer manager adds is dropped on the way in rather than
@@ -23,6 +23,34 @@ import { ARCHIVE_BATCH_LABEL_MAX_LENGTH } from './stage.js';
 
 /** The prefix of every route of the funding API. */
 export const ADMIN_FUNDING_PATH = '/api/admin-funding';
+
+/**
+ * The setting that holds the bearer token of the manager's API, under one name in the manager's env file, in the
+ * admin's and in the deploy settings: the manager takes it on every route of this API, and the admin sends it.
+ */
+export const MANAGER_API_TOKEN_KEY = 'MANAGER_API_TOKEN';
+
+/** The name the manager read the same token under before {@link MANAGER_API_TOKEN_KEY}, read when that one is unset. */
+export const MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER = 'FUNDING_API_TOKEN';
+
+/** The name the admin read the same token under before {@link MANAGER_API_TOKEN_KEY}, read when that one is unset. */
+export const MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN = 'MANAGER_FUNDING_TOKEN';
+
+/**
+ * The manager's API token as an env holds it, and the name it was read under: {@link MANAGER_API_TOKEN_KEY} when that
+ * is set to more than spaces, otherwise `formerKey`, the app's own earlier name. Null when neither is set. The value
+ * is trimmed and is checked by the app that reads it.
+ */
+export function managerApiTokenFrom(
+  env: Readonly<Record<string, string | undefined>>,
+  formerKey: typeof MANAGER_API_TOKEN_FORMER_KEY_IN_MANAGER | typeof MANAGER_API_TOKEN_FORMER_KEY_IN_ADMIN,
+): { key: string; value: string } | null {
+  for (const key of [MANAGER_API_TOKEN_KEY, formerKey]) {
+    const value = env[key]?.trim();
+    if (value) return { key, value };
+  }
+  return null;
+}
 
 /** `GET`: every stage's nodes and the catalogue node, with their wallets. */
 export const FUNDING_INVENTORY_PATH = `${ADMIN_FUNDING_PATH}/inventory`;
@@ -54,12 +82,39 @@ export function fundingStampOperationPath(requestId: string): string {
 }
 
 /**
- * `POST`: one purchase of an archive stamp on the catalogue node, which the manager checks, journals and asks the
- * node for.
+ * `POST`: one purchase of a new batch, for a rung, for the catalogue or as an archive stamp, which the manager checks,
+ * journals, asks the node for and follows up.
+ */
+export const FUNDING_BATCH_PURCHASES_PATH = `${ADMIN_FUNDING_PATH}/batch-purchases`;
+
+/** `GET`: where one batch purchase stands, by the request id the admin gave it. */
+export function fundingBatchPurchasePath(requestId: string): string {
+  if (!UUID_PATTERN.test(requestId)) throw new Error('A batch purchase request id is a UUID.');
+  return `${FUNDING_BATCH_PURCHASES_PATH}/${requestId.toLowerCase()}`;
+}
+
+/** `POST`: restart now the uploader of one stage that a rung purchase waits to restart. */
+export function fundingBatchPurchaseRestartPath(requestId: string): string {
+  return `${fundingBatchPurchasePath(requestId)}/restart`;
+}
+
+/** `POST`: take up again the follow-up of a purchase that stopped as failed after its batch was bought. */
+export function fundingBatchPurchaseCheckPath(requestId: string): string {
+  return `${fundingBatchPurchasePath(requestId)}/check`;
+}
+
+/** `POST`: release the batch a catalogue purchase moved the catalogue from, once the admin's move is done. */
+export function fundingBatchPurchaseReleasePath(requestId: string): string {
+  return `${fundingBatchPurchasePath(requestId)}/release`;
+}
+
+/**
+ * `POST`: the purchase of an archive stamp as an admin older than {@link FUNDING_BATCH_PURCHASES_PATH} asks for it.
+ * The manager answers it as that route answers a purchase of purpose `archive`.
  */
 export const FUNDING_STAMP_PURCHASES_PATH = `${ADMIN_FUNDING_PATH}/stamp-purchases`;
 
-/** `GET`: the state of one stamp purchase, by the request id the admin gave it. */
+/** `GET`: the state of one purchase asked for on {@link FUNDING_STAMP_PURCHASES_PATH}, by its request id. */
 export function fundingStampPurchasePath(requestId: string): string {
   if (!UUID_PATTERN.test(requestId)) throw new Error('A stamp purchase request id is a UUID.');
   return `${FUNDING_STAMP_PURCHASES_PATH}/${requestId.toLowerCase()}`;
@@ -108,9 +163,91 @@ export type FundingStampOperationKind = (typeof FUNDING_STAMP_OPERATION_KINDS)[n
 export const FUNDING_CHEQUEBOOK_DIRECTIONS = ['deposit', 'withdraw'] as const;
 export type FundingChequebookDirection = (typeof FUNDING_CHEQUEBOOK_DIRECTIONS)[number];
 
+/**
+ * What a batch purchase is for, which decides where the manager puts the batch once it is bought:
+ * - `rung`: a rung's node, or a single-node stage's own Bee node, pays for its stage's uploads with it.
+ * - `catalogue`: the catalogue node writes the catalogue with it, after the catalogue is moved onto it.
+ * - `archive`: the catalogue node copies finished recordings onto it, as an archive stamp.
+ *
+ * With the node it names, the purpose is the role of the batch: a rung's batch, the catalogue batch or an archive
+ * stamp. A purchase's `replacesBatchId` says which batch held that role before.
+ */
+export const FUNDING_BATCH_PURCHASE_PURPOSES = ['rung', 'catalogue', 'archive'] as const;
+export type FundingBatchPurchasePurpose = (typeof FUNDING_BATCH_PURCHASE_PURPOSES)[number];
+
+/** The shallowest batch Bee sells, and the shallowest a purchase of any purpose buys. */
+export const FUNDING_PURCHASE_MIN_DEPTH = 17;
+
+/** The deepest batch a purchase for a rung or for the catalogue buys, the deepest the manager's own buy form takes. */
+export const FUNDING_PURCHASE_MAX_DEPTH = 40;
+
+/**
+ * The shallowest batch the catalogue is written with, the manager's `MIN_CATALOGUE_DEPTH`: an immutable batch refuses
+ * a chunk whose bucket is full, and a catalogue slot is written again at the same address.
+ */
+export const FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH = 18;
+
+/** How long the manager waits for a bought batch to become usable before the follow-up stops as failed: an hour. */
+export const FUNDING_PURCHASE_USABLE_WAIT_SECONDS = 3600;
+
+/**
+ * Where a purchase stands after it was asked for, the purchase and what follows it as one line:
+ * - `buying`: the node was asked, and the purchase is not `confirmed` yet.
+ * - `waiting_usable`: the batch is bought, and its node has not seen enough blocks to stamp with it. The manager
+ *   reads the node until it has, for up to {@link FUNDING_PURCHASE_USABLE_WAIT_SECONDS}.
+ * - `set`: the batch is where its purpose puts it. A rung's is set on its node, and the uploaders that follow are
+ *   being restarted, each as `stages` says. The catalogue's is designated as a move, and the batch moved from waits
+ *   for its release.
+ * - `done`: nothing is left to do. Every stage of a rung purchase is `applied`, `not_following` or `stopped`; the
+ *   catalogue's previous batch is released, or there was none; an archive stamp is recorded and usable.
+ * - `failed`: nothing was bought, or the batch did not become usable in time, or it could not be set, and `error`
+ *   says which. After a purchase that was `confirmed`, {@link fundingBatchPurchaseCheckPath} takes the follow-up up
+ *   again, and nothing is bought a second time.
+ */
+export const FUNDING_PURCHASE_STEPS = ['buying', 'waiting_usable', 'set', 'done', 'failed'] as const;
+export type FundingPurchaseStep = (typeof FUNDING_PURCHASE_STEPS)[number];
+
+/**
+ * Where the restart of one stage's uploader stands after a rung purchase set its batch:
+ * - `pending`: the manager has not looked at this stage yet. It takes the stages one at a time.
+ * - `waiting_live`: a broadcast is live on the stage, read twice 15 seconds apart, and the manager looks again every
+ *   30 seconds.
+ * - `waiting_unknown`: the manager cannot tell whether a broadcast is live, and waits as if one were.
+ * - `waiting_settings`: other saved settings wait for an Apply on this stage beside the batch. The manager applies
+ *   nothing, and the stage takes the batch with the Apply an operator runs in the manager.
+ * - `applying`: the Apply runs, and the uploader is being recreated.
+ * - `applied`: the uploader runs and pays with the new batch, whoever applied it.
+ * - `failed`: the Apply did not go through, and `message` says why. A check takes it up again, and so does a manager
+ *   that restarted, once.
+ * - `not_following`: the stage's pool string is another than the pool's own, so the manager changes nothing on it.
+ * - `stopped`: the stage does not run. It takes the batch at its next start.
+ */
+export const FUNDING_PURCHASE_APPLY_STATES = [
+  'pending',
+  'waiting_live',
+  'waiting_unknown',
+  'waiting_settings',
+  'applying',
+  'applied',
+  'failed',
+  'not_following',
+  'stopped',
+] as const;
+export type FundingPurchaseApplyState = (typeof FUNDING_PURCHASE_APPLY_STATES)[number];
+
+/** Whether a stage's restart can be asked for now: only while it waits for a broadcast, live or untold. */
+export function fundingPurchaseRestartable(apply: FundingPurchaseApplyState): boolean {
+  return apply === 'waiting_live' || apply === 'waiting_unknown';
+}
+
+/** Whether a stage's restart is over: nothing more happens on it for this purchase. */
+export function fundingPurchaseApplySettled(apply: FundingPurchaseApplyState): boolean {
+  return apply === 'applied' || apply === 'not_following' || apply === 'stopped';
+}
+
 /** The codes an error answer carries. */
 export const FUNDING_ERROR_CODES = [
-  /** The manager has no `FUNDING_API_TOKEN`, so the API is off. */
+  /** The manager has no API token, so the API is off. */
   'funding_off',
   /** No bearer, the wrong one, or a session cookie. */
   'unauthorized',
@@ -128,8 +265,8 @@ export const FUNDING_ERROR_CODES = [
    */
   'unknown_request',
   /**
-   * A check of a stamp operation or of a stamp purchase failed, and the sentence says which. Nothing was asked of the
-   * node.
+   * A check of a stamp operation, of a batch purchase or of one of a purchase's follow-up calls failed, and the
+   * sentence says which. Nothing was asked of the node.
    */
   'stamp_refused',
   /** The node's Bee API did not answer the manager. */
@@ -221,6 +358,10 @@ const rawTransaction = z
  * reads it. Every reading is null when the node could not be read about the batch, and `readError` says why in a
  * sentence; it is null otherwise. `ttlSeconds` is null as well when the node could not work it out, and `fillRatio`
  * when the node did not say enough to work it out.
+ *
+ * `state` is the manager's verdict on the batch, the one its own pages give: `expired` with no time left, `gone` when
+ * the node holds it no more, `full`, `pending`, `active`, or `unknown` when the node did not answer. It is optional,
+ * so the answer of a manager that does not say still parses.
  */
 export const fundingBatchSchema = z.object({
   batchId,
@@ -230,6 +371,7 @@ export const fundingBatchSchema = z.object({
   ttlSeconds: z.number().int().nonnegative().nullable(),
   fillRatio: z.number().min(0).max(1).nullable(),
   readError: z.string().nullable(),
+  state: z.enum(STAGE_STAMP_STATES).optional(),
 });
 export type FundingBatch = z.infer<typeof fundingBatchSchema>;
 
@@ -266,6 +408,18 @@ export const fundingArchiveBatchSchema = fundingBatchSchema.extend({
 export type FundingArchiveBatch = z.infer<typeof fundingArchiveBatchSchema>;
 
 /**
+ * What the manager recommends for a batch bought in place of a node's own, which the buy dialog opens with: the depth
+ * and the kind of the batch the node pays with now, as the node reports them or as the manager last read them, and
+ * for a node that never had a batch the depth the manager's own buy form suggests for it, a rung's by its place in the
+ * ladder. A catalogue node's is immutable and of {@link FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH} or deeper.
+ */
+export const fundingReplacementSchema = z.object({
+  depth: z.number().int().min(17).max(40),
+  immutable: z.boolean(),
+});
+export type FundingReplacement = z.infer<typeof fundingReplacementSchema>;
+
+/**
  * One node a stage, or the catalogue, runs, with its wallet as the manager read it from the node. The wallet and its
  * balances are null when the node could not be read, and `readError` says why in a sentence; it is null otherwise.
  *
@@ -277,6 +431,11 @@ export type FundingArchiveBatch = z.infer<typeof fundingArchiveBatchSchema>;
  * `chequebook` is the node's chequebook, read with its wallet. It is null when the node answered that it has none, as
  * an ultra-light node or one with its chequebook off answers, and optional, so the answer of a manager that does not
  * read chequebooks still parses.
+ *
+ * `replacement` is what the manager recommends for a batch bought in place of the node's own: see
+ * {@link fundingReplacementSchema}. It is null for a node whose batch pays for nothing, a gateway and the own node of
+ * a stage that uploads through a pool, and optional, so the answer of a manager that offers no purchases of this kind
+ * still parses, and absent is read as no purchase offered.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -288,6 +447,7 @@ export const fundingNodeSchema = z.object({
   readError: z.string().nullable(),
   batch: fundingBatchSchema.nullable().optional(),
   chequebook: fundingChequebookSchema.nullable().optional(),
+  replacement: fundingReplacementSchema.nullable().optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 
@@ -461,11 +621,178 @@ export const fundingStampOperationStatusSchema = z.object({
 });
 export type FundingStampOperationStatus = z.infer<typeof fundingStampOperationStatusSchema>;
 
+/**
+ * `POST /api/admin-funding/batch-purchases`: one purchase of a new batch of `depth`, which the node `nodeId` buys and
+ * pays for from its own wallet: `amountPerChunkPlur` for each of the batch's `2^depth` stamps in xBZZ, and the gas in
+ * xDAI. One route buys for every purpose, and only these fields differ:
+ *
+ * | `purpose`   | `nodeId`                                         | `depth`                       | `immutable`   |
+ * | ----------- | ------------------------------------------------ | ----------------------------- | ------------- |
+ * | `rung`      | a rung's node, or a single-node stage's Bee node | 17 to 40                      | either        |
+ * | `catalogue` | the catalogue node                               | 18 to 40                      | true          |
+ * | `archive`   | the catalogue node                               | a depth of the capacity table | true          |
+ *
+ * `replacesBatchId` is the batch that holds the role now: the batch set on the rung or on the stage, or the designated
+ * catalogue batch, and null when the node has none set. It is null for an archive stamp, which replaces none. `label`
+ * is the name the batch carries in the manager and the admin, null for none; on its node the batch carries a label of
+ * the manager's own, made from the purpose and the request id.
+ *
+ * The manager refuses with `stamp_refused`, and asks nothing of the node, when the node is not one the purpose names
+ * in its current inventory; when `replacesBatchId` is another batch than the one set there now; when, for a rung or
+ * the catalogue, that batch is neither expired nor gone, since a batch that still works is topped up or diluted; when
+ * the amount buys less life than the postage contract's floor; and when the wallet holds less than the cost. A rung's
+ * or the catalogue's purchase is refused the same way while the node's latest purchase for that purpose bought a batch
+ * and stopped as `failed` before it was put to use, for as long as the node still holds that batch with time left:
+ * a check puts it to use, and a new purchase would pay for a second one. A node that could not be read about that
+ * batch keeps the refusal. A node on which another purchase is `buying` or `waiting_usable`, or another operation of
+ * this API is under way, answers 409 `conflict`.
+ *
+ * The manager journals the request before it asks the node. The same `requestId` sent again answers the purchase's
+ * state and never buys twice. What the manager does once the batch is bought is in
+ * {@link fundingBatchPurchaseStatusSchema}.
+ */
+export const fundingBatchPurchaseRequestSchema = z
+  .object({
+    requestId: uuid,
+    purpose: z.enum(FUNDING_BATCH_PURCHASE_PURPOSES),
+    nodeId,
+    depth: z.number().int(),
+    amountPerChunkPlur: positiveBaseUnits,
+    immutable: z.boolean(),
+    label: z.string().trim().min(1).max(ARCHIVE_BATCH_LABEL_MAX_LENGTH).nullable(),
+    replacesBatchId: batchId.nullable(),
+  })
+  .superRefine((request, context) => {
+    const [least, most] =
+      request.purpose === 'archive'
+        ? [ARCHIVE_MIN_DEPTH, ARCHIVE_MAX_DEPTH]
+        : request.purpose === 'catalogue'
+          ? [FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH, FUNDING_PURCHASE_MAX_DEPTH]
+          : [FUNDING_PURCHASE_MIN_DEPTH, FUNDING_PURCHASE_MAX_DEPTH];
+    if (request.depth < least || request.depth > most) {
+      context.addIssue({
+        code: 'custom',
+        path: ['depth'],
+        message: `must be ${least} to ${most} for ${request.purpose}`,
+      });
+    }
+    if (request.purpose !== 'rung' && !request.immutable) {
+      context.addIssue({ code: 'custom', path: ['immutable'], message: `must be true for ${request.purpose}` });
+    }
+    if (request.purpose === 'archive' && request.replacesBatchId !== null) {
+      context.addIssue({ code: 'custom', path: ['replacesBatchId'], message: 'must be null for archive' });
+    }
+  });
+export type FundingBatchPurchaseRequest = z.infer<typeof fundingBatchPurchaseRequestSchema>;
+
+/**
+ * What `POST /api/admin-funding/batch-purchases` answers, with 202: the purchase's state, in the transfers' four
+ * states, and the batch and its transaction hash once the node has answered with them. Bee answers a purchase only
+ * once its transaction is mined, so a purchase is `unknown` until then and the manager never answers `submitted`.
+ */
+export const fundingBatchPurchaseAnswerSchema = z.object({
+  requestId: uuid,
+  purpose: z.enum(FUNDING_BATCH_PURCHASE_PURPOSES),
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  batchId: batchId.nullable(),
+  txHash: txHash.nullable(),
+});
+export type FundingBatchPurchaseAnswer = z.infer<typeof fundingBatchPurchaseAnswerSchema>;
+
+/** One stage whose uploader follows the rung a purchase bought for, and where its restart stands. */
+export const fundingPurchaseStageSchema = z.object({
+  stageId: uuid,
+  name: someText,
+  apply: z.enum(FUNDING_PURCHASE_APPLY_STATES),
+  /** A sentence about the state where there is one to say: why an Apply failed, which settings wait. */
+  message: z.string().nullable(),
+});
+export type FundingPurchaseStage = z.infer<typeof fundingPurchaseStageSchema>;
+
+/**
+ * What a catalogue purchase left behind: the batch the catalogue is moving from, null when the node had none
+ * designated, and whether the manager has released it.
+ */
+export const fundingPurchaseCatalogueSchema = z.object({
+  previousBatchId: batchId.nullable(),
+  released: z.boolean(),
+});
+export type FundingPurchaseCatalogue = z.infer<typeof fundingPurchaseCatalogueSchema>;
+
+/**
+ * `GET /api/admin-funding/batch-purchases/:requestId`, and what the three follow-up calls answer: where the purchase
+ * stands. The batch, the hash and the error are each null until there is one. `usable` is Bee's own word about the
+ * bought batch, null while there is no batch yet and when the node could not be read about it.
+ *
+ * The manager follows a purchase up by itself, in the background, and keeps each step in its journal, so a manager
+ * that restarts goes on from the step it had reached:
+ *
+ * - **Any purpose.** A purchase whose answer the manager lost stays `unknown` until the node lists a batch of the
+ *   purchase's depth and kind under the purchase's own label, which makes it `confirmed`, or lists none thirty
+ *   minutes after the request, which makes it `failed`. A bought batch is read every few seconds until its node calls
+ *   it usable.
+ * - **`rung`.** The usable batch is set on the rung's node, or on the single-node stage, as the manager's own buy
+ *   form sets one, which writes the pool string of every uploader that follows the rung. The manager then takes
+ *   those stages one at a time and runs the stage's settings Apply, the one its own console runs, when the batch is
+ *   the only setting the running uploader is behind on and no broadcast is live. `stages` names each stage and its
+ *   state. Nothing but a purchase makes the manager apply a stage.
+ * - **`catalogue`.** The usable batch is designated as the catalogue batch, as a move from the batch designated
+ *   before, with every check the manager's own designation makes, and the catalogue stamp record is pushed. The
+ *   admin moves the catalogue and then asks for the release of the previous batch.
+ * - **`archive`.** The batch is recorded as an archive batch once it is `confirmed`, and the catalogue stamp record is
+ *   pushed.
+ *
+ * `stages` is empty for every purpose but `rung`, and before the batch is set. `catalogue` is null for every purpose
+ * but `catalogue`, and before the batch is designated.
+ *
+ * `batchState` is the state of the bought batch on its node, as the manager read it for this answer, in the words the
+ * inventory gives a batch: `pending` until it is usable, `active`, `expired` once it has no time left, `gone` once
+ * the node holds it no more. It is absent while there is no batch, and when the node could not be read about it. A
+ * purchase that stopped as `failed` with its batch bought holds its node against a second purchase only until this
+ * reads `expired` or `gone`.
+ */
+export const fundingBatchPurchaseStatusSchema = z.object({
+  requestId: uuid,
+  purpose: z.enum(FUNDING_BATCH_PURCHASE_PURPOSES),
+  nodeId,
+  state: z.enum(FUNDING_TRANSFER_STATES),
+  batchId: batchId.nullable(),
+  txHash: txHash.nullable(),
+  usable: z.boolean().nullable(),
+  step: z.enum(FUNDING_PURCHASE_STEPS),
+  error: z.string().nullable(),
+  stages: z.array(fundingPurchaseStageSchema),
+  catalogue: fundingPurchaseCatalogueSchema.nullable(),
+  batchState: z.enum(STAGE_STAMP_STATES).optional(),
+});
+export type FundingBatchPurchaseStatus = z.infer<typeof fundingBatchPurchaseStatusSchema>;
+
+/**
+ * `POST /api/admin-funding/batch-purchases/:requestId/restart`: run the Apply of one stage now, although a broadcast
+ * is live on it or the manager cannot tell. It is taken only while that stage's `apply` is `waiting_live` or
+ * `waiting_unknown` ({@link fundingPurchaseRestartable}), so the batch is the only setting the Apply carries; any
+ * other state is refused with `stamp_refused`. A live broadcast pauses while its uploader is recreated, and its
+ * recording is kept. The answer is the purchase's status.
+ *
+ * `POST .../check` takes no body: it takes up again the follow-up of a purchase whose step is `failed` after the batch
+ * was bought, and a stage whose apply is `failed`, and answers the status. `POST .../release` takes no body: for a
+ * `catalogue` purchase whose step is `set`, it releases the batch the catalogue moved from, as the manager's own
+ * Release does, and answers the status with `released` true and the step `done`. The admin calls it once its move
+ * has switched the catalogue to the new batch; the manager cannot see that move, and takes the call as the word that
+ * it is done.
+ */
+export const fundingBatchPurchaseRestartRequestSchema = z.object({
+  stageId: uuid,
+});
+export type FundingBatchPurchaseRestartRequest = z.infer<typeof fundingBatchPurchaseRestartRequestSchema>;
+
 /** The depth of an archive stamp: one the capacity table of `archiveCapacity.ts` names. */
 const archiveDepth = z.number().int().min(ARCHIVE_MIN_DEPTH).max(ARCHIVE_MAX_DEPTH);
 
 /**
- * `POST /api/admin-funding/stamp-purchases`: one purchase of an archive stamp, a new immutable batch of `depth` on the
+ * `POST /api/admin-funding/stamp-purchases`: the purchase of an archive stamp as an admin older than
+ * {@link fundingBatchPurchaseRequestSchema} sends it, which the manager takes as a batch purchase of purpose
+ * `archive`, immutable and replacing none. One purchase of an archive stamp, a new immutable batch of `depth` on the
  * catalogue node, which that node buys and pays for from its own wallet: `amountPerChunkPlur` for each of the batch's
  * `2^depth` stamps in xBZZ, and the gas in xDAI. `nodeId` must be the catalogue node of the manager's current
  * inventory; any other node is refused with `stamp_refused`, as is an amount that buys less life than the postage

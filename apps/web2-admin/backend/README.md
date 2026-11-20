@@ -127,9 +127,9 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`        | `0.1`              | under what the catalogue node's chequebook can pay, in BZZ, an archive pauses for `funds`; `0` never pauses                                                                                                                                       |
 | `ARCHIVE_TTL_WARNING_DAYS`            | `30`               | under what time left an archive stamp is shown with a warning, 1 to 365 days                                                                                                                                                                      |
 | `ARCHIVE_BUY_DEFAULT_DAYS`            | `30`               | how long a new archive stamp lasts unless the user says otherwise, 2 to 3650 days                                                                                                                                                                 |
-| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_FUNDING_URL`                                                                                                          |
-| `MANAGER_FUNDING_URL`                 | empty              | the manager's address for its funding API: https, or plain http to this host only. Empty: funding is not set up                                                                                                                                   |
-| `MANAGER_FUNDING_TOKEN`               | with the URL       | 32+ chars, printable ASCII, no space: the manager's `FUNDING_API_TOKEN`. Refused without the URL. Never logged                                                                                                                                    |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_API_URL`                                                                                                              |
+| `MANAGER_API_URL`                     | empty              | the manager's address for its funding API: https, or plain http to this host only. Read as `MANAGER_FUNDING_URL` when unset. Empty: funding is not set up                                                                                         |
+| `MANAGER_API_TOKEN`                   | with the URL       | 32+ chars, printable ASCII, no space: the manager's `MANAGER_API_TOKEN`. Read as `MANAGER_FUNDING_TOKEN` when unset. Refused without the URL. Never logged                                                                                        |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)                                                                                                                 |
 | `WEB2_ADMIN_COMMIT`                   | unset              | the build's commit, built in the same way. `GET /api/version` answers both                                                                                                                                                                        |
 | `POSTGRES_PASSWORD`                   | `web2admin`        | read by the compose files, not by the API: the database's password, written into the `DATABASE_URL` they set                                                                                                                                      |
@@ -598,6 +598,33 @@ already), `target` (the designated batch is expired, gone or mutable), `lapsed`
 (the batch the catalogue is written with has lapsed and some slot has no
 recorded bytes, which only the network could give), and `changed` (the page
 named another batch than the designated one).
+
+**For a catalogue batch bought on the Stamps tab.** The purchase asks the move
+through `PurchasedCatalogueMove` (`src/domain/funding/batchPurchasePorts.ts`),
+which `CatalogueMoveService` implements. `ensure` starts the move onto the
+bought batch once the manager's catalogue stamp record designates it, as the
+system, with `started_by` set to `batch purchase`
+(`CATALOGUE_MOVE_STARTED_BY_PURCHASE`) and the purchase's id in the
+`catalogue.move.start` audit details. It starts a failed move again only on the
+purchase's Check again, and leaves a running or finished one as it is. It
+answers `waiting` with the sentence until the record names the batch, while the
+move is off, and while a start is refused: after a lapse, a slot with no
+recorded bytes keeps `lapsed`. With nothing to move it answers `done`.
+
+**After a lapse.** Once the batch the move goes from has lapsed, the move
+clears a thumbnail the network gives no more. A lapse is read from the batch's
+last reading: expired, gone, or out of time by its clock; after the switch,
+from the record's `previous`. The thumbnail is cleared when no stream holds its
+bytes and the catalogue node answers 404 for it (`HEAD /bzz/<reference>/`)
+while it is connected to 4 peers or more (`RECORDING_CHECK_MIN_PEERS`). It is
+cleared, as an edit, on every stream that names it: `streams.thumbnail_ref`,
+its batch and its type are set to null. The stream is added to
+`catalogue_moves.cleared_thumbnails` (migration `030`), and the move goes on.
+Right after the switch, still holding the publish mutex, the move writes the
+catalogue once more with those streams' entries rebuilt from their rows
+(`PublishService.rewriteEntriesHeld`), so the entry written with the new batch
+names no lost image. A node that answers anything but 404 stops the move as
+before, and so does such a thumbnail when the batch has time left.
 
 **Audited** as `catalogue.move.start`, `catalogue.move.done` and
 `catalogue.move.failed`, with the move's id and both batches. The log lines,
@@ -1110,7 +1137,7 @@ which pays from its own wallet ([Stamp operations](#stamp-operations),
 - **Without the secret** there is no wallet: nothing is created, and a wallet
   already stored is left as it is, not shown, and named in a warning at boot.
   Nor can funding be set up: the API refuses to start with
-  `MANAGER_FUNDING_URL` and no secret.
+  `MANAGER_API_URL` and no secret.
 
 `src/domain/funding/BrandWallet.ts` is the module. The funding service uses
 `BrandWallet.start`, which `src/index.ts` calls right after the migrations,
@@ -1138,7 +1165,7 @@ deployment is in [deploy/README.md](../deploy/README.md).
 
 ### The manager's address and token
 
-`MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` come together or not at all.
+`MANAGER_API_URL` and `MANAGER_API_TOKEN` come together or not at all.
 With neither, funding is not set up. With them, `BRAND_WALLET_SECRET` is
 required as well, since funding signs every transfer with the brand wallet:
 the API refuses to start with the address and no secret. Every request
@@ -1151,8 +1178,15 @@ taken as a Docker service on this host. The container's DNS search domains
 could still resolve such a name to another host, so give the https address of
 any manager that is not on this host. Plain http anywhere else, a user
 name or password, or a `?` or `#` part stops the
-start. The token is the manager's `FUNDING_API_TOKEN`: 32 characters or more,
-printable ASCII with no space, since it travels in a header.
+start. The token is the manager's API token, its `MANAGER_API_TOKEN`: 32
+characters or more, printable ASCII with no space, since it travels in a
+header. An env file that still names it `MANAGER_FUNDING_TOKEN`, its former
+name, is read the same while `MANAGER_API_TOKEN` is unset
+(`managerApiTokenFrom` of the contracts), a refusal names the key it was read
+under, and the boot log says to rename it. The address is read the same way:
+as `MANAGER_FUNDING_URL`, its former name, while `MANAGER_API_URL` is unset
+(`managerApiUrlFrom`), a refusal names the key it was read under, and the boot
+log says to rename it.
 
 ### The client of the manager's funding API
 
@@ -1163,9 +1197,15 @@ which the funding service uses, `stampOperation(operation)` and
 `stampOperationStatus(requestId)`, which the stamp service uses
 ([Stamp operations](#stamp-operations)), and `chequebookOperation(operation)`
 and `chequebookOperationStatus(requestId)`, which the chequebook service uses
-([Chequebook operations](#chequebook-operations)).
+([Chequebook operations](#chequebook-operations)). `batchPurchase(purchase)`,
+`batchPurchaseStatus(requestId)`, `batchPurchaseRestart(requestId, stageId)`,
+`batchPurchaseCheck(requestId)` and `batchPurchaseRelease(requestId)` are the
+batch purchase routes, which the purchase service uses
+([Buying a new batch](#buying-a-new-batch)), and the archive for an archive
+stamp, as a purchase of purpose `archive` ([Buying a stamp](#buying-a-stamp)).
+A purchase and a restart have the stamp operations' deadline.
 
-- Every request carries `Authorization: Bearer <MANAGER_FUNDING_TOKEN>`, to the
+- Every request carries `Authorization: Bearer <MANAGER_API_TOKEN>`, to the
   manager's address alone: the client holds the address to the rule above as
   well, and follows no redirect. It logs nothing, and no error carries the
   token.
@@ -1213,7 +1253,7 @@ and `chequebookOperationStatus(requestId)`, which the chequebook service uses
 The funding service reads the nodes, the wallet's balances, nonce and fees and
 every transfer's state from the manager through the client above, and signs
 with the brand wallet. `src/index.ts` builds it with the wallet it started and
-with the client, or with none while `MANAGER_FUNDING_URL` is unset.
+with the client, or with none while `MANAGER_API_URL` is unset.
 `src/domain/funding/FundingService.ts` is the service, and
 `src/api/routes/funding.ts` its routes, behind the session. The writes are
 behind the same-site check as well. The answers are the types of
@@ -1421,7 +1461,7 @@ nothing logs or audits it.
 | `funding_transfers` | migration 016: one row per item of a send, by `request_id`, with `bulk_id`, the node's id and label, the address, kind, amount, nonce, the signed transaction, its hash, `state`, `error`, `block_number`, `watched` (only an `unknown` item, or a `failed` one with no block), `relayed_at` (when the manager's answer to its last relay came back, by the service's clock), the operator's id and name, and when. One item of each kind per node and one per nonce in a send |
 | `funding_node_pins` | migration 017: one row per pinned node, its address in lower case, when and by whom                                                                                                                                                                                                                                                                                                                                                                                            |
 
-Without `MANAGER_FUNDING_URL` and `MANAGER_FUNDING_TOKEN` the page answers
+Without `MANAGER_API_URL` and `MANAGER_API_TOKEN` the page answers
 `configured: false`, and without `BRAND_WALLET_SECRET` it shows no wallet.
 Either way every send is refused as not set up, and a pin needs the manager.
 
@@ -1715,6 +1755,112 @@ when the item first comes to that state, with its hash ([Audit log](#audit-log))
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `funding_chequebook_operations` | migration 019: one row per item of a chequebook bulk, by `request_id`, with `bulk_id`, its `position` in the bulk, the node's id and label, `direction`, `amount_plur`, `target_plur`, `available_plur` (the available balance the move was worked out from: of the page's and the one read for the request, the larger for a deposit and the smaller for a withdrawal), `state`, `tx_hash`, `error`, `mined` (migration 020: whether a submitted item's move is mined and its block not final yet, false by default), `relayed_at`, the operator's id and name, and when. One item per node and one per place in a bulk. The move is the one that brings `available_plur` to `target_plur`, the target at least 1 xBZZ, and every amount 30 digits at most |
 
+### Buying a new batch
+
+**Buy new** on the Stamps tab buys the batch that takes the place of a rung's
+batch, or a single-node stage's own, or of the catalogue batch, once that one no
+longer pays: it has expired, its node holds it no more, or none is set
+([docs/architecture/funding.md](../../../docs/architecture/funding.md#buying-a-new-batch)).
+The node pays from its own wallet, through the manager's funding API, so a
+purchase takes the page's confirm dialog and no password.
+`src/domain/funding/BatchPurchaseService.ts` is the service, which `src/index.ts`
+builds with the client of the manager's funding API and the catalogue move's
+port (`batchPurchasePorts.ts`), and which the funding service answers the routes
+with. The arithmetic is `batchPurchase.ts` of `web2-admin-common`, the one the
+dialog shows.
+
+| Method | Path                                       | Answer                                                                                                                                                                                                                                                                                                            |
+| ------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/funding/batch-purchases`             | `{ purchases }`: the purchases under way, those that started or ended in the last day, and, whatever its age, one that failed with its batch bought until a later purchase of its node is done, so its batch is never bought twice; the latest first, each a `BatchPurchase`, read from the manager first (below) |
+| POST   | `/api/funding/batch-purchases`             | `{ purpose, nodeId, depth, immutable, days, costPlur, replacesBatchId }` in: `rung` or `catalogue`, the node of the row, the dialog's choice and the cost it showed, and the batch the row showed, `0x` and 64 hex digits, or null. `202` with the `BatchPurchase` out. The refusals below                        |
+| GET    | `/api/funding/batch-purchases/:id`         | the `BatchPurchase`, read from the manager first. `400` for an id that is not a UUID, `404 purchase_not_found` for one never written                                                                                                                                                                              |
+| POST   | `/api/funding/batch-purchases/:id/restart` | `{ stageId }` in: restarts now a stage that waits for a broadcast to end. The `BatchPurchase` out. `409 funding_refused` with `problem: "batch"` for a stage that does not wait, or the manager's refusal                                                                                                         |
+| POST   | `/api/funding/batch-purchases/:id/check`   | no body: takes up again what stopped after the batch was bought. The `BatchPurchase` out. `409 funding_refused` with `problem: "batch"` when nothing stopped                                                                                                                                                      |
+
+A start's body is checked first, `400 validation_error`. It is then refused,
+in this order, `409 funding_refused` with the sentence and nothing written:
+
+1. funding not set up, or a catalogue batch while `CATALOGUE_MOVE_ENABLED` is
+   off (`BATCH_PURCHASE_MOVE_OFF`): `problem: "not_set_up"`. A manager whose
+   inventory cannot be read is `502 manager_unavailable`.
+2. a manager on another chain than Gnosis Chain: `problem: "chain"`.
+3. against the manager's inventory, read fresh, `problem: "node"`: for a rung,
+   a node no stage lists, or the catalogue node; for the catalogue, any node
+   but the catalogue node; a manager that offers no purchases, whose node
+   carries no `replacement` (`BATCH_PURCHASES_NOT_OFFERED`); and a gateway,
+   whose `replacement` is null.
+4. `problem: "batch"`: a `replacesBatchId` other than the batch set on the node
+   now, and a batch that still pays (`batchOffersPurchase`: not expired, not
+   gone, and not none), which is topped up or diluted instead.
+5. `batchBuyProblem` of `web2-admin-common`: a depth the purpose does not take,
+   17 to 40 for a rung and 18 to 40 for the catalogue, a mutable catalogue
+   batch, or under 2 days (`problem: "batch"`); no price read, or a cost other
+   than the one today's price gives for the depth and the days, with the new
+   cost (`problem: "price"`); a wallet short of the cost, or with no xDAI
+   (`problem: "insufficient_funds"`). A wallet that was not read refuses
+   nothing here: the manager checks again.
+6. another purchase under way on the node: `problem: "node"`. One runs on a
+   node at a time, which migration 030's index holds across processes.
+
+**Written, then sent.** The purchase is written to `batch_purchases`,
+`buying`, before the manager is asked, under the id the manager's funding API
+knows it by, with the amount for each chunk worked out at the price read for
+the start, and marked sent before it is sent, with no label and the batch it
+replaces. The start waits 2 seconds at most for the manager's answer
+(`BATCH_PURCHASE_WAIT_MS`) and answers the purchase as it stands. A refusal of
+the manager's (`stamp_refused`, `unknown_node`, `conflict`,
+`bad_transaction`) fails it with the manager's sentence, and a manager that
+answers the route 404 without a code offers no purchases of this kind. A lost
+answer leaves it `buying`, and the next look reads it by its id; only when the
+manager answers that it never received it (`unknown_request`) is it sent
+again, the same fields under the same id, so it is never bought twice.
+
+**Followed up.** The manager follows a purchase up by itself; the admin reads
+it every 10 seconds (`BATCH_PURCHASE_POLL_MS`) from boot, and on every read
+of the routes, one look at a time per purchase, and records the manager's step:
+
+| The manager's step                 | The purchase                                                                                                                                                                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `buying`, `waiting_usable`         | `buying` until the batch is known, then `waiting_usable`                                                                                                                                                                                                                                                           |
+| `set`, for a rung                  | `restarting`, with the manager's stages, each `{ stageId, name, apply, message }`, kept on the row so the page has them while the manager is not reached                                                                                                                                                           |
+| `done`, for a rung                 | `done`                                                                                                                                                                                                                                                                                                             |
+| `set` or `done`, for the catalogue | `moving`: the admin's catalogue move runs onto the batch through the port, `ensure`, which starts it once the manager's record designates the batch and answers where it stands. Once the move is done, the admin asks the manager to release the batch moved from, when there was one, and the purchase is `done` |
+| `failed`                           | `failed`, with the manager's sentence, and its batch when one was bought                                                                                                                                                                                                                                           |
+
+A release the manager refuses (`stamp_refused`) is not asked again: the
+catalogue has moved, so the purchase is `done`, its previous batch not
+released, with the manager's sentence as its `error`. Any other failure of a
+release is asked again at the next look.
+**Restart now** goes to the manager for a stage in `waiting_live` or
+`waiting_unknown`, and **Check again** for a purchase that failed with its
+batch bought or a stage whose restart failed; for a catalogue move that
+failed, Check again starts the move again from where it stopped, through the
+port, and asks the manager nothing. A check that would put a purchase under
+way beside another on its node is refused with `problem: "node"`. Nothing is
+ever bought a second time.
+
+**The hold.** A purchase that failed with its batch bought holds its node:
+the Stamps tab offers Check again in its row, not Buy new
+(`batchPurchaseHoldsNode` of `web2-admin-common`). The list, and a check of
+it, read its status from the manager for `batchState`, the state of the bought
+batch on its node, which each answer carries as `BatchPurchase.batchState`
+and which is kept in the process as last answered. Once it reads `expired` or
+`gone`, no check can put the batch to use: the purchase holds the node no
+more, the list stops reading it, and a check of it is refused with
+`problem: "batch"`. A batch the manager did not read keeps the hold.
+
+Audit rows ([Audit log](#audit-log)): `funding.purchase.request` (the operator,
+with the purchase's id, purpose, node, depth, kind, days, amount, cost, the
+batch replaced and the price of postage it was worked out at),
+`funding.purchase.bought` (once, when its batch is first known, with the hash),
+`funding.purchase.restart` and `funding.purchase.check` (the operator),
+`funding.purchase.release` (the batch the catalogue moved from), and
+`funding.purchase.done` and `funding.purchase.failed`, each once.
+
+| Table             | What it holds                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `batch_purchases` | migration 030: one row per purchase, by `id`, the request id the manager knows it by, with `purpose`, the node's id and label, `depth`, `immutable`, `days`, `amount_per_chunk_plur`, `cost_plur`, `replaces_batch_id`, `state`, `batch_id`, `tx_hash`, `error`, `stages`, `released_at`, `relayed_at`, who started it, and when. One under way per node |
+
 ## Exporting a recording
 
 A user exports a finished recording, published or not, from its stream's page:
@@ -1924,8 +2070,9 @@ cost that differs is refused as `price_moved`, with the new cost, so what is
 spent is what a user confirmed. `archiveBuyProblem` checks the rest, the
 catalogue node's wallet included. The purchase is then written to
 `archive_stamp_purchases`, one under way at a time, before the manager is asked,
-under the id the manager knows it by, so asking again never buys twice
-(`POST /api/admin-funding/stamp-purchases`). The route waits a moment for the
+under the id the manager knows it by, so asking again never buys twice. It is a
+batch purchase of purpose `archive`, immutable and replacing no batch
+(`POST /api/admin-funding/batch-purchases`). The route waits a moment for the
 manager's first answer: a manager with no purchase route is answered as
 `purchases_not_offered`, another operation under way on the catalogue node as
 `not_now`, in the manager's own sentence when its 409 carries one, and a check
@@ -1999,6 +2146,82 @@ The audit log records `archive.start`, `archive.pause`, `archive.resume`,
 `archive.paused`, `archive.quality.done`, `archive.done`,
 `archive.purchase.usable` and `archive.purchase.failed` by the system.
 
+## Lost recordings
+
+A recording lives on Swarm only while a batch that stamped it has time left.
+The Streams page checks the recordings and removes the lost ones:
+`src/domain/recordings/`, with each check in `recording_checks` and
+`recording_check_streams` (migration `031`).
+[The admin's architecture page](../../../docs/architecture/web2-admin.md#lost-recordings),
+"Lost recordings", is the design.
+
+**A check** is started by a person, and one runs at a time for the whole admin.
+
+- **Which streams.** Every stream that holds a finished recording
+  (`manifest_index` set), asked the one rule, `recordingSkipReason`. A live
+  stream, one inside its restart window, one with an export or an archive under
+  way, and a stream a removal kept as a draft for its export file, until it
+  changes: an edit, a publish or going live, are left unjudged. The rule also
+  leaves out a stream its input marks as a test, and the admin marks none.
+- **What it reads**, through the catalogue node: each recording's own playlist
+  (a ladder's master), and each quality's playlist and the first 64 KiB of its
+  first segment. A stream with no ladder is one quality, itself.
+- **Three rounds.** What failed is read again 10 minutes later, twice
+  (`RECORDING_CHECK_ROUND_GAP_SECONDS`, `RECORDING_CHECK_ROUNDS`).
+- **The result.** **Lost**: the master failed in every round, or every quality
+  did. **Partly lost**: some quality did and another read. Each stream is asked
+  the rule again before it is judged.
+
+**A healthy node.** A round starts, and its failures count, only while the
+catalogue node answers `GET /peers` with 4 peers or more
+(`RECORDING_CHECK_MIN_PEERS`). Otherwise the check stops with no result and says
+why. The rounds run in the process, so the next boot stops a check left
+running, with "The admin restarted while the check ran."
+
+**The mark.** A finished check sets `streams.recording_verdict` (`lost` or
+`partly_lost`) and `recording_checked_at` on each stream it judged so, and
+clears them on one that read. The stream list shows them as `recording` and
+`recordingCheckedAt`. A `live` report clears them.
+
+**The removal** takes the lost recordings of the latest finished check, for six
+hours after it ended (`RECORDING_CHECK_VALID_SECONDS`). It takes only the
+check's own list, in any order.
+
+- Each is asked the rule again and read once more. One that may not be judged
+  now, holds no finished recording now, or reads now is kept and named with the
+  reason; one that reads now also loses its mark.
+- The node's peers are read again after those reads and before anything is
+  written; under the floor the removal refuses and nothing is removed.
+- The rest leave the catalogue in one write: `PublishService.takeOffCatalogue`
+  claims each as an unpublish does and leaves it a draft.
+- One the server keeps a finished export file of stays, as a draft. Every other
+  is deleted.
+- Each removal is recorded on its row of the check.
+
+**Routes**, behind the session:
+
+- `GET /api/recordings/check`: the latest check, `startRefusal` and
+  `removalRefusal` (`RecordingCheckResponse`). The node's peers are read at most
+  every 15 seconds for it.
+- `POST /api/recordings/check`: starts a check. `409 recordings_refused` with
+  the sentence when one runs, or when no catalogue node is designated, the node
+  does not answer, or it has too few peers.
+- `POST /api/recordings/lost/removal` with `{ checkId, streamIds }`: answers
+  `{ removed, unlisted, kept, feedIndex }`. `409 recordings_refused` with the
+  sentence when:
+  - the check is not the latest, is not done, or is too old;
+  - it lists no lost recording, or another set;
+  - the catalogue cannot be written (its batch has run out: buy a new catalogue
+    batch first);
+  - or the node is not healthy.
+
+  A body that names no check or stream ids gets `400`.
+
+**Audited** as `recording.check.start`, `recording.check.finish` (`done` with
+the counts, or `stopped` with why), `recording.lost.delete` and
+`recording.lost.unlist`. Each carries the check's id, and a removal the
+catalogue's feed index.
+
 ## Migrations
 
 The schema is the files in `src/migrations/`, named `NNN_name.sql`. They are
@@ -2008,37 +2231,39 @@ alone, so a database that already applied a file never runs it again. To change
 the schema, add a file. Never change an applied file's SQL. A corrected comment
 is harmless. `pnpm build` copies the folder into `dist`.
 
-| File                                    | What it holds                                                                                                                                                                                     |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `001_init.sql`                          | `users`, `sessions`, `streams` and `feed_writes`, with the reason for each table in its header                                                                                                    |
-| `002_stream_state.sql`                  | what the uploader reports on `streams`: `manifest_index`, `duration_seconds`, `live_since`, `ended_at`                                                                                            |
-| `003_feed_writes_identity.sql`          | `feed_writes.feed_owner`, `feed_topic` and `reference`, and the unique index on owner, topic and index ([Where the next index comes from](#where-the-next-index-comes-from))                      |
-| `004_stream_renditions.sql`             | `stream_renditions`, one row per rung of a stream's ABR ladder                                                                                                                                    |
-| `005_auth_users.sql`                    | `users.is_admin` and `last_login_at`, the username rule, and the session columns of the sliding clock                                                                                             |
-| `006_stream_content_edits.sql`          | `content_edited_at` and `entry_content_edited_at`, behind `hasUnpublishedEdits`                                                                                                                   |
-| `007_audit_log.sql`                     | `audit_log` ([Audit log](#audit-log))                                                                                                                                                             |
-| `008_streams_user_id_set_null.sql`      | removing a user keeps the streams they drafted, with `user_id` set to null                                                                                                                        |
-| `009_stages.sql`                        | `stages`, the record without the passphrase and the token, which sit in columns of their own, and `stage_retirements`, retirements of stages never stored                                         |
-| `010_catalogue_stamp.sql`               | the single-row `catalogue_stamp`                                                                                                                                                                  |
-| `011_streams_stage.sql`                 | `streams.stage_id`, the stage a stream is broadcast on                                                                                                                                            |
-| `012_stages_admin_token_index.sql`      | the index an uploader's own token is looked up by                                                                                                                                                 |
-| `013_catalogue_writes.sql`              | the batch the catalogue is written with, on `catalogue_stamp`, and the exact bytes and batch of every write, on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written)) |
-| `014_catalogue_moves.sql`               | `catalogue_moves`, and the batch each write and each thumbnail was last uploaded under ([Moving the catalogue](#moving-the-catalogue-to-another-batch))                                           |
-| `015_brand_wallet.sql`                  | the single-row `brand_wallet`: the address and the encrypted key ([The brand wallet](#the-brand-wallet))                                                                                          |
-| `016_funding_transfers.sql`             | `funding_transfers`, the journal of the sends from the brand wallet ([Funding transfers](#funding-transfers))                                                                                     |
-| `017_funding_node_pins.sql`             | `funding_node_pins`, the node wallets an operator confirmed                                                                                                                                       |
-| `018_funding_stamp_operations.sql`      | `funding_stamp_operations`, the journal of top-ups and dilutions ([Stamp operations](#stamp-operations))                                                                                          |
-| `019_funding_chequebook_operations.sql` | `funding_chequebook_operations`, the journal of chequebook deposits and withdrawals ([Chequebook operations](#chequebook-operations))                                                             |
-| `020_funding_chequebook_mined.sql`      | that journal's `mined`, whether a submitted move is mined and waits for its block to be final                                                                                                     |
-| `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                              |
-| `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                 |
-| `023_stream_exports.sql`                | `stream_exports`, the one export on the server, and `stream_export_dismissals`, who closed a finished export's widget ([Exporting a recording](#exporting-a-recording))                           |
-| `024_stream_exports_save_chosen.sql`    | `stream_exports.save_chosen`, whether a user chose Save what's read, whose join finishes even while the stream is live ([Exporting a recording](#exporting-a-recording))                          |
-| `025_stream_archives.sql`               | `stream_archives`, one row per stream and quality: that quality's copy on an archive stamp ([Archiving a recording](#archiving-a-recording))                                                      |
-| `026_streams_archived_only.sql`         | `streams.archived_only`, the "List only archived qualities" switch                                                                                                                                |
-| `027_archive_stamp_purchases.sql`       | `archive_stamp_purchases`, each archive stamp asked of the manager, written before it is asked, one under way at a time                                                                           |
-| `028_archive_jobs.sql`                  | `archive_jobs`, the one archive on the server, with `archive_job_items`, `archive_job_segments` (the resume ledger), `archive_job_dismissals` and `archive_rate`, the last rate a job measured    |
-| `029_stream_archives_stamp_end.sql`     | `stream_archives.stamp_expires_at`, when a copy's stamp runs out as the latest catalogue stamp record that listed it read it ([List only archived qualities](#list-only-archived-qualities))      |
+| File                                    | What it holds                                                                                                                                                                                             |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `001_init.sql`                          | `users`, `sessions`, `streams` and `feed_writes`, with the reason for each table in its header                                                                                                            |
+| `002_stream_state.sql`                  | what the uploader reports on `streams`: `manifest_index`, `duration_seconds`, `live_since`, `ended_at`                                                                                                    |
+| `003_feed_writes_identity.sql`          | `feed_writes.feed_owner`, `feed_topic` and `reference`, and the unique index on owner, topic and index ([Where the next index comes from](#where-the-next-index-comes-from))                              |
+| `004_stream_renditions.sql`             | `stream_renditions`, one row per rung of a stream's ABR ladder                                                                                                                                            |
+| `005_auth_users.sql`                    | `users.is_admin` and `last_login_at`, the username rule, and the session columns of the sliding clock                                                                                                     |
+| `006_stream_content_edits.sql`          | `content_edited_at` and `entry_content_edited_at`, behind `hasUnpublishedEdits`                                                                                                                           |
+| `007_audit_log.sql`                     | `audit_log` ([Audit log](#audit-log))                                                                                                                                                                     |
+| `008_streams_user_id_set_null.sql`      | removing a user keeps the streams they drafted, with `user_id` set to null                                                                                                                                |
+| `009_stages.sql`                        | `stages`, the record without the passphrase and the token, which sit in columns of their own, and `stage_retirements`, retirements of stages never stored                                                 |
+| `010_catalogue_stamp.sql`               | the single-row `catalogue_stamp`                                                                                                                                                                          |
+| `011_streams_stage.sql`                 | `streams.stage_id`, the stage a stream is broadcast on                                                                                                                                                    |
+| `012_stages_admin_token_index.sql`      | the index an uploader's own token is looked up by                                                                                                                                                         |
+| `013_catalogue_writes.sql`              | the batch the catalogue is written with, on `catalogue_stamp`, and the exact bytes and batch of every write, on `feed_writes` ([Where the catalogue is written](#where-the-catalogue-is-written))         |
+| `014_catalogue_moves.sql`               | `catalogue_moves`, and the batch each write and each thumbnail was last uploaded under ([Moving the catalogue](#moving-the-catalogue-to-another-batch))                                                   |
+| `015_brand_wallet.sql`                  | the single-row `brand_wallet`: the address and the encrypted key ([The brand wallet](#the-brand-wallet))                                                                                                  |
+| `016_funding_transfers.sql`             | `funding_transfers`, the journal of the sends from the brand wallet ([Funding transfers](#funding-transfers))                                                                                             |
+| `017_funding_node_pins.sql`             | `funding_node_pins`, the node wallets an operator confirmed                                                                                                                                               |
+| `018_funding_stamp_operations.sql`      | `funding_stamp_operations`, the journal of top-ups and dilutions ([Stamp operations](#stamp-operations))                                                                                                  |
+| `019_funding_chequebook_operations.sql` | `funding_chequebook_operations`, the journal of chequebook deposits and withdrawals ([Chequebook operations](#chequebook-operations))                                                                     |
+| `020_funding_chequebook_mined.sql`      | that journal's `mined`, whether a submitted move is mined and waits for its block to be final                                                                                                             |
+| `021_console_settings.sql`              | the single-row `console_settings`, the look this host's console starts in ([The console's look](#the-consoles-look))                                                                                      |
+| `022_streams_finished.sql`              | `streams.finished_at`, when a stream was finalized, and a partial index on `ended_at` for the streams still in their restart window ([Finalizing a stream](#finalizing-a-stream))                         |
+| `023_stream_exports.sql`                | `stream_exports`, the one export on the server, and `stream_export_dismissals`, who closed a finished export's widget ([Exporting a recording](#exporting-a-recording))                                   |
+| `024_stream_exports_save_chosen.sql`    | `stream_exports.save_chosen`, whether a user chose Save what's read, whose join finishes even while the stream is live ([Exporting a recording](#exporting-a-recording))                                  |
+| `025_stream_archives.sql`               | `stream_archives`, one row per stream and quality: that quality's copy on an archive stamp ([Archiving a recording](#archiving-a-recording))                                                              |
+| `026_streams_archived_only.sql`         | `streams.archived_only`, the "List only archived qualities" switch                                                                                                                                        |
+| `027_archive_stamp_purchases.sql`       | `archive_stamp_purchases`, each archive stamp asked of the manager, written before it is asked, one under way at a time                                                                                   |
+| `028_archive_jobs.sql`                  | `archive_jobs`, the one archive on the server, with `archive_job_items`, `archive_job_segments` (the resume ledger), `archive_job_dismissals` and `archive_rate`, the last rate a job measured            |
+| `029_stream_archives_stamp_end.sql`     | `stream_archives.stamp_expires_at`, when a copy's stamp runs out as the latest catalogue stamp record that listed it read it ([List only archived qualities](#list-only-archived-qualities))              |
+| `030_batch_purchases.sql`               | `batch_purchases`, each batch bought on the Stamps tab, written before the manager is asked, one under way per node, and `catalogue_moves.cleared_thumbnails` ([Buying a new batch](#buying-a-new-batch)) |
+| `031_recording_checks.sql`              | the checks of the recordings, the streams each listed with their readings and verdicts, and `streams.recording_verdict` and `recording_checked_at` ([Lost recordings](#lost-recordings))                  |
 
 ## Audit log
 
@@ -2152,7 +2377,11 @@ its `targetPlur`, and each item's request id, node, label, direction, amount
 and the available balance the move was worked out from), and
 `funding.chequebook.confirmed` and `funding.chequebook.failed`, each with the
 item's bulk, request id, node, label, direction, amount, target, that
-available balance, hash, state and error. Exporting a recording adds the
+available balance, hash, state and error. The batch purchases
+([Buying a new batch](#buying-a-new-batch)): `funding.purchase.request`,
+`funding.purchase.bought`, `funding.purchase.restart`,
+`funding.purchase.check`, `funding.purchase.release`, `funding.purchase.done`
+and `funding.purchase.failed`, each with the purchase's id. Exporting a recording adds the
 `export.*` actions ([Exporting a recording](#exporting-a-recording)), each with
 the export's id and rendition, and archiving one the `archive.*` actions
 ([Archiving a recording](#archiving-a-recording)), each with the archive's or

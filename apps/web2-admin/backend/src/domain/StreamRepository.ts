@@ -1,4 +1,8 @@
-import type { MediaType, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type {
+  ClearedThumbnail as LostThumbnailStream,
+  MediaType,
+  StreamStatus,
+} from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
 
 import type { StreamRow, ThumbnailRow } from '../types/index.js';
@@ -256,6 +260,27 @@ export class StreamRepository {
   }
 
   /**
+   * Clears the thumbnail `reference` on every stream that names it and holds no bytes of it, and answers those
+   * streams. The network holds the image no more, so each takes a new one on its page; it is an edit, which the
+   * catalogue entry carries once it is written again. A row that holds the bytes keeps its reference, since its
+   * next publish uploads the image again. Moving the catalogue after the batch it moves from lapsed.
+   */
+  async clearLostThumbnail(reference: string): Promise<LostThumbnailStream[]> {
+    const result = await this.pool.query<LostThumbnailStream>(
+      `UPDATE streams
+          SET thumbnail_mime = NULL,
+              thumbnail_ref = NULL,
+              thumbnail_batch_id = NULL,
+              content_edited_at = ${CONTENT_EDITED_NOW},
+              updated_at = NOW()
+        WHERE lower(thumbnail_ref) = lower($1) AND thumbnail IS NULL
+        RETURNING id::text AS "streamId", title`,
+      [reference],
+    );
+    return result.rows;
+  }
+
+  /**
    * Stores new image bytes and clears `thumbnail_ref`: the reference now
    * belongs to a different image, and a null ref is what tells the next
    * publish to upload the new one. Always an edit, for the same reason: the
@@ -436,6 +461,10 @@ export class StreamRepository {
    * reset at boot put back to `published` therefore loses its mark when it
    * goes live again, and the sweep finishes it in its turn.
    *
+   * A check's verdict on the recording (`recording_verdict`, migration 031)
+   * goes with every `live` report: the recording it judged is being written
+   * again.
+   *
    * Conditional on `allowedFrom` for the same reason every other transition
    * here is: the check and the write are one statement, so two reports racing
    * cannot both win.
@@ -465,6 +494,8 @@ export class StreamRepository {
                 ended_at = NULL,
                 finished_at = CASE WHEN status = 'live' THEN finished_at ELSE NULL END,
                 publish_error = NULL,
+                recording_verdict = NULL,
+                recording_checked_at = NULL,
                 updated_at = NOW()
           WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
           RETURNING ${STREAM_COLUMNS}

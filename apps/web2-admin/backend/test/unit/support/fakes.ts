@@ -105,6 +105,8 @@ export function streamRow(over: Partial<StreamRow> = {}): StreamRow {
     // is. A test about a stream without one says so.
     stage_id: STAGE_ID,
     archived_only: false,
+    recording_verdict: null,
+    recording_checked_at: null,
     created_at: at,
     updated_at: at,
     ...over,
@@ -338,6 +340,9 @@ export class FakeStreamStore
       // As the SQL does: a live report that starts a broadcast clears it; only a retried `live → live` leaves it.
       finished_at: row.status === 'live' ? row.finished_at : null,
       publish_error: null,
+      // As the SQL does: the recording a check judged is being written again.
+      recording_verdict: null,
+      recording_checked_at: null,
     });
   }
 
@@ -431,6 +436,22 @@ export class FakeStreamStore
     for (const row of this.rows.values()) {
       if (row.thumbnail_ref === reference) this.patch(row.id, { thumbnail_batch_id: batchId });
     }
+  }
+
+  /** As the SQL is: a lost thumbnail cleared, as an edit, on every row that names it and holds no bytes of it. */
+  async clearLostThumbnail(reference: string): Promise<{ streamId: string; title: string }[]> {
+    const cleared: { streamId: string; title: string }[] = [];
+    for (const row of [...this.rows.values()]) {
+      if (row.thumbnail_ref?.toLowerCase() !== reference.toLowerCase() || this.thumbnails.has(row.id)) continue;
+      this.patch(row.id, {
+        thumbnail_mime: null,
+        thumbnail_ref: null,
+        thumbnail_batch_id: null,
+        content_edited_at: new Date('2026-09-11T11:00:00.000Z'),
+      });
+      cleared.push({ streamId: row.id, title: row.title });
+    }
+    return cleared;
   }
 
   /** The SQL's `CASE WHEN thumbnail_ref IS DISTINCT FROM $3 THEN NULL ELSE thumbnail_batch_id END`. */

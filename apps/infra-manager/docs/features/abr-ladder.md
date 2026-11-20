@@ -150,7 +150,12 @@ string rather than the stored copy, and stores it when it differs (`withCurrentB
 `manager/src/domain/stages/StagePoolStrings.ts`). Setting a batch on a rung also updates the
 stored copy of every such uploader, so its page and its stage record name the new batch.
 
-Setting a batch redeploys nothing. A running uploader pays with the old batch until it restarts.
+A batch the web2 admin bought for a rung through the funding API is set the same way once its node
+calls it usable, and the manager then applies each uploader that follows the rung by itself, when
+the batch is the only setting it is behind on and no broadcast is live
+([postage-stamps.md](postage-stamps.md#bought-from-the-admin)).
+
+Setting a batch in the console redeploys nothing. A running uploader pays with the old batch until it restarts.
 After a **Use**, the rung's Storage and funding card lists every uploader still running on the
 old batch and offers **Apply now** for each, which asks first and says whether that stage's
 broadcast is live. See [postage-stamps.md](postage-stamps.md).

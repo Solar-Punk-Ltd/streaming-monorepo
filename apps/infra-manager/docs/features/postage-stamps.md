@@ -265,6 +265,100 @@ page. In the stamps table an archive batch carries an **archive** chip.
 **Top up** and **Dilute** keep it, as they keep the pinned batch. **Use** leaves
 the list of archive batches as it is.
 
+## Bought from the admin
+
+The web2 admin buys a batch through the funding API when the one a node pays with no longer pays:
+it has expired, its node holds it no more, or none is set. One route takes three purposes,
+`POST /api/admin-funding/batch-purchases`, and only the parameters differ: a **rung**'s batch on a
+rung's node or on a single-node stage's own, the **catalogue** batch on the catalogue node, and an
+**archive** stamp on the catalogue node. The manager's own Buy form buys at any time, and this route
+buys a replacement only.
+
+The node buys and pays from its own wallet, as it does for the Buy form. The manager then follows
+the purchase up in the background, and writes each step to `funding_stamp_purchases`, so a manager
+that restarts goes on from the step it had reached (`step`: `buying`, `waiting_usable`, `set`,
+`done`, `failed`).
+
+1. **Usable.** The bought batch is read every 3 seconds (`PURCHASE_USABLE_POLL_MS`) until its node
+   calls it usable. An hour after the purchase (`FUNDING_PURCHASE_USABLE_WAIT_SECONDS`) the
+   follow-up stops as failed with the batch bought and unset, and the admin's Check again takes it
+   up from there.
+2. **Set.** A rung's batch is set on the rung as the Buy form sets one, which writes the stored
+   pool string of every uploader that follows the rung ([abr-ladder.md](abr-ladder.md)). A
+   single-node stage's is set on the deployment. The catalogue's is designated as a move
+   ([stages.md](stages.md#moving-the-catalogue)). An archive stamp is recorded as an archive batch.
+3. **Apply, for a rung.** The stages whose pool string names the rung are taken one at a time, and
+   each is looked at every 30 seconds (`PURCHASE_FOLLOW_UP_MS`) until it is settled. The manager
+   runs the stage's settings Apply, the one **Apply now** runs, when the batch is the only setting
+   the running uploader is behind on and no broadcast is live.
+
+| A stage's state    | When                                                                                                                                    |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `applied`          | The uploader runs and pays with the new batch, whoever applied it                                                                       |
+| `applying`         | The Apply runs                                                                                                                          |
+| `waiting_live`     | SRS reported a publisher in one of two readings 15 seconds apart (`PURCHASE_LIVE_READ_GAP_MS`)                                          |
+| `waiting_unknown`  | The manager cannot tell: an engine other than SRS, a log it could not read, an ingest read that failed, RTMP reports that name no vhost |
+| `waiting_settings` | Other saved settings wait for an Apply beside the batch. An operator applies the stage here                                             |
+| `failed`           | The Apply did not go through, with its reason, or the saved settings do not name the batch. A check starts it again                     |
+| `not_following`    | The stage's pool string is a pasted one that names this rung's node. The manager leaves it                                              |
+| `stopped`          | The stage does not run, or is no longer on the manager. Its next start writes the pool's current string                                 |
+
+The settings are read again just before the Apply, after the readings of a broadcast or a restart,
+so a setting saved meanwhile makes the stage wait in `waiting_settings` rather than ride along with
+the batch. The Apply itself is told it may roll out the batch keys alone, `STAMP` and
+`BEE_PUBLISHERS`, and applies nothing when it finds the stage behind on another, which answers
+`waiting_settings` too. Each look at a stage moves it one step at most, and the manager remembers
+the Applies it started while it runs, for each stage and batch, so each purchase that follows a
+stage keeps its own. One that ended without the batch is `failed`, with the deploy's error where it
+left one, until a check. A manager that restarted starts the Apply again where one is due. An Apply
+refused because a deploy of the stage started meanwhile, another purchase's Apply among them, is
+`applying`: that deploy writes the pool's current string, so the next look finds the batch applied
+without a second Apply. A batch that works, set on the rung or designated as the catalogue batch by
+another hand while the purchase waited, stays, and the follow-up stops as failed with the reason.
+The Apply is logged as run by a batch purchase, and the set, the designation and the release as `the
+batch purchase <requestId>` (`manager/src/domain/stages/purchaseFollowUp.ts`). What a purchase
+reports to the admin names no host and no address: an Apply's error, a deploy's error and any other
+failure that can carry one go to the manager's log, and the admin reads that the log says why. An
+Apply refused for the stored engine settings passes on that refusal's own sentence, which says what
+to fix, unless it names an address.
+
+What the admin reads of a port's sentence, a stage's error and a refused release leaves every node
+address out: a URL, a host and its port, and an IP address each read `<address>`
+(`manager/src/domain/funding/addressFree.ts`). The manager's log keeps the words whole.
+
+The admin's **Restart now** runs the Apply of a stage in `waiting_live` or `waiting_unknown` at
+once (`POST …/batch-purchases/:requestId/restart`). The batch is the only setting it carries, since
+a stage with other settings waiting is in `waiting_settings`. The manager applies a stage for the
+admin for nothing but a purchase. A look at a stage that could not be made leaves the stage as it
+was, never `failed`, and the next pass looks again.
+
+The admin's buy dialog opens with the inventory's `replacement` for the node: the depth and kind of
+the batch being replaced, as its node reports them, or as the manager last read them while it runs.
+Once the node holds that batch no more and the manager has restarted since, neither is known, and
+the dialog opens with what the Buy form suggests: a rung's depth by its place in the ladder, 17 for
+a stage's own node, mutable, and immutable at 18 or deeper for the catalogue. The admin changes the
+values in the dialog before buying.
+
+A purchase is refused before the node is asked when the batch it names as replaced is another than
+the one set now, and when that batch still works (`purchaseReplaceProblem`): a batch with time left
+is topped up or diluted. A catalogue batch is refused too while a move of the catalogue is pending,
+since the designation takes no third batch until the batch moved from is released
+([stages.md](stages.md#moving-the-catalogue)). The checks of the amount, the wallet and the node are
+the ones of
+[What the manager refuses before Bee is asked](#what-the-manager-refuses-before-bee-is-asked).
+
+A rung's or the catalogue's purchase is refused too while the node's last purchase for the purpose
+bought its batch and stopped as failed before putting it to use, and the node still holds that batch
+with time left, read once with `GET /stamps/{id}`. The refusal names that purchase: its Check again
+puts the batch to use, where a new purchase would pay for a second batch. Once the node answers 404
+for the batch, gives it no time left or reports it gone, a new purchase goes through. A node that
+could not be read about the batch keeps the refusal, which says so. The purchase's status gives the
+same reading as `batchState`, the bought batch's state in the inventory's words, left out while
+there is no batch and when the node could not be read about it.
+
+`manager/src/domain/funding/purchaseFollowUpPorts.ts` is the seam between the purchase and the
+parts of the manager that set a batch, apply a stage and designate the catalogue batch.
+
 ## After Bee answers
 
 Bee sends a top-up or a dilute from the node's own wallet and answers once the

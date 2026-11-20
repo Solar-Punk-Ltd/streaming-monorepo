@@ -34,20 +34,22 @@ pnpm --filter @streaming-monorepo/web2-admin-frontend dev
 From this package, `pnpm mock-api` does the same. Sign in as `admin` with the password
 `admin1234`. Nothing deployed the mock, so its build line reads `Version development build`.
 
-| Variable              | Default                  | What it does                                                                                                                        |
-| --------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `MOCK_API_PORT`       | `9877`                   | the port it listens on                                                                                                              |
-| `SEED_ADMIN_USERNAME` | `admin`                  | the user it starts with                                                                                                             |
-| `SEED_ADMIN_PASSWORD` | `admin1234`              | that user's password, which the console can change                                                                                  |
-| `MOCK_NO_USERS`       | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                |
-| `MOCK_NO_STAGES`      | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                |
-| `MOCK_RECORDING`      | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams) |
-| `MOCK_FUNDING`        | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)         |
-| `MOCK_ARCHIVE`        | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`               |
-| `MOCK_EXPORT`         | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done`, `outdated` or `off`                          |
-| `MOCK_ARCHIVE_STAMPS` | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                  |
-| `MOCK_DEFAULT_THEME`  | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work       |
-| `VIEWER_BASE_URL`     | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                      |
+| Variable               | Default                  | What it does                                                                                                                                         |
+| ---------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MOCK_API_PORT`        | `9877`                   | the port it listens on                                                                                                                               |
+| `SEED_ADMIN_USERNAME`  | `admin`                  | the user it starts with                                                                                                                              |
+| `SEED_ADMIN_PASSWORD`  | `admin1234`              | that user's password, which the console can change                                                                                                   |
+| `MOCK_NO_USERS`        | unset                    | `true` starts with no users, the only way to see the console's "no users yet" screen                                                                 |
+| `MOCK_NO_STAGES`       | unset                    | `true` starts with no stages: the Stages page's empty state, and a stage picker with nothing to pick                                                 |
+| `MOCK_RECORDING`       | unset                    | `true` adds one more recording, which ended on 2026-09-11 and is finalized at start, beside the [seeded streams](#the-mock-streams)                  |
+| `MOCK_FUNDING`         | unset                    | `off` shows the Funding page's "not set up" state. `refuse` and `lost` play the two failures, as [below](#the-mock-funding)                          |
+| `MOCK_ARCHIVE`         | `off`                    | the archive seeded at start, as [below](#the-mock-archive): `off`, or a job state such as `copying` or `paused_batch`                                |
+| `MOCK_EXPORT`          | `running`                | the export seeded at start, as [below](#the-mock-export): `running`, `paused`, `done`, `outdated` or `off`                                           |
+| `MOCK_ARCHIVE_STAMPS`  | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                                   |
+| `MOCK_BATCH_PURCHASES` | `fresh`                  | Buy new on the Stamps tab, as [below](#the-mock-funding): `fresh`, `stages`, `failed`, `failed_ran_out`, `catalogue`, `catalogue_off` or `unoffered` |
+| `MOCK_RECORDING_CHECK` | `none`                   | the latest check of the recordings, as [below](#the-mock-recording-check): `none`, `running`, `done` or `stopped`                                    |
+| `MOCK_DEFAULT_THEME`   | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                        |
+| `VIEWER_BASE_URL`      | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                       |
 
 #### The mock streams
 
@@ -106,6 +108,24 @@ as the API works them out, names an open one in `openBulkId`, `openStampBulkId` 
   priced again, so a cost that differs is refused as a moved price. It is being bought for 5
   seconds, waits to be usable for 10 more, then is a stamp, its cost taken from the catalogue
   node's wallet. `MOCK_FUNDING=refuse` fails every purchase.
+- **Buy new.** Every node but a gateway carries the manager's recommendation, the depth and kind of
+  its batch. The 720p rung's batch has run out, and its wallet holds no xDAI, so its dialog says so
+  and offers Fund it; a 480p rung has no batch at all. A purchase is checked as the API checks it,
+  its cost priced again, and is being bought for 5 seconds, then waits for the network for 12. A
+  rung's batch is then set on its node and the mock stage's uploader restarted in 4 seconds, or,
+  while "Live now" is live on the stage, it waits for Restart now. A catalogue purchase moves the
+  catalogue a slot a second, clears one thumbnail on the way, and releases the previous batch 3
+  seconds after the move, which the Stages page shows too. `MOCK_BATCH_PURCHASES` seeds:
+  - `fresh`, the default: no purchase yet.
+  - `stages`: a 720p purchase restarting, with a stage line in each state: waiting for a broadcast,
+    unknown, other settings waiting, applied, failed (with Check again), set by hand, stopped.
+  - `failed`: a 720p purchase whose batch was bought and did not become usable in time.
+  - `failed_ran_out`: the same purchase, its bought batch gone from the node since, so the row
+    offers Buy new again and the line says why, with no Check again.
+  - `catalogue`: the catalogue batch has run out, the move is on, and a purchase of its replacement
+    is moving the catalogue.
+  - `catalogue_off`: the catalogue batch has run out and the move is off, so its row says so.
+  - `unoffered`: every purchase is refused as by an admin whose manager offers none.
 - **Chequebooks.** The catalogue node's chequebook holds 1 xBZZ. Against a target of 2 xBZZ, the
   stage nodes hold a chequebook under it (whose node
   cannot pay a deposit to a target over 5.4 xBZZ), one over it, one at it (whose node holds no xDAI
@@ -117,6 +137,18 @@ With `MOCK_FUNDING=refuse`, every transfer fails at the relay with no block and 
 anyway six seconds later, and every stamp and chequebook operation is refused. With
 `MOCK_FUNDING=lost`, every operation is first not known, as when the manager loses the chain's
 answer, then sent three seconds later and confirmed.
+
+#### The mock recording check
+
+A check reads a recording a second and waits 5 seconds between its rounds, where the API waits ten
+minutes. Of the seeded recordings, "Ended days ago" and "Last year's meetup" read as lost, the first
+with an export file kept on the server as far as the check is told, and "Panel discussion" as
+partly lost, its 1080p unread. Live streams and those inside their restart window are left
+unjudged. A removal deletes the lost recordings, keeps the one with an export file as a draft, and
+writes the feed once. `MOCK_RECORDING_CHECK` seeds the latest check: `none`, the default, none yet;
+`running`, one started at start; `done`, one that has ended with that result; `stopped`, one that
+stopped on the catalogue node's peers. The removal is refused while the catalogue batch has run out,
+as with `MOCK_BATCH_PURCHASES=catalogue`.
 
 #### The mock export
 
@@ -197,7 +229,24 @@ catalogue to another batch is waiting, and when its batch is under 48 hours from
 The archive badge (`components/archive/ArchiveBadge.tsx`) says the stream's archive in the words of
 `ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive stamp not listed, Archive
 incomplete, Archive outdated or Archive expired, and nothing for a stream with nothing copied. On hover it names the archived
-qualities, and says when the catalogue lists only those.
+qualities, and says when the catalogue lists only those. A recording the latest check of the
+recordings could not read is marked Lost on Swarm, or Partly lost, with when that check ended on
+hover.
+
+**Recordings on Swarm** (`components/recordings/RecordingCheckPanel.tsx`), above the list, is the
+check of the recordings and the removal of the lost ones (`docs/architecture/web2-admin.md`, "Lost
+recordings"). Check recordings starts one; a person starts it, and nothing runs it in the
+background. Where the admin refuses one now, the button is disabled with the reason under it. A
+running check shows its round of three and what it has read, and is read again every 15 seconds.
+A stopped one says why. A finished one says "N recordings lost" and "N partly lost", each a link to
+its stream, a partly lost one with the qualities that failed, and how many streams it left
+unjudged. Remove lost recordings, or the reason it cannot be used now, opens a confirm with the
+common `LOST_RECORDINGS_REMOVAL_CONFIRM` and every recording it removes, a stream with an export
+file marked as kept as a draft; it sends that list, then says what was removed, kept as a draft or
+left, and reads the list again. A refused removal closes the confirm, says why, and reads the check
+again, so Remove follows what the admin says now. A read of the check that fails keeps the check
+last read, and its timer, and says it could not be read again. An admin that answers no checks
+shows nothing of them.
 
 ### Archive, `#/archive`
 
@@ -293,8 +342,11 @@ batch under 48 hours left shows in the warning colour. One that is expired or go
 error colour, as does one whose last reading's time to live has run out since, which reads "Expired
 by the clock". When the catalogue's history has to move to the designated batch, the catalogue move
 card offers the move and follows it, or says the move is not enabled on this installation
-(`CATALOGUE_MOVE_ENABLED` in the backend's settings). With no stages, the page says they appear once the
-manager's admin link points at this admin.
+(`CATALOGUE_MOVE_ENABLED` in the backend's settings). A move the admin started by itself for a
+catalogue batch bought on the Stamps tab says so, and that its purchase releases the previous
+batch. The streams whose thumbnail a move cleared, after the batch it moved from had lapsed, are
+listed with a link to each, where it takes a new one. With no stages, the page says they appear
+once the manager's admin link points at this admin.
 
 ### Funding, `#/funding`
 
@@ -326,8 +378,32 @@ wallet, so there is no password, only a confirm dialog.
 
 - A row per batch, the catalogue's on top, then the archive stamps, then each stage's: a tick box,
   the batch's short id with Copy and an Immutable chip, the node's card, its depth, time left and
-  fill. A gateway has no batch and no row. Only a batch read whole, usable, not expired and whose
-  node's wallet was read has a tick box. The others say why.
+  fill. A node with no batch has a row only when the manager recommends one, as for Buy new, and a
+  gateway has none. Only a batch read whole, usable, not expired and whose node's wallet was read
+  has a tick box. The others say why.
+- **Buy new** (`docs/architecture/funding.md`, "Buying a new batch") is on each row whose batch no
+  longer pays, expired or gone from its node, and on a node with no batch, as the common
+  `batchOffersPurchase` says. It opens a dialog (`components/funding/BatchBuyDialog.tsx`) on the
+  manager's recommendation, the depth and kind of the batch it replaces and 30 days, with Use it to
+  go back to it. The calculator is the tab's own days, a slider, presets and a field from 2, and the
+  buy dialogs' depth rows (`DepthRows.tsx`, which the archive stamp's dialog shares), from 17, or 18
+  for the catalogue, to 40, each with what it holds and costs. Under them the picked depth's life at
+  today's price, the node's wallet, and what it is short of, with Fund it, which opens Balance with
+  that entered. A rung's batch is mutable or immutable; the catalogue's is immutable. A confirm
+  step names the batch, the exact cost and what follows, and there is no password: the node pays. A
+  refusal shows in the dialog, and the view is read again; the dialog's offer is built from that
+  reading, so a moved price is quoted anew and a batch that changed on the row is named as it is
+  now. Once the row offers no purchase, the dialog closes and the tab says why. The catalogue's row
+  says the move is switched off instead, while it is.
+- Under a node's row comes its latest purchase: what was bought, where it stands, and for a rung a
+  line per stage whose uploader takes the batch, in the common `BATCH_PURCHASE_APPLY_TEXT`. Restart
+  now, on a stage that waits for a broadcast, asks first with `BATCH_PURCHASE_RESTART_CONFIRM`. Check
+  again takes up what stopped, and buys nothing. A catalogue purchase shows its move, the slots
+  done, and the thumbnails it cleared. While a purchase is under way, or waits for Check again with
+  its bought batch still on the node, its row offers no other (the common `batchPurchaseHoldsNode`).
+  Once that batch has expired or left the node, Check again goes, the line says a new one can be
+  bought, and the row offers Buy new again. The purchases are read again every 10 seconds while one is under way, and
+  the view once one ends.
 - **Archive stamps** are the immutable batches that recordings are archived onto, from
   `GET /api/archive/stamps`. Each row shows the stamp's label in place of a node's card, the node
   that holds it, its room and the qualities on it, and a warning when its time left is under

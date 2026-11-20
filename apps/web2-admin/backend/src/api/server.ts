@@ -22,6 +22,7 @@ import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
 import { PublishService } from '../domain/PublishService.js';
+import type { RecordingCheckService } from '../domain/recordings/index.js';
 import { StageService } from '../domain/StageService.js';
 import type { StreamFinishService } from '../domain/StreamFinishService.js';
 import { StreamService } from '../domain/StreamService.js';
@@ -42,6 +43,7 @@ import { createFeedRouter } from './routes/feed.js';
 import { createFundingRouter } from './routes/funding.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
+import { createRecordingsRouter, RECORDINGS_PATH } from './routes/recordings.js';
 import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
 import { createStreamsRouter } from './routes/streams.js';
 import { createVersionRouter } from './routes/version.js';
@@ -71,6 +73,11 @@ export interface ApiDeps {
    * it, and then `/api/archive` answers 404.
    */
   archiveService?: ArchiveService;
+  /**
+   * Checking the recordings and removing the lost ones, from the Streams page. Absent in the tests that are not about
+   * it, and then `/api/recordings` answers 404.
+   */
+  recordings?: RecordingCheckService;
   /**
    * The Funding page: the brand wallet, the nodes' pins, and the sends, stamp operations and chequebook operations
    * relayed through the manager.
@@ -171,6 +178,9 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
   app.use(EXPORT_PATH, createExportRouter({ exportService: deps.exportService, requireAuth }));
   if (deps.archiveService) {
     app.use(ARCHIVE_PATH, createArchiveRouter({ archiveService: deps.archiveService, requireAuth }));
+  }
+  if (deps.recordings) {
+    app.use(RECORDINGS_PATH, createRecordingsRouter({ recordings: deps.recordings, requireAuth }));
   }
   app.use('/api/stages', createStagesRouter({ stageService: deps.stageService, requireAuth }));
   app.use(

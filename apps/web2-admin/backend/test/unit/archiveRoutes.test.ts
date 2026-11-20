@@ -12,10 +12,10 @@ import { after, before, describe, it } from 'node:test';
 import {
   archiveBatchCostPlur,
   smallestArchiveDepthFor,
+  type FundingBatchPurchaseAnswer,
+  type FundingBatchPurchaseRequest,
+  type FundingBatchPurchaseStatus,
   type FundingInventory,
-  type FundingStampPurchaseAnswer,
-  type FundingStampPurchaseRequest,
-  type FundingStampPurchaseStatus,
 } from '@streaming-monorepo/contracts';
 import {
   ARCHIVE_PATH,
@@ -51,7 +51,7 @@ const TOPIC = '0b7c3a1e-2f44-5d66-8a77-99aabbccddee';
 const thirtyDays = (price: bigint) => (518_400n * price).toString();
 
 class FakeManager {
-  readonly requests: FundingStampPurchaseRequest[] = [];
+  readonly requests: FundingBatchPurchaseRequest[] = [];
   refusal: ManagerFundingError | null = null;
   readonly inventoryValue = {
     observedAt: new Date().toISOString(),
@@ -77,14 +77,26 @@ class FakeManager {
     return this.inventoryValue;
   }
 
-  async stampPurchase(request: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
+  async batchPurchase(request: FundingBatchPurchaseRequest): Promise<FundingBatchPurchaseAnswer> {
     this.requests.push(request);
     if (this.refusal) throw this.refusal;
-    return { requestId: request.requestId, state: 'unknown', batchId: null, txHash: null };
+    return { requestId: request.requestId, purpose: request.purpose, state: 'unknown', batchId: null, txHash: null };
   }
 
-  async stampPurchaseStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
-    return { requestId, state: 'unknown', batchId: null, txHash: null, usable: null, error: null };
+  async batchPurchaseStatus(requestId: string): Promise<FundingBatchPurchaseStatus> {
+    return {
+      requestId,
+      purpose: 'archive',
+      nodeId: 'catalogue-node',
+      state: 'unknown',
+      batchId: null,
+      txHash: null,
+      usable: null,
+      step: 'buying',
+      error: null,
+      stages: [],
+      catalogue: null,
+    };
   }
 
   setPrice(price: string): void {
@@ -260,12 +272,16 @@ describe('POST /api/archive/:id/confirm-purchase', () => {
     );
     assert.equal(store.job?.purchase_id, purchase.id);
     assert.equal(manager.requests.length, asked + 1, 'the manager asked once');
+    // A batch purchase of purpose archive: immutable, on the catalogue node, replacing no batch.
     assert.deepEqual(manager.requests.at(-1), {
       requestId: purchase.id,
+      purpose: 'archive',
       nodeId: 'catalogue-node',
       depth,
       amountPerChunkPlur: thirtyDays(24_000n),
+      immutable: true,
       label: 'Alps archive',
+      replacesBatchId: null,
     });
     assert.notEqual(await service.archiveHoldingPlace(), null, 'an export cannot start meanwhile');
   });

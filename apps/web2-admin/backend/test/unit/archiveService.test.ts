@@ -13,9 +13,9 @@ import {
   archiveChunksWithMargin,
   smallestArchiveDepthFor,
   type FundingInventory,
-  FundingStampPurchaseAnswer,
-  FundingStampPurchaseRequest,
-  FundingStampPurchaseStatus,
+  type FundingBatchPurchaseAnswer,
+  type FundingBatchPurchaseRequest,
+  type FundingBatchPurchaseStatus,
 } from '@streaming-monorepo/contracts';
 import { ARCHIVE_PURCHASES_NOT_OFFERED, type ArchiveJobSummary } from '@streaming-monorepo/web2-admin-common';
 
@@ -70,10 +70,22 @@ const SETTINGS: ArchiveSettings = {
 /** A push window wider than any recording here, for the tests that hold Bee's pushes back. */
 const WIDE = { settings: { ...SETTINGS, pushWindowChunks: 100_000 } };
 
+/** What a test says of a purchase's status; the fake answers the rest as the manager does for an archive stamp. */
+type PurchaseReading = Pick<
+  FundingBatchPurchaseStatus,
+  'requestId' | 'state' | 'batchId' | 'txHash' | 'usable' | 'error'
+>;
+
+/** A reading as the manager's status route answers it for a purchase of purpose `archive`. */
+function archiveStatus(reading: PurchaseReading): FundingBatchPurchaseStatus {
+  const step = reading.state === 'failed' ? 'failed' : reading.batchId === null ? 'buying' : 'waiting_usable';
+  return { ...reading, purpose: 'archive', nodeId: 'catalogue-node', step, stages: [], catalogue: null };
+}
+
 class FakeManager {
   readonly inventoryValue: FundingInventory;
-  readonly requests: FundingStampPurchaseRequest[] = [];
-  readonly statuses = new Map<string, FundingStampPurchaseStatus | 'unknown_request'>();
+  readonly requests: FundingBatchPurchaseRequest[] = [];
+  readonly statuses = new Map<string, PurchaseReading | 'unknown_request'>();
 
   constructor(chequebookPlur: string) {
     this.inventoryValue = {
@@ -115,27 +127,42 @@ class FakeManager {
    */
   late: Promise<void> | null = null;
 
-  async stampPurchase(request: FundingStampPurchaseRequest): Promise<FundingStampPurchaseAnswer> {
+  async batchPurchase(request: FundingBatchPurchaseRequest): Promise<FundingBatchPurchaseAnswer> {
     this.requests.push(request);
     if (this.late) {
       await this.late;
       throw new ManagerFundingError('timeout', null, 'The manager did not answer in time.');
     }
     if (this.refusal) throw this.refusal;
-    return { requestId: request.requestId, state: this.answerState, batchId: null, txHash: null };
+    return {
+      requestId: request.requestId,
+      purpose: request.purpose,
+      state: this.answerState,
+      batchId: null,
+      txHash: null,
+    };
   }
 
   /** The state a purchase is answered with, and the words the status route then gives for one that failed. */
-  answerState: FundingStampPurchaseAnswer['state'] = 'unknown';
+  answerState: FundingBatchPurchaseAnswer['state'] = 'unknown';
   statusError: string | null = null;
 
-  async stampPurchaseStatus(requestId: string): Promise<FundingStampPurchaseStatus> {
+  async batchPurchaseStatus(requestId: string): Promise<FundingBatchPurchaseStatus> {
     const status = this.statuses.get(requestId);
     if (status === 'unknown_request') throw new ManagerFundingError('unknown_request', 404, 'No such purchase.');
     if (status === undefined && this.answerState === 'failed') {
-      return { requestId, state: 'failed', batchId: null, txHash: null, usable: null, error: this.statusError };
+      return archiveStatus({
+        requestId,
+        state: 'failed',
+        batchId: null,
+        txHash: null,
+        usable: null,
+        error: this.statusError,
+      });
     }
-    return status ?? { requestId, state: 'unknown', batchId: null, txHash: null, usable: null, error: null };
+    return archiveStatus(
+      status ?? { requestId, state: 'unknown', batchId: null, txHash: null, usable: null, error: null },
+    );
   }
 
   setChequebook(plur: string): void {
@@ -682,6 +709,10 @@ describe('ArchiveService', () => {
     const { requestId } = manager.requests[0]!;
     assert.equal(manager.requests[0]!.nodeId, 'catalogue-node');
     assert.equal(manager.requests[0]!.label, 'Alps archive');
+    // A batch purchase of purpose archive: immutable, replacing no batch.
+    assert.equal(manager.requests[0]!.purpose, 'archive');
+    assert.equal(manager.requests[0]!.immutable, true);
+    assert.equal(manager.requests[0]!.replacesBatchId, null);
 
     const bought = {
       requestId,

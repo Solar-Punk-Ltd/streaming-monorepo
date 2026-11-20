@@ -1,16 +1,39 @@
+import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
+
 /**
  * The rules of the admin's funding settings (docs/architecture/funding.md): the secret the brand wallet's key is
- * encrypted under, where the manager's funding API is, and the bearer token it takes. The config refuses a value that
- * breaks one at boot, and the brand wallet and the manager funding client check what they are given against the same
- * rules. Each rule answers a sentence that names the key and never the value, or null.
+ * encrypted under, where the manager's funding API is, and the bearer token it takes, the manager's API token. The
+ * config refuses a value that breaks one at boot, and the brand wallet and the manager funding client check what they
+ * are given against the same rules. Each rule answers a sentence that names the key and never the value, or null.
+ *
+ * The address is `MANAGER_API_URL`, read as `MANAGER_FUNDING_URL` when unset ({@link managerApiUrlFrom}), and the
+ * token is `MANAGER_API_TOKEN`, read as `MANAGER_FUNDING_TOKEN` when unset (`managerApiTokenFrom` of the contracts).
+ * A sentence about either names the key it was read under.
  */
 
 export const BRAND_WALLET_SECRET_KEY = 'BRAND_WALLET_SECRET';
-export const MANAGER_FUNDING_URL_KEY = 'MANAGER_FUNDING_URL';
-export const MANAGER_FUNDING_TOKEN_KEY = 'MANAGER_FUNDING_TOKEN';
+export const MANAGER_API_URL_KEY = 'MANAGER_API_URL';
 
-/** The fewest characters the funding token may have: the manager's own floor for its `FUNDING_API_TOKEN`. */
-export const MANAGER_FUNDING_TOKEN_MIN_LENGTH = 32;
+/** The name the admin read the manager's address under before {@link MANAGER_API_URL_KEY}, read when that is unset. */
+export const MANAGER_API_URL_FORMER_KEY = 'MANAGER_FUNDING_URL';
+
+/**
+ * The manager's address as an env holds it, and the name it was read under: {@link MANAGER_API_URL_KEY} when that is
+ * set to more than spaces, otherwise {@link MANAGER_API_URL_FORMER_KEY}. Null when neither is set. The value is
+ * trimmed and checked by {@link managerFundingUrlProblem}.
+ */
+export function managerApiUrlFrom(
+  env: Readonly<Record<string, string | undefined>>,
+): { key: string; value: string } | null {
+  for (const key of [MANAGER_API_URL_KEY, MANAGER_API_URL_FORMER_KEY]) {
+    const value = env[key]?.trim();
+    if (value) return { key, value };
+  }
+  return null;
+}
+
+/** The fewest characters the manager's API token may have: the manager's own floor for its `MANAGER_API_TOKEN`. */
+export const MANAGER_API_TOKEN_MIN_LENGTH = 32;
 
 /** The name Docker maps to the host inside a container. The deploy compose file maps it for the api. */
 export const DOCKER_HOST_GATEWAY_NAME = 'host.docker.internal';
@@ -53,13 +76,14 @@ function isOwnHost(hostname: string): boolean {
 }
 
 /**
- * Why this cannot be `MANAGER_FUNDING_URL`, or null. Every request to it carries the funding token, so it is https,
+ * Why this cannot be the manager's address, or null. Every request to it carries the funding token, so it is https,
  * or plain http only to this host, the rule the manager holds its web2 admin link to: a loopback address,
  * `host.docker.internal`, or a Docker service name with no dot. It carries no user name or password, the token being
- * its one credential, and no `?` or `#` part, since the API's paths are added after it.
+ * its one credential, and no `?` or `#` part, since the API's paths are added after it. `key` is the name it was read
+ * under, which the sentence names: `MANAGER_API_URL` unless given.
  */
-export function managerFundingUrlProblem(value: string): string | null {
-  const notAnAddress = `${MANAGER_FUNDING_URL_KEY} must be an http or https address, such as https://manager.example.org`;
+export function managerFundingUrlProblem(value: string, key: string = MANAGER_API_URL_KEY): string | null {
+  const notAnAddress = `${key} must be an http or https address, such as https://manager.example.org`;
   let url: URL;
   try {
     url = new URL(value);
@@ -68,14 +92,14 @@ export function managerFundingUrlProblem(value: string): string | null {
   }
   if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.hostname === '') return notAnAddress;
   if (url.username !== '' || url.password !== '') {
-    return `${MANAGER_FUNDING_URL_KEY} cannot carry a user name or a password: the funding token is the one credential the manager takes`;
+    return `${key} cannot carry a user name or a password: the funding token is the one credential the manager takes`;
   }
   // The raw text, since `search` and `hash` are empty for a bare trailing ? or #.
   if (value.includes('?') || value.includes('#')) {
-    return `${MANAGER_FUNDING_URL_KEY} cannot carry a ? or # part, because the funding API's paths are added after it`;
+    return `${key} cannot carry a ? or # part, because the funding API's paths are added after it`;
   }
   if (url.protocol === 'http:' && !isOwnHost(url.hostname)) {
-    return `${MANAGER_FUNDING_URL_KEY} is plain http to another host, and every request carries the funding token: give the manager's https address. Plain http is taken only to this host: a loopback address, ${DOCKER_HOST_GATEWAY_NAME}, or a Docker service name with no dot`;
+    return `${key} is plain http to another host, and every request carries the funding token: give the manager's https address. Plain http is taken only to this host: a loopback address, ${DOCKER_HOST_GATEWAY_NAME}, or a Docker service name with no dot`;
   }
   return null;
 }
@@ -89,13 +113,16 @@ export function managerFundingBaseUrl(value: string): string {
   return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
 }
 
-/** Why this cannot be `MANAGER_FUNDING_TOKEN`, or null. It is the manager's `FUNDING_API_TOKEN`, the same value. */
-export function managerFundingTokenProblem(value: string): string | null {
-  if (value.length < MANAGER_FUNDING_TOKEN_MIN_LENGTH) {
-    return `${MANAGER_FUNDING_TOKEN_KEY} must be at least ${MANAGER_FUNDING_TOKEN_MIN_LENGTH} characters, got ${value.length}`;
+/**
+ * Why this cannot be the manager's API token, or null. It is the manager's `MANAGER_API_TOKEN`, the same value. `key`
+ * is the name it was read under, which the sentence names: `MANAGER_API_TOKEN` unless given.
+ */
+export function managerApiTokenProblem(value: string, key: string = MANAGER_API_TOKEN_KEY): string | null {
+  if (value.length < MANAGER_API_TOKEN_MIN_LENGTH) {
+    return `${key} must be at least ${MANAGER_API_TOKEN_MIN_LENGTH} characters, got ${value.length}`;
   }
   if (!TOKEN_PATTERN.test(value)) {
-    return `${MANAGER_FUNDING_TOKEN_KEY} must be printable ASCII with no space inside, since it travels in an HTTP header`;
+    return `${key} must be printable ASCII with no space inside, since it travels in an HTTP header`;
   }
   return null;
 }
