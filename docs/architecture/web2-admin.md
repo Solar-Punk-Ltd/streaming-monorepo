@@ -150,18 +150,13 @@ Per quality, one row of `stream_renditions` or the stream itself for a single-qu
    erasure level in the chunk's span and Bee's parity tables (`pkg/file/redundancy/level.go`).
    Segments are level 1 and playlists level 0, and the level is read from each chunk.
 
-Once per job, with its first quality and under that quality's tag and counters:
-
-- **The master playlist slot**, at the stream's own topic and `manifest_index`, as it is.
-- **The stream card's frame**, when the job does not archive the quality it is taken from. A card
-  with no uploaded thumbnail plays the first segment of the quality the master playlist lists
-  first. The job finds that quality the way the viewer does: the first variant's topic matched to
-  a rung, read at that rung's `manifest_index`. It copies that quality's playlist slot, root and
-  tree, and its first segment that is not a gap, with all its chunks, parity included, and none of
-  its other segments. A frame that cannot be copied, because its quality has no recorded slot or a
-  chunk can be neither read nor rebuilt, is said in the log and left out. The job's own qualities
-  still complete, and a parity chunk the frame lost costs the quality nothing. The frame is posted
-  on every pass, as the slots are, and counted once.
+Every job starts, with its first quality and under that quality's tag, with **the master playlist
+slot**, at the stream's own topic and `manifest_index`, as it is, and **the stream card's frame**: the
+playlist slot, root and tree of the quality the master lists first, and its first segment that is
+not a gap. That quality is found as the viewer finds it, by the first variant's topic, and read at
+its rung's `manifest_index`. Both are posted on every pass, whatever qualities the job archives: a
+chunk posted again under the same stamp takes no more room. The frame stays outside the quality's
+counts. A frame that cannot be copied is logged and left out.
 
 Every post must answer the address the job expected, and any other answer stops the quality.
 
