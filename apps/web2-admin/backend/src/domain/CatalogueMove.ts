@@ -94,13 +94,13 @@ export interface CatalogueMovePlan {
  * alone); some slot from 0 to the head is not under the designated batch by the admin's record (written with
  * another batch, or with one the admin never recorded, the env file's); or the latest move to it has not finished.
  * Nothing waits only when the pinned batch is the designated one and every slot is under it. Otherwise the viewer
- * loses every entry after the first slot whose batch lapses.
+ * can lose every entry after the first slot whose batch lapses.
  *
  * It cannot start while the move is not enabled, when the designated batch cannot be written with (expired, gone or
  * mutable, as `refusalFor` says for a write), or when the batch the catalogue is written with has lapsed while some
- * slot has no recorded bytes: those can only be read from the network, which drops a chunk once its batch lapses.
- * The batch of a slot written before the catalogue stamp is unknown, so only the pinned one is checked; a slot that
- * cannot be read stops the move with its reason.
+ * slot has no recorded bytes: those can only be read from the network, which stops keeping a chunk once its batch
+ * lapses. Copies may answer for a while after, but not reliably. The batch of a slot written before the catalogue
+ * stamp is unknown, so only the pinned one is checked; a slot that cannot be read stops the move with its reason.
  */
 export function planCatalogueMove(input: CatalogueMoveInput): CatalogueMovePlan {
   const { row } = input;
