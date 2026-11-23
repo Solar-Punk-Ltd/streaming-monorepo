@@ -18,7 +18,12 @@ import {
   Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import type { CatalogueMoveStatus, CatalogueStampSummary, StageSummary } from '@streaming-monorepo/web2-admin-common';
+import type {
+  CatalogueMoveStatus,
+  CatalogueStampSummary,
+  StageSummary,
+  Stream,
+} from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { formatAgo } from '../dateUtil';
@@ -26,6 +31,7 @@ import { errorMessage } from '../errors';
 import { CatalogueMoveCard } from '../components/stages/CatalogueMoveCard';
 import { CatalogueStampCard } from '../components/stages/CatalogueStampCard';
 import { ChequebookChip, ReadinessChip, StampNumbers, StampStateChip } from '../components/stages/stamps';
+import { isLiveTest, TestLiveMark } from '../components/testStreams/TestStreamMarks';
 import { monoFont } from '../theme/createAdminTheme';
 
 /** How often "last confirmed" is worked out again. The manager confirms every stage every 30 seconds. */
@@ -159,6 +165,26 @@ function Rungs({ stage }: { stage: StageSummary }) {
 }
 
 /**
+ * The test streams live on a stage, each with how long it has run and "Left running" after an hour. A test shares its
+ * stage's transcoding and upload with anything else live on it, and holds back a restart that waits for the stage.
+ */
+function LiveTests({ tests, now }: { tests: readonly Stream[]; now: number }) {
+  if (tests.length === 0) return null;
+  return (
+    <Stack spacing={0.5} sx={{ mt: 0.5, alignItems: 'flex-start' }}>
+      {tests.map((test) => (
+        <Stack key={test.id} spacing={0.25} sx={{ alignItems: 'flex-start' }}>
+          <TestLiveMark stream={test} now={now} />
+          <Typography variant="caption" sx={{ overflowWrap: 'anywhere' }}>
+            {test.title}
+          </Typography>
+        </Stack>
+      ))}
+    </Stack>
+  );
+}
+
+/**
  * The stages the manager runs for the brand, as it last pushed them, and the brand's catalogue stamp. Read only but
  * for one action: moving the catalogue's history onto the batch the manager designated. The manager registers,
  * changes and retires a stage. A top-up is the Funding page's Stamps tab.
@@ -169,6 +195,8 @@ export function StagesPage() {
   const [move, setMove] = useState<CatalogueMoveStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The live tests, by stage. Read apart from the stages: a list that cannot be read leaves "Test live" out.
+  const [liveTests, setLiveTests] = useState<ReadonlyMap<string, Stream[]>>(new Map());
 
   const load = useCallback(() => {
     setError(null);
@@ -180,6 +208,18 @@ export function StagesPage() {
         setNow(Date.now());
       })
       .catch((e: unknown) => setError(errorMessage(e, 'Failed to load the stages')));
+    api
+      .fetchStreams()
+      .then((streams) => {
+        const byStage = new Map<string, Stream[]>();
+        for (const stream of streams) {
+          if (!isLiveTest(stream) || !stream.stageId) continue;
+          byStage.set(stream.stageId, [...(byStage.get(stream.stageId) ?? []), stream]);
+        }
+        setLiveTests(byStage);
+        setNow(Date.now());
+      })
+      .catch(() => setLiveTests(new Map()));
   }, []);
 
   useEffect(load, [load]);
@@ -288,6 +328,7 @@ export function StagesPage() {
                         Uploader: {stage.uploader ? stage.uploader.state : 'not read'}
                       </Typography>
                       <UploaderToken stage={stage} />
+                      <LiveTests tests={liveTests.get(stage.stageId) ?? []} now={now} />
                     </Stack>
                   </TableCell>
                   <TableCell>

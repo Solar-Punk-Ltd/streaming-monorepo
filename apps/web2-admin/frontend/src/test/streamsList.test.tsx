@@ -1,9 +1,20 @@
-import { screen } from '@testing-library/react';
-import type { CatalogueBatchReading, CatalogueWriteStatus } from '@streaming-monorepo/web2-admin-common';
+import { fireEvent, screen, within } from '@testing-library/react';
+import { Route, Routes, useLocation } from 'react-router';
+import type { CatalogueBatchReading, CatalogueWriteStatus, Stream } from '@streaming-monorepo/web2-admin-common';
 import { describe, expect, it } from 'vitest';
 
 import { StreamsPage } from '../pages/StreamsPage';
-import { jsonError, jsonOk, makeStream, minutesAgo, mockFetch, pendingFetch, renderWithProviders } from './helpers';
+import {
+  MAIN_STAGE_ID,
+  jsonError,
+  jsonOk,
+  makeStage,
+  makeStream,
+  minutesAgo,
+  mockFetch,
+  pendingFetch,
+  renderWithProviders,
+} from './helpers';
 
 const STREAMS = '/api/streams';
 const STAMP = '/api/catalogue-stamp';
@@ -235,5 +246,84 @@ describe('StreamsPage catalogue banner', () => {
 
     expect(await screen.findByText('Draft one')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('StreamsPage test streams', () => {
+  const testStream = (overrides: Partial<Stream> = {}) =>
+    makeStream({ test: true, description: '', scheduledStartTime: null, stageId: MAIN_STAGE_ID, ...overrides });
+
+  function Where() {
+    const location = useLocation();
+    return <div data-testid="where">{`${location.pathname}${location.search}`}</div>;
+  }
+
+  function renderList(streams: Stream[]) {
+    mockFetch([
+      { path: STREAMS, respond: () => jsonOk({ streams }) },
+      { path: '/api/stages', respond: () => jsonOk({ stages: [makeStage()] }) },
+    ]);
+    return renderWithProviders(
+      <Routes>
+        <Route path="/" element={<StreamsPage />} />
+        <Route path="/create" element={<Where />} />
+      </Routes>,
+    );
+  }
+
+  const rowOf = (title: string) => screen.getByText(title).closest('tr') as HTMLElement;
+
+  it('marks a test stream "Test" and offers it no Edit', async () => {
+    renderList([testStream({ title: 'Soundcheck' }), makeStream({ title: 'Opening night' })]);
+
+    await screen.findByText('Soundcheck');
+    expect(within(rowOf('Soundcheck')).getByText('Test')).toBeInTheDocument();
+    expect(within(rowOf('Soundcheck')).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(within(rowOf('Soundcheck')).getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    expect(within(rowOf('Opening night')).queryByText('Test')).not.toBeInTheDocument();
+    expect(within(rowOf('Opening night')).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('filters the list to test streams, or to the rest', async () => {
+    renderList([testStream({ title: 'Soundcheck' }), makeStream({ title: 'Opening night' })]);
+
+    await screen.findByText('Soundcheck');
+    const show = screen.getByLabelText('Show');
+
+    fireEvent.change(show, { target: { value: 'test' } });
+    expect(screen.getByText('Soundcheck')).toBeInTheDocument();
+    expect(screen.queryByText('Opening night')).not.toBeInTheDocument();
+
+    fireEvent.change(show, { target: { value: 'event' } });
+    expect(screen.queryByText('Soundcheck')).not.toBeInTheDocument();
+    expect(screen.getByText('Opening night')).toBeInTheDocument();
+
+    fireEvent.change(show, { target: { value: 'all' } });
+    expect(screen.getByText('Soundcheck')).toBeInTheDocument();
+    expect(screen.getByText('Opening night')).toBeInTheDocument();
+  });
+
+  it('shows how long a test has been live, and marks one live for more than an hour', async () => {
+    renderList([
+      testStream({ title: 'Soundcheck', status: 'live', liveSince: minutesAgo(12) }),
+      testStream({ title: 'Forgotten', status: 'live', liveSince: minutesAgo(61) }),
+      testStream({ title: 'Done', status: 'vod', liveSince: minutesAgo(200) }),
+      makeStream({ title: 'Opening night', status: 'live', liveSince: minutesAgo(90) }),
+    ]);
+
+    await screen.findByText('Soundcheck');
+    expect(within(rowOf('Soundcheck')).getByText('Test live · 12 min')).toBeInTheDocument();
+    expect(within(rowOf('Soundcheck')).queryByText('Left running')).not.toBeInTheDocument();
+    expect(within(rowOf('Forgotten')).getByText('Test live · 1 h 1 min')).toBeInTheDocument();
+    expect(within(rowOf('Forgotten')).getByText('Left running')).toBeInTheDocument();
+    expect(within(rowOf('Done')).queryByText(/Test live/)).not.toBeInTheDocument();
+    expect(within(rowOf('Opening night')).queryByText(/Test live|Left running/)).not.toBeInTheDocument();
+  });
+
+  it('opens "New test stream" as the test stream form', async () => {
+    renderList([]);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New test stream' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/create?test=1');
   });
 });
