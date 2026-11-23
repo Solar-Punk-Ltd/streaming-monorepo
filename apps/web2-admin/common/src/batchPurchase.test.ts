@@ -105,6 +105,22 @@ describe('the calculator', () => {
     assert.equal(batchBuyQuote({ depth: 22, days: 6, postage, walletXbzzPlur: cost.toString() }).shortfallPlur, null);
     assert.equal(batchBuyQuote({ depth: 22, days: 6, postage, walletXbzzPlur: null }).shortfallPlur, null);
   });
+
+  /**
+   * A chunk's address picks one of 65536 buckets, and a batch is full once its fullest bucket is, long before all
+   * `2^depth` of its stamps are used. What the dialog says a batch holds is that point, from the table that sizes an
+   * archive stamp: Swarm's effective volume of an unencrypted batch without erasure coding.
+   */
+  it('says what the batch holds before its fullest bucket fills', () => {
+    const at = (depth: number) => batchBuyQuote({ depth, days: 6, postage, walletXbzzPlur: null });
+    assert.equal(at(17).effectiveBytes, 44_700);
+    assert.equal(at(17).effectiveChunks, 10);
+    assert.equal(at(20).effectiveBytes, 687_620_000);
+    assert.equal(at(20).effectiveChunks, 167_875);
+    assert.equal(at(22).effectiveBytes, 7_730_000_000);
+    assert.equal(at(22).effectiveChunks, 1_887_207);
+    assert.equal(at(40).effectiveBytes, 4_460_000_000_000_000);
+  });
 });
 
 describe('why a choice cannot be bought', () => {

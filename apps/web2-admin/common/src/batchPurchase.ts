@@ -1,4 +1,6 @@
 import {
+  archiveEffectiveBytes,
+  archiveEffectiveChunks,
   FUNDING_CATALOGUE_PURCHASE_MIN_DEPTH,
   FUNDING_PURCHASE_MAX_DEPTH,
   FUNDING_PURCHASE_MIN_DEPTH,
@@ -109,6 +111,13 @@ export interface BatchBuyQuote {
   /** The chunks the batch holds, `2^depth`, and the same in bytes. Its fullest bucket fills long before these. */
   chunks: number;
   bytes: number;
+  /**
+   * What the batch holds before its fullest bucket fills, in bytes and in whole chunks, which is what the dialog says it
+   * holds: the table that sizes an archive stamp, Swarm's effective volume of an unencrypted batch without erasure
+   * coding.
+   */
+  effectiveBytes: number;
+  effectiveChunks: number;
   /** What the wallet is short of for the cost, in PLUR; null when it holds the cost or was not read. */
   shortfallPlur: string | null;
 }
@@ -131,6 +140,8 @@ export function batchBuyQuote(input: {
     ttlSeconds: Number(blocks) * input.postage.blockSeconds,
     chunks,
     bytes: chunks * CHUNK_BYTES,
+    effectiveBytes: archiveEffectiveBytes(input.depth),
+    effectiveChunks: archiveEffectiveChunks(input.depth),
     shortfallPlur: missing !== null && missing > 0n ? missing.toString() : null,
   };
 }
