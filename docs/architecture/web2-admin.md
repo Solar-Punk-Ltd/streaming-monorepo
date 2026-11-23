@@ -379,8 +379,8 @@ Every action goes to the audit log, with times in UTC.
 ## Lost recordings
 
 A recording lives on Swarm while a batch that stamped it has time left. When a stage's batches run
-out, the network drops its recordings, and the admin still lists them. The Streams page finds them
-and removes them.
+out, the network stops keeping its recordings: copies may answer for a while after, but not
+reliably. The admin still lists them, and the Streams page finds them and removes them.
 
 **Check recordings** is started by a person, and one check runs at a time for the whole admin.
 
