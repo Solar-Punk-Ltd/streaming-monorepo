@@ -691,6 +691,35 @@ describe('ExportService', () => {
   });
 });
 
+describe('ExportService and a test stream', () => {
+  it('exports the recording of a test stream as it does any recording', async () => {
+    const stream = recordedLadder();
+    streams.rows.set(stream.id, { ...stream, test: true, description: '', tags: [], scheduled_start_time: null });
+
+    const options = await service.optionsFor(stream.id, TEST_OPERATOR.userId);
+    assert.equal(options.refusal, null);
+    assert.deepEqual(
+      options.qualities.map((quality) => [quality.rendition, quality.unavailable]),
+      [
+        ['1080p', null],
+        ['720p', null],
+      ],
+    );
+
+    await service.start(TEST_OPERATOR, stream.id, '1080p');
+    await service.settled();
+
+    const done = await service.current(TEST_OPERATOR.userId);
+    assert.equal(done?.state, 'done');
+    assert.equal(done?.fileName, 'opening-keynote-2026-11-05-1080p.mp4');
+    assert.equal(done?.segmentsRead, 5);
+    assert.deepEqual(
+      audit.entries.map((entry) => entry.action),
+      ['export.start', 'export.done'],
+    );
+  });
+});
+
 describe('FakeJoiner', () => {
   it(
     'ends at once a join whose signal was aborted before it started, as FfmpegJoiner does',
