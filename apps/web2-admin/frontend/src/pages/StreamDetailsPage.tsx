@@ -31,7 +31,7 @@ import type {
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
-import { holdsFinishedRecording } from '@streaming-monorepo/web2-admin-common';
+import { holdsFinishedRecording, watchPagePath } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
 import { errorMessage, FINALIZE_WHILE_LIVE } from '../errors';
@@ -83,7 +83,7 @@ function catalogueUrl(base: string): string {
 }
 
 function watchPath(stream: Stream): string {
-  return `#/watch/${stream.mediaType}/${stream.owner}/${stream.topic}`;
+  return watchPagePath(stream);
 }
 
 /**

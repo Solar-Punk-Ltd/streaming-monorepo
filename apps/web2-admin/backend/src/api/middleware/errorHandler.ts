@@ -1,4 +1,5 @@
 import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@streaming-monorepo/contracts';
+import { TEST_STREAM_ERROR, type TestStreamRefusal } from '@streaming-monorepo/web2-admin-common';
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError as YupValidationError } from 'yup';
 
@@ -35,6 +36,7 @@ import {
   StreamNotFoundError,
   StreamNotStartedError,
   StreamPublishedError,
+  TestStreamError,
   ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
   TooManyAttemptsError,
@@ -208,6 +210,16 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res
       .status(409)
       .json({ error: 'stage_unavailable', stageId: err.stageId, reason: err.reason, message: err.message });
+    return;
+  }
+  if (err instanceof TestStreamError) {
+    const body: TestStreamRefusal = {
+      error: TEST_STREAM_ERROR,
+      id: err.streamId,
+      action: err.action,
+      message: err.message,
+    };
+    res.status(409).json(body);
     return;
   }
   if (err instanceof StageRequiredError) {

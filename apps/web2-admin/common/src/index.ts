@@ -9,6 +9,7 @@ export * from './ingest.js';
 export * from './lostRecordings.js';
 export * from './stages.js';
 export * from './stampQuote.js';
+export * from './testStream.js';
 export * from './theme.js';
 export * from './thumbnail.js';
 export * from './version.js';

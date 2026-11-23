@@ -18,6 +18,7 @@ import { InvalidStateTransitionError } from '../../src/domain/errors/index.js';
 import {
   allowedFromFor,
   hasGoneLive,
+  isOpenToUploader,
   isScheduleLocked,
   isStateTransitionAllowed,
   type ReportedState,
@@ -77,10 +78,67 @@ describe('isStateTransitionAllowed', () => {
     }
   });
 
+  it('takes the first report of a test stream from draft, which is never published', () => {
+    assert.equal(isStateTransitionAllowed('draft', 'live', true), true);
+    // A test broadcast that ended before its `live` got through still has a recording.
+    assert.equal(isStateTransitionAllowed('draft', 'vod', true), true);
+    assert.equal(isStateTransitionAllowed('live', 'vod', true), true);
+    assert.equal(isStateTransitionAllowed('vod', 'live', true), true);
+  });
+
+  it('never takes a report of a test stream from the two statuses it cannot have', () => {
+    for (const state of ['live', 'vod'] as ReportedState[]) {
+      assert.equal(isStateTransitionAllowed('publishing', state, true), false);
+      assert.equal(isStateTransitionAllowed('published', state, true), false);
+    }
+  });
+
+  it('agrees with the status list the SQL transition is conditioned on, for a test stream too', () => {
+    for (const state of ['live', 'vod'] as ReportedState[]) {
+      for (const status of STATUSES) {
+        assert.equal(
+          allowedFromFor(state, true).includes(status),
+          isStateTransitionAllowed(status, state, true),
+          `${status} -> ${state}`,
+        );
+      }
+    }
+  });
+
   it('names both ends in the error the API answers with', () => {
     const error = new InvalidStateTransitionError('an-id', 'draft', 'live');
     assert.equal(error.from, 'draft');
     assert.equal(error.to, 'live');
+  });
+});
+
+describe('isOpenToUploader', () => {
+  it('opens a stream while it is published, live or recorded', () => {
+    const open = STATUSES.filter((status) => isOpenToUploader(streamRow({ status })));
+    assert.deepEqual(open, ['published', 'live', 'vod']);
+  });
+
+  it('opens a test stream as a draft, live and recorded', () => {
+    const open = STATUSES.filter((status) => isOpenToUploader(streamRow({ status, test: true })));
+    assert.deepEqual(open, ['draft', 'live', 'vod']);
+  });
+
+  it('keeps a test stream with no stage closed, since no stage is asked about it', () => {
+    for (const status of STATUSES) {
+      assert.equal(isOpenToUploader(streamRow({ status, test: true, stage_id: null })), false, status);
+    }
+  });
+
+  it('opens exactly the streams whose live report is taken', () => {
+    for (const test of [false, true]) {
+      for (const status of STATUSES) {
+        assert.equal(
+          isOpenToUploader(streamRow({ status, test })),
+          isStateTransitionAllowed(status, 'live', test),
+          `${status}, test ${test}`,
+        );
+      }
+    }
   });
 });
 

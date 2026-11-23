@@ -57,6 +57,11 @@ export type RenditionAnswerRung = z.infer<typeof renditionAnswerRungSchema>;
  * `POST /api/internal/streams/:id/renditions`, answered 200: the ladder the admin holds after merging one rung, as
  * the uploader reads it. The rungs and the ladder state must be there. The stream's status and the catalog write's
  * index are read when the body carries them as they should be and are null otherwise, never a refusal.
+ *
+ * The index orders the answers of one stream: an answer with a lower one holds an older merge of the ladder. For a
+ * test stream, which the admin keeps off the catalog, it is the stream's order number, which grows with every report
+ * the admin stores for that stream and names no catalog slot. So it is compared with another answer's of the same
+ * stream and read as nothing else.
  */
 export const renditionReportAnswerSchema = z
   .looseObject({

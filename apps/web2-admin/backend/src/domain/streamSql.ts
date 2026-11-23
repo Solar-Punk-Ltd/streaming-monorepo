@@ -11,7 +11,7 @@ export const STREAM_COLUMNS = `
   publish_error, publish_key, publish_key_rotated_at, manifest_index,
   duration_seconds, live_since, ended_at, finished_at, content_edited_at,
   entry_content_edited_at, stage_id, archived_only, recording_verdict, recording_checked_at,
-  created_at, updated_at
+  test, report_order, viewer_url, created_at, updated_at
 `;
 
 /**
