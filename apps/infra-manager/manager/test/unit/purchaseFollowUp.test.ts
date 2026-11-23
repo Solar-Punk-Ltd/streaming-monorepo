@@ -18,6 +18,7 @@ import {
   INGEST_READ,
   PURCHASE_LIVE_READ_GAP_MS,
   RTMP_INGEST_NO_REPORTS,
+  SRS_SERVICE,
   SRT_INGEST_MEASURED,
   SRT_INGEST_NO_REPORTS,
   type StampHealth,
@@ -26,6 +27,7 @@ import {
 
 import type { BeeStamp } from '../../src/domain/BeeClient.js';
 import { ProfileBusyError, ProfileConfigError } from '../../src/domain/errors/index.js';
+import { IngestHealthService, type MarkedLogLines } from '../../src/domain/ingestHealth/IngestHealthService.js';
 import { CatalogueDesignationService } from '../../src/domain/stages/CatalogueDesignationService.js';
 import {
   DeploymentSettingsBeyondError,
@@ -42,7 +44,7 @@ import {
 import { StagePoolStrings, type StageFollower } from '../../src/domain/stages/StagePoolStrings.js';
 import type { DeploymentGroup, Profile } from '../../src/types/index.js';
 import { InMemoryCatalogueDesignation } from '../support/InMemoryCatalogueDesignation.js';
-import { makeProfile } from '../support/profileFixtures.js';
+import { InMemoryProfiles, makeProfile } from '../support/profileFixtures.js';
 
 const OLD = '1'.repeat(64);
 const BOUGHT = 'b'.repeat(64);
@@ -387,6 +389,33 @@ describe('one look at a stage', () => {
     world.readings = [live, live];
     assert.equal((await look({ force: true })).apply, 'applying');
     assert.deepEqual(world.applied, ['main:main-instance']);
+  });
+
+  it('waits for a broadcast of any stream id on the stage’s ingest, read from its engine’s log and no list of streams', async () => {
+    // One publisher on the stage's SRS: the line that names its stream, then SRS's report for its connection. The
+    // manager's read of the log keeps the reports alone, by their marker, so no stream id reaches the reading.
+    const logOf = (streamId: string): string[] => [
+      `[2026-11-23 10:00:00.101][INFO][1][7tq2vx91] SRT: publish stream=live/${streamId}, peer ip=192.0.2.7:51514`,
+      '[2026-11-23 10:00:10.386][INFO][1][7tq2vx91] <- SRT_CPB Transport Stats # pktRecv=6500, pktRcvLoss=0, pktRcvRetrans=0, pktRcvDrop=0',
+    ];
+    for (const streamId of ['main', 'test-0c5e7a1f', 'a-stream-no-list-names']) {
+      const read: string[] = [];
+      const logs: MarkedLogLines = {
+        logLinesContaining: async (project, service, marked) => {
+          read.push(`${project} ${service}`);
+          return logOf(streamId).filter((line) => line.includes(marked.marker));
+        },
+      };
+      const ingest = new IngestHealthService(new InMemoryProfiles(world.profiles).asRepository(), logs);
+      const ports = purchaseFollowUpPorts({ ...world.deps(), ingest });
+      assert.deepEqual(
+        await ports.stages.look({ stageId: 'main-instance', batchId: BOUGHT, force: false, retryFailed: false }),
+        { apply: 'waiting_live', message: null },
+        streamId,
+      );
+      assert.deepEqual(read, [`main ${SRS_SERVICE}`], `${streamId}: the stage's own ingest, read once`);
+    }
+    assert.deepEqual(world.applied, []);
   });
 
   it('answers waiting_unknown when a reading cannot tell, and a restart passes over it', async () => {
