@@ -24,6 +24,7 @@ import {
   StreamBusyError,
   StreamLiveError,
   StreamNotFoundError,
+  TestStreamError,
 } from './errors/index.js';
 import {
   buildFeedEntry,
@@ -126,8 +127,9 @@ export interface PublishStreamStore {
   recordPublishError(id: string, message: string): Promise<void>;
   /**
    * Every row that should be on the catalogue right now — status `published`,
-   * `live` or `vod`. Only `reconcile` uses it, and it has to see all of them: a
-   * row it cannot see reads as an entry with nothing behind it.
+   * `live` or `vod`, and no test stream (`isOnFeed`). `reconcile` and the boot
+   * check use it, and they have to see all of them: a row they cannot see
+   * reads as an entry with nothing behind it.
    */
   listOnFeed(): Promise<StreamRow[]>;
 }
@@ -254,6 +256,24 @@ function hasReportedState(stream: StreamRow): boolean {
 }
 
 /**
+ * Whether a row has an entry on the catalogue: its status is one of `ON_FEED_STATUSES`, and it is no test stream,
+ * which is never on the catalogue. `StreamRepository.listOnFeed` selects the rows this answers true for.
+ */
+export function isOnFeed(row: StreamRow): boolean {
+  return ON_FEED_STATUSES.includes(row.status) && !row.test;
+}
+
+/** Whether `entries` hold an entry for `topic`, under any owner. */
+function namesTopic(entries: readonly unknown[], topic: string): boolean {
+  const wanted = topic.toLowerCase();
+  return entries.some((entry) => {
+    if (typeof entry !== 'object' || entry === null) return false;
+    const named = (entry as { topic?: unknown }).topic;
+    return typeof named === 'string' && named.toLowerCase() === wanted;
+  });
+}
+
+/**
  * The head's index when a republish by hand has nothing to write, or null
  * when it has. Nothing to write means: `row` is on the catalogue already, its
  * last publish did not fail, and the head carries `entry` exactly as it would
@@ -269,7 +289,7 @@ function hasReportedState(stream: StreamRow): boolean {
  * write would start from is the head's own.
  */
 function headCarrying(row: StreamRow, snapshot: FeedSnapshot, entry: FeedStreamEntry): number | null {
-  if (!ON_FEED_STATUSES.includes(row.status) || row.publish_error !== null || snapshot.index === null) return null;
+  if (!isOnFeed(row) || row.publish_error !== null || snapshot.index === null) return null;
   return carriesEntry(snapshot.entries, entry) ? snapshot.index : null;
 }
 
@@ -343,9 +363,11 @@ export class PublishService {
     this.archiveListing = listing;
   }
 
+  /** Refused with `TestStreamError` for a test stream, in every status, before anything is claimed or written. */
   async publish(actor: Actor, id: string): Promise<PublishOutcome> {
     return this.mutex.run(async () => {
       const before = await this.read(id);
+      if (before.test) throw new TestStreamError(id, 'publish');
       // A stream that is `live` or `vod` is republished as it is: the
       // operator fixed a title mid-broadcast, and the entry must go back on
       // the feed still saying `live` (or `vod`, with its index and duration).
@@ -354,6 +376,7 @@ export class PublishService {
     });
   }
 
+  /** Refused with `TestStreamError` for a test stream, which has no entry to take off, a live one included. */
   async unpublish(actor: Actor, id: string): Promise<PublishOutcome> {
     return this.mutex.run(() => this.doUnpublish(actor, id));
   }
@@ -374,6 +397,10 @@ export class PublishService {
    * and what the write published: `entryStatus`, `entryRecording` and
    * `renditions`. All three come from the read in here, so they can be a
    * later report's than the caller's. `actor` is only for the log line.
+   *
+   * A test stream is refused with `TestStreamError`, with nothing written and
+   * nothing recorded on its row: its reports store their state and write no
+   * catalogue.
    */
   async republishWithState(actor: Actor, stream: StreamRow): Promise<PublishOutcome> {
     return this.mutex.run(async () => this.doRepublishWithState(actor, await this.read(stream.id), false));
@@ -424,7 +451,7 @@ export class PublishService {
         };
       }
 
-      const index = await this.writeFeed(plan.entries, base.index, target);
+      const index = await this.writeFeed(plan.entries, base.index, target, rows);
       logger.warn(
         `[Reconcile] ${describeActor(actor)} rewrote the catalogue at feed index ${index} (${plan.entries.length} entries): removed [${plan.removed.join(', ')}], added [${plan.added.join(', ')}], updated [${plan.updated.join(', ')}]`,
       );
@@ -453,9 +480,9 @@ export class PublishService {
   /**
    * Writes the catalogue once more, in one write, with the entries of `streamIds` rebuilt from their rows: a catalogue
    * move calls it right after its switch, for the streams whose thumbnail it cleared, so the entry written then goes
-   * with the new batch and names no lost image. Only a stream on the catalogue whose entry the head carries is
-   * rebuilt, and an entry the head already carries as it would be written is left as it is. Answers the index
-   * written, or null when no entry changed and nothing was written. The caller audits.
+   * with the new batch and names no lost image. Only a stream on the catalogue (`isOnFeed`) whose entry the head
+   * carries is rebuilt, so never a test stream's, and an entry the head already carries as it would be written is left
+   * as it is. Answers the index written, or null when no entry changed and nothing was written. The caller audits.
    *
    * ⛔ The caller holds the publish mutex. This takes no lock of its own, so the move that calls it from its last step
    * never waits on itself.
@@ -467,7 +494,7 @@ export class PublishService {
     const rebuilt: StreamRow[] = [];
     for (const id of new Set(streamIds)) {
       const row = await this.streams.findById(id);
-      if (!row || !ON_FEED_STATUSES.includes(row.status)) continue;
+      if (!row || !isOnFeed(row)) continue;
       if (!removeEntry(entries, row.owner, row.topic).removed) continue;
       const { entry } = await this.entryFor(row, row.thumbnail_ref);
       if (carriesEntry(entries, entry)) continue;
@@ -476,7 +503,7 @@ export class PublishService {
     }
     if (rebuilt.length === 0) return null;
 
-    const index = await this.writeFeed(entries, base.index, target);
+    const index = await this.writeFeed(entries, base.index, target, rebuilt);
     await this.recordRebuiltEntries(
       rebuilt,
       rebuilt.map((row) => row.topic),
@@ -527,7 +554,15 @@ export class PublishService {
           entries = taken.entries;
           removedAny ||= taken.removed;
         }
-        const index = removedAny ? await this.writeFeed(entries, snapshot.index, target, written) : null;
+        const index = removedAny
+          ? await this.writeFeed(
+              entries,
+              snapshot.index,
+              target,
+              claimed.map(({ row }) => row),
+              written,
+            )
+          : null;
         for (const { row } of claimed) await this.streams.finishUnpublish(row.id);
         logger.info(
           `[Publish] ${describeActor(actor)} took ${claimed.length} stream${claimed.length === 1 ? '' : 's'} off the catalogue${
@@ -700,7 +735,7 @@ export class PublishService {
       // write that last carried this stream's entry.
       const carriedAt = headCarrying(before, snapshot, entry);
       const wrote = carriedAt === null;
-      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target, written));
+      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target, [claimed], written));
 
       // The claim refuses every edit until this returns, so `claimed` still
       // holds the edit the entry was built from.
@@ -735,6 +770,9 @@ export class PublishService {
     // No owner check: an entry written under an older feed key is removed by
     // the owner stored on the row, and refusing here would strand it.
     const before = await this.read(id);
+    // A test stream has no entry to take off, and is never claimed: before the
+    // live check, so a live one is refused for what it is.
+    if (before.test) throw new TestStreamError(id, 'publish');
     // A recording can come off the catalogue; a live broadcast cannot, because
     // nothing here can stop the encoder that is still pushing to it.
     if (before.status === 'live') throw new StreamLiveError(id);
@@ -760,7 +798,9 @@ export class PublishService {
       // up" and the entry stayed on the catalogue with the row back in
       // `draft`. The base is now the payload this backend last wrote, so the
       // absence is real.
-      const index = removed ? await this.writeFeed(entries, snapshot.index, target, written) : (snapshot.index ?? 0);
+      const index = removed
+        ? await this.writeFeed(entries, snapshot.index, target, [claimed], written)
+        : (snapshot.index ?? 0);
 
       const stream = await this.streams.finishUnpublish(id);
       if (!stream) throw new StreamNotFoundError(id);
@@ -845,6 +885,9 @@ export class PublishService {
    */
   private async doRepublishWithState(actor: Actor, current: StreamRow, byHand: boolean): Promise<PublishOutcome> {
     const { id } = current;
+    // Before the try: a test stream's state is its own report's, and nothing
+    // of this refusal is recorded on its row.
+    if (current.test) throw new TestStreamError(id, 'publish');
 
     let target: CatalogueTarget | null = null;
     try {
@@ -859,7 +902,7 @@ export class PublishService {
       const entries = upsertEntry(snapshot.entries, entry);
       const carriedAt = byHand ? headCarrying(current, snapshot, entry) : null;
       const wrote = carriedAt === null;
-      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target));
+      const index = carriedAt ?? (await this.writeFeed(entries, snapshot.index, target, [current]));
 
       // `current`'s edit, not whatever the row holds now: no claim is taken
       // here, so the console can save an edit while this write is on its way,
@@ -1115,13 +1158,26 @@ export class PublishService {
    * gateway and into `feed_writes.payload_text`, with the batch that stamped
    * it: the exact bytes are what moving the catalogue to another batch
    * uploads again.
+   *
+   * `from` are the rows the write was built from. A list that names a test
+   * stream among them is refused with `TestStreamError` and nothing is
+   * written: a test stream is never on the catalogue, whichever way its row
+   * came to be in the write.
    */
   private async writeFeed(
     entries: unknown[],
     head: number | null,
     target: CatalogueTarget | null,
+    from: readonly StreamRow[],
     written?: WrittenAt,
   ): Promise<number> {
+    const test = from.find((row) => row.test && namesTopic(entries, row.topic));
+    if (test) {
+      logger.error(
+        `[Publish] refused to write the catalogue: the list names ${describeStream(test)}, a test stream, which is never on it`,
+      );
+      throw new TestStreamError(test.id, 'publish');
+    }
     const index = head === null ? 0 : head + 1;
     const payloadText = encodeFeedPayload(entries);
     const reference = await this.gateway.write(payloadText, index, target);
