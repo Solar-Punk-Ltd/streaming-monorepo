@@ -368,8 +368,9 @@ README has the detail.
   same start retries it from there.
 - A start is refused when the move is off, there is no batch to move to or nothing to move, the
   designated batch is expired, gone or mutable, or the batch the catalogue is written with has lapsed
-  while some slot has no recorded bytes. The network drops a chunk once its batch lapses, so those
-  slots cannot be read any more, and the page says so.
+  while some slot has no recorded bytes. The network stops keeping a chunk once its batch lapses.
+  Copies may answer for days after, but not reliably, so those slots may not be readable, and the
+  page says so.
 - The start, the end and a failure are audited (`catalogue.move.start`, `.done`, `.failed`) and
   logged with batch ids shortened. The Stages page shows N of M slots while it runs, the reason when
   it failed, and, once done, that the previous batch can now be released in the manager.
@@ -407,7 +408,9 @@ node. The scratch admin needs no setting for it, since the move is on by default
 1. **Set up a scratch installation.** A testnet or scratch Bee node as a Bee-only deployment of a
    scratch manager, and a scratch admin with its own `FEED_PRIVATE_KEY` and `FEED_TOPIC`, so no
    brand's catalogue is touched. Buy two small immutable batches on the node, A and B, of depth 18 or
-   more. Link the admin and designate the node with batch A.
+   more. Link the admin and designate the node with batch A. The node needs a Bee API address the
+   admin can dial that is not a loopback one: for a loopback address the manager skips pushing the
+   designation to the admin (`skipped-loopback-address`).
 2. **Make history.** Create a few streams, give some a thumbnail, and publish and unpublish them
    until the feed has a dozen slots or more. Make at least one catalogue longer than 4096 bytes (a
    long description on several published streams does it), so a wrapped slot is in the history.
@@ -415,17 +418,25 @@ node. The scratch admin needs no setting for it, since the move is on by default
 3. **Move.** In the manager, choose batch B on the catalogue node's card and confirm the move. On
    the admin's Stages page, choose "Move the catalogue to batch B…", confirm, and publish a stream
    while it runs. Wait for "The catalogue was moved to batch B".
-4. **Check each slot under B.** For every index from 0 to the head, `GET /chunks/<slot address>` on
-   the node answers the same bytes as before the move. The sum of `collisions` in
-   `GET /stamps/<B>/buckets` grows by the number of slots and their data chunks, to the same sum as
-   in `GET /stamps/<A>/buckets`. The `utilization` of `GET /stamps/<B>` is the fullest bucket's
-   count, so it barely moves. The admin's log has one `Restamped feed index=` line per slot, and
-   none failed. A slot's address is keccak256(identifier, owner), and the `ref=` of each
-   `Wrote feed index=` line in the log is it.
-5. **Check the viewer.** Let batch A lapse, which takes a day or more: the smallest batch lasts
+4. **Check each slot under B.** The sum of `collisions` in `GET /stamps/<B>/buckets` comes to the
+   same sum as in `GET /stamps/<A>/buckets`. It counts every chunk the batch stamped: each slot's
+   chunk, a wrapped slot's root, data and parity chunks (its payload is uploaded erasure-coded), and
+   each thumbnail's chunks. The `utilization` of `GET /stamps/<B>` is the fullest bucket's count, so
+   it barely moves. The admin's log has one `Restamped feed index=` line per slot, and none failed.
+   For every index from 0 to the head, a node that never held the slot answers
+   `GET /chunks/<slot address>` with the same bytes as before the move. The catalogue node answers
+   from its own store, so its answer says nothing of the network. `GET /stewardship/<root>`, for the
+   root a wrapped slot names, asks the network for its data chunks, but cannot judge parity chunks or
+   a slot's own single-owner chunk. A slot's address is keccak256(identifier, owner), and the `ref=`
+   of each `Wrote feed index=` line in the log is it.
+5. **Check after A lapses.** Let batch A lapse, which takes a day or more: the smallest batch lasts
    about a day, and the postage contract refuses a dilution that would leave less than a day of
-   life. Or point the viewer at a node that never held A's chunks. The viewer still lists every
-   entry it listed in step 2, with its thumbnail, and the stream published during the move.
+   life. The viewer still lists every entry it listed in step 2, with its thumbnail, and the stream
+   published during the move, but that alone does not show the move: copies left by earlier reads
+   can keep every slot chunk and most data chunks readable for days after a lapse. Chunks never read,
+   such as a wrapped slot's parity chunks, which its root chunk lists after its data chunks, are gone
+   with A unless B keeps them. Read those through a node that never held them, or go by the bucket
+   sums of step 4.
 6. **Release.** Press "Release the previous batch" in the manager, and remove batch A's node if it
    was another deployment.
 
