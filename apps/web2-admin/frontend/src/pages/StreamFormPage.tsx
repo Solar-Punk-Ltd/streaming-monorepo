@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
 import {
   type MediaType,
@@ -126,7 +126,147 @@ function stageLockOf(stream: Stream | null): string | null {
   return null;
 }
 
+/** Said when New test stream is sent with no stage: a test checks the path to one stage. */
+export const TEST_STAGE_REQUIRED = 'Pick the stage the test runs on.';
+
+/**
+ * The media type of every test stream. The stream form offers no media type and saves every stream as video, so the
+ * test form offers none either, and an address that names one is not read.
+ */
+const TEST_STREAM_MEDIA_TYPE: MediaType = 'video';
+
+/**
+ * New test stream: a title and a stage, and nothing else, sent to `POST /api/streams/test` as a video stream. "Test
+ * this setup" on a stream's page opens it with that stream's stage in the address. A test stream's page opens once it
+ * is created, with its encoder details at once.
+ */
+function TestStreamForm({ stageParam }: { stageParam: string }) {
+  const navigate = useNavigate();
+  const snackbar = useSnackbar();
+  const [title, setTitle] = useState('');
+  const [stageId, setStageId] = useState(stageParam);
+  const [stages, setStages] = useState<StageSummary[] | null>(null);
+  const [stagesError, setStagesError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .fetchStages()
+      .then((list) => {
+        if (cancelled) return;
+        setStages(list);
+        // A form that came with no stage starts on the one stage a test could go on, when there is only one.
+        const offered = assignableStages(list);
+        if (offered.length === 1) setStageId((current) => current || offered[0]!.stageId);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setStages([]);
+        setStagesError(errorMessage(e, 'Could not load the stages'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const chosenStage = stages?.find((stage) => stage.stageId === stageId) ?? null;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError(ERROR_MESSAGES.NAME_REQUIRED);
+      return;
+    }
+    if (!stageId) {
+      setError(TEST_STAGE_REQUIRED);
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const created = await api.createTestStream({
+        title: title.trim(),
+        mediaType: TEST_STREAM_MEDIA_TYPE,
+        stageId,
+      });
+      snackbar.success(`"${created.title}" created.`);
+      navigate(`/streams/${created.id}`);
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to create the test stream'));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+      <Typography variant="h5" component="h1">
+        New test stream
+      </Typography>
+
+      <Paper variant="outlined" sx={{ p: 3 }}>
+        <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
+          <Stack spacing={3}>
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              A test stream goes live on its stage like any stream and stays off the catalogue, so no viewer’s list
+              shows it. Its page shows the encoder details and how the team watches it.
+            </Typography>
+            {error ? <Alert severity="error">{error}</Alert> : null}
+            <NameField
+              value={title}
+              onChange={(v) => {
+                setTitle(v);
+                if (error === ERROR_MESSAGES.NAME_REQUIRED && v.trim()) setError(null);
+              }}
+              error={error === ERROR_MESSAGES.NAME_REQUIRED}
+              disabled={saving}
+            />
+            <Stack spacing={1}>
+              <StageField
+                value={stageId}
+                onChange={(v) => {
+                  setStageId(v);
+                  if (error === TEST_STAGE_REQUIRED && v) setError(null);
+                }}
+                stages={stages}
+                loadError={stagesError}
+                disabled={saving}
+              />
+              {chosenStage ? <StageReadinessWarning stage={chosenStage} /> : null}
+            </Stack>
+            <Stack direction="row" spacing={2}>
+              <Button type="submit" variant="contained" disabled={saving}>
+                {saving ? 'Creating test stream…' : 'Create test stream'}
+              </Button>
+              <Button onClick={() => navigate(-1)} disabled={saving}>
+                Cancel
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
+      </Paper>
+    </Stack>
+  );
+}
+
+/** `/create`, `/create?test=1` and `/edit/:id`: the stream form, or New test stream where the address asks for it. */
 export function StreamFormPage() {
+  const { id } = useParams<{ id?: string }>();
+  const [params] = useSearchParams();
+  if (!id && params.get('test') === '1') {
+    return (
+      <TestStreamForm
+        // A new form for every address, so "Test this setup" from another stream starts from that stream.
+        key={params.toString()}
+        stageParam={params.get('stageId') ?? ''}
+      />
+    );
+  }
+  return <StreamForm />;
+}
+
+function StreamForm() {
   const { id } = useParams<{ id?: string }>();
   const isEdit = Boolean(id);
   const navigate = useNavigate();

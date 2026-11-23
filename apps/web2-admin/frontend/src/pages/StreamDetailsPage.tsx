@@ -23,6 +23,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import FlagIcon from '@mui/icons-material/Flag';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import type {
   IngestDetails,
   PublicConfig,
@@ -47,6 +48,14 @@ import { KeptExportCard } from '../components/export/KeptExportCard';
 import { MEDIA_TYPE_LABEL, StatusChip } from '../components/StatusChip';
 import { useSnackbar } from '../components/Snackbar';
 import { CopyButton } from '../components/CopyButton';
+import {
+  SharedStageNote,
+  TestLiveMark,
+  TestMark,
+  testSetupPath,
+  useLiveClock,
+} from '../components/testStreams/TestStreamMarks';
+import { TestStreamViewerCard } from '../components/testStreams/TestStreamViewerCard';
 import { monoFont } from '../theme/createAdminTheme';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -204,6 +213,10 @@ export function StreamDetailsPage() {
   const [unpublishPrompt, setUnpublishPrompt] = useState<UnpublishPrompt>(UNPUBLISH_PROMPTS.scheduled);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  // Every stream, for what else is live on this one's stage. Null until read, and a list that cannot be read only
+  // leaves that note out.
+  const [streams, setStreams] = useState<Stream[] | null>(null);
+  const now = useLiveClock(stream?.test === true && stream.status === 'live');
 
   // Bumped on every load and every Finalize, so a slow response for the
   // previous stream cannot overwrite the current one — showing one stream's
@@ -239,6 +252,15 @@ export function StreamDetailsPage() {
       .fetchPublicConfig()
       .then(setConfig)
       .catch(() => undefined);
+    // Only for the note on what else is live on this stream's stage, which is information and blocks nothing.
+    api
+      .fetchStreams()
+      .then((list) => {
+        if (current()) setStreams(list);
+      })
+      .catch(() => {
+        if (current()) setStreams(null);
+      });
   }, [id, snackbar]);
 
   useEffect(() => {
@@ -246,6 +268,7 @@ export function StreamDetailsPage() {
     // included.
     setStream(null);
     setIngest(null);
+    setStreams(null);
     setLastResult(null);
     setUnpublishOpen(false);
     setFinalizeOpen(false);
@@ -368,70 +391,156 @@ export function StreamDetailsPage() {
   const notice = statusNoticeOf(stream);
   const viewerBaseUrl = config?.viewerBaseUrl ?? null;
 
+  const header = (
+    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+      {/*
+        A name or description may be one unbroken word of the full length the
+        form allows, so both break anywhere rather than run off the card.
+      */}
+      <Typography variant="h5" component="h1" sx={{ flexGrow: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
+        {stream.title}
+      </Typography>
+      {stream.test ? <TestMark /> : null}
+      <StatusChip status={stream.status} publishError={stream.publishError} />
+      <TestLiveMark stream={stream} now={now} />
+      <ArchiveBadge archive={stream.archive} />
+      {/*
+        While `publishing` both publish buttons are disabled and nothing
+        pushes the transition here, so without this the operator is stuck
+        looking at a screen that will not change.
+      */}
+      <Tooltip title="Refresh">
+        <IconButton size="small" aria-label="refresh stream" onClick={load} disabled={busy}>
+          <RefreshIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
+      {/* A test stream stays as it was created: the API refuses an edit of one. */}
+      {stream.test ? null : (
+        <Button size="small" startIcon={<EditIcon />} component={RouterLink} to={`/edit/${stream.id}`}>
+          Edit
+        </Button>
+      )}
+      {stream.test ? null : (
+        <Button size="small" startIcon={<ScienceOutlinedIcon />} onClick={() => navigate(testSetupPath(stream))}>
+          Test this setup
+        </Button>
+      )}
+      {/* A finished recording, published or not, can be exported into an MP4 and saved. */}
+      {holdsFinishedRecording(stream) ? (
+        <Button size="small" startIcon={<DownloadIcon />} onClick={() => openPanel(stream.id)}>
+          Download
+        </Button>
+      ) : null}
+      <Button size="small" onClick={() => navigate('/')}>
+        Back to Streams
+      </Button>
+    </Stack>
+  );
+
+  const finalizeDialog = (
+    <ConfirmDialog
+      open={finalizeOpen}
+      title="Finalize this stream?"
+      message={FINALIZE_PROMPT}
+      confirmText={finalizing ? 'Finalizing…' : 'Finalize'}
+      busy={finalizing}
+      onConfirm={() => void runFinalize()}
+      onCancel={() => setFinalizeOpen(false)}
+    />
+  );
+
+  const noticeAlert = notice ? (
+    <Alert
+      severity="info"
+      sx={{ alignItems: 'center' }}
+      action={
+        <Tooltip title="Finalize streaming">
+          {/* A disabled button takes no pointer events, so the tooltip hangs on this wrapper. */}
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="warning"
+              startIcon={<FlagIcon />}
+              disabled={!notice.canFinalize}
+              onClick={() => setFinalizeOpen(true)}
+            >
+              Finalize
+            </Button>
+          </span>
+        </Tooltip>
+      }
+    >
+      <AlertTitle>{notice.title}</AlertTitle>
+      {notice.helper}
+    </Alert>
+  ) : null;
+
+  if (stream.test) {
+    // A test stream's page: its encoder details first, then how the team watches it. It has no catalogue entry, so
+    // no Publish, no image and no archive, and its title, media type and stage stay as it was created.
+    return (
+      <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
+        {header}
+        {noticeAlert}
+        <SharedStageNote stream={stream} streams={streams} />
+        {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
+        <TestStreamViewerCard stream={stream} feed={config?.feed ?? null} onSaved={setStream} />
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <Grid container spacing={2}>
+            <Grid size={{ xs: 6, sm: 4 }}>
+              <Field label="Media type">
+                <Typography variant="body2">{MEDIA_TYPE_LABEL[stream.mediaType]}</Typography>
+              </Field>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4 }}>
+              <Field label="Stage">
+                <Typography variant="body2">{ingest?.stage ? ingest.stage.name : '—'}</Typography>
+              </Field>
+            </Grid>
+            <Grid size={{ xs: 6, sm: 4 }}>
+              <Field label="Created">
+                <Typography variant="body2">{formatDateTime(stream.createdAt)}</Typography>
+              </Field>
+            </Grid>
+            {stream.liveSince ? (
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Field label="Live since">
+                  <Typography variant="body2">{formatDateTime(stream.liveSince)}</Typography>
+                </Field>
+              </Grid>
+            ) : null}
+            {stream.endedAt ? (
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Field label="Ended">
+                  <Typography variant="body2">{formatDateTime(stream.endedAt)}</Typography>
+                </Field>
+              </Grid>
+            ) : null}
+            {stream.durationSeconds != null ? (
+              <Grid size={{ xs: 6, sm: 4 }}>
+                <Field label="Duration">
+                  <Typography variant="body2">{formatDuration(stream.durationSeconds)}</Typography>
+                </Field>
+              </Grid>
+            ) : null}
+          </Grid>
+        </Paper>
+        <KeptExportCard streamId={stream.id} />
+        {finalizeDialog}
+      </Stack>
+    );
+  }
+
   return (
     // The same column width as the form the operator arrived from, so the two
     // screens do not jump about between each other.
     <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        {/*
-          A name or description may be one unbroken word of the full length the
-          form allows, so both break anywhere rather than run off the card.
-        */}
-        <Typography variant="h5" component="h1" sx={{ flexGrow: 1, minWidth: 0, overflowWrap: 'anywhere' }}>
-          {stream.title}
-        </Typography>
-        <StatusChip status={stream.status} publishError={stream.publishError} />
-        <ArchiveBadge archive={stream.archive} />
-        {/*
-          While `publishing` both publish buttons are disabled and nothing
-          pushes the transition here, so without this the operator is stuck
-          looking at a screen that will not change.
-        */}
-        <Tooltip title="Refresh">
-          <IconButton size="small" aria-label="refresh stream" onClick={load} disabled={busy}>
-            <RefreshIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-        <Button size="small" startIcon={<EditIcon />} component={RouterLink} to={`/edit/${stream.id}`}>
-          Edit
-        </Button>
-        {/* A finished recording, published or not, can be exported into an MP4 and saved. */}
-        {holdsFinishedRecording(stream) ? (
-          <Button size="small" startIcon={<DownloadIcon />} onClick={() => openPanel(stream.id)}>
-            Download
-          </Button>
-        ) : null}
-        <Button size="small" onClick={() => navigate('/')}>
-          Back to Streams
-        </Button>
-      </Stack>
+      {header}
 
-      {notice ? (
-        <Alert
-          severity="info"
-          sx={{ alignItems: 'center' }}
-          action={
-            <Tooltip title="Finalize streaming">
-              {/* A disabled button takes no pointer events, so the tooltip hangs on this wrapper. */}
-              <span>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  color="warning"
-                  startIcon={<FlagIcon />}
-                  disabled={!notice.canFinalize}
-                  onClick={() => setFinalizeOpen(true)}
-                >
-                  Finalize
-                </Button>
-              </span>
-            </Tooltip>
-          }
-        >
-          <AlertTitle>{notice.title}</AlertTitle>
-          {notice.helper}
-        </Alert>
-      ) : null}
+      {noticeAlert}
+
+      <SharedStageNote stream={stream} streams={streams} />
 
       {stream.publishError ? <Alert severity="error">Last publish attempt failed: {stream.publishError}</Alert> : null}
 
@@ -679,15 +788,7 @@ export function StreamDetailsPage() {
         onCancel={() => setUnpublishOpen(false)}
       />
 
-      <ConfirmDialog
-        open={finalizeOpen}
-        title="Finalize this stream?"
-        message={FINALIZE_PROMPT}
-        confirmText={finalizing ? 'Finalizing…' : 'Finalize'}
-        busy={finalizing}
-        onConfirm={() => void runFinalize()}
-        onCancel={() => setFinalizeOpen(false)}
-      />
+      {finalizeDialog}
     </Stack>
   );
 }

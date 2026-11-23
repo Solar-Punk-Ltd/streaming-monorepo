@@ -226,6 +226,13 @@ Edit, Details and Delete. A Stage filter narrows the list to one stage
 or to the streams with none. A banner says when the catalogue cannot be written, when a move of the
 catalogue to another batch is waiting, and when its batch is under 48 hours from expiry or 90% full.
 
+A test stream (`docs/architecture/test-streams.md`) carries a "Test" mark and has no Edit, as it
+stays as it was created. A live one shows "Test live" with how long it has been live, read again
+every 30 seconds, and "Left running" beside it once that is more than an hour
+(`TEST_STREAM_LEFT_RUNNING_SECONDS`), which says on hover that a broadcast is stopped at the encoder
+or from the manager. A Show filter narrows the list to the test streams or to the event streams.
+New test stream opens its form.
+
 The archive badge (`components/archive/ArchiveBadge.tsx`) says the stream's archive in the words of
 `ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive stamp not listed, Archive
 incomplete, Archive outdated or Archive expired, and nothing for a stream with nothing copied. On hover it names the archived
@@ -272,6 +279,15 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   recording was made on, and the save asks once more.
 - There is no media type choice: every stream is saved as a video stream. An audio-only stream
   keeps its type once it is published or has gone live, where the API locks it.
+
+### New test stream, `#/create?test=1`
+
+A title and a stage, and nothing else, sent to `POST /api/streams/test` as a video stream. There is
+no media type choice, as on the stream form. The stage list is the form's, with the only one
+preselected and the readiness warning. A missing title or stage is said before anything is sent,
+and a refusal shows the API's sentence. Once created, the test stream's page opens. "Test this
+setup" on a stream's page opens this form with that stream's stage in the address (`stageId`), an
+audio-only stream's included.
 
 ### Stream details, `#/streams/:id`
 
@@ -326,6 +342,30 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
   no archive has expired, the card says so beside the switch. While an archive of the stream runs,
   the card says where it stands, with a button that opens it.
 - The OBS panel, with Rotate key, described below.
+- Test this setup, in the row under the title, opens New test stream with this stream's stage.
+- While a test stream is live on this stream's stage, a note names it. A stage takes several
+  broadcasts at once and the two share its transcoding and upload, so the note is information and
+  blocks nothing. The page reads `GET /api/streams` for it, and a list that cannot be read leaves
+  the note out.
+
+#### A test stream's page
+
+A test stream has no catalogue entry, so its page has no Publish, no Unpublish, no image, no
+archive card and no Edit. Under its title, with the "Test" mark and, while it is live, the time it
+has been live and "Left running" after an hour:
+
+- The status notice and Finalize, and Download on a finished recording, as on any stream.
+- A note naming any other stream live on its stage, as information.
+- The OBS panel at once, from its creation: the server line with the stream id and the key.
+- Watching the test. "Deploying a viewer" gives the catalogue's owner as the Feed owner and the
+  catalogue's topic as the Feed topic, from `GET /api/config`, to deploy a viewer with in the
+  manager's "Watch a stream"; both are the same for every test stream. Viewer address gives and
+  changes the deployed viewer's address, any `http://` or `https://` one (`viewerUrlProblem` is
+  checked before it is sent), with `PUT /api/streams/:id/viewer-url`; Clear address clears it. A
+  refused address says why under the field. Once an address is given, Watch test stream is a plain
+  link to `watchPageUrl(viewerUrl, stream)`, opened in a new tab with `rel="noopener noreferrer"`.
+  The console never asks the viewer whether it answers.
+- The media type, the stage, when it was created, and when it was live, ended and how long it ran.
 
 ### Stages, `#/stages`
 
@@ -335,7 +375,9 @@ passphrase (never the passphrase). Per rung, the stamp's state, its time left (a
 manager's reading to the API's answer) and fill, and the chequebook's health. Which token the
 stage's uploader presents: its own, or `shared` in the error colour, with the fix (rotate the
 uploader's admin token in the manager and redeploy the stage). Retired stages and OvenMediaEngine
-ones ("Not supported yet") are marked.
+ones ("Not supported yet") are marked. Under the uploader's state, each test stream live on the
+stage: "Test live" with how long it has been live, "Left running" after an hour, and its title. The
+page reads `GET /api/streams` for it, and leaves it out when the list cannot be read.
 
 A card above the table shows the catalogue stamp, or says the manager has not designated one. A
 batch under 48 hours left shows in the warning colour. One that is expired or gone shows in the

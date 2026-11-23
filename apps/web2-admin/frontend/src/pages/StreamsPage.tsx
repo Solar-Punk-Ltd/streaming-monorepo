@@ -24,6 +24,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import type { CatalogueWriteStatus, StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
@@ -36,10 +37,30 @@ import { useSnackbar } from '../components/Snackbar';
 import { RecordingCheckPanel, RecordingMark } from '../components/recordings/RecordingCheckPanel';
 import { CatalogueWriteBanner } from '../components/stages/CatalogueWriteBanner';
 import { unknownStageLabel } from '../components/stages/StageField';
+import {
+  isLiveTest,
+  NEW_TEST_STREAM_PATH,
+  TestLiveMark,
+  TestMark,
+  useLiveClock,
+} from '../components/testStreams/TestStreamMarks';
 
 /** The filter's two values that are not a stage id. */
 const ALL_STAGES = 'all';
 const NO_STAGE = 'none';
+
+/** The Show filter: every stream, the test streams alone, or the rest. */
+type KindFilter = 'all' | 'test' | 'event';
+
+const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
+  { value: 'all', label: 'All streams' },
+  { value: 'test', label: 'Test streams' },
+  { value: 'event', label: 'Event streams' },
+];
+
+function ofKind(stream: Stream, kind: KindFilter): boolean {
+  return kind === 'all' || (kind === 'test') === stream.test;
+}
 
 /** A stage's name, and that it was retired when it was. */
 function stageLabel(stage: StageSummary): string {
@@ -100,8 +121,11 @@ export function StreamsPage() {
   const [deleting, setDeleting] = useState(false);
   const [stages, setStages] = useState<ReadonlyMap<string, StageSummary>>(new Map());
   const [stageFilter, setStageFilter] = useState(ALL_STAGES);
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [catalogueWrite, setCatalogueWrite] = useState<CatalogueWriteStatus | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // The time each live test has run, worked out again while one is live.
+  const liveClock = useLiveClock(streams?.some(isLiveTest) ?? false);
 
   const load = useCallback(() => {
     setError(null);
@@ -136,8 +160,14 @@ export function StreamsPage() {
     }
   }
   const shown =
-    streams?.filter((stream) =>
-      stageFilter === ALL_STAGES ? true : stageFilter === NO_STAGE ? !stream.stageId : stream.stageId === stageFilter,
+    streams?.filter(
+      (stream) =>
+        ofKind(stream, kindFilter) &&
+        (stageFilter === ALL_STAGES
+          ? true
+          : stageFilter === NO_STAGE
+            ? !stream.stageId
+            : stream.stageId === stageFilter),
     ) ?? null;
 
   useEffect(load, [load]);
@@ -169,6 +199,9 @@ export function StreamsPage() {
             <RefreshIcon />
           </IconButton>
         </Tooltip>
+        <Button variant="outlined" startIcon={<ScienceOutlinedIcon />} onClick={() => navigate(NEW_TEST_STREAM_PATH)}>
+          New test stream
+        </Button>
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/create')}>
           Create New Stream
         </Button>
@@ -209,30 +242,52 @@ export function StreamsPage() {
       ) : null}
 
       {streams && streams.length > 0 ? (
-        <TextField
-          id="streams-stage-filter"
-          label="Stage"
-          select
-          size="small"
-          value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value)}
-          sx={{ alignSelf: 'flex-start', minWidth: 220, maxWidth: '100%' }}
-          slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
-        >
-          <option value={ALL_STAGES}>All stages</option>
-          {filterOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-          <option value={NO_STAGE}>No stage</option>
-        </TextField>
+        <Stack direction="row" spacing={2} useFlexGap sx={{ flexWrap: 'wrap' }}>
+          <TextField
+            id="streams-stage-filter"
+            label="Stage"
+            select
+            size="small"
+            value={stageFilter}
+            onChange={(e) => setStageFilter(e.target.value)}
+            sx={{ minWidth: 220, maxWidth: '100%' }}
+            slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          >
+            <option value={ALL_STAGES}>All stages</option>
+            {filterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            <option value={NO_STAGE}>No stage</option>
+          </TextField>
+          <TextField
+            id="streams-kind-filter"
+            label="Show"
+            select
+            size="small"
+            value={kindFilter}
+            onChange={(e) => setKindFilter(e.target.value as KindFilter)}
+            sx={{ minWidth: 220, maxWidth: '100%' }}
+            slotProps={{ select: { native: true }, inputLabel: { shrink: true } }}
+          >
+            {KIND_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </TextField>
+        </Stack>
       ) : null}
 
       {shown && streams && streams.length > 0 && shown.length === 0 ? (
         <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {stageFilter === NO_STAGE ? 'No streams without a stage.' : 'No streams on this stage.'}
+            {kindFilter !== 'all'
+              ? 'No streams of this kind here.'
+              : stageFilter === NO_STAGE
+                ? 'No streams without a stage.'
+                : 'No streams on this stage.'}
           </Typography>
         </Paper>
       ) : null}
@@ -295,7 +350,9 @@ export function StreamsPage() {
                   </TableCell>
                   <TableCell sx={{ whiteSpace: 'nowrap' }}>
                     <Stack spacing={0.5} sx={{ alignItems: 'flex-start' }}>
+                      {stream.test ? <TestMark /> : null}
                       <StatusChip status={stream.status} publishError={stream.publishError} />
+                      <TestLiveMark stream={stream} now={liveClock} />
                       <ArchiveBadge archive={stream.archive} />
                       <RecordingMark stream={stream} />
                     </Stack>
@@ -303,9 +360,12 @@ export function StreamsPage() {
                   <TableCell>{formatDateTime(stream.scheduledStartTime)}</TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                      <Button size="small" startIcon={<EditIcon />} onClick={() => navigate(`/edit/${stream.id}`)}>
-                        Edit
-                      </Button>
+                      {/* A test stream stays as it was created: the API refuses an edit of one. */}
+                      {stream.test ? null : (
+                        <Button size="small" startIcon={<EditIcon />} onClick={() => navigate(`/edit/${stream.id}`)}>
+                          Edit
+                        </Button>
+                      )}
                       <Button
                         size="small"
                         startIcon={<InfoOutlinedIcon />}

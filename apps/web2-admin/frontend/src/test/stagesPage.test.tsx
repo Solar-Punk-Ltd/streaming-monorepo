@@ -1,12 +1,22 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { CatalogueStampSummary, StageSummary } from '@streaming-monorepo/web2-admin-common';
+import type { CatalogueStampSummary, StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { formatAgo } from '../dateUtil';
 import { formatTimeLeft } from '../format';
 import { stampConcern } from '../components/stages/stamps';
 import { StagesPage } from '../pages/StagesPage';
-import { jsonError, jsonOk, makeStage, minutesAgo, mockFetch, pendingFetch, renderWithProviders } from './helpers';
+import {
+  MAIN_STAGE_ID,
+  jsonError,
+  jsonOk,
+  makeStage,
+  makeStream,
+  minutesAgo,
+  mockFetch,
+  pendingFetch,
+  renderWithProviders,
+} from './helpers';
 
 const STAGES = '/api/stages';
 const STAMP = '/api/catalogue-stamp';
@@ -292,5 +302,68 @@ describe('stage readings', () => {
     expect(formatTimeLeft(86_400 + 4 * 3600)).toBe('1 day 4 h');
     expect(formatTimeLeft(12 * 86_400)).toBe('12 days');
     expect(formatTimeLeft(-1)).toBe('—');
+  });
+});
+
+describe('StagesPage test streams', () => {
+  const OTHER_STAGE_ID = '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+  const STAGE_LIST = [makeStage(), makeStage({ stageId: OTHER_STAGE_ID, name: 'Side stage' })];
+
+  function serveWithStreams(streams: Stream[]) {
+    return mockFetch([
+      { path: STAGES, respond: () => jsonOk({ stages: STAGE_LIST }) },
+      { path: STAMP, respond: () => jsonOk({ catalogueStamp: null }) },
+      { path: '/api/streams', respond: () => jsonOk({ streams }) },
+    ]);
+  }
+
+  const rowOf = (name: string) => screen.getByText(name).closest('tr') as HTMLElement;
+
+  it('shows "Test live" on the stage of a live test, with how long it has run and its mark after an hour', async () => {
+    serveWithStreams([
+      makeStream({
+        title: 'Soundcheck',
+        test: true,
+        status: 'live',
+        stageId: MAIN_STAGE_ID,
+        liveSince: minutesAgo(12),
+      }),
+      makeStream({
+        title: 'Forgotten',
+        test: true,
+        status: 'live',
+        stageId: OTHER_STAGE_ID,
+        liveSince: minutesAgo(70),
+      }),
+      makeStream({ title: 'Opening night', status: 'live', stageId: MAIN_STAGE_ID, liveSince: minutesAgo(90) }),
+      makeStream({ title: 'Done', test: true, status: 'vod', stageId: MAIN_STAGE_ID, liveSince: minutesAgo(200) }),
+    ]);
+    renderWithProviders(<StagesPage />);
+
+    await screen.findByText('Side stage');
+    await screen.findByText('Test live · 12 min');
+    const main = rowOf('Main stage');
+    expect(within(main).getByText('Test live · 12 min')).toBeInTheDocument();
+    expect(within(main).getByText('Soundcheck')).toBeInTheDocument();
+    expect(within(main).queryByText('Left running')).not.toBeInTheDocument();
+    expect(within(main).queryByText('Opening night')).not.toBeInTheDocument();
+    expect(within(main).queryByText('Done')).not.toBeInTheDocument();
+
+    const side = rowOf('Side stage');
+    expect(within(side).getByText('Test live · 1 h 10 min')).toBeInTheDocument();
+    expect(within(side).getByText('Forgotten')).toBeInTheDocument();
+    expect(within(side).getByText('Left running')).toBeInTheDocument();
+  });
+
+  it('shows the stages when the streams cannot be read', async () => {
+    mockFetch([
+      { path: STAGES, respond: () => jsonOk({ stages: [makeStage()] }) },
+      { path: STAMP, respond: () => jsonOk({ catalogueStamp: null }) },
+      { path: '/api/streams', respond: () => jsonError(500, { error: 'internal_error' }) },
+    ]);
+    renderWithProviders(<StagesPage />);
+
+    expect(await screen.findByText('Main stage')).toBeInTheDocument();
+    expect(screen.queryByText(/Test live/)).not.toBeInTheDocument();
   });
 });

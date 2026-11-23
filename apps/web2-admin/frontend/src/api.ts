@@ -101,6 +101,13 @@ import {
   type RecordingCheckResponse,
 } from '@streaming-monorepo/web2-admin-common';
 
+import {
+  TEST_STREAMS_PATH,
+  testStreamViewerUrlPath,
+  type TestStreamInput,
+  type ViewerUrlInput,
+} from '@streaming-monorepo/web2-admin-common';
+
 import { SIGN_IN_MESSAGES, tooManyAttempts } from './authMessages';
 import {
   apiFetch,
@@ -300,6 +307,19 @@ export function updateStream(id: string, input: StreamInput): Promise<Stream> {
 
 export async function deleteStream(id: string): Promise<void> {
   await sendDelete(`${API}/streams/${encodeURIComponent(id)}`);
+}
+
+// --- test streams -----------------------------------------------------------
+
+/** Creates a test stream from a title, a media type and a stage, answered with the stream. */
+export function createTestStream(input: TestStreamInput): Promise<Stream> {
+  return sendJson<Stream>('POST', TEST_STREAMS_PATH, input);
+}
+
+/** Sets, changes or, with null, clears a test stream's viewer address, answered with the stream as stored. */
+export function setTestStreamViewerUrl(id: string, url: string | null): Promise<Stream> {
+  const body: ViewerUrlInput = { url };
+  return sendJson<Stream>('PUT', testStreamViewerUrlPath(encodeURIComponent(id)), body);
 }
 
 // --- thumbnail --------------------------------------------------------------
