@@ -20,6 +20,7 @@ import { errorHandler } from '../../src/api/middleware/errorHandler.js';
 import {
   CatalogueStampUnavailableError,
   StreamNotFoundError,
+  TestStreamError,
   UnauthenticatedError,
 } from '../../src/domain/errors/index.js';
 
@@ -50,6 +51,28 @@ describe('the error handler, where another app reads the code', () => {
 
   it('answers a request without a token it takes with 401 and unauthenticated', () => {
     assert.deepEqual(answer(new UnauthenticatedError()), { status: 401, body: { error: 'unauthenticated' } });
+  });
+
+  it('answers an action a test stream never takes with 409 and test_stream, naming the action', () => {
+    const id = '00000000-0000-4000-8000-000000000001';
+    assert.deepEqual(answer(new TestStreamError(id, 'publish')), {
+      status: 409,
+      body: {
+        error: 'test_stream',
+        id,
+        action: 'publish',
+        message: 'A test stream stays off the catalogue. Create a stream to publish one.',
+      },
+    });
+    assert.deepEqual(answer(new TestStreamError(id, 'archive')), {
+      status: 409,
+      body: {
+        error: 'test_stream',
+        id,
+        action: 'archive',
+        message: 'A test stream cannot be archived. Export it to keep its recording.',
+      },
+    });
   });
 
   it('answers a write with no catalogue batch to go through with 503, which the uploader retries', () => {

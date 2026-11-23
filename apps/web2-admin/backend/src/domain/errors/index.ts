@@ -34,6 +34,7 @@ export { StreamLockedError } from './StreamLockedError.js';
 export { StreamNotStartedError } from './StreamNotStartedError.js';
 export { StreamNotFoundError } from './StreamNotFoundError.js';
 export { StreamPublishedError } from './StreamPublishedError.js';
+export { TestStreamError } from './TestStreamError.js';
 export { ThumbnailCheckError } from './ThumbnailCheckError.js';
 export { ThumbnailNotAnImageError } from './ThumbnailNotAnImageError.js';
 export { ThumbnailNotFoundError } from './ThumbnailNotFoundError.js';

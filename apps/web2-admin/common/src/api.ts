@@ -22,6 +22,9 @@ export { MEDIA_TYPES, type MediaType } from '@streaming-monorepo/contracts';
  * published  entry is in the stream list feed with state 'scheduled'
  * live/vod   reported by the uploader: the broadcast is running, or it has
  *            ended and manifestIndex says where its recording is
+ *
+ * A test stream (`Stream.test`) is a `draft` until its first broadcast, then
+ * `live`, then `vod`. It is never `publishing` or `published`.
  */
 export type StreamStatus = 'draft' | 'publishing' | 'published' | 'live' | 'vod';
 
@@ -168,6 +171,18 @@ export interface Stream {
   /** When that check ended, ISO 8601. Absent with `recording`. */
   recordingCheckedAt?: string;
   /**
+   * True for a test stream: one created through `POST /api/streams/test`, to check the devices, the encoder and the
+   * path to a stage before an event. Set when the stream is created and never changed. A test stream is never on the
+   * catalogue, so its `publishedAt`, `publishedFeedIndex` and `thumbnailRef` stay null, its `hasThumbnail` and
+   * `hasUnpublishedEdits` stay false, and it carries no `archive`. `testStream.ts` says what it refuses.
+   */
+  test: boolean;
+  /**
+   * The address of the deployed viewer a test stream is watched on, any http or https one, as someone gave it on the
+   * stream's page (`testStreamViewerUrlPath`). Null until given, and null on every stream that is no test stream.
+   */
+  viewerUrl: string | null;
+  /**
    * The stage the stream is broadcast on (`GET /api/stages` names it), or
    * null until one is picked. A draft needs one to be published. It changes
    * only while the stream is a draft, and a stream that holds a recording
@@ -256,7 +271,12 @@ export interface FeedStreamEntry {
   renditions?: Rendition[];
 }
 
-/** POST /api/streams/:id/publish and /unpublish, and the uploader's POST /api/internal/streams/:id/state. */
+/**
+ * POST /api/streams/:id/publish and /unpublish, and the uploader's POST /api/internal/streams/:id/state.
+ *
+ * A state report of a test stream writes nothing to the catalogue: `written` is false, `feed.index` is the stream's
+ * order number after this report, which `RenditionReportResponse.feed` describes, and `feed.entryCount` is 0.
+ */
 export interface PublishResult {
   stream: Stream;
   feed: {
@@ -331,7 +351,12 @@ export interface ApiError {
  * changes. The admin API stays the only writer of the stream list feed.
  */
 
-/** GET /api/internal/streams/by-ingest/:app/:stream (ingest stream id = `<app>/<stream>`) */
+/**
+ * GET /api/internal/streams/by-ingest/:app/:stream (ingest stream id = `<app>/<stream>`)
+ *
+ * Answered for a stream on the caller's stage that is published, live or recorded, and for a test stream on it in
+ * every status it has, a draft included: a test stream is never published, so its first broadcast starts from `draft`.
+ */
 export interface IngestLookupResponse {
   id: string;
   topic: string;
@@ -348,6 +373,9 @@ export interface IngestLookupResponse {
  *
  * `live` may follow `vod`: a broadcast goes live again on the same feeds, and
  * that report clears the recording the stream last listed, rungs included.
+ *
+ * A test stream's reports are taken from `draft` too, and move its status as any stream's: its `vod` makes it `vod`,
+ * and its rendition reports are answered with `vod` from then on.
  */
 export interface StreamStateReport {
   state: 'live' | 'vod';
@@ -385,6 +413,14 @@ export interface RenditionReportResponse {
     /** Longest rung when finished, else null. Seconds. */
     duration: number | null;
   };
-  /** The catalogue write this report caused. */
+  /**
+   * The catalogue write this report caused. The uploader orders the answers of one stream by `feed.index`, so an
+   * answer that holds an older merge of the ladder never replaces a newer one.
+   *
+   * A test stream's report causes no catalogue write. Its `feed.index` is the stream's order number: a number the
+   * admin keeps for that stream alone, which grows by one with every report it stores, in the step that stores it, so
+   * a later merge always carries a higher one. It orders the answers and names no catalogue slot. `feed.owner`,
+   * `feed.topic` and `feed.topicHex` are the catalogue's as ever, and `feed.entryCount` is 0.
+   */
   feed: PublishResult['feed'];
 }

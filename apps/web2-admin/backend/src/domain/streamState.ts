@@ -36,12 +36,32 @@ const ALLOWED_FROM: Record<ReportedState, readonly StreamStatus[]> = {
   vod: ['published', 'live', 'vod'],
 };
 
-export function allowedFromFor(state: ReportedState): readonly StreamStatus[] {
-  return ALLOWED_FROM[state];
+/**
+ * The same for a test stream. It is never published, so its first report comes from `draft`: the `live` of its first
+ * broadcast, or the `vod` of one that ended before its `live` got through. From there it moves as any stream does.
+ */
+const ALLOWED_FROM_TEST: Record<ReportedState, readonly StreamStatus[]> = {
+  live: ['draft', 'live', 'vod'],
+  vod: ['draft', 'live', 'vod'],
+};
+
+export function allowedFromFor(state: ReportedState, test = false): readonly StreamStatus[] {
+  return (test ? ALLOWED_FROM_TEST : ALLOWED_FROM)[state];
 }
 
-export function isStateTransitionAllowed(from: StreamStatus, to: ReportedState): boolean {
-  return ALLOWED_FROM[to].includes(from);
+export function isStateTransitionAllowed(from: StreamStatus, to: ReportedState, test = false): boolean {
+  return allowedFromFor(to, test).includes(from);
+}
+
+/**
+ * Whether a stream is open to its stage's uploader. The lookup of its ingest id, its state reports and its quality
+ * reports all ask this one rule, so the three always agree: a stream the lookup answers is one whose reports are
+ * taken. A stream is open while it is published, live or recorded. A test stream is open in every status it has, a
+ * draft included, as long as it has a stage.
+ */
+export function isOpenToUploader(stream: Pick<StreamRow, 'status' | 'test' | 'stage_id'>): boolean {
+  if (stream.test && stream.stage_id === null) return false;
+  return isStateTransitionAllowed(stream.status, 'live', stream.test);
 }
 
 /** The statuses in which an encoder has already been told where to push. */

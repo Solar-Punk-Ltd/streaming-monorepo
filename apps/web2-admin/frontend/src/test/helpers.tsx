@@ -155,6 +155,8 @@ export function makeStream(overrides: Partial<Stream> = {}): Stream {
     publishedFeedIndex: null,
     publishError: null,
     hasUnpublishedEdits: false,
+    test: false,
+    viewerUrl: null,
     stageId: null,
     createdAt: now,
     updatedAt: now,

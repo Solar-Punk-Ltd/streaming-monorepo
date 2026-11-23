@@ -98,6 +98,22 @@ export interface StreamRow {
   recording_verdict: 'lost' | 'partly_lost' | null;
   /** When that check ended; null with the verdict. */
   recording_checked_at: Date | null;
+  /**
+   * True on a test stream (migration 032): the insert sets it and nothing changes it. Such a row is a draft, live or
+   * recorded, and never on the catalogue.
+   */
+  test: boolean;
+  /**
+   * A test stream's order number (migration 032): how many of the uploader's reports the admin has stored for it. It
+   * is answered where a listed stream's report answers the catalogue slot it wrote, and names no slot. Zero on every
+   * other row.
+   */
+  report_order: number;
+  /**
+   * The address of the viewer a test stream is watched on (migration 033), an http or https one as it was given.
+   * Null until given, and null on every row that is no test stream.
+   */
+  viewer_url: string | null;
   created_at: Date;
   updated_at: Date;
 }

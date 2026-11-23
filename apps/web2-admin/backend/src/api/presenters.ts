@@ -68,6 +68,8 @@ export function toStream(row: StreamRow, archive?: StreamArchiveSummary): Stream
     finishedAt: iso(row.finished_at),
     restartUntil: iso(restartUntilOf(row, restartWindowMinutes)),
     hasUnpublishedEdits: hasUnpublishedEdits(row),
+    test: row.test,
+    viewerUrl: row.viewer_url,
     stageId: row.stage_id,
     ...(archive ? { archive } : {}),
     ...(row.recording_verdict && row.recording_checked_at
