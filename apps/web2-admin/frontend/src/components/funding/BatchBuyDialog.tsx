@@ -82,9 +82,12 @@ function walletLine(label: string, xbzzPlur: string | null, xdaiWei: string | nu
   return `The wallet of ${label} holds ${xbzz(xbzzPlur)} and ${formatShort(xdaiWei, XDAI_DECIMALS)} xDAI.`;
 }
 
-/** What the picked depth comes to, in a line: its life at today's price, what it holds, and what it costs. */
+/**
+ * What the picked depth comes to, in a line: its life at today's price, what it holds before its fullest bucket fills,
+ * and what it costs.
+ */
 export function quoteLine(quote: BatchBuyQuote): string {
-  return `Lasts ${formatTimeLeft(quote.ttlSeconds)} at today's price, holds ${formatCapacity(quote.bytes)} (${chunkCount(quote.chunks)}), and costs ${xbzz(quote.costPlur)} plus the gas.`;
+  return `Lasts ${formatTimeLeft(quote.ttlSeconds)} at today's price, holds ${formatCapacity(quote.effectiveBytes)} (${chunkCount(quote.effectiveChunks)}), and costs ${xbzz(quote.costPlur)} plus the gas.`;
 }
 
 export interface BatchBuyDialogProps {
@@ -122,7 +125,7 @@ function BuyBody({ offer, postage, busy, refusal, onConfirm, onClose, onFund }: 
   const rows: DepthRow[] = [];
   for (let d = least; d <= most; d += 1) {
     const q = quoteAt(d);
-    if (q) rows.push({ depth: d, bytes: q.bytes, chunks: q.chunks, costPlur: q.costPlur });
+    if (q) rows.push({ depth: d, bytes: q.effectiveBytes, chunks: q.effectiveChunks, costPlur: q.costPlur });
   }
   const quote = quoteAt(depth);
   const choice: BatchBuyChoice | null =
@@ -144,7 +147,7 @@ function BuyBody({ offer, postage, busy, refusal, onConfirm, onClose, onFund }: 
         <DialogContent>
           <Stack spacing={2}>
             <Typography variant="body2">
-              {`A ${kindName(immutable)} batch of depth ${depth}, holding ${formatCapacity(quote.bytes)}, for ${dayCount(days)} at today's price, on ${node.label}${replaces}.`}
+              {`A ${kindName(immutable)} batch of depth ${depth}, holding ${formatCapacity(quote.effectiveBytes)}, for ${dayCount(days)} at today's price, on ${node.label}${replaces}.`}
             </Typography>
             <Typography variant="body1">
               It costs{' '}

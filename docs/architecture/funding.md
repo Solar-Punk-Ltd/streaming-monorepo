@@ -111,7 +111,9 @@ themselves.
 **The dialog** opens with the manager's recommendation: the depth and the kind of the batch being
 replaced, and 30 days (`BATCH_BUY_DEFAULT_DAYS`). The depth, the kind for a rung, and the days can
 be changed, a whole number of days from 2. The calculator shows the cost in xBZZ, the life in days
-at today's price, what the batch holds, the paying node's wallet, and what the wallet is short of.
+at today's price, what the batch holds before its fullest bucket fills (Swarm's effective volume of
+an unencrypted batch without erasure coding, not its `2^depth` chunks), the paying node's wallet,
+and what the wallet is short of.
 A short wallet is filled on the Balance tab. A confirm comes before the purchase and no password,
 since the node pays from its own wallet. A price that moved between the dialog and the confirm
 refuses the purchase with the new cost.

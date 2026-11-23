@@ -387,9 +387,10 @@ wallet, so there is no password, only a confirm dialog.
   manager's recommendation, the depth and kind of the batch it replaces and 30 days, with Use it to
   go back to it. The calculator is the tab's own days, a slider, presets and a field from 2, and the
   buy dialogs' depth rows (`DepthRows.tsx`, which the archive stamp's dialog shares), from 17, or 18
-  for the catalogue, to 40, each with what it holds and costs. Under them the picked depth's life at
-  today's price, the node's wallet, and what it is short of, with Fund it, which opens Balance with
-  that entered. A rung's batch is mutable or immutable; the catalogue's is immutable. A confirm
+  for the catalogue, to 40, each with what it holds before its fullest bucket fills, Swarm's
+  effective volume as the archive stamp's dialog shows it, with its chunks as the title, and what it
+  costs. Under them the picked depth's life at today's price, the node's wallet, and what it is
+  short of, with Fund it, which opens Balance with that entered. A rung's batch is mutable or immutable; the catalogue's is immutable. A confirm
   step names the batch, the exact cost and what follows, and there is no password: the node pays. A
   refusal shows in the dialog, and the view is read again; the dialog's offer is built from that
   reading, so a moved price is quoted anew and a batch that changed on the row is named as it is

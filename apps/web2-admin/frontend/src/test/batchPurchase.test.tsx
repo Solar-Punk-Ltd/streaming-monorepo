@@ -223,11 +223,12 @@ describe('Buy new on the Stamps tab', () => {
     expect(dialog.getByRole('radio', { name: 'Depth 17' })).toBeInTheDocument();
     expect(dialog.getByRole('button', { name: 'Mutable' })).toHaveAttribute('aria-pressed', 'true');
     expect(dialog.getByRole('textbox', { name: 'Days' })).toHaveValue('30');
-    expect(dialog.getByText(/^Lasts 30 days at today's price, holds 4\.29 GB/)).toBeInTheDocument();
+    expect(dialog.getByText(/^Lasts 30 days at today's price, holds 688 MB \(167,875 chunks\)/)).toBeInTheDocument();
     expect(dialog.getByText('The wallet of rung-720p holds 5.000 xBZZ and 0.200 xDAI.')).toBeInTheDocument();
 
     fireEvent.click(dialog.getByRole('button', { name: `Next: ${xbzz(THIRTY_DAYS_DEPTH_20)}` }));
     const confirm = within(screen.getByRole('dialog', { name: 'Buy this batch?' }));
+    expect(confirm.getByText(/^A mutable batch of depth 20, holding 688 MB, for 30 days/)).toBeInTheDocument();
     expect(confirm.getByText(`${formatUnits(THIRTY_DAYS_DEPTH_20, XBZZ_DECIMALS)} xBZZ`)).toBeInTheDocument();
     expect(confirm.getByText(FOLLOW_UP_TEXT.rung)).toBeInTheDocument();
     expect(confirm.getByText(paysNote('rung-720p'))).toBeInTheDocument();
@@ -245,6 +246,27 @@ describe('Buy new on the Stamps tab', () => {
       costPlur: THIRTY_DAYS_DEPTH_20,
     });
     await waitFor(() => expect(callsTo(fetchMock, PURCHASES).length).toBeGreaterThan(reads));
+  });
+
+  /**
+   * A batch is full once its fullest bucket is, long before all `2^depth` of its stamps are used, so each depth says
+   * what it holds before then: Swarm's effective volume, as the archive stamp's dialog says it.
+   */
+  it('says what each depth holds before its fullest bucket fills, not its 2^depth chunks', async () => {
+    serve();
+    await openStamps();
+    fireEvent.click(await screen.findByRole('button', { name: 'Buy a new batch for rung-720p' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Buy a new batch for rung-720p' }));
+
+    const holds = (depth: number) => {
+      const row = dialog.getByRole('radio', { name: `Depth ${depth}` }).closest('tr') as HTMLElement;
+      return within(row).getAllByRole('cell')[2]!;
+    };
+    expect(holds(17)).toHaveTextContent('44.7 kB');
+    expect(holds(17)).toHaveAttribute('title', '10 chunks');
+    expect(holds(20)).toHaveTextContent('688 MB');
+    expect(holds(20)).toHaveAttribute('title', '167,875 chunks');
+    expect(holds(22)).toHaveTextContent('7.73 GB');
   });
 
   it('buys the first batch of a node with none, with no batch to replace', async () => {

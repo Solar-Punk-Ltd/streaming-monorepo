@@ -5,7 +5,10 @@ import { XBZZ_DECIMALS } from '@streaming-monorepo/web2-admin-common';
 import { chunkCount, formatCapacity } from '../archive/archiveText';
 import { formatShort, formatUnits } from './amounts';
 
-/** One depth a buy dialog offers: what a batch of it holds, in bytes and in chunks, and what it costs for the days. */
+/**
+ * One depth a buy dialog offers: what a batch of it holds before its fullest bucket fills, in bytes and in whole chunks,
+ * and what it costs for the days.
+ */
 export interface DepthRow {
   depth: number;
   bytes: number;
