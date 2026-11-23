@@ -45,7 +45,7 @@ import { getErrorMessage } from '../../utils/errorUtils.js';
 import { describeActor, type Actor, type OperatorActor } from '../actor.js';
 import { recordAudit, type AuditAction, type AuditLog } from '../AuditLog.js';
 import { withoutCatalogueNode } from '../catalogueNodeText.js';
-import { ArchiveNotFoundError, ArchiveRefusedError, StreamNotFoundError } from '../errors/index.js';
+import { ArchiveNotFoundError, ArchiveRefusedError, StreamNotFoundError, TestStreamError } from '../errors/index.js';
 import { broadcastDay } from '../export/names.js';
 import { parseRecordingPlaylist, PlaylistFormatError } from '../export/playlist.js';
 import { ManagerFundingError, type ManagerFundingClient } from '../funding/ManagerFundingClient.js';
@@ -464,10 +464,9 @@ export class ArchiveService {
     return archived.size > 0 ? archived : null;
   }
 
-  /** What the panel and the stream's archive card offer for one stream. */
+  /** What the panel and the stream's archive card offer for one stream. A test stream is refused (`TestStreamError`). */
   async optionsFor(streamId: string, userId: string | null): Promise<ArchiveOptionsResponse> {
-    const stream = await this.streams.findById(streamId);
-    if (!stream) throw new StreamNotFoundError(streamId);
+    const stream = await this.archivable(streamId);
     const [rungs, copies, catalogueRow, view] = await Promise.all([
       this.renditions.listByStream(streamId),
       this.store.archivesOf([streamId]),
@@ -593,11 +592,10 @@ export class ArchiveService {
    * Starts archiving the chosen qualities of a stream's recording onto an archive stamp, or onto one to be bought once
    * measured. Refused, with the sentence the console shows, while an export or another archive holds the place, for a
    * stream with no finished recording, with no catalogue node, for a stamp that cannot be written, or for a quality
-   * that is archived at its recording already or has not finished.
+   * that is archived at its recording already or has not finished. A test stream is refused (`TestStreamError`).
    */
   async start(actor: OperatorActor, streamId: string, request: ArchiveStartRequest): Promise<ArchiveJobSummary> {
-    const stream = await this.streams.findById(streamId);
-    if (!stream) throw new StreamNotFoundError(streamId);
+    const stream = await this.archivable(streamId);
     const [rungs, copies, catalogueRow, view] = await Promise.all([
       this.renditions.listByStream(streamId),
       this.store.archivesOf([streamId]),
@@ -840,10 +838,12 @@ export class ArchiveService {
     throw new ArchiveRefusedError('purchase_refused', error);
   }
 
-  /** Turns the "List only archived qualities" switch, and rewrites the stream's catalogue entry if it is listed. */
+  /**
+   * Turns the "List only archived qualities" switch, and rewrites the stream's catalogue entry if it is listed. A test
+   * stream is refused (`TestStreamError`), either way.
+   */
   async setListing(actor: OperatorActor, streamId: string, archivedOnly: boolean): Promise<ArchiveOptionsResponse> {
-    const stream = await this.streams.findById(streamId);
-    if (!stream) throw new StreamNotFoundError(streamId);
+    const stream = await this.archivable(streamId);
     if (archivedOnly && !stream.archived_only) {
       const rungs = await this.renditions.listByStream(streamId);
       const listed = await this.listedRenditions({ ...stream, archived_only: true });
@@ -873,6 +873,17 @@ export class ArchiveService {
       }
     }
     return this.optionsFor(streamId, actor.userId);
+  }
+
+  /**
+   * The stream an archive route names: 404 when there is none, and `TestStreamError` for a test stream, whose recording
+   * is exported and never archived, since an archive buys stamps and decides what the catalogue lists.
+   */
+  private async archivable(streamId: string): Promise<StreamRow> {
+    const stream = await this.streams.findById(streamId);
+    if (!stream) throw new StreamNotFoundError(streamId);
+    if (stream.test) throw new TestStreamError(streamId, 'archive');
+    return stream;
   }
 
   // --- the process's own lifecycle ---------------------------------------------

@@ -5,8 +5,8 @@
  * What a fake cannot stand in for is the SQL: that migration 032 runs on a database that holds streams and leaves each
  * of them a stream that is no test, with its check in force; that the check refuses a test row that is published or
  * being published, or carries a catalogue index, a publish time or an image, and takes one that is a draft, live or
- * recorded; that the rows on the feed leave a test stream out; and that the API refuses a publish and an unpublish of a
- * test stream, and writes no entry for a live or a recorded one in a reconcile.
+ * recorded; that the rows on the feed leave a test stream out; and that the API refuses a publish, an unpublish and
+ * every archive route of a test stream, and writes no entry for a live or a recorded one in a reconcile.
  *
  * The test streams here are rows inserted with their mark set. Every row is in a throwaway database: the suite's own,
  * dropped with its backend, and one this file makes for the migration and drops.
@@ -278,6 +278,22 @@ describe('the API and a test stream', () => {
       assertRefused(await raw('POST', `/api/streams/${id}/unpublish`), id, 'publish');
       assert.equal(await statusOf(id), status);
     }
+  });
+
+  it('refuses the archive options, a start and the listing switch with test_stream', async () => {
+    const { id } = await insertStream({ test: true, status: 'vod', stageId: STAGE_ID });
+
+    assertRefused(await raw('GET', `/api/streams/${id}/archive`), id, 'archive');
+    assertRefused(
+      await raw('POST', `/api/streams/${id}/archive`, { body: { renditions: ['source'], target: { buyNew: true } } }),
+      id,
+      'archive',
+    );
+    assertRefused(
+      await raw('PUT', `/api/streams/${id}/archive/listing`, { body: { archivedOnly: true } }),
+      id,
+      'archive',
+    );
   });
 
   it('writes no entry for a live or a recorded test stream in a reconcile', async () => {

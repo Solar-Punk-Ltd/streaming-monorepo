@@ -22,7 +22,7 @@ import { ARCHIVE_PURCHASES_NOT_OFFERED, type ArchiveJobSummary } from '@streamin
 import { ArchiveService, tagComplete, type ArchiveServiceOptions } from '../../src/domain/archive/ArchiveService.js';
 import { ChunkCopier } from '../../src/domain/archive/ChunkCopier.js';
 import { Logger } from '../../src/domain/Logger.js';
-import { ArchiveRefusedError } from '../../src/domain/errors/index.js';
+import { ArchiveRefusedError, TestStreamError } from '../../src/domain/errors/index.js';
 import { ManagerFundingError } from '../../src/domain/funding/ManagerFundingClient.js';
 import type { StreamRenditionRow, StreamRow } from '../../src/types/index.js';
 import type { ArchiveSettings } from '../../src/utils/archiveSettings.js';
@@ -1204,5 +1204,34 @@ describe('ArchiveService', () => {
     assert.equal(await cancelling, null);
     assert.equal(await service.current(TEST_OPERATOR.userId), null);
     assert.equal(store.archives.get('stream-1:720p')!.state, 'partial', 'what was copied stays, as partial');
+  });
+});
+
+describe('ArchiveService and a test stream', () => {
+  it('refuses the options, a start and the listing switch, starting nothing and rewriting no entry', async () => {
+    const stream = recorded();
+    streams.rows.set(stream.id, { ...stream, test: true });
+
+    for (const refused of [
+      () => service.optionsFor(stream.id, TEST_OPERATOR.userId),
+      () => service.start(TEST_OPERATOR, stream.id, { renditions: ['360p'], target: { batchId: BATCH } }),
+      () => service.start(TEST_OPERATOR, stream.id, { renditions: ['720p'], target: { buyNew: true } }),
+      () => service.setListing(TEST_OPERATOR, stream.id, true),
+      () => service.setListing(TEST_OPERATOR, stream.id, false),
+    ]) {
+      await assert.rejects(refused, (error: unknown) => {
+        assert.ok(error instanceof TestStreamError, `refused as a test stream, got ${String(error)}`);
+        assert.equal(error.action, 'archive');
+        assert.equal(error.streamId, stream.id);
+        return true;
+      });
+    }
+    await service.settled();
+
+    assert.equal(store.job, null, 'no archive was started');
+    assert.equal(store.archivedOnly.size, 0, 'the switch was not turned');
+    assert.deepEqual(republished, [], 'no entry was rewritten');
+    assert.deepEqual(manager.requests, [], 'no stamp was bought');
+    assert.deepEqual(audit.entries, []);
   });
 });
