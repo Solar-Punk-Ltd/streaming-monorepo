@@ -21,8 +21,11 @@ export const PUBLISHABLE_STATUSES: readonly StreamStatus[] = ['draft', 'publishe
 export const UNPUBLISHABLE_STATUSES: readonly StreamStatus[] = ['draft', 'published', 'vod'];
 
 /**
- * Statuses whose stream has an entry on the catalogue: what `listOnFeed`
- * selects. `publishing` is not one of them, because that write is in flight.
+ * Statuses whose stream has an entry on the catalogue, unless it is a test
+ * stream, which never has one: `listOnFeed` selects the rows in these
+ * statuses that are no test stream, and `isOnFeed` in PublishService is that
+ * rule for one row. `publishing` is not one of them, because that write is in
+ * flight.
  */
 export const ON_FEED_STATUSES: readonly StreamStatus[] = ['published', 'live', 'vod'];
 
