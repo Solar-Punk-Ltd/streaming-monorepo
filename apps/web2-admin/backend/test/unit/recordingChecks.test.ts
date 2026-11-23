@@ -458,6 +458,53 @@ describe('the removal of lost recordings', () => {
   });
 });
 
+describe('a test stream and the recordings', () => {
+  const CHECK = randomUUID();
+
+  it('is left unjudged by a check, never read and never marked', async () => {
+    recorded({ title: 'Lost' }, { gone: true });
+    const test = recorded({ title: 'Test', test: true, description: '', tags: [] }, { gone: true });
+    const checks = service();
+
+    await checks.start(TEST_OPERATOR);
+    await checks.settled();
+
+    const { check } = await checks.status();
+    assert.equal(check?.state, 'done');
+    assert.equal(check?.total, 1);
+    assert.equal(check?.unjudged, 1, 'the test stream');
+    assert.deepEqual(
+      check?.lost.map((recording) => recording.title),
+      ['Lost'],
+    );
+    assert.equal(reads.readsOf(masterOf(test)), 0, 'its recording is never read');
+    assert.equal(store.marks.has(test.id), false, 'nor marked');
+  });
+
+  it('is kept by a removal with why, neither taken off the catalogue nor deleted', async () => {
+    const test = recorded({ title: 'Test', test: true, description: '', tags: [] }, { gone: true });
+    const gone = recorded({ title: 'Gone' }, { gone: true });
+    store.finished(
+      CHECK,
+      [test, gone].map((stream) => ({ streamId: stream.id, title: stream.title, verdict: 'lost' })),
+      new Date(now - 60_000),
+    );
+    writer.onTaken = (id) => void streams.add({ ...streams.get(id), status: 'draft' });
+
+    const answer = await service().removeLost(TEST_OPERATOR, { checkId: CHECK, streamIds: [test.id, gone.id] });
+
+    assert.deepEqual(answer.kept, [{ streamId: test.id, title: 'Test', reason: KEPT_BY_RULE.test }]);
+    assert.deepEqual(answer.removed, [{ streamId: gone.id, title: 'Gone' }]);
+    assert.deepEqual(
+      writer.calls.map((call) => call.streamIds),
+      [[gone.id]],
+      'only the other one leaves the catalogue',
+    );
+    assert.deepEqual(streams.get(test.id), test, 'the test stream is left as it was');
+    assert.equal(reads.readsOf(masterOf(test)), 0, 'and not read once more');
+  });
+});
+
 describe('a stream’s mark', () => {
   it('is on the stream while the latest check found its recording lost or partly lost, and absent otherwise', () => {
     const checkedAt = new Date('2026-11-19T12:20:00.000Z');
