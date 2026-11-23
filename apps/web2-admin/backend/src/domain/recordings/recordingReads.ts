@@ -207,9 +207,9 @@ export function stillUnlisted(stream: StreamRow, unlistedAt: Date | undefined): 
 
 /**
  * What the one rule, `recordingSkipReason`, reads of a stream: its status, its restart window as the stream list
- * shows it, whether an export or an archive of it is under way, and whether a removal kept it as a draft for its
- * export file and it has not changed since (`unlistedAt`, by stream id). A stream's test flag is read here once it has
- * one.
+ * shows it, whether an export or an archive of it is under way, whether it is a test stream, which a check never
+ * judges and a removal never touches, and whether a removal kept it as a draft for its export file and it has not
+ * changed since (`unlistedAt`, by stream id).
  */
 export function recordingJudgeInputOf(
   stream: StreamRow,
@@ -221,6 +221,7 @@ export function recordingJudgeInputOf(
     status: stream.status,
     restartUntil: restartUntilOf(stream, restartWindowMinutes)?.toISOString() ?? null,
     hasOpenJob: openJobs.has(stream.id),
+    test: stream.test,
     unlisted: stillUnlisted(stream, unlistedAt.get(stream.id)),
   };
 }
