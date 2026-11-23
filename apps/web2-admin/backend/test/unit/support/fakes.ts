@@ -419,10 +419,10 @@ export class FakeStreamStore
     return this.patch(id, { publish_key: publishKey, publish_key_rotated_at: at, finished_at: at });
   }
 
-  /** As the SQL is: reconcile has to see every row that should be on the feed. */
+  /** As the SQL is: reconcile has to see every row that should be on the feed, and no test stream. */
   async listOnFeed(): Promise<StreamRow[]> {
     return [...this.rows.values()]
-      .filter((row) => ['published', 'live', 'vod'].includes(row.status))
+      .filter((row) => ['published', 'live', 'vod'].includes(row.status) && !row.test)
       .map((row) => ({ ...row }));
   }
 

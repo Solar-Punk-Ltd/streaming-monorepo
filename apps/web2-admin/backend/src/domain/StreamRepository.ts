@@ -84,12 +84,14 @@ export class StreamRepository {
    * Every row that should be on the catalogue. `reconcile` compares this
    * against the feed, and a row it could not see would read as an entry with
    * nothing behind it and be removed. `publishing` is excluded — that write is
-   * still in flight.
+   * still in flight. So is a test stream, live or recorded, which is never on
+   * the catalogue: an entry for one reads as an entry with nothing behind it.
+   * `isOnFeed` in PublishService is the same rule for one row.
    */
   async listOnFeed(): Promise<StreamRow[]> {
     const result = await this.pool.query<StreamRow>(
       `SELECT ${STREAM_COLUMNS} FROM streams
-        WHERE status IN ('published', 'live', 'vod')
+        WHERE status IN ('published', 'live', 'vod') AND NOT test
         ORDER BY created_at`,
     );
     return result.rows;
