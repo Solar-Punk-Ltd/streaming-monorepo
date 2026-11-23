@@ -103,6 +103,7 @@ export class StreamFinishService {
       topic: finished.topic,
       statusBefore: finished.status,
       statusAfter: finished.status,
+      ...(finished.test ? { details: { test: true } } : {}),
     });
     return { stream: finished, ingest: await this.ingest.detailsOf(finished) };
   }
@@ -126,6 +127,7 @@ export class StreamFinishService {
         topic: row.topic,
         statusBefore: row.status,
         statusAfter: row.status,
+        ...(row.test ? { details: { test: true } } : {}),
       });
     }
     return finished;

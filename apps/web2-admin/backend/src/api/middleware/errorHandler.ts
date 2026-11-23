@@ -1,5 +1,9 @@
 import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@streaming-monorepo/contracts';
-import { TEST_STREAM_ERROR, type TestStreamRefusal } from '@streaming-monorepo/web2-admin-common';
+import {
+  NOT_TEST_STREAM_ERROR,
+  TEST_STREAM_ERROR,
+  type TestStreamRefusal,
+} from '@streaming-monorepo/web2-admin-common';
 import { NextFunction, Request, Response } from 'express';
 import { ValidationError as YupValidationError } from 'yup';
 
@@ -24,6 +28,7 @@ import {
   InvalidUsernameError,
   MediaTypeLockedError,
   NoUsersError,
+  NotTestStreamError,
   PublishFailedError,
   RequestShapeError,
   StageLockedError,
@@ -220,6 +225,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
       message: err.message,
     };
     res.status(409).json(body);
+    return;
+  }
+  if (err instanceof NotTestStreamError) {
+    res.status(409).json({ error: NOT_TEST_STREAM_ERROR, id: err.streamId, message: err.message });
     return;
   }
   if (err instanceof StageRequiredError) {

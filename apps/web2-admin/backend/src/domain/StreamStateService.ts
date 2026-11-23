@@ -1,4 +1,4 @@
-import type { MediaType, StreamStateReport, StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import type { MediaType, Rendition, StreamStateReport, StreamStatus } from '@streaming-monorepo/web2-admin-common';
 
 import type { StreamRow } from '../types/index.js';
 
@@ -7,9 +7,11 @@ import { getErrorMessage } from '../utils/errorUtils.js';
 import { describeActor, describeStream, UPLOADER } from './actor.js';
 import { recordAudit, type AuditLog } from './AuditLog.js';
 import { InvalidStateTransitionError, PublishFailedError, StreamNotFoundError } from './errors/index.js';
+import type { FeedIdentity } from './feedIdentity.js';
 import { Logger } from './Logger.js';
+import type { Mutex } from './Mutex.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
-import { allowedFromFor, isStateTransitionAllowed } from './streamState.js';
+import { allowedFromFor, isOpenToUploader, isStateTransitionAllowed } from './streamState.js';
 import { inScope, type UploaderScope } from './uploaderScope.js';
 
 const logger = Logger.getInstance();
@@ -25,6 +27,46 @@ export interface StateStreamStore {
     manifestIndex: number,
     durationSeconds: number,
   ): Promise<StreamRow | null>;
+}
+
+/**
+ * What a test stream's reports need beside a listed stream's: the catalogue's identity, which their answers name as
+ * every answer does, and the catalogue's mutex, so a test stream's report is stored in the same serialised step as a
+ * listed stream's, though it writes nothing there.
+ */
+export interface TestStreamReports {
+  feed: FeedIdentity;
+  mutex: Mutex;
+}
+
+/**
+ * The answer to a report of a test stream, which writes nothing to the catalogue: `written` is false, `feed.index` is
+ * the stream's order number after the report, `report_order`, and `feed.entryCount` is 0. The order number grows with
+ * every report the admin stores for the stream, so the uploader keeps the newest merge of its ladder by it. It names
+ * no catalogue slot.
+ */
+export function testReportOutcome(
+  stream: StreamRow,
+  feed: FeedIdentity,
+  order: number,
+  renditions: Rendition[] = [],
+  previousRenditions: Rendition[] = [],
+): PublishOutcome {
+  return {
+    stream,
+    entryStatus: null,
+    entryRecording: null,
+    feed: { owner: feed.owner, topic: feed.topic, topicHex: feed.topicHex, index: order, entryCount: 0 },
+    written: false,
+    renditions,
+    previousRenditions,
+  };
+}
+
+/** The test stream wiring a report of one needs, or a refusal to go on without it. */
+export function testStreamReports(wiring: TestStreamReports | undefined): TestStreamReports {
+  if (!wiring) throw new Error('a test stream reported, and this service was built without the test stream wiring');
+  return wiring;
 }
 
 /**
@@ -59,6 +101,8 @@ export class StreamStateService {
      * the report ended. Never awaited by the report and never failing it.
      */
     private readonly finishEnded?: () => Promise<unknown>,
+    /** What a test stream's reports need. Without it a test stream's report is refused as an error. */
+    private readonly testStreams?: TestStreamReports,
   ) {}
 
   /** Resolves once every sweep started in the tail of a `vod` report has run: for the tests. */
@@ -68,10 +112,13 @@ export class StreamStateService {
 
   /**
    * The ingest stream id is `<mediaType>/<topic>`. Both halves must match the
-   * row, and the stream must have been announced: a draft has told nobody
-   * anything, so an encoder claiming to be one is refused rather than started.
-   * `publishing` is refused too — a feed write is in flight, and the publish
-   * it belongs to may still fail back to `draft`.
+   * row, and the stream must be open to its stage's uploader
+   * (`isOpenToUploader`): a draft has told nobody anything, so an encoder
+   * claiming to be one is refused rather than started, and `publishing` is
+   * refused too — a feed write is in flight, and the publish it belongs to
+   * may still fail back to `draft`. A test stream is open as a draft, and in
+   * every status it has: it is never published. Another stream live on the
+   * same stage refuses nothing.
    *
    * Every refusal is the same 404, deliberately: the caller is the uploader,
    * which either starts the session or does not, and a token holder that
@@ -84,9 +131,7 @@ export class StreamStateService {
     if (!stream) throw notFound();
     if (!inScope(stream, scope)) throw notFound();
     if (stream.media_type !== app) throw notFound();
-    if (stream.status === 'draft' || stream.status === 'publishing') {
-      throw notFound();
-    }
+    if (!isOpenToUploader(stream)) throw notFound();
     return stream;
   }
 
@@ -110,15 +155,22 @@ export class StreamStateService {
    *
    * A stream outside the caller's scope is refused as not found before
    * anything is written: no status, no feed write, no audit row.
+   *
+   * A test stream's report is stored in the catalogue's serialised step and
+   * writes nothing there: its answer is `testReportOutcome`'s, with the order
+   * number the statement that stored it took.
    */
   async report(id: string, report: StreamStateReport, scope: UploaderScope): Promise<PublishOutcome> {
     const existing = await this.streams.findById(id);
     if (!existing || !inScope(existing, scope)) throw new StreamNotFoundError(id);
-    if (!isStateTransitionAllowed(existing.status, report.state)) {
+    if (!isOpenToUploader(existing) || !isStateTransitionAllowed(existing.status, report.state, existing.test)) {
       throw new InvalidStateTransitionError(id, existing.status, report.state);
     }
 
-    const updated = await this.apply(existing, report);
+    const tests = existing.test ? testStreamReports(this.testStreams) : null;
+    const updated = tests
+      ? await tests.mutex.run(() => this.apply(existing, report))
+      : await this.apply(existing, report);
     if (!updated) {
       // The conditional UPDATE matched nothing: something moved the row
       // between the read and the write. Re-read to say which of the two it is.
@@ -134,6 +186,20 @@ export class StreamStateService {
     );
 
     const recording = report.state === 'vod' ? { index: report.index ?? 0, duration: report.duration ?? 0 } : {};
+    if (tests) {
+      if (report.state === 'vod') this.sweepAfterVod();
+      const outcome = testReportOutcome(updated, tests.feed, updated.report_order);
+      await recordAudit(this.audit, {
+        actor: UPLOADER,
+        action: report.state === 'live' ? 'stream.state.live' : 'stream.state.vod',
+        streamId: updated.id,
+        topic: updated.topic,
+        statusBefore: existing.status,
+        statusAfter: updated.status,
+        details: { ...recording, feedIndex: outcome.feed.index, written: false, test: true },
+      });
+      return outcome;
+    }
     const entry = {
       actor: UPLOADER,
       action: report.state === 'live' ? 'stream.state.live' : 'stream.state.vod',
@@ -183,7 +249,7 @@ export class StreamStateService {
   }
 
   private async apply(existing: StreamRow, report: StreamStateReport): Promise<StreamRow | null> {
-    const allowedFrom = allowedFromFor(report.state);
+    const allowedFrom = allowedFromFor(report.state, existing.test);
     if (report.state === 'live') {
       // A row coming back from `vod` is un-finished by this one statement —
       // the recording columns and every rung's index and duration — so the

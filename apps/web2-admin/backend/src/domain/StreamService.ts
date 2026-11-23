@@ -1,7 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { sameFeedOwner } from '@streaming-monorepo/contracts';
-import { sniffThumbnailMime, type MediaType, type StreamStatus } from '@streaming-monorepo/web2-admin-common';
+import {
+  sniffThumbnailMime,
+  storedViewerUrl,
+  type MediaType,
+  type StreamStatus,
+  type TestStreamInput,
+} from '@streaming-monorepo/web2-admin-common';
 
 import {
   EDITABLE_STATUSES,
@@ -16,6 +22,7 @@ import { recordAudit, type AuditLog } from './AuditLog.js';
 
 import {
   MediaTypeLockedError,
+  NotTestStreamError,
   StageLockedError,
   StageUnavailableError,
   StreamBusyError,
@@ -23,6 +30,7 @@ import {
   StreamLockedError,
   StreamNotFoundError,
   StreamPublishedError,
+  TestStreamError,
   ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
   UnsupportedMediaTypeError,
@@ -52,6 +60,7 @@ export interface StreamServiceStore {
     allowedFrom: readonly StreamStatus[],
   ): Promise<StreamRow | null>;
   clearThumbnail(id: string, allowedFrom: readonly StreamStatus[]): Promise<ClearedThumbnail | null>;
+  setViewerUrl(id: string, viewerUrl: string | null): Promise<StreamRow | null>;
 }
 
 /**
@@ -155,6 +164,14 @@ export function changedFields(before: StreamRow, after: StreamRow): EditableFiel
   return changed;
 }
 
+/**
+ * The statuses a stream is deleted from: a draft, and a test stream whenever it is not live. A recorded stream that is
+ * no test stream is on the catalogue and is unpublished first; a test stream never is.
+ */
+export function deletableFrom(stream: Pick<StreamRow, 'test'>): readonly StreamStatus[] {
+  return stream.test ? ['draft', 'vod'] : ['draft'];
+}
+
 /** 16 random bytes hex: the `key=` credential in an ingest URL. */
 export function newPublishKey(): string {
   return randomBytes(16).toString('hex');
@@ -219,6 +236,40 @@ export class StreamService {
   }
 
   /**
+   * A test stream: one of its own, on a stage that takes streams, marked as a test by this insert and never after. It
+   * is created from a title, a media type and a stage, with an empty description, no tags and no scheduled start,
+   * which are promises to viewers. docs/architecture/test-streams.md.
+   */
+  async createTest(actor: OperatorActor, input: TestStreamInput): Promise<StreamRow> {
+    const stage = await this.assignableStage(input.stageId);
+    const created = await this.streams.insert({
+      user_id: actor.userId,
+      topic: randomUUID(),
+      owner: ownerOnStage(stage, this.feed.owner),
+      title: input.title,
+      description: '',
+      tags: [],
+      media_type: input.mediaType,
+      scheduled_start_time: null,
+      publish_key: newPublishKey(),
+      stage_id: input.stageId,
+      test: true,
+    });
+
+    logger.info(`[Stream] ${describeActor(actor)} created test ${describeStream(created)} on stage ${input.stageId}`);
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.create',
+      streamId: created.id,
+      topic: created.topic,
+      statusBefore: null,
+      statusAfter: created.status,
+      details: { title: created.title, mediaType: created.media_type, stageId: created.stage_id, test: true },
+    });
+    return created;
+  }
+
+  /**
    * Editing a published stream leaves it published and does not touch the
    * feed: what the feed says is what was published, until the operator
    * republishes explicitly. The same holds once the stream is live or
@@ -232,6 +283,8 @@ export class StreamService {
   async update(actor: Actor, id: string, input: StreamInputValues): Promise<StreamRow> {
     const existing = await this.streams.findById(id);
     if (!existing) throw new StreamNotFoundError(id);
+    // Its title, media type and stage stay as it was created, and it has nothing else a form sets.
+    if (existing.test) throw new TestStreamError(id, 'edit');
     if (isMediaTypeLocked(existing, input.mediaType)) {
       throw new MediaTypeLockedError(id, existing.media_type);
     }
@@ -323,23 +376,23 @@ export class StreamService {
 
   /**
    * Read first so the log line and the audit row can still name the stream
-   * once it is gone. The DELETE is conditional on its own, so a row that moves
-   * out of `draft` between the two is refused, not deleted.
+   * once it is gone, and so a test stream is deleted from the statuses it may
+   * be (`deletableFrom`): its mark never changes. The DELETE is conditional on
+   * its own, so a row that moves out of those between the two is refused, not
+   * deleted.
    */
   async remove(actor: Actor, id: string): Promise<void> {
     const before = await this.streams.findById(id);
-    const deleted = await this.streams.deleteById(id, ['draft']);
-    if (deleted) {
-      const name = before ? describeStream(before) : id;
-      logger.info(`[Stream] ${describeActor(actor)} deleted ${name}`);
+    if (before && (await this.streams.deleteById(id, deletableFrom(before)))) {
+      logger.info(`[Stream] ${describeActor(actor)} deleted ${describeStream(before)}`);
       await recordAudit(this.audit, {
         actor,
         action: 'stream.delete',
         streamId: id,
-        topic: before?.topic ?? null,
-        statusBefore: 'draft',
+        topic: before.topic,
+        statusBefore: before.status,
         statusAfter: null,
-        details: before ? { title: before.title } : null,
+        details: { title: before.title, ...(before.test ? { test: true } : {}) },
       });
       return;
     }
@@ -360,6 +413,9 @@ export class StreamService {
     if (!THUMBNAIL_MIME_TYPES.includes(mime)) {
       throw new UnsupportedMediaTypeError(contentType, THUMBNAIL_MIME_TYPES);
     }
+    // No viewer is shown a card for a test stream. Its mark never changes, so the read decides, and the database's
+    // check refuses an image on one besides.
+    if ((await this.streams.findById(id))?.test) throw new TestStreamError(id, 'thumbnail');
     // The bytes decide, not the claim: a renamed text file would otherwise be stored and served as
     // a picture nobody can see, and a JPEG named .png is stored as what it really is.
     const actual = sniffThumbnailMime(bytes);
@@ -378,6 +434,35 @@ export class StreamService {
       statusBefore: updated.status,
       statusAfter: updated.status,
       details: { mime: actual, bytes: bytes.length },
+    });
+    return updated;
+  }
+
+  /**
+   * Sets, changes or clears a test stream's viewer address, in every status it has. The route has already refused an
+   * address with a `viewerUrlProblem`; this stores it as `storedViewerUrl` gives it, and an empty one clears it. A
+   * stream that is no test stream holds none. Every set is audited, a clear included.
+   */
+  async setViewerUrl(actor: Actor, id: string, url: string | null): Promise<StreamRow> {
+    const viewerUrl = storedViewerUrl(url);
+    const updated = await this.streams.setViewerUrl(id, viewerUrl);
+    if (!updated) {
+      const existing = await this.streams.findById(id);
+      if (!existing) throw new StreamNotFoundError(id);
+      throw new NotTestStreamError(id);
+    }
+
+    logger.info(
+      `[Stream] ${describeActor(actor)} ${viewerUrl === null ? 'cleared the viewer address of' : `set the viewer address of`} ${describeStream(updated)}${viewerUrl === null ? '' : ` to ${viewerUrl}`}`,
+    );
+    await recordAudit(this.audit, {
+      actor,
+      action: 'stream.viewer_url.set',
+      streamId: updated.id,
+      topic: updated.topic,
+      statusBefore: updated.status,
+      statusAfter: updated.status,
+      details: { viewerUrl, test: true },
     });
     return updated;
   }

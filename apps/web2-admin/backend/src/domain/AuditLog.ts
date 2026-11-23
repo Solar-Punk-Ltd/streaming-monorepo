@@ -15,6 +15,8 @@ export type AuditAction =
   | 'stream.delete'
   | 'stream.thumbnail.set'
   | 'stream.thumbnail.clear'
+  // A test stream's viewer address set, changed or cleared.
+  | 'stream.viewer_url.set'
   | 'stream.key.rotate'
   // The key changed for good: by Finish on the stream page, or by the sweep once a stream's restart window ran out.
   | 'stream.finish'

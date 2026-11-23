@@ -10,6 +10,8 @@ import { InvalidStateError, PublishFailedError, StreamNotFoundError } from './er
 import { Logger } from './Logger.js';
 import type { PublishOutcome, PublishService } from './PublishService.js';
 import { mergeRendition, isLadderFinished, ladderDuration, toRendition } from './renditions.js';
+import { isOpenToUploader } from './streamState.js';
+import { testReportOutcome, testStreamReports, type TestStreamReports } from './StreamStateService.js';
 import { inScope, type UploaderScope } from './uploaderScope.js';
 
 const logger = Logger.getInstance();
@@ -17,6 +19,8 @@ const logger = Logger.getInstance();
 /** The slice of StreamRepository a report needs; a fake stands in for tests. */
 export interface LadderStreamStore {
   findById(id: string): Promise<StreamRow | null>;
+  /** A test stream's rung and its next order number, in one statement; null for a row that is no test stream. */
+  storeTestRendition(id: string, rendition: Rendition): Promise<number | null>;
 }
 
 /** The slice of StreamRenditionRepository the merge needs; a fake stands in. */
@@ -71,6 +75,8 @@ export class LadderService {
     private readonly renditions: LadderRenditionStore,
     private readonly publishService: PublishService,
     private readonly audit: AuditLog,
+    /** What a test stream's reports need. Without it a test stream's report is refused as an error. */
+    private readonly testStreams?: TestStreamReports,
   ) {}
 
   /**
@@ -106,9 +112,11 @@ export class LadderService {
     // flight for this stream (`publishing`) and would be raced. `published`,
     // `live` and `vod` all take a rung: a ladder can start reporting before
     // the first `live` report gets through, and a rung can finalize after it.
-    if (stream.status === 'draft' || stream.status === 'publishing') {
+    // A test stream takes one in every status it has, a draft included.
+    if (!isOpenToUploader(stream)) {
       throw new InvalidStateError(id, stream.status);
     }
+    if (stream.test) return this.reportTest(stream, report);
 
     const stored = (await this.renditions.listByStream(id)).map(toRendition);
     const previous = stored.find((rung) => rung.name === report.name) ?? null;
@@ -171,5 +179,59 @@ export class LadderService {
       },
     });
     return { publish, renditions, ladder };
+  }
+
+  /**
+   * A test stream's rendition report, which writes nothing to the catalogue. The whole of it runs in the catalogue's
+   * serialised step: the read of the stored ladder, the merge, the statement that stores the rung and takes the
+   * stream's next order number, and the read of the ladder the answer carries. A later report therefore always
+   * answers with a higher number and a ladder that holds every merge before it, which is what the uploader orders its
+   * answers by. `flippedToFinished` is judged against the ladder this report found.
+   */
+  private async reportTest(stream: StreamRow, report: RenditionReport): Promise<RenditionReportOutcome> {
+    const { feed, mutex } = testStreamReports(this.testStreams);
+    return mutex.run(async () => {
+      const stored = (await this.renditions.listByStream(stream.id)).map(toRendition);
+      const previous = stored.find((rung) => rung.name === report.name) ?? null;
+      const order = await this.streams.storeTestRendition(stream.id, mergeRendition(previous, report));
+      if (order === null) throw new StreamNotFoundError(stream.id);
+      const renditions = (await this.renditions.listByStream(stream.id)).map(toRendition);
+      const current = (await this.streams.findById(stream.id)) ?? stream;
+      const publish = testReportOutcome(current, feed, order, renditions, stored);
+      const finished = isLadderFinished(renditions);
+      const ladder: LadderState = {
+        finished,
+        flippedToFinished: finished && !isLadderFinished(stored),
+        duration: ladderDuration(renditions),
+      };
+
+      logger.info(
+        `[Ladder] ${describeActor(UPLOADER)} reported rung ${report.name}${
+          report.index === undefined ? '' : ` final (index ${String(report.index)}, ${String(report.duration)}s)`
+        } for test ${describeStream(current)}; order ${order}, ${renditions.length} rung(s), ${
+          finished ? 'finished' : 'still running'
+        }${ladder.flippedToFinished ? ' as of this report' : ''}`,
+      );
+      await recordAudit(this.audit, {
+        actor: UPLOADER,
+        action: 'stream.rendition.report',
+        streamId: current.id,
+        topic: current.topic,
+        statusBefore: current.status,
+        statusAfter: current.status,
+        details: {
+          rung: report.name,
+          index: report.index ?? null,
+          duration: report.duration ?? null,
+          feedIndex: order,
+          written: false,
+          test: true,
+          entryRung: renditions.find((rendition) => rendition.name === report.name) ?? null,
+          finished,
+          flippedToFinished: ladder.flippedToFinished,
+        },
+      });
+      return { publish, renditions, ladder };
+    });
   }
 }
