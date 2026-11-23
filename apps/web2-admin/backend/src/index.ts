@@ -327,13 +327,25 @@ async function main(): Promise<void> {
     auditLog,
     config.streamRestartWindowMinutes,
   );
-  const streamStateService = new StreamStateService(streamRepository, publishService, auditLog, () =>
-    streamFinishService.finishEnded(),
+  // A test stream's reports write nothing to the catalogue, and are stored in its serialised step all the same.
+  const testStreamReports = { feed, mutex: feedMutex };
+  const streamStateService = new StreamStateService(
+    streamRepository,
+    publishService,
+    auditLog,
+    () => streamFinishService.finishEnded(),
+    testStreamReports,
   );
   // Once now, before the API listens, so the first start after migration 022 finishes every older recording, then
   // every minute. A failed run is logged and never stops the start.
   streamFinishSweep = await startStreamFinishSweep(streamFinishService);
-  const ladderService = new LadderService(streamRepository, renditionRepository, publishService, auditLog);
+  const ladderService = new LadderService(
+    streamRepository,
+    renditionRepository,
+    publishService,
+    auditLog,
+    testStreamReports,
+  );
   const stageService = new StageService(stageRepository, catalogueStampRepository, auditLog, {
     registrarToken: config.internalApiToken,
   });

@@ -122,6 +122,7 @@ export class IngestService {
       topic: rotated.topic,
       statusBefore: rotated.status,
       statusAfter: rotated.status,
+      ...(rotated.test ? { details: { test: true } } : {}),
     });
     return ingestDetailsFor(rotated, await this.stageOf(rotated));
   }

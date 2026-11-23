@@ -6,6 +6,8 @@ import {
   type Stream,
   type StreamFinishAnswer,
   type StreamListResponse,
+  type TestStreamInput,
+  type ViewerUrlInput,
 } from '@streaming-monorepo/web2-admin-common';
 import express, { Request, RequestHandler, Response, Router } from 'express';
 
@@ -18,7 +20,13 @@ import { StreamFinishService } from '../../domain/StreamFinishService.js';
 import { normaliseThumbnailMime, StreamService } from '../../domain/StreamService.js';
 import { archiveListingSchema, archiveStartSchema } from '../../schemas/archive.js';
 import { exportStartSchema } from '../../schemas/export.js';
-import { StreamInputBody, streamIdParamSchema, streamInputSchema } from '../../schemas/stream.js';
+import {
+  StreamInputBody,
+  streamIdParamSchema,
+  streamInputSchema,
+  testStreamInputSchema,
+  viewerUrlInputSchema,
+} from '../../schemas/stream.js';
 import { THUMBNAIL_MIME_TYPES, type StreamRow } from '../../types/index.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { actorOf } from '../middleware/requireAuth.js';
@@ -102,6 +110,18 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     }),
   );
 
+  // A test stream: created from a title, a media type and a stage, marked as a test for good, and never on the
+  // catalogue. docs/architecture/test-streams.md.
+  router.post(
+    '/test',
+    validateBody(testStreamInputSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const created = await streamService.createTest(actorOf(req), req.body as TestStreamInput);
+      const response: Stream = toStream(created);
+      res.status(201).json(response);
+    }),
+  );
+
   router.get(
     '/:id',
     validateParams(streamIdParamSchema),
@@ -117,6 +137,19 @@ export function createStreamsRouter(deps: StreamRoutesDeps): Router {
     validateBody(streamInputSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const updated = await streamService.update(actorOf(req), streamId(req), req.body as StreamInputBody);
+      res.json(await present(updated));
+    }),
+  );
+
+  // A test stream's viewer address: set, changed, or cleared by null or an empty one, in every status it has. A stream
+  // that is no test stream answers 409 not_test_stream.
+  router.put(
+    '/:id/viewer-url',
+    validateParams(streamIdParamSchema),
+    validateBody(viewerUrlInputSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { url } = req.body as ViewerUrlInput;
+      const updated = await streamService.setViewerUrl(actorOf(req), streamId(req), url);
       res.json(await present(updated));
     }),
   );

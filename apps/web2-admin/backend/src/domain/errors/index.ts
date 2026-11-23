@@ -22,6 +22,7 @@ export { InvalidStateError } from './InvalidStateError.js';
 export { InvalidStateTransitionError } from './InvalidStateTransitionError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
 export { NoUsersError } from './NoUsersError.js';
+export { NotTestStreamError } from './NotTestStreamError.js';
 export { PublishFailedError } from './PublishFailedError.js';
 export { RequestShapeError } from './RequestShapeError.js';
 export { STAGE_LOCKED_MESSAGES, StageLockedError, type StageLockReason } from './StageLockedError.js';

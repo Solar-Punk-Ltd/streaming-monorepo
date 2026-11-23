@@ -346,6 +346,8 @@ export class FakeStreamStore
       // As the SQL does: the recording a check judged is being written again.
       recording_verdict: null,
       recording_checked_at: null,
+      // As the SQL does: a test stream's report takes its next order number.
+      report_order: row.report_order + (row.test ? 1 : 0),
     });
   }
 
@@ -364,7 +366,23 @@ export class FakeStreamStore
       duration_seconds: durationSeconds,
       ended_at: new Date('2026-09-11T11:00:00.000Z'),
       publish_error: null,
+      report_order: row.report_order + (row.test ? 1 : 0),
     });
+  }
+
+  /** A test stream's rung and its next order number, as the SQL stores both in one statement. */
+  async storeTestRendition(id: string, rendition: Rendition): Promise<number | null> {
+    const row = this.rows.get(id);
+    if (!row?.test) return null;
+    await this.renditions?.upsert(id, rendition);
+    return this.patch(id, { report_order: row.report_order + 1 }).report_order;
+  }
+
+  /** As the SQL is: a test stream's alone, in every status. */
+  async setViewerUrl(id: string, viewerUrl: string | null): Promise<StreamRow | null> {
+    const row = this.rows.get(id);
+    if (!row?.test) return null;
+    return this.patch(id, { viewer_url: viewerUrl });
   }
 
   /** The database's clock, as `NOW()` reads it in the restart window's SQL; a test sets it. */

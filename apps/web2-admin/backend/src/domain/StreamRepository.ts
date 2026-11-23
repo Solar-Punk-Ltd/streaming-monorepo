@@ -1,6 +1,7 @@
 import type {
   ClearedThumbnail as LostThumbnailStream,
   MediaType,
+  Rendition,
   StreamStatus,
 } from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
@@ -30,6 +31,8 @@ export interface StreamInsertData {
   publish_key: string;
   /** The stage picked in the form, or null. The service has checked it takes streams. */
   stage_id: string | null;
+  /** True for a test stream (migration 032). Written here alone: nothing else sets or clears the mark. */
+  test?: boolean;
 }
 
 export interface StreamUpdateData {
@@ -116,9 +119,9 @@ export class StreamRepository {
     const result = await this.pool.query<StreamRow>(
       `INSERT INTO streams (
          user_id, topic, owner, title, description, tags, media_type,
-         scheduled_start_time, publish_key, stage_id
+         scheduled_start_time, publish_key, stage_id, test
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING ${STREAM_COLUMNS}`,
       [
         data.user_id,
@@ -131,6 +134,7 @@ export class StreamRepository {
         data.scheduled_start_time,
         data.publish_key,
         data.stage_id,
+        data.test ?? false,
       ],
     );
     return result.rows[0]!;
@@ -477,6 +481,9 @@ export class StreamRepository {
    * all. Keeping the lock on the path the returned row depends on evaluates it
    * first, before anything is written, and gives `unfinished` the status the
    * row actually had. Do not reorder these.
+   *
+   * A test stream's report takes the next order number, `report_order`, in
+   * the same statement, which its answer carries as `feed.index`.
    */
   async markLive(id: string, allowedFrom: readonly StreamStatus[]): Promise<StreamRow | null> {
     const result = await this.pool.query<StreamRow>(
@@ -496,6 +503,7 @@ export class StreamRepository {
                 publish_error = NULL,
                 recording_verdict = NULL,
                 recording_checked_at = NULL,
+                report_order = report_order + CASE WHEN test THEN 1 ELSE 0 END,
                 updated_at = NOW()
           WHERE id IN (SELECT id FROM locked WHERE status = ANY($2::text[]))
           RETURNING ${STREAM_COLUMNS}
@@ -518,7 +526,8 @@ export class StreamRepository {
   /**
    * The uploader's `vod` report: the broadcast stopped, and this is where the
    * recording is. `live_since` is left alone — it is when this recording
-   * started, and the console shows both ends.
+   * started, and the console shows both ends. A test stream's report takes the
+   * next order number in the same statement, as `markLive` says.
    */
   async markVod(
     id: string,
@@ -533,10 +542,72 @@ export class StreamRepository {
               duration_seconds = $4,
               ended_at = NOW(),
               publish_error = NULL,
+              report_order = report_order + CASE WHEN test THEN 1 ELSE 0 END,
               updated_at = NOW()
         WHERE id = $1 AND status = ANY($2::text[])
         RETURNING ${STREAM_COLUMNS}`,
       [id, allowedFrom, manifestIndex, durationSeconds],
+    );
+    return this.one(result.rows, result.rowCount);
+  }
+
+  /**
+   * A test stream's quality report: the rung, as the caller merged it, and the stream's next order number, in one
+   * statement, which returns that number. Null when the row is no test stream or is gone, and then nothing is stored.
+   * The rung is written as `StreamRenditionRepository.upsert` writes one.
+   */
+  async storeTestRendition(id: string, rendition: Rendition): Promise<number | null> {
+    const result = await this.pool.query<{ report_order: number }>(
+      `WITH ordered AS (
+         UPDATE streams
+            SET report_order = report_order + 1,
+                updated_at = NOW()
+          WHERE id = $1 AND test
+          RETURNING id, report_order
+       ), stored AS (
+         INSERT INTO stream_renditions (
+           stream_id, name, width, height, topic, bandwidth, avg_bandwidth,
+           manifest_index, duration_seconds, updated_at
+         )
+         SELECT id, $2, $3, $4, $5, $6, $7, $8, $9, NOW() FROM ordered
+         ON CONFLICT (stream_id, name) DO UPDATE
+            SET width = EXCLUDED.width,
+                height = EXCLUDED.height,
+                topic = EXCLUDED.topic,
+                bandwidth = EXCLUDED.bandwidth,
+                avg_bandwidth = EXCLUDED.avg_bandwidth,
+                manifest_index = EXCLUDED.manifest_index,
+                duration_seconds = EXCLUDED.duration_seconds,
+                updated_at = NOW()
+       )
+       SELECT report_order FROM ordered`,
+      [
+        id,
+        rendition.name,
+        rendition.width,
+        rendition.height,
+        rendition.topic,
+        rendition.bandwidth,
+        rendition.avgBandwidth,
+        rendition.index ?? null,
+        rendition.duration ?? null,
+      ],
+    );
+    return result.rows[0]?.report_order ?? null;
+  }
+
+  /**
+   * A test stream's viewer address, as the service gives it: an address, or null to clear it. Taken in every status.
+   * Null when the row is no test stream or is gone, and then nothing is written.
+   */
+  async setViewerUrl(id: string, viewerUrl: string | null): Promise<StreamRow | null> {
+    const result = await this.pool.query<StreamRow>(
+      `UPDATE streams
+          SET viewer_url = $2,
+              updated_at = NOW()
+        WHERE id = $1 AND test
+        RETURNING ${STREAM_COLUMNS}`,
+      [id, viewerUrl],
     );
     return this.one(result.rows, result.rowCount);
   }
