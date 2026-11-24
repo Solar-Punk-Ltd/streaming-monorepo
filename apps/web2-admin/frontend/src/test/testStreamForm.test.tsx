@@ -78,7 +78,7 @@ describe('Create New Stream: the Test stream box', () => {
     await screen.findByRole('option', { name: 'Side stage' });
     expect(screen.getByRole('heading', { name: 'Create New Stream' })).toBeInTheDocument();
     expect(testBox()).not.toBeChecked();
-    expect(screen.getByText(/goes live on its stage like any stream and stays off the catalogue/)).toBeInTheDocument();
+    expect(screen.getByText('Test stream will not be visible to viewers.')).toBeInTheDocument();
     // Directly under the name: the next field in the form's order.
     const controls = [...document.querySelectorAll('input, textarea, select')];
     expect(controls.indexOf(testBox())).toBe(controls.indexOf(nameField()) + 1);

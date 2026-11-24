@@ -143,9 +143,7 @@ function stageLockOf(stream: Stream | null): string | null {
 export const TEST_STAGE_REQUIRED = 'Pick the stage the test runs on.';
 
 /** Under the Test stream box on Create New Stream. */
-export const TEST_STREAM_HELP =
-  'A test stream goes live on its stage like any stream and stays off the catalogue, so no viewer’s list shows it. ' +
-  'It takes a name and a stage alone.';
+export const TEST_STREAM_HELP = 'Test stream will not be visible to viewers.';
 
 /**
  * The media type of every test stream. The stream form offers no media type and saves every stream as video, so a
@@ -458,9 +456,21 @@ export function StreamFormPage() {
               disabled={saving}
             />
             {isEdit ? null : (
-              <Box>
+              // The box's outline is drawn 3px inside its icon, so the group sits 4px closer to Stream Name than the
+              // form's gap (`&&` outweighs the Stack's own margin), and the space over the box matches the space
+              // under its helper text.
+              <Box sx={{ '&&': { mt: 2.5 } }}>
                 <FormControlLabel
-                  control={<Checkbox checked={test} onChange={(e) => toggleTest(e.target.checked)} disabled={saving} />}
+                  control={
+                    // No padding above and below the box, so the space over it and under its helper text is the
+                    // form's gap and not the checkbox's own.
+                    <Checkbox
+                      checked={test}
+                      onChange={(e) => toggleTest(e.target.checked)}
+                      disabled={saving}
+                      sx={{ py: 0 }}
+                    />
+                  }
                   label="Test stream"
                 />
                 <FormHelperText sx={{ mt: 0 }}>{TEST_STREAM_HELP}</FormHelperText>
