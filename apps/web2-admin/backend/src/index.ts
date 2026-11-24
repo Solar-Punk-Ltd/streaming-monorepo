@@ -37,6 +37,10 @@ import { FundingChequebookRepository } from './domain/funding/FundingChequebookR
 import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
 import { FundingService } from './domain/funding/FundingService.js';
+import { AutoTopUpAlertJob } from './domain/funding/AutoTopUpAlertJob.js';
+import { AutoTopUpStampJob } from './domain/funding/AutoTopUpStampJob.js';
+import { AutoTopUpTick } from './domain/funding/AutoTopUpTick.js';
+import { AutoTopUpWalletJob } from './domain/funding/AutoTopUpWalletJob.js';
 import { StampAutoTopUpRepository } from './domain/funding/StampAutoTopUpRepository.js';
 import { StampAutoTopUpService } from './domain/funding/StampAutoTopUpService.js';
 import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
@@ -46,6 +50,7 @@ import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
+import { mailerFrom } from './domain/mail/Mailer.js';
 import { Mutex } from './domain/Mutex.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
@@ -162,6 +167,7 @@ let exportService: ExportService | undefined;
 let archiveService: ArchiveService | undefined;
 let recordings: RecordingCheckService | undefined;
 let batchPurchases: BatchPurchaseService | undefined;
+let autoTopUpTick: AutoTopUpTick | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -180,6 +186,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (streamFinishSweep) {
       streamFinishSweep.stop();
       streamFinishSweep = undefined;
+    }
+    if (autoTopUpTick) {
+      // The tick under way ends first, so no send or stamp operation of its is left half asked.
+      await autoTopUpTick.stop();
+      autoTopUpTick = undefined;
     }
     if (apiServer) {
       await apiServer.close();
@@ -369,8 +380,9 @@ async function main(): Promise<void> {
   });
   batchPurchases.boot();
   // Stamp auto top-up's settings, marks, email list and pauses.
+  const autoTopUpStore = new StampAutoTopUpRepository(database.pool);
   const autoTopUp = new StampAutoTopUpService({
-    store: new StampAutoTopUpRepository(database.pool),
+    store: autoTopUpStore,
     manager: managerFunding,
     audit: auditLog,
     mailConfigured: () => config.mail !== null,
@@ -393,6 +405,27 @@ async function main(): Promise<void> {
     purchases: batchPurchases,
     audit: auditLog,
   });
+  // Stamp auto top-up's tick: every 10 minutes, from three minutes after the start, under a lock one backend holds,
+  // the alert job, the wallet job and the stamp job. The wallet job sends through the Balance tab's send, and the stamp
+  // job asks through the Stamps tab's stamp operation, as the system.
+  autoTopUpTick = new AutoTopUpTick({
+    store: autoTopUpStore,
+    manager: managerFunding,
+    wallet: brandWallet,
+    pins: new FundingPinRepository(database.pool),
+    jobs: [
+      new AutoTopUpAlertJob(autoTopUpStore, mailerFrom(config.mail), logger),
+      new AutoTopUpWalletJob({ funding: fundingService, store: autoTopUpStore }),
+      new AutoTopUpStampJob({
+        stamps: {
+          request: (actor, items) => fundingService.stampOperations(actor, items),
+          bulk: (bulkId) => fundingService.stampBulk(bulkId),
+        },
+        store: autoTopUpStore,
+      }),
+    ],
+  });
+  autoTopUpTick.start();
 
   // Archiving a recording: copied through the catalogue node onto an archive stamp, sharing the export's place. A job
   // left running by the last process goes on where it stopped. While a stream's "List only archived qualities"
