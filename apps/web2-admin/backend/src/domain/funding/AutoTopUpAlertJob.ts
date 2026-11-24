@@ -38,6 +38,12 @@ import {
   type StampName,
   type WarningMailItem,
 } from './autoTopUpTexts.js';
+import type {
+  AutoTopUpJobResult,
+  AutoTopUpJobRunner,
+  AutoTopUpMarkedStamp,
+  AutoTopUpTickContext,
+} from './autoTopUpJobs.js';
 
 /**
  * The alert job of stamp auto top-up (docs/architecture/funding.md, "Auto top-up"). It moves no money. Each run it
@@ -96,12 +102,6 @@ export interface AlertJobInput {
   walletJobPaused: boolean;
   /** Every marked stamp, with how the funding view reads it now, by batch id. A mark with none is left as it is. */
   readings: ReadonlyMap<string, AlertStampReading>;
-}
-
-/** What one run did, for the job's last outcome on the Auto top-up tab. */
-export interface AlertJobOutcome {
-  ok: boolean;
-  outcome: string;
 }
 
 const DAY_MS = SECONDS_PER_DAY * 1000;
@@ -174,16 +174,28 @@ function dueForMs(stamp: PlannedStamp, settings: AutoTopUpSettings): number {
   return stamp.plan.phase === 'due' ? (settings.topUpUnderDays * SECONDS_PER_DAY - stamp.reading.ttlSeconds) * 1000 : 0;
 }
 
-export class AutoTopUpAlertJob {
+export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
+  readonly job = 'alert' as const;
+
   constructor(
     private readonly store: StampAutoTopUpStore,
     private readonly mailer: Mailer,
     private readonly logger: Pick<Logger, 'info' | 'warn'>,
   ) {}
 
-  async run(input: AlertJobInput): Promise<AlertJobOutcome> {
+  /** One run in a tick: the tick's reading of the marked stamps, and whether the wallet job is paused. */
+  async run(context: AutoTopUpTickContext): Promise<AutoTopUpJobResult> {
+    const walletJob = (await this.store.jobs()).find((row) => row.job === 'wallet');
+    const input = alertJobInputOf(context, walletJob?.paused === true);
+    return this.runReadings(
+      input,
+      context.stamps.map((stamp) => stamp.mark),
+    );
+  }
+
+  /** The run over readings already made, for these marks. */
+  async runReadings(input: AlertJobInput, marks: readonly AutoTopUpMarkRow[]): Promise<AutoTopUpJobResult> {
     const { now, settings } = input;
-    const marks = await this.store.marks();
     const planned: PlannedStamp[] = [];
     let unread = 0;
 
@@ -524,4 +536,84 @@ function comingNodes(
       when,
     };
   });
+}
+
+/** What the Stamps tab calls a marked stamp: the catalogue batch, an archive stamp by its label, or a stage's batch. */
+function stampTitle(context: AutoTopUpTickContext, stamp: AutoTopUpMarkedStamp): string {
+  const { inventory } = context.funding;
+  const { mark } = stamp;
+  if (stamp.archive) {
+    const archived = inventory.archiveBatches?.find(
+      (archive) => archive.batchId.toLowerCase() === mark.batchId && archive.nodeId === mark.nodeId,
+    );
+    return archived?.label ? `Archive stamp "${archived.label}"` : 'An archive stamp';
+  }
+  if (inventory.catalogue?.nodeId === mark.nodeId) return 'The catalogue batch';
+  const stage = inventory.stages.find((candidate) => candidate.nodes.some((node) => node.nodeId === mark.nodeId));
+  return stage ? `The batch of stage "${stage.name}"` : 'A marked batch';
+}
+
+/** Whether the brand wallet may send to this node now: its address against the one an operator confirmed. */
+function pinOf(context: AutoTopUpTickContext, nodeId: string, walletAddress: string | null): FundingPinState {
+  const pinned = context.funding.pins.get(nodeId);
+  if (pinned === undefined) return 'new';
+  return walletAddress !== null && walletAddress.toLowerCase() === pinned ? 'pinned' : 'changed';
+}
+
+/**
+ * One marked stamp as the alert job reads it, or null for one whose node the admin funds no more, which the stamp job
+ * reports. A batch the node holds no more, or with no time left, is expired; a node or batch that could not be read,
+ * or a node whose view of the chain is not known to be current, is unread; a batch not usable yet is waiting.
+ */
+export function alertReadingOf(context: AutoTopUpTickContext, stamp: AutoTopUpMarkedStamp): AlertStampReading | null {
+  const { node, batch, mark } = stamp;
+  if (node === null) return null;
+  const name: StampName = { batchId: mark.batchId, title: stampTitle(context, stamp), nodeLabel: node.label };
+  if (batch === null || batch.state === 'expired' || batch.state === 'gone' || batch.ttlSeconds === 0) {
+    return { state: 'expired', name };
+  }
+  if (node.readError !== null || batch.readError !== null || batch.depth === null || batch.ttlSeconds === null) {
+    return { state: 'unread', name, ttlSeconds: batch.ttlSeconds, reason: 'Its node could not be read.' };
+  }
+  if (stamp.chainCurrent !== true) {
+    const reason =
+      stamp.chainCurrent === false
+        ? "Its node's view of the chain is behind."
+        : "Whether its node's view of the chain is current could not be read.";
+    return { state: 'unread', name, ttlSeconds: batch.ttlSeconds, reason };
+  }
+  if (batch.usable !== true) return { state: 'waiting', name };
+  return {
+    state: 'operable',
+    name,
+    depth: batch.depth,
+    ttlSeconds: batch.ttlSeconds,
+    node: {
+      nodeId: node.nodeId,
+      label: node.label,
+      walletAddress: node.walletAddress,
+      xbzzPlur: node.xbzzPlur,
+      xdaiWei: node.xdaiWei,
+      pin: pinOf(context, node.nodeId, node.walletAddress),
+    },
+  };
+}
+
+/** The alert job's input from a tick's context. */
+export function alertJobInputOf(context: AutoTopUpTickContext, walletJobPaused: boolean): AlertJobInput {
+  const readings = new Map<string, AlertStampReading>();
+  for (const stamp of context.stamps) {
+    const reading = alertReadingOf(context, stamp);
+    if (reading !== null) readings.set(stamp.mark.batchId, reading);
+  }
+  const wallet = context.funding.brandWallet;
+  return {
+    now: context.now,
+    settings: context.settings,
+    postage: context.funding.postage,
+    brandWallet:
+      wallet === null ? null : { address: wallet.address, xbzzPlur: wallet.xbzzPlur, xdaiWei: wallet.xdaiWei },
+    walletJobPaused,
+    readings,
+  };
 }
