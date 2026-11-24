@@ -30,6 +30,7 @@ import { formatPercent, formatTimeLeft, shortHex } from '../../format';
 import { CHUNK_BYTES, formatCapacity } from '../archive/archiveText';
 import { CopyButton } from '../CopyButton';
 import { formatShort, formatUnits } from './amounts';
+import { AutoTopUpLine, type AutoControls } from './AutoTopUpMarks';
 import { BatchPurchaseLines } from './BatchPurchaseLines';
 import { NO_BATCH_SET, PURCHASE_TO_CHECK, PURCHASE_UNDER_WAY, purchaseOpen, type BuyOffer } from './batchPurchases';
 import { NodeCard } from './NodeTable';
@@ -433,6 +434,7 @@ function BatchRowView({
   onTick,
   warningDays,
   buy,
+  auto,
 }: {
   row: BatchRow;
   group: BatchGroup;
@@ -443,6 +445,8 @@ function BatchRowView({
   warningDays: number | null;
   /** Buy new and the purchases, for a row of a node's own batch; null for an archive stamp's. */
   buy: BuyControls | null;
+  /** The Auto top-up switch and a marked row's lines, or null while the marks were not read. */
+  auto: AutoControls | null;
 }) {
   const { node, batch } = row;
   const why = whyNoTickBox(row, operation);
@@ -479,6 +483,7 @@ function BatchRowView({
             ) : (
               <NodeCard node={node} group={group.nodes} />
             )}
+            {auto ? <AutoTopUpLine row={row} auto={auto} /> : null}
           </Stack>
         </TableCell>
         <TableCell align="right">
@@ -549,6 +554,9 @@ function tableLabel(group: BatchGroup): string {
  * stages list is ticked by its id, so it shows ticked under both. `footer`, under the rows, is the archive group's
  * purchases and its Buy button.
  *
+ * With `auto`, the Auto top-up switch stands under the batch of each row that can be topped up and of each marked row,
+ * with a marked row's lines under it.
+ *
  * With `buy`, a row whose batch no longer pays offers Buy new beside why it has no tick box, as does the row of a node
  * with no batch, which the group lists after the rest; and under a node's row comes its latest purchase, with a line
  * for each stage, Restart now, Check again and the catalogue's move.
@@ -563,6 +571,7 @@ export function BatchTable({
   warningDays = null,
   footer = null,
   buy = null,
+  auto = null,
 }: {
   group: BatchGroup;
   operation: FundingStampOperationKind;
@@ -576,6 +585,8 @@ export function BatchTable({
   footer?: ReactNode;
   /** Buy new and the purchases of the group's nodes; left out, as for the archive stamps, no row offers a purchase. */
   buy?: BuyControls | null;
+  /** The Auto top-up switch on each row the tab tops up and each marked row; left out, no row has one. */
+  auto?: AutoControls | null;
 }) {
   const verb = operation === 'topup' ? 'Top up' : 'Dilute';
   return (
@@ -617,6 +628,7 @@ export function BatchTable({
                   onTick={onTick}
                   warningDays={warningDays}
                   buy={row.archive ? null : buy}
+                  auto={auto}
                 />
               ))}
               {group.missing.map((node) => (

@@ -102,6 +102,22 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  FUNDING_AUTO_TOPUP_EMAILS_PATH,
+  FUNDING_AUTO_TOPUP_MARKS_PATH,
+  FUNDING_AUTO_TOPUP_PATH,
+  FUNDING_AUTO_TOPUP_SETTINGS_PATH,
+  fundingAutoTopUpJobPath,
+  type AutoTopUpEmailsRequest,
+  type AutoTopUpJob,
+  type AutoTopUpJobRequest,
+  type AutoTopUpMarkItem,
+  type AutoTopUpMarksRequest,
+  type AutoTopUpSettings,
+  type AutoTopUpSettingsRequest,
+  type AutoTopUpView,
+} from '@streaming-monorepo/web2-admin-common';
+
+import {
   TEST_STREAMS_PATH,
   testStreamViewerUrlPath,
   type TestStreamInput,
@@ -416,10 +432,15 @@ export function fetchFunding(): Promise<FundingView> {
  * password and not a session that ended, unless the API says the session ended, and a 429 is the login limiter's
  * lockout.
  */
-async function sendWithPassword<T>(path: string, body: unknown, fallback: string): Promise<T> {
+async function sendWithPassword<T>(
+  path: string,
+  body: unknown,
+  fallback: string,
+  method: 'POST' | 'PUT' = 'POST',
+): Promise<T> {
   const res = await apiFetch(
     path,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     { allowUnauthorized: true },
   );
   if (res.status === 401) {
@@ -514,6 +535,54 @@ export const EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING =
 /** Where each operation of a chequebook bulk stands, as the admin last heard from the manager. */
 export async function fetchFundingChequebookOperations(bulkId: string): Promise<FundingChequebookItem[]> {
   return (await getJson<FundingChequebookBulkAnswer>(fundingChequebookBulkPath(bulkId))).items;
+}
+
+// --- stamp auto top-up -------------------------------------------------------
+
+/** The Auto top-up tab's view: the numbers, the jobs, the email list, the mail, the marked stamps and the warnings. */
+export function fetchAutoTopUp(): Promise<AutoTopUpView> {
+  return getJson<AutoTopUpView>(FUNDING_AUTO_TOPUP_PATH);
+}
+
+/**
+ * Saves the numbers behind the operator's password, since they bound what the wallet job sends from the brand wallet
+ * with none. A 401 is a wrong password, as for a send.
+ */
+export function saveAutoTopUpSettings(password: string, settings: AutoTopUpSettings): Promise<AutoTopUpView> {
+  const body: AutoTopUpSettingsRequest = { password, settings };
+  return sendWithPassword<AutoTopUpView>(
+    FUNDING_AUTO_TOPUP_SETTINGS_PATH,
+    body,
+    'The auto top-up numbers could not be saved.',
+    'PUT',
+  );
+}
+
+/**
+ * Marks these stamps for auto top-up, or takes the mark off them. A 409 `not_markable` carries the API's sentence, and
+ * nothing is marked.
+ */
+export function setAutoTopUpMarks(marked: boolean, items: AutoTopUpMarkItem[]): Promise<AutoTopUpView> {
+  const body: AutoTopUpMarksRequest = { marked, items };
+  return sendJson<AutoTopUpView>('PUT', FUNDING_AUTO_TOPUP_MARKS_PATH, body, {
+    fallback: 'The auto top-up marks could not be saved.',
+  });
+}
+
+/** Replaces the email list the alerts and warnings go to. */
+export function saveAutoTopUpEmails(emails: string[]): Promise<AutoTopUpView> {
+  const body: AutoTopUpEmailsRequest = { emails };
+  return sendJson<AutoTopUpView>('PUT', FUNDING_AUTO_TOPUP_EMAILS_PATH, body, {
+    fallback: 'The email list could not be saved.',
+  });
+}
+
+/** Pauses one of the three jobs, or lets it run again. */
+export function setAutoTopUpJob(job: AutoTopUpJob, paused: boolean): Promise<AutoTopUpView> {
+  const body: AutoTopUpJobRequest = { paused };
+  return sendJson<AutoTopUpView>('PUT', fundingAutoTopUpJobPath(job), body, {
+    fallback: 'The job could not be paused or resumed.',
+  });
 }
 
 // --- public config ----------------------------------------------------------

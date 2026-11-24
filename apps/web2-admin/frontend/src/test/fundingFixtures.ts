@@ -1,6 +1,10 @@
 import {
+  AUTO_TOPUP_DEFAULTS,
+  AUTO_TOPUP_JOBS,
   parseBaseUnits,
   XBZZ_DECIMALS,
+  type AutoTopUpStampState,
+  type AutoTopUpView,
   type AdminFundingNode,
   type ArchiveStamp,
   type ArchiveStampPurchase,
@@ -419,6 +423,50 @@ export function makeArchiveStamps(over: Partial<ArchiveStampsResponse> = {}): Ar
     },
     buyUnavailable: null,
     ttlWarningDays: 30,
+    ...over,
+  };
+}
+
+/**
+ * The Auto top-up view: the default numbers, three jobs running that last ran fine, one address, mail set, no marked
+ * stamp, an estimate of 3 xBZZ a month with the ceiling at half of it, nothing sent today and no warning.
+ */
+export function makeAutoTopUpView(over: Partial<AutoTopUpView> = {}): AutoTopUpView {
+  return {
+    settings: { ...AUTO_TOPUP_DEFAULTS },
+    settingsSavedBy: null,
+    settingsSavedAt: null,
+    jobs: AUTO_TOPUP_JOBS.map((job) => ({
+      job,
+      paused: false,
+      pausedBy: null,
+      pausedAt: null,
+      lastRunAt: '2026-10-05T09:55:00.000Z',
+      lastOk: true,
+      lastOutcome: `The ${job} job found nothing to do.`,
+    })),
+    emails: ['ops@example.org'],
+    mail: { configured: true, lastSentAt: '2026-10-04T08:00:00.000Z', lastError: null },
+    stamps: [],
+    monthlyEstimatePlur: xbzz('3'),
+    dailyCeilingPlur: xbzz('1.5'),
+    sentTodayPlur: '0',
+    warnings: [],
+    ...over,
+  };
+}
+
+/** A marked stamp: the catalogue batch, marked by an operator, never topped up automatically, nothing coming. */
+export function makeMark(over: Partial<AutoTopUpStampState> = {}): AutoTopUpStampState {
+  return {
+    batchId: BATCH.catalogue,
+    nodeId: 'catalogue:bee',
+    nodeLabel: 'catalogue-node',
+    markedBy: 'operator',
+    markedAt: '2026-10-01T12:00:00.000Z',
+    lastTopUp: null,
+    coming: null,
+    problem: null,
     ...over,
   };
 }
