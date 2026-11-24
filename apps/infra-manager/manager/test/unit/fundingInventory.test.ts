@@ -24,7 +24,13 @@ import {
   type StampState,
   suggestedRungDepth,
 } from '@streaming-infra-manager/common';
-import { type FundingInventory, type FundingNode, fundingInventorySchema } from '@streaming-monorepo/contracts';
+import {
+  FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS,
+  type FundingInventory,
+  type FundingNode,
+  fundingInventorySchema,
+  fundingNodeChainCurrent,
+} from '@streaming-monorepo/contracts';
 
 import type { BeeChainState, BeeChequebookAddress, BeeStamp, BeeWallet } from '../../src/domain/BeeClient.js';
 import { BeeHttpError } from '../../src/domain/errors/index.js';
@@ -317,6 +323,7 @@ describe('the funding inventory', () => {
       batch: _batch,
       chequebook: _chequebook,
       replacement: _replacement,
+      chainLagBlocks: _chainLagBlocks,
       ...node
     } = (await inventory.inventory()).stages[0]!.nodes[0]!;
     assert.deepEqual(node, {
@@ -843,6 +850,87 @@ describe('each node’s chequebook in the funding inventory', () => {
   });
 });
 
+/** A chain state whose view is this many blocks behind the tip. */
+const behindBy = (lagBlocks: number, over: Partial<BeeChainState> = {}): BeeChainState =>
+  chainState({ block: 39_000_000, chainTip: 39_000_000 + lagBlocks, ...over });
+
+describe('each node’s view of the chain in the funding inventory', () => {
+  const OWN = `${STREAMER_ID}:bee-uploader`;
+  const GATEWAY = `${LIGHT_ID}:bee-gateway`;
+  const RUNG_360 = `${RUNG_360_ID}:bee-uploader`;
+  const RUNG_720 = `${RUNG_720_ID}:bee-uploader`;
+  const CATALOGUE = `${CATALOGUE_ID}:bee-uploader`;
+
+  /** Each node's lag by its id. */
+  function lagsOf(answer: FundingInventory): Record<string, number | null | undefined> {
+    return Object.fromEntries([...nodesById(answer)].map(([nodeId, node]) => [nodeId, node.chainLagBlocks]));
+  }
+
+  it('answers how many blocks each node’s view is behind the tip, from its chain state, read once a node', async () => {
+    const lags: Record<string, number> = {
+      [OWN_URL]: 0,
+      [GATEWAY_URL]: FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS,
+      [RUNG_360_URL]: FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS + 1,
+      [RUNG_720_URL]: 1_000_000,
+      [CATALOGUE_URL]: 5,
+    };
+    const { inventory, chainAsked } = service({ chainStateAt: async (url) => behindBy(lags[url]!) });
+    const answer = await inventory.inventory();
+    assert.deepEqual(lagsOf(answer), {
+      [OWN]: 0,
+      [GATEWAY]: 120,
+      [RUNG_360]: 121,
+      [RUNG_720]: 1_000_000,
+      [CATALOGUE]: 5,
+    });
+    const nodes = nodesById(answer);
+    assert.deepEqual(
+      [OWN, GATEWAY, RUNG_360, RUNG_720, CATALOGUE].map((id) => fundingNodeChainCurrent(nodes.get(id)!)),
+      [true, true, false, false, true],
+    );
+    assert.deepEqual([...chainAsked].sort(), Object.keys(lags).sort(), 'one chain state read for each node');
+    assert.deepEqual(fundingInventorySchema.parse(answer), answer);
+  });
+
+  it('answers no lag where the chain state was not read or its block and tip make none, and keeps one with no wallet', async () => {
+    const { inventory } = service({
+      walletAt: async (url) => {
+        if (url === RUNG_720_URL) throw new BeeHttpError(503, 'bee GET /wallet → 503: syncing');
+        return wallet();
+      },
+      chainStateAt: async (url) => {
+        if (url === OWN_URL)
+          throw new Error('bee request GET /chainstate failed: The operation was aborted due to timeout');
+        if (url === GATEWAY_URL) return behindBy(-1);
+        if (url === RUNG_360_URL) return chainState({ block: 1.5, chainTip: 3 });
+        if (url === CATALOGUE_URL) return { totalAmount: '0', currentPrice: '24000' } as unknown as BeeChainState;
+        return behindBy(10);
+      },
+    });
+    const answer = await inventory.inventory();
+    assert.deepEqual(lagsOf(answer), {
+      [OWN]: null,
+      [GATEWAY]: null,
+      [RUNG_360]: null,
+      [RUNG_720]: 10,
+      [CATALOGUE]: null,
+    });
+    assert.notEqual(nodesById(answer).get(RUNG_720)?.readError, null, 'its wallet was not read, its chain state was');
+    assert.deepEqual(fundingInventorySchema.parse(answer), answer);
+  });
+
+  it('answers no lag for a node whose address could not be worked out, and asks it nothing', async () => {
+    const { inventory, chainAsked } = service({
+      gatewayApiUrl: async () => {
+        throw new Error('no address for the gateway');
+      },
+    });
+    const answer = await inventory.inventory();
+    assert.equal(nodesById(answer).get(GATEWAY)?.chainLagBlocks, null);
+    assert.ok(!chainAsked.includes(GATEWAY_URL));
+  });
+});
+
 describe('the price of postage in the funding inventory', () => {
   it('answers the price of the first node listed on Gnosis Chain, its block time and the contract’s floor', async () => {
     const { inventory } = service({
@@ -872,6 +960,37 @@ describe('the price of postage in the funding inventory', () => {
     });
     const { chain } = await inventory.inventory();
     assert.equal(chain.postage?.pricePerChunkPerBlockPlur, '26000');
+  });
+
+  it('answers the price of the first node whose view of the chain is current, and of the first node while none is', async () => {
+    const behind = (price: string) => behindBy(FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS + 1, { currentPrice: price });
+    const current = (price: string) => behindBy(FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS, { currentPrice: price });
+    const priceOf = async (chainStateAt: (url: string) => Promise<BeeChainState>) =>
+      (await service({ chainStateAt }).inventory.inventory()).chain.postage?.pricePerChunkPerBlockPlur;
+
+    assert.equal(
+      await priceOf(async (url) =>
+        url === OWN_URL ? behind('99999') : url === CATALOGUE_URL ? current('24000') : behind('30000'),
+      ),
+      '24000',
+      'the catalogue node is the only one current, listed last',
+    );
+    assert.equal(
+      await priceOf(async (url) => (url === OWN_URL ? behind('99999') : behind('30000'))),
+      '99999',
+      'the first node listed while none is current',
+    );
+    assert.equal(
+      await priceOf(async (url) =>
+        url === OWN_URL
+          ? ({ totalAmount: '0', currentPrice: '99999' } as unknown as BeeChainState)
+          : url === GATEWAY_URL
+            ? current('24000')
+            : behind('30000'),
+      ),
+      '24000',
+      'a node that names no block and tip is not current',
+    );
   });
 
   it('answers no price when no node’s chain state names one', async () => {
