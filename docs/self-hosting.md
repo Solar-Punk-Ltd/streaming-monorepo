@@ -509,6 +509,32 @@ manager deployed unless you point it there with `--url` and the Bee host firewal
 address. `apps/infra-manager/docs/features/abr-ladder.md` and `apps/hls-stream/packages/cli/README.md`
 have the details of both paths.
 
+## Mail from the admin
+
+The admin mails the alerts and warnings of its stamp auto top-up
+([funding.md](architecture/funding.md#auto-top-up)) through any SMTP service. Set `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` in the admin's env file. With `SMTP_HOST`
+empty the admin sends no mail and shows the alerts and warnings on its Funding page alone.
+
+Use port 587, where the admin upgrades the connection with STARTTLS, or port 465, where it speaks
+TLS from the start. Most hosting providers close port 25 for outgoing mail.
+
+There are two ways to get a sender:
+
+1. **A relay service with your own domain.** Create an account at an SMTP relay service. Add the
+   DNS records it gives you, SPF, DKIM and DMARC, to the domain you send from, and wait until the
+   service shows the domain as authenticated. `SMTP_FROM` is then an address of that domain, such
+   as `alerts@example.org`, and the host, the user and the password are the service's SMTP
+   credentials. A relay's free plan carries this mail: a normal week is a handful of mails.
+
+2. **A dedicated mailbox.** With no access to a domain's DNS, create a mailbox for this purpose at
+   a mail provider, switch on its app passwords and make one. `SMTP_HOST` is that provider's SMTP
+   server, `SMTP_USER` and `SMTP_FROM` are the mailbox's address, and `SMTP_PASSWORD` is the app
+   password.
+
+The Auto top-up tab of the Funding page shows whether mail is set, when the last mail went out and
+why one failed.
+
 ## Firewall advice
 
 - Close everything by default and open ports one role at a time, as the lists above say.
