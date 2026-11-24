@@ -26,6 +26,11 @@ export interface ScheduleFieldProps {
   disabled?: boolean;
   /** Why the field is locked, when it is; the backend says the same sentence. */
   helperText?: string;
+  /**
+   * Keep the shortcut chips in place, disabled, while the field is disabled, so the form keeps its height. Without
+   * it a disabled field drops them, as a schedule locked for good does.
+   */
+  keepShortcutsWhenDisabled?: boolean;
 }
 
 /** The typing is matched on digits, so `1830`, `18:30` and `18` all find 18:30. */
@@ -45,7 +50,14 @@ const digitsOf = (text: string) => text.replace(/\D/g, '');
  * The scheduled start is only shown to viewers and starts nothing, so a day
  * or a time that has already gone by can be picked like any other.
  */
-export function ScheduleField({ value, onChange, error = false, disabled = false, helperText }: ScheduleFieldProps) {
+export function ScheduleField({
+  value,
+  onChange,
+  error = false,
+  disabled = false,
+  helperText,
+  keepShortcutsWhenDisabled = false,
+}: ScheduleFieldProps) {
   const now = new Date();
   const picks = quickPicks(now);
   const caption = describeSchedule(value, now);
@@ -153,7 +165,7 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
           renderInput={(params) => <TextField {...params} label="Scheduled Time *" fullWidth error={error} />}
         />
       </Stack>
-      {disabled ? null : (
+      {disabled && !keepShortcutsWhenDisabled ? null : (
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
           {picks.map((pick) => (
             <Chip
@@ -162,6 +174,7 @@ export function ScheduleField({ value, onChange, error = false, disabled = false
               size="small"
               variant="outlined"
               clickable
+              disabled={disabled}
               onClick={() => onChange(pick.value)}
             />
           ))}
