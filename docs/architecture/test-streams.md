@@ -85,7 +85,8 @@ the address of its own viewer.
 
 - **What a viewer is deployed with.** The catalogue's owner as the feed owner and the catalogue's
   topic as the feed topic, both answered by `GET /api/config`. They are the same for every test
-  stream. The viewer lists what the audience's viewer lists.
+  stream. The page shows the owner with `0x` in front, as the manager's "Watch a stream" takes it.
+  The viewer lists what the audience's viewer lists.
 - **The address.** `viewer_url` on the stream's row (migration 033), `viewerUrl` on the `Stream`,
   null until given. It is any address that starts with `http://` or `https://` and reads as a URL
   (`viewerUrlProblem`): a host name or an IP address, with a port, a path or anything else it

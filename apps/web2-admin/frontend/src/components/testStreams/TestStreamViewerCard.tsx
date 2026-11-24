@@ -89,6 +89,9 @@ export function TestStreamViewerCard({
   };
 
   const link = stream.viewerUrl ? watchPageUrl(stream.viewerUrl, stream) : null;
+  // The manager's "Watch a stream" takes a feed owner as 0x plus 40 hex characters, and `GET /api/config` answers the
+  // catalogue's owner without the 0x, so it is shown and copied with one.
+  const feedOwner = feed ? `0x${feed.owner.replace(/^0x/i, '')}` : null;
 
   return (
     <Paper variant="outlined" sx={{ p: 3 }}>
@@ -97,9 +100,9 @@ export function TestStreamViewerCard({
 
         <Section title="Deploying a viewer">
           <Typography variant="body2">{DEPLOY_A_VIEWER}</Typography>
-          {feed ? (
+          {feed && feedOwner ? (
             <>
-              <ValueField label="Feed owner" value={feed.owner} />
+              <ValueField label="Feed owner" value={feedOwner} />
               <ValueField label="Feed topic" value={feed.topic} />
             </>
           ) : (
