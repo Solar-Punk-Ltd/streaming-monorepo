@@ -34,6 +34,7 @@ import {
   type FundingPostage,
   type FundingReplacement,
   fundingInventorySchema,
+  fundingNodeChainCurrent,
 } from '@streaming-monorepo/contracts';
 
 import type { Profile } from '../../types/index.js';
@@ -135,6 +136,14 @@ interface NodeAnswer {
   price: string | null;
 }
 
+/** What one read of a node's `/chainstate` says: the price it names, and how far its view is behind the tip. */
+interface ChainReading {
+  price: string | null;
+  lagBlocks: number | null;
+}
+
+const UNREAD_CHAIN: ChainReading = { price: null, lagBlocks: null };
+
 /**
  * One of a chequebook's two reads: what it read, the node saying it has no chequebook, or why it could not be read, in
  * a sentence with no address in it.
@@ -151,7 +160,7 @@ interface ChequebookBalances {
 interface Reads {
   wallets: Map<string, Promise<WalletReading>>;
   batches: Map<string, Promise<FundingBatch>>;
-  prices: Map<string, Promise<string | null>>;
+  chains: Map<string, Promise<ChainReading>>;
   /** The node's chequebook, null when it has none, both of its reads made once for an address. */
   chequebooks: Map<string, Promise<FundingChequebook | null>>;
 }
@@ -380,6 +389,28 @@ function priceFrom(state: BeeChainState): string | null {
   return value !== null && value > 0n ? value.toString() : null;
 }
 
+/**
+ * How many blocks a node's view of the chain is behind the tip: its `/chainstate`'s `chainTip` less its `block`, taken
+ * as the node's readiness read takes the two (`beeNodeObservation.ts`), whole numbers with the block not past the tip.
+ * Null for anything else.
+ */
+function chainLagFrom(state: BeeChainState): number | null {
+  const { block, chainTip } = (state ?? {}) as { block?: unknown; chainTip?: unknown };
+  return typeof block === 'number' &&
+    typeof chainTip === 'number' &&
+    Number.isSafeInteger(block) &&
+    Number.isSafeInteger(chainTip) &&
+    block >= 0 &&
+    chainTip >= block
+    ? chainTip - block
+    : null;
+}
+
+/** What one `/chainstate` answer says, the price it names and how far the node is behind the tip. */
+function chainReadingFrom(state: BeeChainState): ChainReading {
+  return { price: priceFrom(state), lagBlocks: chainLagFrom(state) };
+}
+
 /** What postage costs at this price on Gnosis Chain, or null for no price. */
 function postageOf(price: string | null): FundingPostage | null {
   if (price === null) return null;
@@ -508,7 +539,10 @@ function chequebookFrom(
  * Each node's batch is the one the manager uses for its uploads: the stage's own batch (`stamp_id`) for the stage's
  * own node, the rung's batch for a rung, and the designated batch for the catalogue node, never the one a pending
  * move left. A gateway has none. The batch is read from the node's `GET /stamps/{id}`, and the price of postage from
- * the `/chainstate` of the first node listed whose wallet reads on Gnosis Chain, since the price is the chain's.
+ * the `/chainstate` of the first node listed whose wallet reads on Gnosis Chain and whose view of the chain is current
+ * (`fundingNodeChainCurrent`), or of the first such node at all while none is current, since the price is the chain's.
+ * The same `/chainstate` gives each node's `chainLagBlocks`, how many blocks its view is behind the tip, null when it
+ * could not be read.
  *
  * The inventory also lists the brand's archive batches at its top, in the order they were designated and whether or
  * not a catalogue node is designated, each read with the same `GET /stamps/{id}` from the node that holds it and named
@@ -551,7 +585,7 @@ export class FundingInventoryService {
   async inventory(): Promise<FundingInventory> {
     const observedAt = this.now().toISOString();
     const profiles = (await this.deps.profiles.list()).filter((profile) => profile.status !== 'REMOVING');
-    const reads: Reads = { wallets: new Map(), batches: new Map(), prices: new Map(), chequebooks: new Map() };
+    const reads: Reads = { wallets: new Map(), batches: new Map(), chains: new Map(), chequebooks: new Map() };
     const read = (planned: PlannedNode) => this.nodeOf(planned, reads);
 
     const stages = await Promise.all(
@@ -566,7 +600,9 @@ export class FundingInventoryService {
       this.archiveBatchesOf(isDesignated(designation) ? designation.profileName : null, profiles, reads),
     ]);
     const listed = [...stages.flatMap(({ answers }) => answers), ...(catalogue ? [catalogue] : [])];
-    const price = listed.find((answer) => answer.price !== null)?.price ?? null;
+    // The price of a node whose view of the chain is current, and of the first that names one when none is.
+    const priced = listed.filter((answer) => answer.price !== null);
+    const price = (priced.find((answer) => fundingNodeChainCurrent(answer.node) === true) ?? priced[0])?.price ?? null;
 
     const answer: FundingInventory = {
       observedAt,
@@ -597,7 +633,7 @@ export class FundingInventoryService {
     const holder = holderOf(designation, profiles);
     if (!holder) return null;
     const planned = this.ownNodeOf(holder, null);
-    const reads: Reads = { wallets: new Map(), batches: new Map(), prices: new Map(), chequebooks: new Map() };
+    const reads: Reads = { wallets: new Map(), batches: new Map(), chains: new Map(), chequebooks: new Map() };
     const { nodeId, label, role } = planned;
     let reading: WalletReading;
     try {
@@ -746,8 +782,8 @@ export class FundingInventoryService {
   }
 
   /**
-   * One node with its wallet, its batch, its chain state's price and its chequebook, each read once however many
-   * stages name it.
+   * One node with its wallet, its batch, its chain state, the price and how far its view of the chain is behind, and its
+   * chequebook, each read once however many stages name it.
    */
   private async nodeOf(planned: PlannedNode, reads: Reads): Promise<NodeAnswer> {
     let apiUrl: string;
@@ -757,20 +793,23 @@ export class FundingInventoryService {
       logger.debug(`[Funding] could not work out the address of ${planned.label}: ${getErrorMessage(err)}`);
       const readError = addressErrorOf(planned.role);
       const batch = planned.batchId === null ? null : unreadBatch(planned.batchId, readError);
-      return { node: this.unread(planned, readError, batch, unreadChequebook(readError)), price: null };
+      return { node: this.unread(planned, readError, batch, unreadChequebook(readError), null), price: null };
     }
-    const [reading, batch, price, chequebook] = await Promise.all([
+    const [reading, batch, chain, chequebook] = await Promise.all([
       this.walletOf(planned, apiUrl, reads),
       planned.batchId === null ? null : this.batchOf(planned, planned.batchId, apiUrl, reads),
-      this.priceOf(planned, apiUrl, reads),
+      this.chainOf(planned, apiUrl, reads),
       this.chequebookOf(planned, apiUrl, reads),
     ]);
-    if (!reading.ok) return { node: this.unread(planned, reading.readError, batch, chequebook), price: null };
+    const chainLagBlocks = chain.lagBlocks;
+    if (!reading.ok) {
+      return { node: this.unread(planned, reading.readError, batch, chequebook, chainLagBlocks), price: null };
+    }
     const { nodeId, label, role } = planned;
     const replacement = replacementOf(planned.offer, this.shapeOf(planned.batchId, batch));
     return {
-      node: { nodeId, label, role, ...pick(reading), readError: null, batch, chequebook, replacement },
-      price,
+      node: { nodeId, label, role, ...pick(reading), readError: null, batch, chequebook, replacement, chainLagBlocks },
+      price: chain.price,
     };
   }
 
@@ -816,22 +855,25 @@ export class FundingInventoryService {
     }
   }
 
-  /** The price the node's chain state names, or null when it could not be read. Never throws. */
-  private async priceOf(planned: PlannedNode, apiUrl: string, reads: Reads): Promise<string | null> {
+  /**
+   * What the node's chain state says, the price and how far its view is behind the tip, each null when it could not be
+   * read. Never throws.
+   */
+  private async chainOf(planned: PlannedNode, apiUrl: string, reads: Reads): Promise<ChainReading> {
     try {
-      let pending = reads.prices.get(apiUrl);
+      let pending = reads.chains.get(apiUrl);
       if (!pending) {
-        pending = this.deps.chainState(apiUrl).then(priceFrom, (err: unknown) => {
+        pending = this.deps.chainState(apiUrl).then(chainReadingFrom, (err: unknown) => {
           logger.debug(
             `[Funding] could not read the chain state of ${planned.label}: ${readFailureFrom(err, 0).reason}`,
           );
-          return null;
+          return UNREAD_CHAIN;
         });
-        reads.prices.set(apiUrl, pending);
+        reads.chains.set(apiUrl, pending);
       }
       return await pending;
     } catch {
-      return null;
+      return UNREAD_CHAIN;
     }
   }
 
@@ -867,6 +909,7 @@ export class FundingInventoryService {
     readError: string,
     batch: FundingBatch | null,
     chequebook: FundingChequebook | null,
+    chainLagBlocks: number | null,
   ): FundingNode {
     const { nodeId, label, role } = planned;
     const replacement = replacementOf(planned.offer, this.shapeOf(planned.batchId, batch));
@@ -881,6 +924,7 @@ export class FundingInventoryService {
       batch,
       chequebook,
       replacement,
+      chainLagBlocks,
     };
   }
 }
