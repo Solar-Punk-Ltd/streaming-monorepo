@@ -498,6 +498,8 @@ export function StreamFormPage() {
                   error={!testOnly && error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
                   disabled={saving || scheduleLocked || testOnly}
                   helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
+                  // Checking Test stream greys the shortcuts out rather than dropping them, so the form keeps its height.
+                  keepShortcutsWhenDisabled={testOnly}
                 />
               </Grid>
             </Grid>
