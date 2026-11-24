@@ -3,13 +3,15 @@ import {
   autoTopUpStampPlan,
   autoTopUpWalletPlan,
   operableBatch,
+  SECONDS_PER_DAY,
   type AutoTopUpSettings,
   type AutoTopUpStampPlan,
   type AutoTopUpWalletPlan,
   type OperableBatch,
 } from '@streaming-monorepo/web2-admin-common';
 
-import type { AutoTopUpMarkedStamp } from './autoTopUpJobs.js';
+import type { AutoTopUpMarkedStamp, AutoTopUpTickContext } from './autoTopUpJobs.js';
+import type { StampName } from './autoTopUpTexts.js';
 import { nodeName } from './FundingService.js';
 
 /** A node whose wallet was read: its address and both its balances. */
@@ -26,7 +28,8 @@ export type ReadWalletNode = FundingNode & { walletAddress: string; xdaiWei: str
  * - `expired`: the batch ran out, and takes a Buy new.
  * - `pending`: Bee does not call the batch usable yet, as one just bought.
  * - `unfunded`: no stage's node and not the catalogue node holds it: an archive stamp left on a node that is the
- *   catalogue node no longer, whose wallet the admin does not fund, so the admin does not top it up.
+ *   catalogue node no longer, whose wallet the admin does not fund, so the admin does not top it up. `due` is whether
+ *   the batch, read whole, is under the threshold.
  */
 export type AutoTopUpStampReading =
   | {
@@ -37,7 +40,8 @@ export type AutoTopUpStampReading =
       plan: AutoTopUpStampPlan;
     }
   | { state: 'unread'; stamp: AutoTopUpMarkedStamp; reason: string }
-  | { state: 'gone' | 'expired' | 'pending' | 'unfunded'; stamp: AutoTopUpMarkedStamp };
+  | { state: 'unfunded'; stamp: AutoTopUpMarkedStamp; due: boolean }
+  | { state: 'gone' | 'expired' | 'pending'; stamp: AutoTopUpMarkedStamp };
 
 export type ReadyStamp = Extract<AutoTopUpStampReading, { state: 'ready' }>;
 
@@ -54,7 +58,10 @@ export function readStamp(
   const { node, batch } = stamp;
   if (!batch || batch.state === 'gone') return { state: 'gone', stamp };
   if (batch.ttlSeconds === 0 || batch.state === 'expired') return { state: 'expired', stamp };
-  if (!node) return { state: 'unfunded', stamp };
+  if (!node) {
+    const due = operableBatch(batch) && autoTopUpStampPlan(batch, settings, postage).phase === 'due';
+    return { state: 'unfunded', stamp, due };
+  }
   if (!walletRead(node)) {
     return {
       state: 'unread',
@@ -128,6 +135,39 @@ export function walletGroupsOf(due: readonly ReadyStamp[]): AutoTopUpWalletGroup
     const byBatch = new Map(group.stamps.map((stamp) => [stamp.batch.batchId.toLowerCase(), stamp]));
     return { address, balances, stamps: plan.items.map((item) => byBatch.get(item.batchId)!), plan };
   });
+}
+
+/**
+ * How long a stamp with `ttlSeconds` left has been due: its time left counts down a second a second at a steady
+ * price, so it crossed the threshold that long ago. 0 for one not due.
+ */
+export function dueForSeconds(ttlSeconds: number, settings: AutoTopUpSettings): number {
+  return Math.max(0, settings.topUpUnderDays * SECONDS_PER_DAY - ttlSeconds);
+}
+
+/**
+ * A marked stamp as a warning names it, as the alert job names it: the catalogue batch, an archive stamp by its label,
+ * or a stage's batch, and the node that holds it.
+ */
+export function stampNameOf(context: AutoTopUpTickContext, stamp: AutoTopUpMarkedStamp): StampName {
+  const { inventory } = context.funding;
+  const { mark } = stamp;
+  const archived = stamp.archive
+    ? inventory.archiveBatches?.find(
+        (archive) => archive.batchId.toLowerCase() === mark.batchId && archive.nodeId === mark.nodeId,
+      )
+    : undefined;
+  const stage = inventory.stages.find((candidate) => candidate.nodes.some((node) => node.nodeId === mark.nodeId));
+  const title = stamp.archive
+    ? archived?.label
+      ? `Archive stamp "${archived.label}"`
+      : 'An archive stamp'
+    : inventory.catalogue?.nodeId === mark.nodeId
+      ? 'The catalogue batch'
+      : stage
+        ? `The batch of stage "${stage.name}"`
+        : 'A marked batch';
+  return { batchId: mark.batchId, title, nodeLabel: stamp.node?.label ?? archived?.nodeLabel ?? mark.nodeLabel };
 }
 
 /**
