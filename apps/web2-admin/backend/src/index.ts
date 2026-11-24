@@ -368,13 +368,12 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   batchPurchases.boot();
-  // Stamp auto top-up's settings, marks, email list and pauses. This admin sends no mail, so its alerts and warnings
-  // show on the page alone.
+  // Stamp auto top-up's settings, marks, email list and pauses.
   const autoTopUp = new StampAutoTopUpService({
     store: new StampAutoTopUpRepository(database.pool),
     manager: managerFunding,
     audit: auditLog,
-    mailConfigured: () => false,
+    mailConfigured: () => config.mail !== null,
   });
   const fundingService = new FundingService({
     wallet: brandWallet,
