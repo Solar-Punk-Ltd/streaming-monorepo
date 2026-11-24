@@ -216,7 +216,7 @@ database.
 1. **The alert job** moves no money. For a marked stamp within a day of the threshold it works out
    the days the top-up adds, its cost, the cost plus the margin, and what the brand wallet will
    send the stamp's node. It records that alert, shows it on the Auto top-up tab and mails it. It
-   also raises the warnings and mails them.
+   also mails every warning that stands.
 2. **The wallet job** sends from the brand wallet, signed with no password. For a due top-up whose
    node holds less xBZZ than it costs, it sends the node what it lacks for the cost plus the
    margin. A node that holds less than 0.001 xDAI for each of its due top-ups is sent 0.01 xDAI.
@@ -269,6 +269,21 @@ SMTP set they show on the tab alone.
 | The brand wallet is low on xDAI | Its xDAI is under 0.1. Once, then daily                                                   | The balance, the threshold and the address to send xDAI to                                                |
 | A top-up failed                 | A due marked stamp could not be topped up, or for an hour its node was unread or unfunded | The stamp, the time it has left, the reason and what a person can do                                      |
 | A marked stamp expired          | Once                                                                                      | Which stamp, and that it takes a Buy new                                                                  |
+
+A warning is recorded by the job that sees its cause, at once and in the database, so it stands
+whichever backend runs the next tick. The alert job mails every warning that stands.
+
+| Warning                             | Raised by      | For                                                                                                                                            |
+| ----------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| A top-up failed                     | the stamp job  | An operation refused or failed, a stamp due again within 24 hours, a node the admin funds no more                                              |
+| A top-up failed                     | the wallet job | A stamp due for an hour that no send can go for: the daily ceiling, a short brand wallet, an unconfirmed or changed address, an `unknown` send |
+| A top-up failed                     | the alert job  | A node unread or behind for an hour, and a node short for an hour while the wallet job is paused                                               |
+| The brand wallet is low, both kinds | the alert job  | The brand wallet's xBZZ under the monthly estimate, its xDAI under the threshold                                                               |
+| A marked stamp expired              | the alert job  | A marked stamp that ran out                                                                                                                    |
+
+The stamp job clears "a top-up failed" after a top-up, and the alert job clears it once the stamp
+is due no longer. The alert job also keeps, for every marked stamp, since when its node is unread
+or behind.
 
 - The monthly estimate is 30 days of top-ups for every marked stamp that can be topped up, at
   today's price, with no margin.
@@ -405,9 +420,9 @@ the next send and the Funding page refresh the open one, and the page resumes it
 | `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off                         |
 | `FUNDING_RPC_URL`     | the manager's `manager/.env` | the chain endpoint the funding API reads and broadcasts through. Unset, it is `BEE_RPC_ENDPOINT`                           |
 | `SMTP_HOST`           | the admin's env file         | the mail service's SMTP server. Empty, no mail is sent and the alerts and warnings show on the Auto top-up tab alone       |
-| `SMTP_PORT`           | the admin's env file         | 587, with STARTTLS, or 465, with TLS from the start. The admin sends over an encrypted connection only                     |
-| `SMTP_USER`           | the admin's env file         | the user name the mail service gave                                                                                        |
-| `SMTP_PASSWORD`       | the admin's env file         | that user's password or key, a secret                                                                                      |
+| `SMTP_PORT`           | the admin's env file         | 587, with STARTTLS, or 465, with TLS from the start. With `SMTP_HOST` set, any other value stops the start, naming the key |
+| `SMTP_USER`           | the admin's env file         | the user name the mail service gave. Required once `SMTP_HOST` is set                                                      |
+| `SMTP_PASSWORD`       | the admin's env file         | that user's password or key, a secret. Required once `SMTP_HOST` is set                                                    |
 | `SMTP_FROM`           | the admin's env file         | the address the mails come from, one the mail service sends for                                                            |
 
 The sample env files describe each setting in full, and the admin's deploy script refuses the

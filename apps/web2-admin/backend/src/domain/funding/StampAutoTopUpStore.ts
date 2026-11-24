@@ -113,7 +113,20 @@ export interface AutoTopUpJournalledSends {
 /**
  * Where stamp auto top-up keeps its marks, its settings and what the three jobs hold between their runs: Postgres,
  * migration 034, or memory in the unit tests. The routes write the settings, the pauses, the email list and the marks;
- * the alert job writes the alerts, the warnings and the mail row; the tick writes each job's run.
+ * the alert job writes the alerts, `unreadSince` and the mail row; the tick writes each job's run.
+ *
+ * A warning is written by the job that sees its cause, at once, so it stands in the database whichever backend runs
+ * the next tick:
+ *
+ * - `topup_failed` is raised by the stamp job for an operation refused or failed, a stamp due again within 24 hours,
+ *   and a node the admin funds no more; by the wallet job for a stamp due for an hour that no send can go for, because
+ *   of the daily ceiling, a brand wallet that is short, an unconfirmed or changed address, or the hold of an `unknown`
+ *   send; and by the alert job for a node unread or behind for an hour, and for a node short for an hour while the
+ *   wallet job is paused.
+ * - `topup_failed` is cleared by the stamp job after a top-up, and by the alert job once the stamp is due no longer.
+ * - `wallet_xbzz`, `wallet_xdai` and `stamp_expired` are raised and cleared by the alert job.
+ *
+ * The alert job mails every warning that stands, whichever job raised it.
  */
 export interface StampAutoTopUpStore {
   /**
@@ -146,8 +159,10 @@ export interface StampAutoTopUpStore {
   setAlert(batchId: string, alert: AutoTopUpAlert | null): Promise<void>;
   /** Sets `alertedAt` on the recorded alerts of these stamps that have none yet. */
   setAlerted(batchIds: readonly string[], at: Date): Promise<void>;
+  /** Writes since when a stamp's node is unread or behind, or null once it reads well: the alert job's, each tick. */
   setUnreadSince(batchId: string, since: Date | null): Promise<void>;
 
+  /** Every warning that stands, whichever job raised it. */
   warnings(): Promise<AutoTopUpWarningRow[]>;
   /** Raises a warning, or words a standing one anew: one that stands keeps its `since` and its `mailedAt`. */
   raiseWarning(key: AutoTopUpWarningKey, message: string, at: Date): Promise<void>;
