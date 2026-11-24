@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
-import { Alert, Box, Button, CircularProgress, Divider, Grid, Paper, Stack, Typography } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Checkbox,
+  CircularProgress,
+  Divider,
+  FormControlLabel,
+  FormHelperText,
+  Grid,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
 import {
   type MediaType,
   type StageSummary,
@@ -126,153 +139,42 @@ function stageLockOf(stream: Stream | null): string | null {
   return null;
 }
 
-/** Said when New test stream is sent with no stage: a test checks the path to one stage. */
+/** Said when a test stream is sent with no stage: a test checks the path to one stage. */
 export const TEST_STAGE_REQUIRED = 'Pick the stage the test runs on.';
 
+/** Under the Test stream box on Create New Stream. */
+export const TEST_STREAM_HELP =
+  'A test stream goes live on its stage like any stream and stays off the catalogue, so no viewer’s list shows it. ' +
+  'It takes a name and a stage alone.';
+
 /**
- * The media type of every test stream. The stream form offers no media type and saves every stream as video, so the
- * test form offers none either, and an address that names one is not read.
+ * The media type of every test stream. The stream form offers no media type and saves every stream as video, so a
+ * test stream is video too, and an address that names a media type is not read.
  */
 const TEST_STREAM_MEDIA_TYPE: MediaType = 'video';
 
+/** The messages the Test stream box makes moot when it changes: each about a field required on one side alone. */
+const REQUIRED_MESSAGES: readonly string[] = [...REQUIRED.map((rule) => rule.message), TEST_STAGE_REQUIRED];
+
 /**
- * New test stream: a title and a stage, and nothing else, sent to `POST /api/streams/test` as a video stream. "Test
- * this setup" on a stream's page opens it with that stream's stage in the address. A test stream's page opens once it
- * is created, with its encoder details at once.
+ * `/create` and `/edit/:id`. On create, the Test stream box under Stream Name makes the stream a test stream: Name and
+ * Stage stay, the fields a test stream does not take are disabled with their values kept, and Create sends
+ * `POST /api/streams/test` as a video stream with no image. "Test this setup" on a stream's page opens
+ * `/create?test=1&stageId=<id>`, with the box checked and that stage filled in.
  */
-function TestStreamForm({ stageParam }: { stageParam: string }) {
-  const navigate = useNavigate();
-  const snackbar = useSnackbar();
-  const [title, setTitle] = useState('');
-  const [stageId, setStageId] = useState(stageParam);
-  const [stages, setStages] = useState<StageSummary[] | null>(null);
-  const [stagesError, setStagesError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .fetchStages()
-      .then((list) => {
-        if (cancelled) return;
-        setStages(list);
-        // A form that came with no stage starts on the one stage a test could go on, when there is only one.
-        const offered = assignableStages(list);
-        if (offered.length === 1) setStageId((current) => current || offered[0]!.stageId);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        setStages([]);
-        setStagesError(errorMessage(e, 'Could not load the stages'));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const chosenStage = stages?.find((stage) => stage.stageId === stageId) ?? null;
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setError(ERROR_MESSAGES.NAME_REQUIRED);
-      return;
-    }
-    if (!stageId) {
-      setError(TEST_STAGE_REQUIRED);
-      return;
-    }
-    setError(null);
-    setSaving(true);
-    try {
-      const created = await api.createTestStream({
-        title: title.trim(),
-        mediaType: TEST_STREAM_MEDIA_TYPE,
-        stageId,
-      });
-      snackbar.success(`"${created.title}" created.`);
-      navigate(`/streams/${created.id}`);
-    } catch (err) {
-      setError(errorMessage(err, 'Failed to create the test stream'));
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Stack spacing={3} sx={{ width: '100%', maxWidth: 760, mx: 'auto' }}>
-      <Typography variant="h5" component="h1">
-        New test stream
-      </Typography>
-
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Box component="form" onSubmit={(e) => void submit(e)} noValidate>
-          <Stack spacing={3}>
-            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              A test stream goes live on its stage like any stream and stays off the catalogue, so no viewer’s list
-              shows it. Its page shows the encoder details and how the team watches it.
-            </Typography>
-            {error ? <Alert severity="error">{error}</Alert> : null}
-            <NameField
-              value={title}
-              onChange={(v) => {
-                setTitle(v);
-                if (error === ERROR_MESSAGES.NAME_REQUIRED && v.trim()) setError(null);
-              }}
-              error={error === ERROR_MESSAGES.NAME_REQUIRED}
-              disabled={saving}
-            />
-            <Stack spacing={1}>
-              <StageField
-                value={stageId}
-                onChange={(v) => {
-                  setStageId(v);
-                  if (error === TEST_STAGE_REQUIRED && v) setError(null);
-                }}
-                stages={stages}
-                loadError={stagesError}
-                disabled={saving}
-              />
-              {chosenStage ? <StageReadinessWarning stage={chosenStage} /> : null}
-            </Stack>
-            <Stack direction="row" spacing={2}>
-              <Button type="submit" variant="contained" disabled={saving}>
-                {saving ? 'Creating test stream…' : 'Create test stream'}
-              </Button>
-              <Button onClick={() => navigate(-1)} disabled={saving}>
-                Cancel
-              </Button>
-            </Stack>
-          </Stack>
-        </Box>
-      </Paper>
-    </Stack>
-  );
-}
-
-/** `/create`, `/create?test=1` and `/edit/:id`: the stream form, or New test stream where the address asks for it. */
 export function StreamFormPage() {
-  const { id } = useParams<{ id?: string }>();
-  const [params] = useSearchParams();
-  if (!id && params.get('test') === '1') {
-    return (
-      <TestStreamForm
-        // A new form for every address, so "Test this setup" from another stream starts from that stream.
-        key={params.toString()}
-        stageParam={params.get('stageId') ?? ''}
-      />
-    );
-  }
-  return <StreamForm />;
-}
-
-function StreamForm() {
   const { id } = useParams<{ id?: string }>();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
   const snackbar = useSnackbar();
+  const [params] = useSearchParams();
+  const testParam = !id && params.get('test') === '1';
+  const stageParam = id ? '' : (params.get('stageId') ?? '');
 
-  const [form, setForm] = useState<FormState>(() => (isEdit ? EMPTY : freshForm()));
+  const [form, setForm] = useState<FormState>(() => (isEdit ? EMPTY : { ...freshForm(), stageId: stageParam }));
+  // The Test stream box, on create alone.
+  const [test, setTest] = useState(testParam);
+  const testOnly = test && !isEdit;
   const [loaded, setLoaded] = useState<Stream | null>(null);
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -305,6 +207,14 @@ function StreamForm() {
     // something this keystroke did not touch, and stays.
     const rule = REQUIRED.find((r) => r.message === error);
     if (rule?.filled(next)) setError(null);
+    if (error === TEST_STAGE_REQUIRED && next.stageId) setError(null);
+  };
+
+  // Checking or unchecking changes which fields are required, so a "… is required" message from before is moot.
+  // The values of the fields it disables stay as they were.
+  const toggleTest = (checked: boolean) => {
+    setTest(checked);
+    if (error !== null && REQUIRED_MESSAGES.includes(error)) setError(null);
   };
 
   useEffect(() => {
@@ -318,7 +228,8 @@ function StreamForm() {
     setError(null);
     if (!id) {
       setLoaded(null);
-      setForm(freshForm());
+      setForm({ ...freshForm(), stageId: stageParam });
+      setTest(testParam);
       return;
     }
     let cancelled = false;
@@ -346,7 +257,8 @@ function StreamForm() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+    // A new address on create, "Test this setup" from another stream say, starts the form again from it.
+  }, [id, testParam, stageParam]);
 
   useEffect(() => {
     let cancelled = false;
@@ -431,9 +343,40 @@ function StreamForm() {
     if (loaded?.hasThumbnail) setRemoveStored(true);
   };
 
+  // A test stream takes a name and a stage alone, as a video stream with no image. Catches every failure into the
+  // form's error line, like `submit`.
+  const createTest = async () => {
+    if (!form.title.trim()) {
+      setError(ERROR_MESSAGES.NAME_REQUIRED);
+      return;
+    }
+    if (!form.stageId) {
+      setError(TEST_STAGE_REQUIRED);
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const created = await api.createTestStream({
+        title: form.title.trim(),
+        mediaType: TEST_STREAM_MEDIA_TYPE,
+        stageId: form.stageId,
+      });
+      snackbar.success(`"${created.title}" created.`);
+      navigate(`/streams/${created.id}`);
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to create the test stream'));
+      setSaving(false);
+    }
+  };
+
   // Catches every failure into the form's error line, so the form calls it without awaiting.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (testOnly) {
+      await createTest();
+      return;
+    }
     const invalid = firstMissing(form);
     if (invalid) {
       setError(invalid);
@@ -514,11 +457,20 @@ function StreamForm() {
               error={error === ERROR_MESSAGES.NAME_REQUIRED}
               disabled={saving}
             />
+            {isEdit ? null : (
+              <Box>
+                <FormControlLabel
+                  control={<Checkbox checked={test} onChange={(e) => toggleTest(e.target.checked)} disabled={saving} />}
+                  label="Test stream"
+                />
+                <FormHelperText sx={{ mt: 0 }}>{TEST_STREAM_HELP}</FormHelperText>
+              </Box>
+            )}
             <DescriptionField
               value={form.description}
               onChange={(v) => set('description', v)}
-              error={error === ERROR_MESSAGES.DESCRIPTION_REQUIRED}
-              disabled={saving}
+              error={!testOnly && error === ERROR_MESSAGES.DESCRIPTION_REQUIRED}
+              disabled={saving || testOnly}
             />
             {/*
               Two short answers that both grow downwards — a list of chips and
@@ -527,14 +479,14 @@ function StreamForm() {
             */}
             <Grid container spacing={3} sx={{ alignItems: 'flex-start' }}>
               <Grid size={{ xs: 12, md: 6 }}>
-                <TagsField value={form.tags} onChange={(v) => set('tags', v)} disabled={saving} />
+                <TagsField value={form.tags} onChange={(v) => set('tags', v)} disabled={saving || testOnly} />
               </Grid>
               <Grid size={{ xs: 12, md: 6 }}>
                 <ScheduleField
                   value={form.scheduledStartTime}
                   onChange={(v) => set('scheduledStartTime', v)}
-                  error={error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
-                  disabled={saving || scheduleLocked}
+                  error={!testOnly && error === ERROR_MESSAGES.SCHEDULED_TIME_REQUIRED}
+                  disabled={saving || scheduleLocked || testOnly}
                   helperText={scheduleLocked ? SCHEDULE_LOCKED : undefined}
                 />
               </Grid>
@@ -571,7 +523,7 @@ function StreamForm() {
               onPick={(file) => void pickThumbnail(file)}
               onRemove={removeThumbnail}
               error={thumbnailError}
-              disabled={saving}
+              disabled={saving || testOnly}
             />
 
             <Stack direction="row" spacing={2}>
