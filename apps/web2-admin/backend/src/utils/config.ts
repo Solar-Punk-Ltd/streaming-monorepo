@@ -28,6 +28,7 @@ import {
   managerFundingBaseUrl,
   managerFundingUrlProblem,
 } from './fundingSettings.js';
+import { mailSettingsFrom, type MailSettings } from './mailSettings.js';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -139,6 +140,12 @@ export interface AppConfig {
   exportParallelReads: number;
   /** The `ARCHIVE_*` settings of archiving a recording (`archiveSettings.ts`). */
   archive: ArchiveSettings;
+  /**
+   * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM`: the mail service the alerts and warnings
+   * of stamp auto top-up go through (`mailSettings.ts`), or null while `SMTP_HOST` is empty, and then no mail is sent.
+   * The password is never logged.
+   */
+  mail: MailSettings | null;
   /**
    * `WEB2_ADMIN_VERSION` and `WEB2_ADMIN_COMMIT`: the build this process runs, which deploy/deploy.sh builds into the
    * api image. Signed-in users read it at GET /api/version.
@@ -263,5 +270,6 @@ export const config: AppConfig = {
   exportDir: optional('EXPORT_DIR', path.join(os.tmpdir(), 'web2-admin-exports')),
   exportParallelReads: exportParallelReads(),
   archive: archiveSettingsFrom(process.env),
+  mail: mailSettingsFrom(process.env),
   version: versionFrom(process.env),
 };

@@ -60,6 +60,7 @@ import { StreamStateService } from './domain/StreamStateService.js';
 import { config } from './utils/config.js';
 import { getErrorStack } from './utils/errorUtils.js';
 import { MANAGER_API_URL_KEY } from './utils/fundingSettings.js';
+import { describeMailSettings } from './utils/mailSettings.js';
 import { retiredEnvKeysSet } from './utils/retiredEnv.js';
 
 const logger = Logger.getInstance();
@@ -133,6 +134,8 @@ function logStartupConfig(owner: string, topicHex: string): void {
       `[Boot] the manager's API token is read under ${config.managerFunding.tokenKey}, its former name. Rename it ${MANAGER_API_TOKEN_KEY} in the env file.`,
     );
   }
+  // The SMTP password is never logged.
+  logger.info(`[Boot]   mail: ${describeMailSettings(config.mail)}`);
   logger.info("[Boot]   ingest: from each stream's stage, as the manager pushed it");
   const retired = retiredEnvKeysSet();
   if (retired.length > 0) {
