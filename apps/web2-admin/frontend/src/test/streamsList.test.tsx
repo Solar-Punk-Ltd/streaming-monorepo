@@ -320,10 +320,12 @@ describe('StreamsPage test streams', () => {
     expect(within(rowOf('Opening night')).queryByText(/Test live|Left running/)).not.toBeInTheDocument();
   });
 
-  it('opens "New test stream" as the test stream form', async () => {
+  it('offers no button of its own for a test stream: Create New Stream makes one', async () => {
     renderList([]);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New test stream' }));
-    expect(screen.getByTestId('where')).toHaveTextContent('/create?test=1');
+    const createButton = await screen.findByRole('button', { name: /Create New Stream/ });
+    expect(screen.queryByRole('button', { name: 'New test stream' })).not.toBeInTheDocument();
+    fireEvent.click(createButton);
+    expect(screen.getByTestId('where').textContent).toBe('/create');
   });
 });

@@ -8,14 +8,14 @@ whose address the stream holds. It stays off the catalogue, so no viewer's list,
 ## What a test stream is
 
 - **A stream of its own.** It is a row in the admin's streams, marked `test` when it is created,
-  by "New test stream" on the Streams page (`POST /api/streams/test`). The insert sets the mark
+  by the Test stream box on Create New Stream (`POST /api/streams/test`). The insert sets the mark
   and nothing changes it.
 - **What it is created from.** A title, a media type and a stage. Its description is empty, which
   the table's check allows a test row alone (migration 033), and it has no tags, no scheduled start
   and no image: those are promises to viewers.
 - **Its own topic, feeds and key**, as every stream has. An event and its test are two streams, so
   the event's recording holds the event alone. "Test this setup" on a stream's page opens the form
-  with that stream's stage and media type filled in, and the two rows carry no link to each other.
+  with the box checked and that stream's stage filled in, and the two rows carry no link to each other.
 - **What the encoder is given.** The stage's host, port and passphrase are the event's. The stream
   id and the key are the test's own, so the encoder's server line differs between the two.
 
