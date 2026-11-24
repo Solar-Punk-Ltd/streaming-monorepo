@@ -44,23 +44,30 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 export function TestStreamViewerCard({
   stream,
   feed,
+  viewerBaseUrl,
   onSaved,
 }: {
   stream: Stream;
   /** The catalogue's owner and topic, or null while `GET /api/config` is unread. */
   feed: PublicConfig['feed'] | null;
+  /**
+   * The admin's viewer, `VIEWER_BASE_URL`, filled in while the stream holds no address so it is saved rather than typed.
+   * Null while `GET /api/config` is unread or the setting is empty.
+   */
+  viewerBaseUrl: string | null;
   onSaved: (stream: Stream) => void;
 }) {
   const snackbar = useSnackbar();
-  const [value, setValue] = useState(stream.viewerUrl ?? '');
+  const [value, setValue] = useState(stream.viewerUrl ?? viewerBaseUrl ?? '');
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // The field follows the address the stream holds: after a save, and when the page reads the stream again.
+  // The field follows the address the stream holds: after a save, and when the page reads the stream again. While it
+  // holds none, the field offers the admin's viewer, once `GET /api/config` has answered.
   useEffect(() => {
-    setValue(stream.viewerUrl ?? '');
+    setValue(stream.viewerUrl ?? viewerBaseUrl ?? '');
     setProblem(null);
-  }, [stream.id, stream.viewerUrl]);
+  }, [stream.id, stream.viewerUrl, viewerBaseUrl]);
 
   const save = async (url: string | null) => {
     if (url !== null) {

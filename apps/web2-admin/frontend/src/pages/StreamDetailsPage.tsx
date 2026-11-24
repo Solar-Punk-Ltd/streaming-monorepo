@@ -485,7 +485,12 @@ export function StreamDetailsPage() {
         {noticeAlert}
         <SharedStageNote stream={stream} streams={streams} />
         {ingest ? <IngestPanel streamId={stream.id} details={ingest} onRotated={setIngest} /> : null}
-        <TestStreamViewerCard stream={stream} feed={config?.feed ?? null} onSaved={setStream} />
+        <TestStreamViewerCard
+          stream={stream}
+          feed={config?.feed ?? null}
+          viewerBaseUrl={viewerBaseUrl}
+          onSaved={setStream}
+        />
         <Paper variant="outlined" sx={{ p: 3 }}>
           <Grid container spacing={2}>
             <Grid size={{ xs: 6, sm: 4 }}>

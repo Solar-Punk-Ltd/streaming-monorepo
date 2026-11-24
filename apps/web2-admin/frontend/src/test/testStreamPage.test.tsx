@@ -23,6 +23,8 @@ const TOPIC = '00000009-0000-4000-8000-000000000000';
 const CATALOGUE_OWNER = '3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
 const CATALOGUE_TOPIC = 'brand-catalogue';
 const VIEWER = 'http://203.0.113.7:10004';
+/** The admin's own viewer, `VIEWER_BASE_URL`. */
+const ADMIN_VIEWER = 'https://watch.example.com';
 
 function testStream(overrides: Partial<Stream> = {}): Stream {
   return makeStream({
@@ -42,9 +44,11 @@ interface Served {
   stream: Stream;
   others?: Stream[];
   extra?: MockRoute[];
+  /** The admin's `VIEWER_BASE_URL`, as `GET /api/config` answers it. */
+  viewerBaseUrl?: string | null;
 }
 
-function routesFor({ stream, others = [], extra = [] }: Served): MockRoute[] {
+function routesFor({ stream, others = [], extra = [], viewerBaseUrl = null }: Served): MockRoute[] {
   return [
     ...extra,
     { path: `/api/streams/${ID}`, respond: () => jsonOk(stream) },
@@ -53,7 +57,7 @@ function routesFor({ stream, others = [], extra = [] }: Served): MockRoute[] {
     {
       path: '/api/config',
       respond: () =>
-        jsonOk({ feed: { owner: CATALOGUE_OWNER, topic: CATALOGUE_TOPIC, topicHex: 'ff' }, viewerBaseUrl: null }),
+        jsonOk({ feed: { owner: CATALOGUE_OWNER, topic: CATALOGUE_TOPIC, topicHex: 'ff' }, viewerBaseUrl }),
     },
   ];
 }
@@ -163,6 +167,48 @@ describe('a test stream page', () => {
     );
     expect(sent).toEqual({ url: VIEWER });
     expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
+  });
+
+  it('fills the address in with the admin’s viewer while the stream holds none, and saves it from there', async () => {
+    let sent: unknown = null;
+    mockFetch(
+      routesFor({
+        stream: testStream(),
+        viewerBaseUrl: ADMIN_VIEWER,
+        extra: [
+          {
+            method: 'PUT',
+            path: `/api/streams/${ID}/viewer-url`,
+            respond: (init) => {
+              sent = JSON.parse(String(init?.body));
+              return jsonOk(testStream({ viewerUrl: ADMIN_VIEWER }));
+            },
+          },
+        ],
+      }),
+    );
+    renderPage();
+
+    await waitFor(() => expect(addressField()).toHaveValue(ADMIN_VIEWER));
+    expect(watchLink()).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save address' }));
+
+    expect(await screen.findByRole('link', { name: /Watch test stream/ })).toHaveAttribute(
+      'href',
+      `${ADMIN_VIEWER}/#/watch/video/${OWNER}/${TOPIC}`,
+    );
+    expect(sent).toEqual({ url: ADMIN_VIEWER });
+  });
+
+  it('shows the address the stream holds, not the admin’s viewer', async () => {
+    mockFetch(routesFor({ stream: testStream({ viewerUrl: VIEWER }), viewerBaseUrl: ADMIN_VIEWER }));
+    renderPage();
+
+    const deploy = await screen.findByRole('region', { name: 'Deploying a viewer' });
+    // Once the config has answered, so the admin's viewer was there to take.
+    await waitFor(() => expect(within(deploy).getByLabelText('Feed owner')).toHaveValue(`0x${CATALOGUE_OWNER}`));
+    expect(addressField()).toHaveValue(VIEWER);
+    expect(watchLink()).toHaveAttribute('href', `${VIEWER}/#/watch/video/${OWNER}/${TOPIC}`);
   });
 
   it('changes the address it holds', async () => {

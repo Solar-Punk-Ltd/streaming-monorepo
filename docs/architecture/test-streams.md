@@ -93,7 +93,8 @@ the address of its own viewer.
   holds. It is stored as given.
 - **Giving it.** `PUT /api/streams/:id/viewer-url` sets, changes and clears it, for anyone signed
   in, in every status the test stream has. Each set is audited as `stream.viewer_url.set`. A stream
-  that is no test stream answers 409 `not_test_stream`.
+  that is no test stream answers 409 `not_test_stream`. While a stream holds no address, its page
+  fills the field in with the admin's own viewer, `VIEWER_BASE_URL`; it is stored only when saved.
 - **The link.** The stream's watch address on that viewer is the address with the watch page's
   route, `#/watch/<mediatype>/<owner>/<topic>`, as its fragment (`watchPageUrl`). The address's
   path and query stay, and a fragment it already has gives way to the route, so an address copied
