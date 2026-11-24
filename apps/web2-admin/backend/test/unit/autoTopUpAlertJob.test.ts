@@ -120,6 +120,7 @@ function input(
     brandWallet: { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: XDAI.toString() },
     walletJobPaused: false,
     readings: new Map(Object.entries(readings)),
+    estimateDepths: Object.values(readings).flatMap((reading) => (reading.state === 'operable' ? [reading.depth] : [])),
     ...extra,
   };
 }
@@ -536,6 +537,12 @@ describe('the alert job in a tick', () => {
       assert.equal(reading?.state, 'unread');
       assert.equal((reading as { reason: string }).reason, reason);
     }
+  });
+
+  it('counts a stamp whose node reads behind on the chain in the monthly estimate, as the tab and the ceiling do', async () => {
+    const behind = await context(withStageBatch({}, { chainLagBlocks: 500 }));
+    assert.equal(alertReadingOf(behind, behind.stamps[0]!)?.state, 'unread');
+    assert.deepEqual(alertJobInputOf(behind, false).estimateDepths, [20]);
   });
 
   it('reads a batch not usable yet as waiting, and leaves a stamp whose node the admin funds no more', async () => {

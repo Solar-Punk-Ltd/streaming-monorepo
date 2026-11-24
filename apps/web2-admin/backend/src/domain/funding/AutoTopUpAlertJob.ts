@@ -44,6 +44,7 @@ import type {
   AutoTopUpMarkedStamp,
   AutoTopUpTickContext,
 } from './autoTopUpJobs.js';
+import { estimateDepthsOf, stampNameOf } from './autoTopUpReadings.js';
 
 /**
  * The alert job of stamp auto top-up (docs/architecture/funding.md, "Auto top-up"). It moves no money. Each run it
@@ -102,6 +103,11 @@ export interface AlertJobInput {
   walletJobPaused: boolean;
   /** Every marked stamp, with how the funding view reads it now, by batch id. A mark with none is left as it is. */
   readings: ReadonlyMap<string, AlertStampReading>;
+  /**
+   * The depths the monthly estimate counts, one for each marked stamp that can be topped up (`estimateDepthsOf`), so
+   * the warning counts the stamps the Auto top-up tab's estimate and the wallet job's daily ceiling count.
+   */
+  estimateDepths: readonly number[];
 }
 
 const DAY_MS = SECONDS_PER_DAY * 1000;
@@ -292,10 +298,7 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
 
     // The brand wallet's xBZZ against 30 days of top-ups for the stamps that can be topped up, with no margin.
     const xbzzKey: AutoTopUpWarningKey = { kind: 'wallet_xbzz', batchId: null };
-    const estimate = autoTopUpMonthlyEstimatePlur(
-      planned.map((stamp) => stamp.reading.depth),
-      input.postage,
-    );
+    const estimate = autoTopUpMonthlyEstimatePlur(input.estimateDepths, input.postage);
     if (wallet === null) {
       await this.store.clearWarning(xbzzKey);
     } else if (wallet.xbzzPlur !== null) {
@@ -538,21 +541,6 @@ function comingNodes(
   });
 }
 
-/** What the Stamps tab calls a marked stamp: the catalogue batch, an archive stamp by its label, or a stage's batch. */
-function stampTitle(context: AutoTopUpTickContext, stamp: AutoTopUpMarkedStamp): string {
-  const { inventory } = context.funding;
-  const { mark } = stamp;
-  if (stamp.archive) {
-    const archived = inventory.archiveBatches?.find(
-      (archive) => archive.batchId.toLowerCase() === mark.batchId && archive.nodeId === mark.nodeId,
-    );
-    return archived?.label ? `Archive stamp "${archived.label}"` : 'An archive stamp';
-  }
-  if (inventory.catalogue?.nodeId === mark.nodeId) return 'The catalogue batch';
-  const stage = inventory.stages.find((candidate) => candidate.nodes.some((node) => node.nodeId === mark.nodeId));
-  return stage ? `The batch of stage "${stage.name}"` : 'A marked batch';
-}
-
 /** Whether the brand wallet may send to this node now: its address against the one an operator confirmed. */
 function pinOf(context: AutoTopUpTickContext, nodeId: string, walletAddress: string | null): FundingPinState {
   const pinned = context.funding.pins.get(nodeId);
@@ -566,9 +554,9 @@ function pinOf(context: AutoTopUpTickContext, nodeId: string, walletAddress: str
  * or a node whose view of the chain is not known to be current, is unread; a batch not usable yet is waiting.
  */
 export function alertReadingOf(context: AutoTopUpTickContext, stamp: AutoTopUpMarkedStamp): AlertStampReading | null {
-  const { node, batch, mark } = stamp;
+  const { node, batch } = stamp;
   if (node === null) return null;
-  const name: StampName = { batchId: mark.batchId, title: stampTitle(context, stamp), nodeLabel: node.label };
+  const name: StampName = stampNameOf(context, stamp);
   if (batch === null || batch.state === 'expired' || batch.state === 'gone' || batch.ttlSeconds === 0) {
     return { state: 'expired', name };
   }
@@ -615,5 +603,6 @@ export function alertJobInputOf(context: AutoTopUpTickContext, walletJobPaused: 
       wallet === null ? null : { address: wallet.address, xbzzPlur: wallet.xbzzPlur, xdaiWei: wallet.xdaiWei },
     walletJobPaused,
     readings,
+    estimateDepths: estimateDepthsOf(context.stamps),
   };
 }
