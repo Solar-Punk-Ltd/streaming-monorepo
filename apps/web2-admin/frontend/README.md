@@ -369,7 +369,9 @@ has been live and "Left running" after an hour:
   `GET /api/config`, to deploy a viewer with in the manager's "Watch a stream"; both are the same
   for every test stream. Viewer address gives and
   changes the deployed viewer's address, any `http://` or `https://` one (`viewerUrlProblem` is
-  checked before it is sent), with `PUT /api/streams/:id/viewer-url`; Clear address clears it. A
+  checked before it is sent), with `PUT /api/streams/:id/viewer-url`; Clear address clears it.
+  While the stream holds none, the field starts with the admin's viewer, `viewerBaseUrl` from
+  `GET /api/config` (`VIEWER_BASE_URL`), to be saved as it is. A
   refused address says why under the field. Once an address is given, Watch test stream is a plain
   link to `watchPageUrl(viewerUrl, stream)`, opened in a new tab with `rel="noopener noreferrer"`.
   The console never asks the viewer whether it answers.
