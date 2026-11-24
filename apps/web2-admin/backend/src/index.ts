@@ -37,6 +37,8 @@ import { FundingChequebookRepository } from './domain/funding/FundingChequebookR
 import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
 import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
 import { FundingService } from './domain/funding/FundingService.js';
+import { StampAutoTopUpRepository } from './domain/funding/StampAutoTopUpRepository.js';
+import { StampAutoTopUpService } from './domain/funding/StampAutoTopUpService.js';
 import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { FundingTransferRepository } from './domain/funding/FundingTransferRepository.js';
@@ -363,6 +365,14 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   batchPurchases.boot();
+  // Stamp auto top-up's settings, marks, email list and pauses. This admin sends no mail, so its alerts and warnings
+  // show on the page alone.
+  const autoTopUp = new StampAutoTopUpService({
+    store: new StampAutoTopUpRepository(database.pool),
+    manager: managerFunding,
+    audit: auditLog,
+    mailConfigured: () => false,
+  });
   const fundingService = new FundingService({
     wallet: brandWallet,
     manager: managerFunding,
@@ -436,6 +446,7 @@ async function main(): Promise<void> {
       archiveService,
       recordings,
       fundingService,
+      autoTopUp,
       consoleSettings,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,

@@ -79,6 +79,13 @@ export type AuditAction =
   | 'archive.purchase.usable'
   | 'archive.purchase.failed'
   | 'archive.listing'
+  // Stamp auto top-up's settings, as people change them: the numbers, a mark put on or taken off stamps, the email
+  // list and a job's pause.
+  | 'funding.auto_topup.settings'
+  | 'funding.auto_topup.mark'
+  | 'funding.auto_topup.unmark'
+  | 'funding.auto_topup.emails'
+  | 'funding.auto_topup.job'
   | 'funding.pin'
   | 'funding.transfer.request'
   | 'funding.transfer.sent'
