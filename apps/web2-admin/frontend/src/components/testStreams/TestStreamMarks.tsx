@@ -100,14 +100,11 @@ export function SharedStageNote({ stream, streams }: { stream: Stream; streams: 
 }
 
 /**
- * The new test stream form, with the stage of `stream` filled in: "Test this setup". The form offers no media type,
- * as the stream form offers none, so an older audio stream's type is not carried there.
+ * Create New Stream with its Test stream box checked and the stage of `stream` filled in: "Test this setup". The form
+ * offers no media type, so an older audio stream's type is not carried there.
  */
 export function testSetupPath(stream: Pick<Stream, 'stageId'>): string {
   const params = new URLSearchParams({ test: '1' });
   if (stream.stageId) params.set('stageId', stream.stageId);
   return `/create?${params.toString()}`;
 }
-
-/** The new test stream form, with nothing filled in. */
-export const NEW_TEST_STREAM_PATH = '/create?test=1';

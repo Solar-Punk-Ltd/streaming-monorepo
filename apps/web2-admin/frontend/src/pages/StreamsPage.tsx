@@ -24,7 +24,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ImageNotSupportedOutlinedIcon from '@mui/icons-material/ImageNotSupportedOutlined';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import ScienceOutlinedIcon from '@mui/icons-material/ScienceOutlined';
 import type { CatalogueWriteStatus, StageSummary, Stream } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../api';
@@ -37,13 +36,7 @@ import { useSnackbar } from '../components/Snackbar';
 import { RecordingCheckPanel, RecordingMark } from '../components/recordings/RecordingCheckPanel';
 import { CatalogueWriteBanner } from '../components/stages/CatalogueWriteBanner';
 import { unknownStageLabel } from '../components/stages/StageField';
-import {
-  isLiveTest,
-  NEW_TEST_STREAM_PATH,
-  TestLiveMark,
-  TestMark,
-  useLiveClock,
-} from '../components/testStreams/TestStreamMarks';
+import { isLiveTest, TestLiveMark, TestMark, useLiveClock } from '../components/testStreams/TestStreamMarks';
 
 /** The filter's two values that are not a stage id. */
 const ALL_STAGES = 'all';
@@ -199,9 +192,7 @@ export function StreamsPage() {
             <RefreshIcon />
           </IconButton>
         </Tooltip>
-        <Button variant="outlined" startIcon={<ScienceOutlinedIcon />} onClick={() => navigate(NEW_TEST_STREAM_PATH)}>
-          New test stream
-        </Button>
+        {/* Create New Stream makes a test stream too, with its Test stream box. */}
         <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/create')}>
           Create New Stream
         </Button>

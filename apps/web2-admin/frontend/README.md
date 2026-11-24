@@ -231,7 +231,7 @@ stays as it was created. A live one shows "Test live" with how long it has been 
 every 30 seconds, and "Left running" beside it once that is more than an hour
 (`TEST_STREAM_LEFT_RUNNING_SECONDS`), which says on hover that a broadcast is stopped at the encoder
 or from the manager. A Show filter narrows the list to the test streams or to the event streams.
-New test stream opens its form.
+Create New Stream makes a test stream too, with its Test stream box.
 
 The archive badge (`components/archive/ArchiveBadge.tsx`) says the stream's archive in the words of
 `ARCHIVE_BADGE_TEXT`: Archived, Archived, reduced protection, Archive stamp not listed, Archive
@@ -280,14 +280,20 @@ qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
 - There is no media type choice: every stream is saved as a video stream. An audio-only stream
   keeps its type once it is published or has gone live, where the API locks it.
 
-### New test stream, `#/create?test=1`
+#### The Test stream box
 
-A title and a stage, and nothing else, sent to `POST /api/streams/test` as a video stream. There is
-no media type choice, as on the stream form. The stage list is the form's, with the only one
-preselected and the readiness warning. A missing title or stage is said before anything is sent,
-and a refusal shows the API's sentence. Once created, the test stream's page opens. "Test this
-setup" on a stream's page opens this form with that stream's stage in the address (`stageId`), an
-audio-only stream's included.
+On Create New Stream alone, never on Edit Stream, a Test stream box sits under Stream Name,
+unchecked, with a line saying a test stream goes live on its stage like any stream and stays off the
+catalogue. Checked, it disables Description, Tags, Scheduled Date and Time with its shortcuts, and
+the thumbnail picker, and their required checks no longer apply; Stream Name and Stage stay, and a
+stage is required ("Pick the stage the test runs on."). Create Stream then sends the title, `video`
+and the stage to `POST /api/streams/test`, uploads no image, and opens the test stream's page. A
+refusal shows the API's sentence. Unchecked, the fields are enabled again with their values as they
+were, and Create Stream makes a stream as before.
+
+"Test this setup" on a stream's page opens `#/create?test=1&stageId=<id>`: Create New Stream with
+the box checked and that stream's stage filled in, an audio-only stream's included. A `mediaType` in
+the address is not read.
 
 ### Stream details, `#/streams/:id`
 
@@ -342,7 +348,8 @@ audio-only stream's included.
   no archive has expired, the card says so beside the switch. While an archive of the stream runs,
   the card says where it stands, with a button that opens it.
 - The OBS panel, with Rotate key, described below.
-- Test this setup, in the row under the title, opens New test stream with this stream's stage.
+- Test this setup, in the row under the title, opens Create New Stream with the Test stream box
+  checked and this stream's stage.
 - While a test stream is live on this stream's stage, a note names it. A stage takes several
   broadcasts at once and the two share its transcoding and upload, so the note is information and
   blocks nothing. The page reads `GET /api/streams` for it, and a list that cannot be read leaves
