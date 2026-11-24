@@ -423,7 +423,7 @@ the next send and the Funding page refresh the open one, and the page resumes it
 | `SMTP_PORT`           | the admin's env file         | 587, with STARTTLS, or 465, with TLS from the start. With `SMTP_HOST` set, any other value stops the start, naming the key |
 | `SMTP_USER`           | the admin's env file         | the user name the mail service gave. Required once `SMTP_HOST` is set                                                      |
 | `SMTP_PASSWORD`       | the admin's env file         | that user's password or key, a secret. Required once `SMTP_HOST` is set                                                    |
-| `SMTP_FROM`           | the admin's env file         | the address the mails come from, one the mail service sends for                                                            |
+| `SMTP_FROM`           | the admin's env file         | the address the mails come from, one the mail service sends for. Required once `SMTP_HOST` is set                          |
 
 The sample env files describe each setting in full, and the admin's deploy script refuses the
 sample values of the secret and the token.

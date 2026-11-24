@@ -518,8 +518,8 @@ empty the admin sends no mail and shows the alerts and warnings on its Funding p
 
 Use port 587, where the admin upgrades the connection with STARTTLS, or port 465, where it speaks
 TLS from the start. Most hosting providers close port 25 for outgoing mail. Once `SMTP_HOST` is
-set, `SMTP_USER` and `SMTP_PASSWORD` are required and `SMTP_PORT` is 587 or 465: the admin stops
-at its start otherwise, with a sentence that names the key.
+set, `SMTP_USER`, `SMTP_PASSWORD` and `SMTP_FROM` are required and `SMTP_PORT` is 587 or 465: the
+admin stops at its start otherwise, with a sentence that names the key.
 
 There are two ways to get a sender:
 
