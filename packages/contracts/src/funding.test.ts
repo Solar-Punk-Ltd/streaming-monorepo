@@ -5,6 +5,7 @@ import {
   ADMIN_FUNDING_PATH,
   FUNDING_BATCH_PURCHASE_PURPOSES,
   FUNDING_BATCH_PURCHASES_PATH,
+  FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS,
   FUNDING_CHEQUEBOOK_DIRECTIONS,
   FUNDING_CHEQUEBOOK_OPERATIONS_PATH,
   FUNDING_ERROR_CODES,
@@ -42,6 +43,7 @@ import {
   fundingChequebookSchema,
   fundingErrorAnswerSchema,
   fundingInventorySchema,
+  fundingNodeChainCurrent,
   fundingNodeSchema,
   fundingPostageSchema,
   fundingPurchaseApplySettled,
@@ -553,6 +555,37 @@ describe('GET /api/admin-funding/stamp-operations/:requestId', () => {
     });
     assert.equal(confirmed.txHash, TX_HASH);
     assert.equal(fundingStampOperationStatusSchema.safeParse({ ...confirmed, state: 'pending' }).success, false);
+  });
+});
+
+describe("a node's view of the chain, in the inventory", () => {
+  it('takes how many blocks a node is behind the tip, and calls it current within 120', () => {
+    assert.equal(FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS, 120);
+    for (const [chainLagBlocks, current] of [
+      [0, true],
+      [120, true],
+      [121, false],
+      [50_000, false],
+    ] as const) {
+      const parsed = fundingNodeSchema.parse({ ...node(), chainLagBlocks });
+      assert.equal(parsed.chainLagBlocks, chainLagBlocks);
+      assert.equal(fundingNodeChainCurrent(parsed), current, String(chainLagBlocks));
+    }
+  });
+
+  it('takes a node whose chain state could not be read, and the node of a manager that does not say', () => {
+    const unread = fundingNodeSchema.parse({ ...node(), chainLagBlocks: null });
+    assert.equal(unread.chainLagBlocks, null);
+    assert.equal(fundingNodeChainCurrent(unread), null);
+    const older = fundingNodeSchema.parse(node());
+    assert.equal('chainLagBlocks' in older, false);
+    assert.equal(fundingNodeChainCurrent(older), null);
+  });
+
+  it('refuses a lag that is not a whole number of blocks, none or more', () => {
+    for (const chainLagBlocks of [-1, 1.5, '3']) {
+      assert.equal(fundingNodeSchema.safeParse({ ...node(), chainLagBlocks }).success, false, String(chainLagBlocks));
+    }
   });
 });
 
