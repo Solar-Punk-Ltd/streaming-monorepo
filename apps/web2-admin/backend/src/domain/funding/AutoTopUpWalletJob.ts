@@ -1,5 +1,6 @@
 import {
   AUTO_TOPUP_ONCE_PER_SECONDS,
+  AUTO_TOPUP_UNREAD_FAILS_AFTER_SECONDS,
   autoTopUpDailyCeilingPlur,
   autoTopUpMonthlyEstimatePlur,
   autoTopUpSendTiming,
@@ -22,12 +23,26 @@ import type {
   AutoTopUpJobRunner,
   AutoTopUpTickContext,
 } from './autoTopUpJobs.js';
-import { estimateDepthsOf, readStamp, walletGroupsOf, type ReadyStamp } from './autoTopUpReadings.js';
+import {
+  dueForSeconds,
+  estimateDepthsOf,
+  readStamp,
+  stampNameOf,
+  walletGroupsOf,
+  type ReadyStamp,
+} from './autoTopUpReadings.js';
+import { topUpFailedWarningText } from './autoTopUpTexts.js';
 import { nodeName, type FundingService } from './FundingService.js';
 import type { StampAutoTopUpStore } from './StampAutoTopUpStore.js';
 
-/** What the wallet job reads of the store: what it sent in the last day, and the stamps it topped up in it. */
-export type AutoTopUpWalletJobStore = Pick<StampAutoTopUpStore, 'systemSendsSince' | 'lastSystemTopUps'>;
+/**
+ * What the wallet job uses of the store: what it sent in the last day, the stamps it topped up in it, and the warning
+ * of a top-up it cannot send for.
+ */
+export type AutoTopUpWalletJobStore = Pick<
+  StampAutoTopUpStore,
+  'systemSendsSince' | 'lastSystemTopUps' | 'raiseWarning'
+>;
 
 export interface AutoTopUpWalletJobDeps {
   /** The send of the Balance tab, behind no password: the job calls the service the route calls. */
@@ -69,8 +84,8 @@ export interface AutoTopUpWalletRun {
    * waits with it, since the stamp job tops a wallet's stamps up the least time left first.
    */
   waiting: { batchId: string; why: 'notice' | 'alert' }[];
-  /** The nodes that need gas and were sent some within the last day, so none goes now. */
-  gasToday: string[];
+  /** The nodes that need gas and were sent some within the last day, so none goes now, with the stamps it was for. */
+  gasToday: { nodeId: string; batchIds: string[] }[];
 }
 
 export interface AutoTopUpWalletInput {
@@ -142,7 +157,7 @@ export function planWalletSends(input: AutoTopUpWalletInput): AutoTopUpWalletRun
     if (!target) continue;
     if (gas && input.gasNodeIds.includes(target.node.nodeId)) {
       gas = false;
-      run.gasToday.push(target.node.nodeId);
+      run.gasToday.push({ nodeId: target.node.nodeId, batchIds: [...batchIds] });
     }
     if (xbzz === 0n && !gas) continue;
     const send: AutoTopUpNodeSend = {
@@ -258,6 +273,11 @@ function waitingText(plan: AutoTopUpWalletRun): string[] {
  * (`STAMP_AUTO_TOPUP`). It works over the marked stamps that are ready and due (`readStamp`), and leaves a stamp the
  * system topped up within the last day, which the stamp job leaves too. What it sends is `planWalletSends`'s. A send
  * another send holds up (`FundingBusyError`) sends nothing in that run, and the next run works it out again.
+ *
+ * A due top-up it cannot send for, once its stamp has been due for an hour, raises the warning of a failed top-up
+ * (`topup_failed`): the daily ceiling, the brand wallet's balance, an address not confirmed or changed, no brand
+ * wallet, gas already sent within the day, an earlier send not settled, or a send refused or failed. Waiting for the
+ * notice or for a new alert is no failure. The stamp job and the alert job clear the warning.
  */
 export class AutoTopUpWalletJob implements AutoTopUpJobRunner {
   readonly job = 'wallet' as const;
@@ -302,11 +322,20 @@ export class AutoTopUpWalletJob implements AutoTopUpJobRunner {
     const plan = planWalletSends(input);
     const notes = [
       ...plan.held.map((held) => holdText(held, input)),
-      ...plan.gasToday.map((nodeId) => `${nodeId} was sent gas within the last day, so no more went to it.`),
+      ...plan.gasToday.map(({ nodeId }) => `${nodeId} was sent gas within the last day, so no more went to it.`),
       ...waitingText(plan),
+    ];
+    const failures: AutoTopUpSendFailure[] = [
+      ...plan.held.map((held) => ({ batchIds: held.send.batchIds, ...holdFailure(held, input) })),
+      ...plan.gasToday.map(({ nodeId, batchIds }) => ({
+        batchIds,
+        reason: `Its node, ${nodeId}, lacks the xDAI its top-ups' gas needs, and it was sent gas within the last day already.`,
+        action: 'Fund the node with xDAI by hand on the Balance tab.',
+      })),
     ];
     const ok = plan.held.length === 0;
     if (plan.sends.length === 0) {
+      await this.raise(context, due, failures);
       const nothing =
         notes.length === 0 ? ["Every due stamp's node holds what its top-up costs, so nothing was sent."] : [];
       return { ok, outcome: [...nothing, ...notes].join(' ') };
@@ -316,16 +345,41 @@ export class AutoTopUpWalletJob implements AutoTopUpJobRunner {
     try {
       answer = await this.deps.funding.send(STAMP_AUTO_TOPUP, transfersOf(plan.sends));
     } catch (error) {
-      if (error instanceof FundingBusyError) {
+      const busy = error instanceof FundingBusyError;
+      failures.push(
+        ...plan.sends.map((send) => ({
+          batchIds: send.batchIds,
+          reason: busy
+            ? `Its node, ${nameOf(send)}, is short, and an earlier send from the brand wallet is not settled yet, so nothing could be sent to it.`
+            : `Its node, ${nameOf(send)}, is short, and the send to it was refused: ${getErrorMessage(error)}`,
+          action: busy
+            ? 'Look at the open send on the Balance tab. The next run tries again.'
+            : 'Look at the Balance tab, and fund the node by hand there if it needs it.',
+        })),
+      );
+      await this.raise(context, due, failures);
+      if (busy) {
         return {
-          ok: true,
-          outcome:
+          ok,
+          outcome: [
             'An earlier send from the brand wallet is not settled yet, so nothing was sent. The next run tries again.',
+            ...notes,
+          ].join(' '),
         };
       }
-      return { ok: false, outcome: `Nothing was sent: ${getErrorMessage(error)}` };
+      return { ok: false, outcome: [`Nothing was sent: ${getErrorMessage(error)}`, ...notes].join(' ') };
     }
     const failed = answer.items.filter((item) => item.state === 'failed');
+    for (const item of failed) {
+      const send = plan.sends.find((candidate) => candidate.nodeId === item.nodeId);
+      if (!send) continue;
+      failures.push({
+        batchIds: send.batchIds,
+        reason: `Its node, ${nameOf(send)}, is short, and the transfer to it failed: ${item.error ?? 'no reason was given.'}`,
+        action: 'Look at the Balance tab, and fund the node by hand there if it needs it.',
+      });
+    }
+    await this.raise(context, due, failures);
     const failedText = failed.map(
       (item) =>
         `The ${item.kind === 'xbzz' ? 'xBZZ' : 'xDAI'} transfer to ${item.nodeId} failed: ${item.error ?? 'no reason was given.'}`,
@@ -334,5 +388,77 @@ export class AutoTopUpWalletJob implements AutoTopUpJobRunner {
       ok: ok && failed.length === 0,
       outcome: [`Sent ${plan.sends.map(sendText).join('; ')}.`, ...failedText, ...notes].join(' '),
     };
+  }
+
+  /**
+   * Raises, or words anew, the warning that a due stamp could not be topped up, for each stamp of `failures` that has
+   * been due for an hour or more (`dueForSeconds`), as its time left says.
+   */
+  private async raise(
+    context: AutoTopUpTickContext,
+    due: readonly ReadyStamp[],
+    failures: readonly AutoTopUpSendFailure[],
+  ): Promise<void> {
+    const byBatch = new Map(due.map((stamp) => [stamp.batch.batchId.toLowerCase(), stamp]));
+    for (const failure of failures) {
+      for (const batchId of failure.batchIds) {
+        const stamp = byBatch.get(batchId);
+        if (!stamp) continue;
+        if (dueForSeconds(stamp.batch.ttlSeconds, context.settings) < AUTO_TOPUP_UNREAD_FAILS_AFTER_SECONDS) continue;
+        const message = topUpFailedWarningText({
+          stamp: stampNameOf(context, stamp.stamp),
+          ttlSeconds: stamp.batch.ttlSeconds,
+          reason: failure.reason,
+          action: failure.action,
+        });
+        await this.deps.store.raiseWarning(
+          { kind: 'topup_failed', batchId: stamp.stamp.mark.batchId },
+          message,
+          context.now,
+        );
+      }
+    }
+  }
+}
+
+/** Due top-ups the wallet job cannot send for, why, and what a person can do, for the warning of each. */
+interface AutoTopUpSendFailure {
+  batchIds: readonly string[];
+  reason: string;
+  action: string;
+}
+
+/** Why a held send's top-ups cannot be paid for, and what a person can do, for their warnings. */
+function holdFailure(
+  { send, hold }: { send: AutoTopUpNodeSend; hold: AutoTopUpSendHold },
+  input: Pick<AutoTopUpWalletInput, 'ceilingPlur' | 'sentTodayPlur' | 'funding'>,
+): { reason: string; action: string } {
+  const who = `Its node, ${nameOf(send)}, is short`;
+  switch (hold) {
+    case 'unconfirmed':
+      return {
+        reason: `${who}, and no operator has confirmed the node's wallet, so the brand wallet sends it nothing.`,
+        action: "Confirm the node's wallet on the Balance tab.",
+      };
+    case 'changed':
+      return {
+        reason: `${who}, and it answers another wallet than the one an operator confirmed, so the brand wallet sends it nothing.`,
+        action: 'Check the node, and confirm its wallet again on the Balance tab.',
+      };
+    case 'ceiling':
+      return {
+        reason: `${who}, and the ${xbzzText(send.xbzzPlur)} it lacks would pass the daily ceiling of ${xbzzText(input.ceilingPlur)}, of which ${xbzzText(input.sentTodayPlur)} went in the last 24 hours.`,
+        action: 'Fund the node by hand on the Balance tab, or raise the daily ceiling on the Auto top-up tab.',
+      };
+    case 'brand_wallet':
+      return {
+        reason: `${who}, and the brand wallet cannot cover the ${xbzzText(send.xbzzPlur)} it lacks in full, fees counted.`,
+        action: `Send xBZZ and xDAI to the brand wallet${input.funding.brandWallet ? `, ${input.funding.brandWallet.address},` : ''} on Gnosis Chain.`,
+      };
+    case 'no_brand_wallet':
+      return {
+        reason: `${who}, and there is no brand wallet to send from, since BRAND_WALLET_SECRET is unset.`,
+        action: 'Fund the node by hand, or give the admin its brand wallet.',
+      };
   }
 }
