@@ -16,6 +16,7 @@ import { beforeEach, describe, it } from 'node:test';
 import type { FundingInventory, FundingStampOperationRequest } from '@streaming-monorepo/contracts';
 import type { FundingStampOperationsAnswer, StampOperationItemRequest } from '@streaming-monorepo/web2-admin-common';
 
+import { STAMP_AUTO_TOPUP } from '../../src/domain/actor.js';
 import {
   FundingBulkNotFoundError,
   FundingBusyError,
@@ -257,6 +258,32 @@ describe('a request, answered at once', () => {
       seen,
       answer.items.map((item) => item.requestId),
     );
+  });
+
+  it('journals a request under the operator who asked for it', async () => {
+    const answer = await requested(TWO_TOP_UPS);
+
+    for (const item of answer.items) {
+      const row = journal.get(item.requestId);
+      assert.deepEqual(
+        [row?.requestedByKind, row?.requestedBy, row?.requestedByUserId],
+        ['operator', TEST_OPERATOR.username, TEST_OPERATOR.userId],
+      );
+    }
+  });
+
+  it("journals a request the stamp auto top-up asks for as the system's, with its reason and no user", async () => {
+    const answer = await funding.stampOperations(STAMP_AUTO_TOPUP, TWO_TOP_UPS);
+    await stamps.idle();
+
+    assert.equal(answer.items.length, 2);
+    for (const item of answer.items) {
+      const row = journal.get(item.requestId);
+      assert.deepEqual(
+        [row?.requestedByKind, row?.requestedBy, row?.requestedByUserId],
+        ['system', 'stamp auto top-up', null],
+      );
+    }
   });
 });
 
@@ -1397,6 +1424,7 @@ describe('the settled and watched flags of a stamp item', () => {
         costPlur: null,
         requestedByUserId: null,
         requestedBy: 'test-operator',
+        requestedByKind: 'operator' as const,
       })),
     );
     cases.forEach((one, index) =>

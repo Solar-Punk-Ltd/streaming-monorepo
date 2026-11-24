@@ -24,7 +24,7 @@ import {
 
 import { getErrorMessage } from '../../utils/errorUtils.js';
 import { quoteForLog } from '../../utils/logText.js';
-import { describeActor, type Actor, type OperatorActor } from '../actor.js';
+import { describeActor, requesterColumns, type Actor, type FundingRequester } from '../actor.js';
 import { recordAudit, type AuditAction, type AuditLog } from '../AuditLog.js';
 import {
   FundingBulkNotFoundError,
@@ -445,7 +445,7 @@ export class FundingStampService {
    * journalled, are the module's.
    */
   async request(
-    actor: OperatorActor,
+    actor: FundingRequester,
     items: readonly StampOperationItemRequest[],
   ): Promise<FundingStampOperationsAnswer> {
     const wanted = items.map((item) => ({ ...item, batchId: item.batchId.toLowerCase() }));
@@ -485,8 +485,7 @@ export class FundingStampService {
         newDepth: target.newDepth,
         amountPerChunkPlur: target.amountPerChunkPlur,
         costPlur: target.costPlur,
-        requestedByUserId: actor.userId,
-        requestedBy: actor.username,
+        ...requesterColumns(actor),
       }));
       await this.journal.insertAll(journal);
       return bulkId;

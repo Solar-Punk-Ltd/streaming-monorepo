@@ -14,6 +14,7 @@ import { beforeEach, describe, it } from 'node:test';
 import type { FundingTransferItemRequest } from '@streaming-monorepo/web2-admin-common';
 import { encodeFunctionData, erc20Abi, getAddress, type Hex, keccak256, parseTransaction } from 'viem';
 
+import { STAMP_AUTO_TOPUP } from '../../src/domain/actor.js';
 import { RequestShapeError } from '../../src/domain/errors/index.js';
 import {
   FundingBusyError,
@@ -368,6 +369,28 @@ describe('refusing a send, in order', () => {
     const answer = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n), xbzz(NODE_A, 1n)]);
 
     assert.equal(answer.items.length, 2);
+  });
+
+  it('journals a send under the operator who asked for it', async () => {
+    pinAll();
+    const answer = await service.send(TEST_OPERATOR, [xdai(NODE_A, 1n)]);
+
+    const [row] = await transfers.listBulk(answer.bulkId);
+    assert.deepEqual(
+      [row?.requestedByKind, row?.requestedBy, row?.requestedByUserId],
+      ['operator', TEST_OPERATOR.username, TEST_OPERATOR.userId],
+    );
+  });
+
+  it("journals a send the stamp auto top-up asks for as the system's, with its reason and no user", async () => {
+    pinAll();
+    const answer = await service.send(STAMP_AUTO_TOPUP, [xbzz(NODE_A, 1n)]);
+
+    const [row] = await transfers.listBulk(answer.bulkId);
+    assert.deepEqual(
+      [row?.requestedByKind, row?.requestedBy, row?.requestedByUserId],
+      ['system', 'stamp auto top-up', null],
+    );
   });
 
   it('refuses a node never pinned', async () => {
@@ -1314,6 +1337,7 @@ describe('the settled and watched flags of an item', () => {
         txHash: `0x${'ab'.repeat(32)}`,
         requestedByUserId: null,
         requestedBy: 'test-operator',
+        requestedByKind: 'operator' as const,
       })),
     );
     cases.forEach((one, index) =>

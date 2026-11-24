@@ -102,6 +102,7 @@ function item(bulkId: string, nonce: number, over: Partial<NewFundingTransfer> =
     txHash: TX_HASH,
     requestedByUserId: null,
     requestedBy: 'alice',
+    requestedByKind: 'operator',
     ...over,
   };
 }
@@ -129,6 +130,22 @@ describe('funding_transfers', () => {
       assert.equal(row.bulkId, bulkId);
     }
     assert.deepEqual(await transfers.listBulk(randomUUID()), []);
+  });
+
+  it('journals who asked for a send: an operator, or the system with its reason and no user', async () => {
+    const mine = randomUUID();
+    const own = randomUUID();
+    await transfers.insertAll([item(mine, 1)]);
+    await transfers.insertAll([item(own, 1, { requestedByKind: 'system', requestedBy: 'stamp auto top-up' })]);
+
+    const [operator] = await transfers.listBulk(mine);
+    const [system] = await transfers.listBulk(own);
+    assert.deepEqual([operator?.requestedByKind, operator?.requestedBy], ['operator', 'alice']);
+    assert.deepEqual(
+      [system?.requestedByKind, system?.requestedBy, system?.requestedByUserId],
+      ['system', 'stamp auto top-up', null],
+    );
+    await assert.rejects(transfers.insertAll([item(randomUUID(), 1, { requestedByKind: 'robot' as 'system' })]));
   });
 
   it('journals all the items of a send or none', async () => {
@@ -368,6 +385,7 @@ function topUpItem(
     costPlur: '13045963161600000',
     requestedByUserId: null,
     requestedBy: 'alice',
+    requestedByKind: 'operator',
     ...over,
   };
 }
@@ -467,6 +485,22 @@ describe('funding_stamp_operations', () => {
         ['dilute', null, 1, 20, 21, null, null],
       ],
     );
+  });
+
+  it('journals who asked for a stamp operation: an operator, or the system with its reason and no user', async () => {
+    const mine = randomUUID();
+    const own = randomUUID();
+    await stamps.insertAll([topUpItem(mine, 0)]);
+    await stamps.insertAll([topUpItem(own, 0, { requestedByKind: 'system', requestedBy: 'stamp auto top-up' })]);
+
+    const [operator] = await stamps.listBulk(mine);
+    const [system] = await stamps.listBulk(own);
+    assert.deepEqual([operator?.requestedByKind, operator?.requestedBy], ['operator', 'alice']);
+    assert.deepEqual(
+      [system?.requestedByKind, system?.requestedBy, system?.requestedByUserId],
+      ['system', 'stamp auto top-up', null],
+    );
+    await assert.rejects(stamps.insertAll([topUpItem(randomUUID(), 0, { requestedByKind: 'robot' as 'system' })]));
   });
 
   it('journals all the items of a request or none', async () => {
