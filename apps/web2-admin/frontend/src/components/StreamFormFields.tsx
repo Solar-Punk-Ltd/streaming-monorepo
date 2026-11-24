@@ -163,7 +163,9 @@ export function ThumbnailField({
 
   return (
     <Stack spacing={1}>
-      <FormLabel htmlFor="stream-thumbnail">Upload Thumbnail (Max 5MB)</FormLabel>
+      <FormLabel htmlFor="stream-thumbnail" disabled={disabled}>
+        Upload Thumbnail (Max 5MB)
+      </FormLabel>
       {/*
         A native file input, like msrs-client's, so the label and the picker
         stay plain and testable. Its browser-chrome button is light even in a
@@ -194,6 +196,13 @@ export function ThumbnailField({
             color: 'text.primary',
             font: 'inherit',
             cursor: disabled ? 'default' : 'pointer',
+          },
+          // A disabled picker reads as the disabled outlined fields above it: faded text and border, no fill.
+          '&:disabled': { color: 'text.disabled' },
+          '&:disabled::file-selector-button': {
+            color: 'text.disabled',
+            borderColor: 'action.disabled',
+            bgcolor: 'transparent',
           },
         }}
       />

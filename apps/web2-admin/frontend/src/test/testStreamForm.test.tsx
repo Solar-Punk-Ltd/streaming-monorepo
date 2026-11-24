@@ -96,8 +96,10 @@ describe('Create New Stream: the Test stream box', () => {
     expect(tagsField()).toBeDisabled();
     expect(dateField()).toBeDisabled();
     expect(timeField()).toBeDisabled();
-    expect(screen.queryByText('In 1 hour')).not.toBeInTheDocument();
+    // The shortcuts stay in place, greyed out, so the form keeps its height.
+    expect(screen.getByRole('button', { name: 'In 1 hour' })).toHaveAttribute('aria-disabled', 'true');
     expect(thumbnailPicker()).toBeDisabled();
+    expect(screen.getByText('Upload Thumbnail (Max 5MB)')).toHaveClass('Mui-disabled');
     expect(nameField()).toBeEnabled();
     expect(stageField()).toBeEnabled();
   });
