@@ -286,15 +286,17 @@ whichever backend runs the next tick. The alert job mails every warning that sta
 
 The stamp job clears "a top-up failed" after a top-up, and the alert job clears it once the stamp
 is due no longer. The alert job also keeps, for every marked stamp, since when its node is unread
-or behind.
+or behind; a node whose view of the chain the manager does not report counts as behind. For an
+unread node it raises "a top-up failed" only for a stamp whose top-up was coming at its last
+reading.
 
 - The monthly estimate is 30 days of top-ups for every marked stamp that can be topped up, at
   today's price, with no margin.
 - A "top-ups coming up" mail also lists every other top-up falling due within two days, and those
   are announced by it. At most one such mail goes out a day, and each top-up is announced a day
   ahead or more.
-- A standing warning's first mail goes at once. The daily repeats go as one mail that lists every
-  warning still standing.
+- A standing warning's first mail goes at once, together with the others raised by the same tick.
+  The daily repeats go as one mail that lists every warning still standing.
 - A mail that fails to send is tried again at the next tick, and the tab says why it failed. The
   top-ups go on.
 
