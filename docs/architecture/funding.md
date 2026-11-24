@@ -239,7 +239,10 @@ that meets a person's open send or stamp operation waits for the next tick.
 
 - **The notice rule.** The wallet job sends for a top-up once its alert is a day old. The day
   counts from the mail being handed to the mail service, or, with no mail set, from the alert
-  showing on the tab. A stamp with under 2 days left is sent for at once, and the mail says so.
+  showing on the tab. Mail is set when the SMTP settings are there and the email list holds an
+  address: with SMTP set and an empty list there is nobody to mail, so the alert counts from
+  showing on the tab as well. A stamp with under 2 days left is sent for at once, and the mail
+  says so.
 - **The amount rule.** A send is at most what its alert said. When a top-up lacks more than that,
   a new alert goes out with the new figure and its day counts again. The margin covers a day of
   the price's fastest rise: the price oracle moves it by at most 0.08% each 152 blocks, 9.5% a day.
@@ -260,7 +263,7 @@ What a marked stamp's state means for the stamp job:
 ### Mails and warnings
 
 The alerts and warnings go to the email list of the Auto top-up tab and show on the tab. With no
-SMTP set they show on the tab alone.
+SMTP set, or with an empty list, they show on the tab alone.
 
 | Mail                            | When it goes                                                                              | What it says                                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |

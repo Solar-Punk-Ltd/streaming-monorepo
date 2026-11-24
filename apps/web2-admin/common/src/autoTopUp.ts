@@ -232,8 +232,10 @@ export interface AutoTopUpComing {
   /** Whether its node is sent gas with it. */
   gasSend: boolean;
   /**
-   * When the alert was given: handed to the mail service, or, with no mail set, shown on the page. Null while it is
-   * recorded and no mail went out yet. The wallet job's wait counts from it.
+   * When the alert was given: handed to the mail service, or, with no mail set, shown on the page. Mail is set when
+   * the admin has its SMTP settings and the email list holds an address, so with SMTP set and an empty list the alert
+   * is given when it shows on the page. Null while it is recorded and no mail went out yet. The wallet job's wait
+   * counts from it.
    */
   alertedAt: string | null;
   /** When the wallet job sends for it at the earliest, or null when nothing is sent for it or no alert was given. */

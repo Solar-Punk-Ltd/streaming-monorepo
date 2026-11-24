@@ -43,7 +43,8 @@ export interface AutoTopUpAlert {
   recordedAt: Date;
   /**
    * When the alert was given: handed to the mail service, or, with no mail set, shown on the page, which is when it
-   * was recorded. Null until then. The wallet job's wait counts from it (`autoTopUpSendTiming`).
+   * was recorded. Mail is set when the admin has its SMTP settings and the email list holds an address. Null until
+   * then. The wallet job's wait counts from it (`autoTopUpSendTiming`).
    */
   alertedAt: Date | null;
 }
