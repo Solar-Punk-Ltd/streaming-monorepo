@@ -364,9 +364,10 @@ has been live and "Left running" after an hour:
 - The status notice and Finalize, and Download on a finished recording, as on any stream.
 - A note naming any other stream live on its stage, as information.
 - The OBS panel at once, from its creation: the server line with the stream id and the key.
-- Watching the test. "Deploying a viewer" gives the catalogue's owner as the Feed owner and the
-  catalogue's topic as the Feed topic, from `GET /api/config`, to deploy a viewer with in the
-  manager's "Watch a stream"; both are the same for every test stream. Viewer address gives and
+- Watching the test. "Deploying a viewer" gives the catalogue's owner as the Feed owner, with `0x`
+  in front as the manager takes it, and the catalogue's topic as the Feed topic, from
+  `GET /api/config`, to deploy a viewer with in the manager's "Watch a stream"; both are the same
+  for every test stream. Viewer address gives and
   changes the deployed viewer's address, any `http://` or `https://` one (`viewerUrlProblem` is
   checked before it is sent), with `PUT /api/streams/:id/viewer-url`; Clear address clears it. A
   refused address says why under the field. Once an address is given, Watch test stream is a plain

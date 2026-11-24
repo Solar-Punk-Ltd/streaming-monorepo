@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes, useLocation } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Stream } from '@streaming-monorepo/web2-admin-common';
 
 import { StreamDetailsPage } from '../pages/StreamDetailsPage';
@@ -19,7 +19,8 @@ import {
 const ID = 'test-stream-under-test';
 const OWNER = '1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c';
 const TOPIC = '00000009-0000-4000-8000-000000000000';
-const CATALOGUE_OWNER = '0x3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
+/** As `GET /api/config` answers it: lower case, without 0x. */
+const CATALOGUE_OWNER = '3f1a9c2b4d5e6f708192a3b4c5d6e7f809a1b2c3';
 const CATALOGUE_TOPIC = 'brand-catalogue';
 const VIEWER = 'http://203.0.113.7:10004';
 
@@ -85,11 +86,24 @@ describe('a test stream page', () => {
     expect(screen.getByText('Test')).toBeInTheDocument();
 
     const deploy = screen.getByRole('region', { name: 'Deploying a viewer' });
-    await waitFor(() => expect(within(deploy).getByLabelText('Feed owner')).toHaveValue(CATALOGUE_OWNER));
+    await waitFor(() => expect(within(deploy).getByLabelText('Feed owner')).toHaveValue(`0x${CATALOGUE_OWNER}`));
     expect(within(deploy).getByLabelText('Feed topic')).toHaveValue(CATALOGUE_TOPIC);
 
     expect(addressField()).toHaveValue('');
     expect(watchLink()).not.toBeInTheDocument();
+  });
+
+  it('copies the feed owner with 0x in front, as the manager’s “Watch a stream” takes it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    mockFetch(routesFor({ stream: testStream() }));
+    renderPage();
+
+    const deploy = await screen.findByRole('region', { name: 'Deploying a viewer' });
+    fireEvent.click(await within(deploy).findByRole('button', { name: 'copy feed owner' }));
+
+    expect(await screen.findByText('Feed owner copied to your clipboard.')).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(`0x${CATALOGUE_OWNER}`);
   });
 
   it('shows the address it holds and "Watch test stream" as a plain link to the stream on that viewer, in a new tab', async () => {
