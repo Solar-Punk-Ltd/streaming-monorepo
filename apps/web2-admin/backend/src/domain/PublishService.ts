@@ -166,9 +166,10 @@ export interface PublishArchiveListing {
  * What a publish tells the archive: the stream's entry was written, or kept, naming an image. ArchiveService answers
  * it, and stamps that image under the stream's archive stamps (`docs/architecture/web2-admin.md`, "What is copied").
  *
- * A publish calls it wherever it uploads the stream's image, a first publish and a republish by hand, once the entry
- * is on the feed and the publish lock is released. `imagePublished` returns at once and never throws: the stamping
- * runs after the publish, and whatever becomes of it leaves the publish and its answer as they are.
+ * A first publish and a republish by hand call it when their entry names an image, whether the image was uploaded or
+ * reused, once the entry is on the feed and the publish lock is released. The record decides what is stamped, so a
+ * call with nothing to stamp does nothing. `imagePublished` returns at once and never throws: the stamping runs after
+ * the publish, and whatever becomes of it leaves the publish and its answer as they are.
  */
 export interface PublishArchiveImages {
   /** `stream` as the publish left it, with the `thumbnail_ref` its entry names; `actor` is who published. */
