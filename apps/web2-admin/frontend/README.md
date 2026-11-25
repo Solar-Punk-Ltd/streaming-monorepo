@@ -176,9 +176,9 @@ warning; and "Old archive", expired, which is not offered. A new stamp is priced
 mock's price of postage, from a catalogue node wallet of 10 xBZZ, and a confirm at another cost is
 refused as `price_moved`, with the cost now. The panel reads the catalogue node's chequebook at 2
 xBZZ, or at the archive's own reading while one exists (0.4 xBZZ with `MOCK_ARCHIVE=paused_funds`).
-Its answer lists 1080p of "Ended days ago" on "Short talks" as well as on "Archive 2026", a further
-copy that only this answer carries, so the panel's copy mode shows a stream with copies on two
-stamps. The mock's start still refuses a quality that is archived, so it starts no further copy.
+Its answer lists 1080p of "Ended days ago" on "Short talks" as well as on "Archive 2026", the further
+copy the Archive page lists too, so the panel's copy mode shows a stream with copies on two stamps.
+The mock's start still refuses a quality that is archived, so it starts no further copy.
 
 The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 
@@ -202,9 +202,10 @@ The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 - `waiting`: one whose stream went live again.
 - `done`, `done_reduced`: a finished one, the second with 12 parity chunks of 1080p left out.
 
-On the Archive page, "Ended days ago" also has 1080p on "Short talks", beside its copy on "Archive
-2026", and its image is archived; the image of "Workshop recording" is not archived, and that of
-"Keynote, recorded twice" changed since the archive. The other streams have no published image.
+The Archive page, the archive card and the panel show the same copies and images. "Ended days ago"
+also has 1080p on "Short talks", beside its copy on "Archive 2026", and its image is archived; the
+image of "Workshop recording" is not archived, and that of "Keynote, recorded twice" changed since the
+archive. A stream with no copy shows nothing of its image, as the API answers `none` for it.
 
 `GET /api/archive/streams` answers the Archive page, and the stream answers carry each stream's
 `archive`. With the default `MOCK_EXPORT` an export runs at start, and a new archive is refused

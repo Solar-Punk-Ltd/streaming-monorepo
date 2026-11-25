@@ -2195,12 +2195,9 @@ function archiveJobOptions(row, user, now = Date.now()) {
   const seconds = row.durationSeconds ?? null;
   const copies = archiveCopies.get(row.id) ?? new Map();
   const summary = streamArchiveSummaryOf(row) ?? { state: 'none', archived: [], archivedOnly: false };
-  // The store keeps one copy of each quality. This answer adds a further copy of 1080p onto "Short talks" for the
-  // recording archived on "Archive 2026", so the panel's copy mode is tried on a stream with copies on two stamps.
-  const further =
-    row.id === archiveHintStreamId
-      ? [archiveCopy(row, '1080p', 'complete', archiveJobStamps[1], EXPORT_OTHER_USER.username)]
-      : [];
+  // The store keeps one copy of each quality. The further copies are the Archive page's seeds, so the panel, the card
+  // and the Archive page show the same copies: 1080p of the recording archived on "Archive 2026" is on "Short talks" too.
+  const further = archivePageFurtherCopies.get(row.id) ?? [];
   const held = [...copies.values(), ...further];
   // A quality's copies as `ArchiveCopy` of the common package, best first, as its `orderArchiveCopies` orders them.
   const copiesOf = (rendition) =>
@@ -2267,8 +2264,10 @@ function archiveJobOptions(row, user, now = Date.now()) {
     buy: archiveJobBuyTerms(),
     chequebookAvailablePlur: mockArchive?.chequebookPlur ?? ARCHIVE_JOB_CHEQUEBOOK_PLUR,
     summary,
-    // The mock stamps no image under an archive stamp, so a published image is one not archived.
-    thumbnail: { state: row.thumbnailRef ? 'unarchived' : 'none', batchIds: [] },
+    thumbnail: mockArchiveThumbnail(
+      row,
+      EXPORT_QUALITIES.flatMap((q) => copiesOf(q.rendition)),
+    ),
     canListArchivedOnly: summary.archived.length > 0,
     archivedOnlyHint:
       row.id === archiveHintStreamId && !summary.archivedOnly
@@ -2281,8 +2280,21 @@ function archiveJobOptions(row, user, now = Date.now()) {
 
 /** The Archive page's further copies, by stream: copies of a quality on stamps beside the one `archiveCopies` holds. */
 const archivePageFurtherCopies = new Map();
-/** How each stream's image stands against its archive, on the Archive page, by stream: `none` for any other. */
+/** How each stream's image stands against its archive, by stream, where a seed sets it. */
 const archivePageThumbnails = new Map();
+
+/**
+ * A stream's image against its archive, as the API answers it, for the options and the Archive page alike. `copies` is
+ * every copy of the stream in the answer's shape. A stream with no copy is `none`. Otherwise its state is the seeded
+ * one, or `unarchived` for a published image and `none` without one. An `archived` image is on each stamp that holds a
+ * copy and has not run out.
+ */
+function mockArchiveThumbnail(row, copies) {
+  if (copies.length === 0) return { state: 'none', batchIds: [] };
+  const state = archivePageThumbnails.get(row.id) ?? (row.thumbnailRef ? 'unarchived' : 'none');
+  const live = copies.filter((copy) => copy.batchTtlSeconds !== 0).map((copy) => copy.batchId);
+  return { state, batchIds: state === 'archived' ? [...new Set(live)] : [] };
+}
 
 /** A copy as the Archive page's answer carries it, with its stamp's time left. */
 function archivePageCopy(copy, now) {
@@ -2339,14 +2351,6 @@ function archivedStreamsAnswer(now = Date.now()) {
     const newest = [...copies.values(), ...further]
       .filter((copy) => copy.completedAt !== null)
       .sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0];
-    const thumbnail = archivePageThumbnails.get(streamId) ?? 'none';
-    // The image is on every stamp that holds a copy of the stream and has not run out.
-    const stamped = new Set(
-      qualities
-        .flatMap((quality) => quality.copies)
-        .filter((copy) => copy.batchTtlSeconds !== 0)
-        .map((copy) => copy.batchId),
-    );
     list.push({
       streamId,
       title: row.title,
@@ -2356,7 +2360,10 @@ function archivedStreamsAnswer(now = Date.now()) {
       bytes: qualities
         .filter((quality) => ARCHIVE_JOB_ARCHIVED.has(quality.state))
         .reduce((sum, quality) => sum + quality.bytes, 0),
-      thumbnail: { state: thumbnail, batchIds: thumbnail === 'archived' ? [...stamped] : [] },
+      thumbnail: mockArchiveThumbnail(
+        row,
+        qualities.flatMap((quality) => quality.copies),
+      ),
       archivedAt: newest?.completedAt ?? null,
       archivedBy: newest?.completedBy ?? null,
     });
