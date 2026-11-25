@@ -176,6 +176,9 @@ warning; and "Old archive", expired, which is not offered. A new stamp is priced
 mock's price of postage, from a catalogue node wallet of 10 xBZZ, and a confirm at another cost is
 refused as `price_moved`, with the cost now. The panel reads the catalogue node's chequebook at 2
 xBZZ, or at the archive's own reading while one exists (0.4 xBZZ with `MOCK_ARCHIVE=paused_funds`).
+Its answer lists 1080p of "Ended days ago" on "Short talks" as well as on "Archive 2026", a further
+copy that only this answer carries, so the panel's copy mode shows a stream with copies on two
+stamps. The mock's start still refuses a quality that is archived, so it starts no further copy.
 
 The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 
