@@ -58,13 +58,26 @@ export interface ArchiveBadgeProps {
   archive: StreamArchiveSummary | undefined;
 }
 
-/** Whether the archive panel is open, on which stream, and with which qualities ticked. */
+/**
+ * What the archive panel is opened for:
+ * - `'archive'`: the first archive of a stream's qualities, from the stream's archive card, the Archive page's "Archive
+ *   more qualities" and "Archive again", and the download panel's "Archive this quality". An archived quality shows,
+ *   and cannot be ticked.
+ * - `'copy'`: a further copy of the stream's archived qualities onto another stamp, from the Archive page's "Copy onto
+ *   another stamp" alone. The panel offers the archived qualities only, every one of them ticked unless the opener
+ *   names some, and leaves out, with the reason, each stamp that holds an archived copy of a ticked quality.
+ */
+export type ArchivePanelMode = 'archive' | 'copy';
+
+/** Whether the archive panel is open, on which stream, with which qualities ticked, and what for. */
 export interface ArchivePanelState {
   open: boolean;
   /** The stream the panel is on, or null when it shows the current archive, as the widget opens it. */
   streamId: string | null;
   /** The qualities ticked when it opened, as the download panel does with the quality it exported. */
   preselect: readonly string[];
+  /** What it was opened for: `'archive'` unless its opener said `'copy'`. */
+  mode: ArchivePanelMode;
 }
 
 /** What `useArchive()` answers on every page, shaped as `ExportContextValue`. */
@@ -72,8 +85,11 @@ export interface ArchiveContextValue {
   /** The archive on the server, which every signed-in user sees, polled as the export is, or null. */
   current: ArchiveJobSummary | null;
   panel: ArchivePanelState;
-  /** Opens the archive panel for a stream, or on the current archive with null. */
-  openPanel: (streamId: string | null, preselect?: readonly string[]) => void;
+  /**
+   * Opens the archive panel for a stream, or on the current archive with null, in `mode`, which is `'archive'` unless
+   * given: the Archive page's "Copy onto another stamp" alone opens it in `'copy'` mode.
+   */
+  openPanel: (streamId: string | null, preselect?: readonly string[], mode?: ArchivePanelMode) => void;
   closePanel: () => void;
   /** Reads the archive again now, for a page that changed something it shows. */
   refresh: () => Promise<void>;
