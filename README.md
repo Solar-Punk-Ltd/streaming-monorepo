@@ -79,6 +79,7 @@ How it works:
 - [docs/architecture/overview.md](docs/architecture/overview.md): the parts, how a stream travels, the ports, and what must never be public.
 - [docs/architecture/stages.md](docs/architecture/stages.md): how the admin learns every stage from the manager, the tokens and keys, and the catalogue batch.
 - [docs/architecture/funding.md](docs/architecture/funding.md): how a brand funds its nodes, stamps and chequebooks from the admin.
+- [docs/architecture/notifications.md](docs/architecture/notifications.md): how the admin sends its notices by email, Slack and Telegram.
 - [docs/architecture/](docs/architecture/): the admin's own design pages.
 
 Working on the code:
