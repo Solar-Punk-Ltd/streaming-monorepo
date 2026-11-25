@@ -29,6 +29,7 @@ import {
 import { Logger } from '../Logger.js';
 
 import { ChannelSecretError, openChannelSecret, sealChannelSecret } from './channelSecrets.js';
+import { channelStatusOf } from './channelStatus.js';
 import type { NotificationChannelRow, NotificationChannelSave, NotificationStore } from './NotificationStore.js';
 
 const logger = Logger.getInstance();
@@ -99,44 +100,23 @@ function secondsUntilNextTest(lastTestAt: Date | null, at: Date): number {
   );
 }
 
-function isoOrNull(at: Date | null): string | null {
-  return at === null ? null : at.toISOString();
-}
-
-/** A saved channel as the page shows it: its settings, never its secret. */
-function savedView(row: NotificationChannelRow, waiting: number): NotificationChannelView {
+/**
+ * A channel as the page shows it: its status as the Auto top-up tab shows it too, then its settings, who saved it and
+ * its last test, all null while it was never saved. Never its secret.
+ */
+function channelViewOf(
+  kind: NotificationChannelKind,
+  row: NotificationChannelRow | undefined,
+  waiting: number,
+): NotificationChannelView {
   return {
-    kind: row.kind,
-    saved: true,
-    enabled: row.enabled,
-    lastSentAt: isoOrNull(row.lastSentAt),
-    lastError: row.lastError,
-    lastErrorAt: isoOrNull(row.lastErrorAt),
-    waiting,
-    settings: row.settings,
-    savedBy: row.savedBy,
-    savedAt: row.savedAt.toISOString(),
-    lastTestAt: isoOrNull(row.lastTestAt),
-    lastTestError: row.lastTestError,
+    ...channelStatusOf(kind, row, waiting),
+    settings: row?.settings ?? null,
+    savedBy: row?.savedBy ?? null,
+    savedAt: row?.savedAt.toISOString() ?? null,
+    lastTestAt: row?.lastTestAt?.toISOString() ?? null,
+    lastTestError: row?.lastTestError ?? null,
   } as NotificationChannelView;
-}
-
-/** A channel never saved, or removed: off, with nothing to show. */
-function unsavedView(kind: NotificationChannelKind): NotificationChannelView {
-  return {
-    kind,
-    saved: false,
-    enabled: false,
-    lastSentAt: null,
-    lastError: null,
-    lastErrorAt: null,
-    waiting: 0,
-    settings: null,
-    savedBy: null,
-    savedAt: null,
-    lastTestAt: null,
-    lastTestError: null,
-  };
 }
 
 /**
@@ -175,10 +155,13 @@ export class NotificationService {
     const [rows, waiting] = await Promise.all([this.store.channels(), this.store.waitingCounts()]);
     return {
       available: this.secretKey !== null,
-      channels: NOTIFICATION_CHANNEL_KINDS.map((kind) => {
-        const row = rows.find((channel) => channel.kind === kind);
-        return row ? savedView(row, waiting.get(kind) ?? 0) : unsavedView(kind);
-      }),
+      channels: NOTIFICATION_CHANNEL_KINDS.map((kind) =>
+        channelViewOf(
+          kind,
+          rows.find((channel) => channel.kind === kind),
+          waiting.get(kind) ?? 0,
+        ),
+      ),
     };
   }
 
