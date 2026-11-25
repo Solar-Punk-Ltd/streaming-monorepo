@@ -2195,12 +2195,45 @@ function archiveJobOptions(row, user, now = Date.now()) {
   const seconds = row.durationSeconds ?? null;
   const copies = archiveCopies.get(row.id) ?? new Map();
   const summary = streamArchiveSummaryOf(row) ?? { state: 'none', archived: [], archivedOnly: false };
+  // The store keeps one copy of each quality. This answer adds a further copy of 1080p onto "Short talks" for the
+  // recording archived on "Archive 2026", so the panel's copy mode is tried on a stream with copies on two stamps.
+  const further =
+    row.id === archiveHintStreamId
+      ? [archiveCopy(row, '1080p', 'complete', archiveJobStamps[1], EXPORT_OTHER_USER.username)]
+      : [];
+  const held = [...copies.values(), ...further];
+  // A quality's copies as `ArchiveCopy` of the common package, best first, as its `orderArchiveCopies` orders them.
+  const copiesOf = (rendition) =>
+    held
+      .filter((copy) => copy.rendition === rendition)
+      .map((copy) => {
+        const stamp = archiveJobStamps.find((candidate) => candidate.batchId === copy.batchId);
+        return {
+          batchId: copy.batchId,
+          batchLabel: copy.batchLabel,
+          state: copy.state,
+          chunks: copy.chunks,
+          bytes: copy.bytes,
+          parityMissing: copy.parityMissing,
+          completedAt: copy.completedAt,
+          completedBy: copy.completedBy,
+          batchTtlSeconds: stamp ? archiveJobStampAnswer(stamp, now).ttlSeconds : null,
+        };
+      })
+      .sort(
+        (a, b) =>
+          ARCHIVE_JOB_STATE_RANK[b.state] - ARCHIVE_JOB_STATE_RANK[a.state] ||
+          (b.batchTtlSeconds ?? -1) - (a.batchTtlSeconds ?? -1) ||
+          a.batchId.localeCompare(b.batchId),
+      );
   return {
     streamId: row.id,
     title: row.title,
     date: (row.liveSince ?? row.scheduledStartTime ?? '').slice(0, 10) || null,
     qualities: EXPORT_QUALITIES.map((q) => {
-      const copy = copies.get(q.rendition) ?? null;
+      const listed = copiesOf(q.rendition);
+      // A quality's own fields are its best copy's.
+      const copy = listed[0] ?? null;
       const estimate = seconds ? archiveJobEstimate(q, seconds) : null;
       const archived = ARCHIVE_JOB_ARCHIVED.has(copy?.state);
       return {
@@ -2217,6 +2250,7 @@ function archiveJobOptions(row, user, now = Date.now()) {
         parityMissing: copy?.parityMissing ?? 0,
         completedAt: copy?.completedAt ?? null,
         completedBy: copy?.completedBy ?? null,
+        copies: listed,
         estimatedChunks: estimate?.chunks ?? null,
         estimatedBytes: estimate?.bytes ?? null,
         estimatedBzzLowPlur: estimate?.bzzLowPlur ?? null,
@@ -2228,11 +2262,13 @@ function archiveJobOptions(row, user, now = Date.now()) {
     stamps: archiveJobStamps.map((stamp) => archiveJobStampAnswer(stamp, now)).filter((stamp) => stamp.writable),
     // Every listed stamp a copy of this stream is on, whatever its state, for the card's warnings.
     holdingStamps: archiveJobStamps
-      .filter((stamp) => [...copies.values()].some((copy) => copy.batchId === stamp.batchId))
+      .filter((stamp) => held.some((copy) => copy.batchId === stamp.batchId))
       .map((stamp) => archiveJobStampAnswer(stamp, now)),
     buy: archiveJobBuyTerms(),
     chequebookAvailablePlur: mockArchive?.chequebookPlur ?? ARCHIVE_JOB_CHEQUEBOOK_PLUR,
     summary,
+    // The mock stamps no image under an archive stamp, so a published image is one not archived.
+    thumbnail: { state: row.thumbnailRef ? 'unarchived' : 'none', batchIds: [] },
     canListArchivedOnly: summary.archived.length > 0,
     archivedOnlyHint:
       row.id === archiveHintStreamId && !summary.archivedOnly
