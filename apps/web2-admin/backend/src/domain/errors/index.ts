@@ -10,6 +10,7 @@ export {
 export { CatalogueMoveRefusedError } from './CatalogueMoveRefusedError.js';
 export { CatalogueStampUnavailableError } from './CatalogueStampUnavailableError.js';
 export { ArchiveNotFoundError, ArchiveRefusedError } from './ArchiveRefusedError.js';
+export { AutoTopUpNotMarkableError } from './AutoTopUpNotMarkableError.js';
 export { ExportNotFoundError } from './ExportNotFoundError.js';
 export { ExportRefusedError } from './ExportRefusedError.js';
 export { FeedFormatError } from './FeedFormatError.js';

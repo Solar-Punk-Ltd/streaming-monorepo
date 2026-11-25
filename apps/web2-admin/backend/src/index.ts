@@ -42,10 +42,13 @@ import { FundingStampRepository } from './domain/funding/FundingStampRepository.
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { FundingTransferRepository } from './domain/funding/FundingTransferRepository.js';
 import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
+import { StampAutoTopUpRepository } from './domain/funding/StampAutoTopUpRepository.js';
+import { StampAutoTopUpService } from './domain/funding/StampAutoTopUpService.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
+import { NotificationRepository } from './domain/notifications/NotificationRepository.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { createRecordings, type RecordingCheckService } from './domain/recordings/index.js';
@@ -364,6 +367,15 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   batchPurchases.boot();
+  // The admin's notification channels, set on the Notifications page, and the notices that wait for one.
+  const notificationStore = new NotificationRepository(database.pool);
+  // Stamp auto top-up's settings, marks and pauses; its view shows each notification channel's status.
+  const autoTopUp = new StampAutoTopUpService({
+    store: new StampAutoTopUpRepository(database.pool),
+    manager: managerFunding,
+    audit: auditLog,
+    notifications: notificationStore,
+  });
   const fundingService = new FundingService({
     wallet: brandWallet,
     manager: managerFunding,
@@ -440,6 +452,7 @@ async function main(): Promise<void> {
       archiveService,
       recordings,
       fundingService,
+      autoTopUp,
       consoleSettings,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,

@@ -1,4 +1,5 @@
 import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@streaming-monorepo/contracts';
+import { AUTO_TOPUP_NOT_MARKABLE_ERROR } from '@streaming-monorepo/web2-admin-common';
 import {
   NOT_TEST_STREAM_ERROR,
   TEST_STREAM_ERROR,
@@ -11,6 +12,7 @@ import {
   AdminRequiredError,
   ArchiveNotFoundError,
   ArchiveRefusedError,
+  AutoTopUpNotMarkableError,
   CannotRemoveUserError,
   CatalogueMoveRefusedError,
   CatalogueStampUnavailableError,
@@ -276,6 +278,10 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   if (err instanceof FundingBusyError) {
     // Exactly this, as the Funding page's contract says: the console knows the one reason it has.
     res.status(409).json({ error: 'conflict' });
+    return;
+  }
+  if (err instanceof AutoTopUpNotMarkableError) {
+    res.status(409).json({ error: AUTO_TOPUP_NOT_MARKABLE_ERROR, message: err.message, problems: err.problems });
     return;
   }
   if (err instanceof FundingRefusedError) {
