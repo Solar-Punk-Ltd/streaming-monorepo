@@ -34,7 +34,7 @@ import { type Address, encodeFunctionData, erc20Abi, getAddress, type Hex, kecca
 
 import { getErrorMessage } from '../../utils/errorUtils.js';
 import { quoteForLog } from '../../utils/logText.js';
-import { describeActor, type Actor, type OperatorActor } from '../actor.js';
+import { describeActor, requesterColumns, type Actor, type FundingRequester, type OperatorActor } from '../actor.js';
 import { recordAudit, type AuditAction, type AuditLog } from '../AuditLog.js';
 import {
   FundingBulkNotFoundError,
@@ -444,7 +444,7 @@ export class FundingService {
    * their nonces would wait behind one never used. A relay that fails for any other reason leaves its item and the
    * ones after it `queued`, for `bulk` to relay again.
    */
-  async send(actor: OperatorActor, items: readonly FundingTransferItemRequest[]): Promise<FundingTransfersAnswer> {
+  async send(actor: FundingRequester, items: readonly FundingTransferItemRequest[]): Promise<FundingTransfersAnswer> {
     const seen = new Set<string>();
     for (const item of items) {
       const key = `${item.kind}:${item.nodeId}`;
@@ -503,8 +503,7 @@ export class FundingService {
           nonce,
           rawTransaction,
           txHash: keccak256(rawTransaction),
-          requestedByUserId: actor.userId,
-          requestedBy: actor.username,
+          ...requesterColumns(actor),
         });
       }
       await this.transfers.insertAll(journal);
@@ -571,7 +570,7 @@ export class FundingService {
    * request, which tops up or dilutes the nodes' batches, each paid from its node's own wallet.
    */
   stampOperations(
-    actor: OperatorActor,
+    actor: FundingRequester,
     items: readonly StampOperationItemRequest[],
   ): Promise<FundingStampOperationsAnswer> {
     return this.stamps.request(actor, items);
