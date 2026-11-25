@@ -2,6 +2,9 @@ import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@stre
 import { AUTO_TOPUP_NOT_MARKABLE_ERROR } from '@streaming-monorepo/web2-admin-common';
 import {
   NOT_TEST_STREAM_ERROR,
+  NOTIFICATION_CHANNEL_NOT_SAVED_ERROR,
+  NOTIFICATION_TEST_TOO_SOON_ERROR,
+  NOTIFICATIONS_UNAVAILABLE_ERROR,
   TEST_STREAM_ERROR,
   type TestStreamRefusal,
 } from '@streaming-monorepo/web2-admin-common';
@@ -31,6 +34,9 @@ import {
   MediaTypeLockedError,
   NoUsersError,
   NotTestStreamError,
+  NotificationChannelNotSavedError,
+  NotificationsUnavailableError,
+  NotificationTestTooSoonError,
   PublishFailedError,
   RequestShapeError,
   StageLockedError,
@@ -298,6 +304,25 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof PublishFailedError) {
     res.status(502).json({ error: 'publish_failed', id: err.streamId, message: err.reason });
+    return;
+  }
+  // The Notifications page's refusals (notifications.ts in web2-admin-common): the page shows each sentence as it is.
+  if (err instanceof NotificationsUnavailableError) {
+    res.status(409).json({ error: NOTIFICATIONS_UNAVAILABLE_ERROR, message: err.message });
+    return;
+  }
+  if (err instanceof NotificationChannelNotSavedError) {
+    res.status(409).json({ error: NOTIFICATION_CHANNEL_NOT_SAVED_ERROR, kind: err.kind, message: err.message });
+    return;
+  }
+  if (err instanceof NotificationTestTooSoonError) {
+    res.setHeader('Retry-After', String(err.retryAfterSeconds));
+    res.status(429).json({
+      error: NOTIFICATION_TEST_TOO_SOON_ERROR,
+      kind: err.kind,
+      retryAfterSeconds: err.retryAfterSeconds,
+      message: err.message,
+    });
     return;
   }
 

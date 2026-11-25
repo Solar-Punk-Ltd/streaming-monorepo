@@ -102,7 +102,12 @@ export type AuditAction =
   | 'funding.purchase.check'
   | 'funding.purchase.release'
   | 'funding.purchase.done'
-  | 'funding.purchase.failed';
+  | 'funding.purchase.failed'
+  // The Notifications page: a channel saved, switched on or off, or removed, and a test notice sent on it.
+  | 'notification.channel.save'
+  | 'notification.channel.enabled'
+  | 'notification.channel.remove'
+  | 'notification.channel.test';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
@@ -114,7 +119,8 @@ export type AuditAction =
  * batches, nodes and costs of a stamp operation, the target, nodes and moves
  * of a chequebook operation. Never a secret: no publish
  * key, no password or hash, no session token, no SRT passphrase, no uploader
- * token or its hash, and no signed transaction or wallet key.
+ * token or its hash, no signed transaction or wallet key, and no notification
+ * channel's secret.
  */
 export interface AuditEntry {
   actor: Actor;
