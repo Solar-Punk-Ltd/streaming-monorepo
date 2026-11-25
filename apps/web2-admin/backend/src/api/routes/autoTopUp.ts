@@ -3,6 +3,7 @@ import {
   type AutoTopUpJob,
   type AutoTopUpSettings,
   type AutoTopUpView,
+  PASSWORD_MAX_LENGTH,
 } from '@streaming-monorepo/web2-admin-common';
 import { clientIpOf } from '@streaming-monorepo/web-auth';
 import { Request, RequestHandler, Response, Router } from 'express';
@@ -24,8 +25,12 @@ export interface AutoTopUpRoutesDeps {
 /** A whole number of base units, as the settings carry an amount; `autoTopUpSettingsProblems` says why one is not. */
 const amount = () => string().defined();
 
+/**
+ * The operator's password, bounded as a send's is, with sentences of the schema's own, since yup's default one for a
+ * value that is not a string repeats it; and the settings, which `autoTopUpSettingsProblems` reads.
+ */
 const settingsSchema = object({
-  password: string().required('password is required'),
+  password: string().typeError('password is a string').required('password is required').max(PASSWORD_MAX_LENGTH),
   settings: object({
     topUpUnderDays: number().required(),
     topUpToDays: number().required(),

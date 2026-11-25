@@ -14,10 +14,14 @@ import { UUID_RE } from './stream.js';
  * that decide whether a password is good enough belong to the routes that set
  * one. The bound is here because the route needs no session, so without it any
  * caller could make scrypt hash a 256 KB body as often as it liked.
+ *
+ * The password has a sentence of its own for a value that is not a string, as
+ * every password field here has, since yup's default one repeats the value it
+ * refused.
  */
 export const loginSchema = object({
   username: string().required('username is required').max(USERNAME_MAX_LENGTH),
-  password: string().required('password is required').max(PASSWORD_MAX_LENGTH),
+  password: string().typeError('password is a string').required('password is required').max(PASSWORD_MAX_LENGTH),
 }).noUnknown(true);
 
 export type LoginBody = InferType<typeof loginSchema>;
@@ -30,7 +34,7 @@ export type LoginBody = InferType<typeof loginSchema>;
  */
 export const createUserSchema = object({
   username: string().required('username is required').matches(USERNAME_RE, USERNAME_MESSAGE),
-  password: string().required('password is required').max(PASSWORD_MAX_LENGTH),
+  password: string().typeError('password is a string').required('password is required').max(PASSWORD_MAX_LENGTH),
   /** Let the new user manage users too. Left out means no. */
   admin: boolean().optional(),
 }).noUnknown(true);
@@ -38,8 +42,14 @@ export const createUserSchema = object({
 export type CreateUserBody = InferType<typeof createUserSchema>;
 
 export const changePasswordSchema = object({
-  currentPassword: string().required('currentPassword is required').max(PASSWORD_MAX_LENGTH),
-  newPassword: string().required('newPassword is required').max(PASSWORD_MAX_LENGTH),
+  currentPassword: string()
+    .typeError('currentPassword is a string')
+    .required('currentPassword is required')
+    .max(PASSWORD_MAX_LENGTH),
+  newPassword: string()
+    .typeError('newPassword is a string')
+    .required('newPassword is required')
+    .max(PASSWORD_MAX_LENGTH),
 }).noUnknown(true);
 
 export type ChangePasswordBody = InferType<typeof changePasswordSchema>;
