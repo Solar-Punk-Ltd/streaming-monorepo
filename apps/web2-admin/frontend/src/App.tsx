@@ -15,11 +15,13 @@ import { StreamsPage } from './pages/StreamsPage';
 
 /**
  * The Archive page inside the signed-in shell, whose job providers it reads: "Archive more qualities" and "Archive
- * again" open the archive panel on their stream.
+ * again" open the archive panel on their stream, and "Copy onto another stamp" opens it in its copy mode.
  */
 function ArchiveRoute() {
   const { openPanel } = useArchive();
-  return <ArchivePage onArchive={openPanel} />;
+  return (
+    <ArchivePage onArchive={openPanel} onCopy={(streamId, renditions) => openPanel(streamId, renditions, 'copy')} />
+  );
 }
 
 export function App() {
