@@ -44,6 +44,13 @@ const THUMBNAIL_LIMIT_SENTENCE = `A thumbnail can be at most 5 MB (${STREAM_LIMI
  */
 export const FINALIZE_WHILE_LIVE = 'Stop the broadcast first.';
 
+/**
+ * The Notifications page's line while the admin has no `BRAND_WALLET_SECRET`, and the answer to the API's
+ * `notifications_unavailable`: no channel can be saved.
+ */
+export const NOTIFICATIONS_UNAVAILABLE =
+  "No channel can be saved: the admin has no BRAND_WALLET_SECRET to seal a channel's secret under. Set it on the admin's host and restart the admin.";
+
 /** Why a picked file is refused for its size, with both numbers so the operator can see by how much. */
 export function thumbnailTooLargeMessage(size: number): string {
   return `This file is too large: ${size.toLocaleString('en-US')} bytes. ${THUMBNAIL_LIMIT_SENTENCE}`;
@@ -89,6 +96,9 @@ const FRIENDLY: Record<string, string> = {
   // The same for an archive: another user cancelled it, or a new archive replaced a finished one.
   archive_not_found: 'This archive is no longer on the server. The page shows what is there now.',
   internal_error: 'The server hit an unexpected error.',
+  notifications_unavailable: NOTIFICATIONS_UNAVAILABLE,
+  // Another user removed the channel since the page was read. The page shows what is there now.
+  channel_not_saved: 'This channel is not saved any more. The page shows what is there now.',
 };
 
 /** The sentence for this code, or null when the console has none for it. */

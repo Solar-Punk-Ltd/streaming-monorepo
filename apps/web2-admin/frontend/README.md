@@ -402,7 +402,7 @@ once the manager's admin link points at this admin.
 
 ### Funding, `#/funding`
 
-Three tabs. Each keeps what is ticked and typed in it while the page stays open, and reads the
+Four tabs. Each keeps what is ticked and typed in it while the page stays open, and reads the
 view again when it is shown. Without the manager's funding settings, the page says funding is not
 set up. What the API does behind each tab is in the backend's [Funding](../backend/README.md#funding).
 
@@ -480,6 +480,17 @@ wallet, so there is no password, only a confirm dialog.
   a manager that offers no purchases, or the new cost when the price moved. After a refusal the
   stamps are read again, so the dialog, still open, prices the stamp at the new terms, and the next
   confirm sends the new cost.
+- **Auto top-up** is a switch under the batch of every row that has a tick box for Top up, and of
+  every marked row, so a batch that cannot be topped up any more can be unmarked. It marks or
+  unmarks that one batch at once, with no password (`components/funding/AutoTopUpMarks.tsx`). A
+  marked row says when it was last topped up automatically and by how many days, about when its
+  next top-up falls due and what it costs (the alert job's figure, or worked out at today's price
+  with the common `autoTopUpStampPlan`), and in red what stopped its last attempt. Under the
+  tables, Auto top-up on and Auto top-up off act on the ticked batches, as Select all and the group
+  tick boxes tick them. Marking a batch that is already due says at once what its top-up costs,
+  whether its node holds that, and when the brand wallet sends the rest. A refusal, such as the 409
+  `not_markable`, shows its sentence, and nothing is marked. When the marks cannot be read, the tab
+  says so with Retry and shows no switch.
 - Select all, Clear, and a tick box per group. Switching between Top up and Dilute clears the ticks.
 - Top up takes days on a slider from 1 to 365, presets of 7, 30 and 90, or any whole number from 1.
   Each ticked row shows its time left after, its cost in xBZZ, and its node's xBZZ after. Dilute
@@ -506,6 +517,50 @@ balance. Each node pays from its own wallet, so there is no password, only a con
   peers, so its balance lands near the target, not on it.
 - The page follows each move through Sent, Mined and Confirmed. A move is confirmed once its block
   is final, about 3 minutes after it is mined.
+
+**Auto top-up** holds the settings of stamp auto top-up and shows what its three jobs are doing
+(`docs/architecture/funding.md`, "Auto top-up"). It reads `GET /api/funding/auto-top-up`, and each
+write answers the whole view, which the tab then shows (`components/funding/AutoTopUpTab.tsx`).
+
+- **Where things stand:** the monthly estimate for the marked stamps beside the brand wallet's xBZZ
+  and xDAI, the daily ceiling in force (said to be half the estimate while the field is empty), and
+  what the wallet job sent in the last 24 hours. Under them, a line per notification channel: not
+  set up, or on or off with when it last took a notice, and in red why its last notice failed and
+  how many notices wait for it, with a link to the [Notifications](#notifications-notifications)
+  page, and a line saying the alerts and warnings show on this tab alone while no channel is on;
+  the top-ups coming up, the soonest first, with each one's cost, the cost with the margin, what the
+  brand wallet sends its node, and when the alert went out and the send may go; and the warnings
+  that stand, with since when and when a notice last told of each.
+- **Jobs:** the alert, wallet and stamp jobs, each with a pause switch that is on while it runs, who
+  paused it and when, and its last run with its outcome, in red when it failed.
+- **Numbers:** Top up when under, Top up to, Look ahead, Margin, the xDAI warning and the daily
+  ceiling, which is empty while it follows half the monthly estimate. Every reason they cannot be
+  saved, the common `autoTopUpSettingsProblems`, shows under them as they are typed, and Save
+  numbers asks for the password. Undo changes goes back to the saved numbers.
+- What is typed in the numbers stays while another tab is shown.
+
+### Notifications, `#/notifications`
+
+The channels the admin's notices go out on: email by Brevo, Slack and Telegram, a card each
+(`docs/architecture/notifications.md`). The page reads `GET /api/notifications`, and each write
+answers the whole view, which the page then shows (`pages/NotificationsPage.tsx`,
+`components/notifications/`).
+
+- **How a channel stands:** not saved yet, or who saved it and when, when it last took a notice,
+  why its last notice failed, how many notices wait for it, and how its last test went.
+- **The form:** email has the service, the sender's address and name, and a line per recipient with
+  Add recipient, up to 20, and Remove; Telegram has the chat id; Slack has nothing but its secret.
+  Every reason the form cannot be saved shows under it as it is typed, in the shared package's
+  sentences (`channelSettingsProblems` and `channelSecretProblem`), and a recipient line that is no
+  address or repeats one above it is outlined in red.
+- **The secret** is write-only: the API key, the webhook URL or the bot token. Its field starts
+  empty and says whether one is set; left empty, a save keeps the stored one.
+- **Save** asks for the password. Undo changes goes back to the saved channel.
+- **The switch**, on while the channel is on, and **Remove**, which asks first, need no password.
+- **Send a test notice** shows what became of it. A second within the minute shows how long is
+  left (`test_too_soon`).
+- With the admin's `BRAND_WALLET_SECRET` unset the page says no channel can be saved, and Save stays
+  off.
 
 ### Access, `#/access`
 

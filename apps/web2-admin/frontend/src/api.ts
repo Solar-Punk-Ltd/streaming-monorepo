@@ -102,6 +102,34 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  FUNDING_AUTO_TOPUP_MARKS_PATH,
+  FUNDING_AUTO_TOPUP_PATH,
+  FUNDING_AUTO_TOPUP_SETTINGS_PATH,
+  fundingAutoTopUpJobPath,
+  type AutoTopUpJob,
+  type AutoTopUpJobRequest,
+  type AutoTopUpMarkItem,
+  type AutoTopUpMarksRequest,
+  type AutoTopUpSettings,
+  type AutoTopUpSettingsRequest,
+  type AutoTopUpView,
+} from '@streaming-monorepo/web2-admin-common';
+
+import {
+  NOTIFICATION_TEST_TOO_SOON_ERROR,
+  NOTIFICATIONS_PATH,
+  notificationChannelEnabledPath,
+  notificationChannelPath,
+  notificationChannelTestPath,
+  type NotificationChannelEnabledRequest,
+  type NotificationChannelKind,
+  type NotificationChannelSaveRequest,
+  type NotificationChannelSettingsByKind,
+  type NotificationsView,
+  type NotificationTestResponse,
+} from '@streaming-monorepo/web2-admin-common';
+
+import {
   TEST_STREAMS_PATH,
   testStreamViewerUrlPath,
   type TestStreamInput,
@@ -416,10 +444,15 @@ export function fetchFunding(): Promise<FundingView> {
  * password and not a session that ended, unless the API says the session ended, and a 429 is the login limiter's
  * lockout.
  */
-async function sendWithPassword<T>(path: string, body: unknown, fallback: string): Promise<T> {
+async function sendWithPassword<T>(
+  path: string,
+  body: unknown,
+  fallback: string,
+  method: 'POST' | 'PUT' = 'POST',
+): Promise<T> {
   const res = await apiFetch(
     path,
-    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
     { allowUnauthorized: true },
   );
   if (res.status === 401) {
@@ -514,6 +547,113 @@ export const EARLIER_CHEQUEBOOK_OPERATIONS_SETTLING =
 /** Where each operation of a chequebook bulk stands, as the admin last heard from the manager. */
 export async function fetchFundingChequebookOperations(bulkId: string): Promise<FundingChequebookItem[]> {
   return (await getJson<FundingChequebookBulkAnswer>(fundingChequebookBulkPath(bulkId))).items;
+}
+
+// --- stamp auto top-up -------------------------------------------------------
+
+/**
+ * The Auto top-up tab's view: the numbers, the jobs, how each notification channel stands, the marked stamps and the
+ * warnings.
+ */
+export function fetchAutoTopUp(): Promise<AutoTopUpView> {
+  return getJson<AutoTopUpView>(FUNDING_AUTO_TOPUP_PATH);
+}
+
+/**
+ * Saves the numbers behind the operator's password, since they bound what the wallet job sends from the brand wallet
+ * with none. A 401 is a wrong password, as for a send.
+ */
+export function saveAutoTopUpSettings(password: string, settings: AutoTopUpSettings): Promise<AutoTopUpView> {
+  const body: AutoTopUpSettingsRequest = { password, settings };
+  return sendWithPassword<AutoTopUpView>(
+    FUNDING_AUTO_TOPUP_SETTINGS_PATH,
+    body,
+    'The auto top-up numbers could not be saved.',
+    'PUT',
+  );
+}
+
+/**
+ * Marks these stamps for auto top-up, or takes the mark off them. A 409 `not_markable` carries the API's sentence, and
+ * nothing is marked.
+ */
+export function setAutoTopUpMarks(marked: boolean, items: AutoTopUpMarkItem[]): Promise<AutoTopUpView> {
+  const body: AutoTopUpMarksRequest = { marked, items };
+  return sendJson<AutoTopUpView>('PUT', FUNDING_AUTO_TOPUP_MARKS_PATH, body, {
+    fallback: 'The auto top-up marks could not be saved.',
+  });
+}
+
+/** Pauses one of the three jobs, or lets it run again. */
+export function setAutoTopUpJob(job: AutoTopUpJob, paused: boolean): Promise<AutoTopUpView> {
+  const body: AutoTopUpJobRequest = { paused };
+  return sendJson<AutoTopUpView>('PUT', fundingAutoTopUpJobPath(job), body, {
+    fallback: 'The job could not be paused or resumed.',
+  });
+}
+
+// --- notifications ----------------------------------------------------------
+
+/** The Notifications page's view: whether a channel can be saved, and every channel, saved or not. */
+export function fetchNotifications(): Promise<NotificationsView> {
+  return getJson<NotificationsView>(NOTIFICATIONS_PATH);
+}
+
+/**
+ * Saves a channel's settings and its secret behind the operator's password, since a changed channel changes where the
+ * alerts go. `secret` null keeps the stored one. A 401 is a wrong password, as for a send.
+ */
+export function saveNotificationChannel<K extends NotificationChannelKind>(
+  kind: K,
+  password: string,
+  settings: NotificationChannelSettingsByKind[K],
+  secret: string | null,
+): Promise<NotificationsView> {
+  const body: NotificationChannelSaveRequest<K> = { password, settings, secret };
+  return sendWithPassword<NotificationsView>(
+    notificationChannelPath(kind),
+    body,
+    'The channel could not be saved.',
+    'PUT',
+  );
+}
+
+/** Switches a saved channel on or off. No password, as pausing a job. */
+export function setNotificationChannelEnabled(
+  kind: NotificationChannelKind,
+  enabled: boolean,
+): Promise<NotificationsView> {
+  const body: NotificationChannelEnabledRequest = { enabled };
+  return sendJson<NotificationsView>('PUT', notificationChannelEnabledPath(kind), body, {
+    fallback: 'The channel could not be switched.',
+  });
+}
+
+/** Removes a channel with its secret. No password. */
+export async function removeNotificationChannel(kind: NotificationChannelKind): Promise<NotificationsView> {
+  const view = await sendDelete<NotificationsView>(notificationChannelPath(kind));
+  if (view === null) throw new ApiError('The channel was removed, but the page could not be read.', null, 204);
+  return view;
+}
+
+/** The sentence for a test refused as too soon: how long is left until the next may go. */
+export function testTooSoonMessage(seconds: number): string {
+  const wait = seconds === 1 ? '1 second' : `${seconds} seconds`;
+  return `A test notice went out on this channel less than a minute ago. Send another in ${wait}.`;
+}
+
+/**
+ * Sends a test notice on a saved channel and answers what became of it. A 429 `test_too_soon` says how long is left,
+ * from its `retryAfterSeconds`.
+ */
+export async function sendNotificationTest(kind: NotificationChannelKind): Promise<NotificationTestResponse> {
+  const res = await apiFetch(notificationChannelTestPath(kind), { method: 'POST' });
+  if (res.status === 429) {
+    const seconds = await retryAfterOf(res);
+    throw new ApiError(testTooSoonMessage(seconds), NOTIFICATION_TEST_TOO_SOON_ERROR, 429);
+  }
+  if (!res.ok) await failWith(res, 'The test notice could not be sent.');
+  return (await res.json()) as NotificationTestResponse;
 }
 
 // --- public config ----------------------------------------------------------
