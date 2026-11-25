@@ -23,7 +23,10 @@ A **channel** is one way a notice reaches people:
 - The text goes out as plain text. On Slack `&`, `<` and `>` are escaped, and Telegram is sent no
   parse mode, so a stamp's or a node's name never formats a message, makes a link or mentions
   anyone.
-- A notice longer than Telegram's 4096 characters goes as several messages, cut at line breaks.
+- A long notice goes as several messages, cut at line breaks and sent in order: over 4000
+  characters on Slack, counted once its text is escaped, and over 4096 on Telegram. The channel
+  took the notice once it took every message. When a later message fails, the notice failed on
+  that channel, and its next try sends it whole again.
 - Email recipients are 20 at most, and every recipient is named in the one mail.
 
 **Email providers.** The email channel sends through an email provider: one small interface that

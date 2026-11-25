@@ -46,10 +46,14 @@ export class NotificationSendError extends Error {
  * - **email** hands the notice to its {@link EmailProvider}: the subject is the title and the body is the text.
  * - **slack** posts `{ "text": … }` to the webhook: the title between asterisks, an empty line, the text. In both, `&`,
  *   `<` and `>` are written `&amp;`, `&lt;` and `&gt;`, so nothing in a notice mentions a person or a channel or
- *   makes a link.
+ *   makes a link. A notice over `SLACK_MESSAGE_MAX_LENGTH` characters, counted once it is escaped, goes as several
+ *   messages, cut at line breaks and sent in order, and it is taken once every one of them is.
  * - **telegram** posts `sendMessage` with the chat id and the text, with no `parse_mode` and with link previews off:
  *   the title, an empty line, the text. A notice over `TELEGRAM_MESSAGE_MAX_LENGTH` characters goes as several
  *   messages, cut at line breaks and sent in order, and it is taken once every one of them is.
+ *
+ * When a later message of a notice fails, `send` rejects although the earlier ones went out, and the caller's next try
+ * sends the notice whole again.
  */
 export interface Channel {
   readonly kind: NotificationChannelKind;
