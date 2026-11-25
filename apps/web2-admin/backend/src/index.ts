@@ -1,4 +1,5 @@
 import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
+import { channelFrom } from '@streaming-monorepo/notifications';
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
 import { useRestartWindow } from './api/presenters.js';
@@ -47,7 +48,9 @@ import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
+import { channelSecretKeyFrom } from './domain/notifications/channelSecrets.js';
 import { NotificationRepository } from './domain/notifications/NotificationRepository.js';
+import { NotificationService } from './domain/notifications/NotificationService.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { createRecordings, type RecordingCheckService } from './domain/recordings/index.js';
@@ -375,6 +378,16 @@ async function main(): Promise<void> {
     audit: auditLog,
     notifications: notificationStore,
   });
+  // A channel's secret is sealed under a key derived from BRAND_WALLET_SECRET: without that secret no channel can be
+  // saved or tested, and the Notifications page says so.
+  const channelSecretKey = config.brandWalletSecret === null ? null : channelSecretKeyFrom(config.brandWalletSecret);
+  // The Notifications page: a channel's save, switch, removal and test notice.
+  const notifications = new NotificationService({
+    store: notificationStore,
+    secretKey: channelSecretKey,
+    channelFrom,
+    audit: auditLog,
+  });
   const fundingService = new FundingService({
     wallet: brandWallet,
     manager: managerFunding,
@@ -449,6 +462,7 @@ async function main(): Promise<void> {
       recordings,
       fundingService,
       autoTopUp,
+      notifications,
       consoleSettings,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,
