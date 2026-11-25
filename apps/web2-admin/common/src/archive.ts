@@ -696,11 +696,14 @@ export interface ArchiveRefusal {
 
 /**
  * How a stream's image stands against its archive. Every archive job stamps the image the catalogue entry names again
- * under its stamp, at the image's own reference.
+ * under its stamp, at the image's own reference, and so does a publish that names an image, under every archive stamp
+ * that holds a copy of the stream and can be written. No route and no action of the console stamps one.
  * - `none`: the stream has no published image. Its card shows a frame of the recording, which every archive copies.
  * - `unarchived`: it has one, and no archive stamp that holds a copy of the stream carries an image of it.
  * - `archived`: the image it names is on an archive stamp that holds a copy of the stream and has not run out.
- * - `changed`: such a stamp carries another image of the stream, and none carries the one it names now.
+ * - `changed`: such a stamp carries another image of the stream, and none carries the one it names now: the stamping
+ *   after the publish that named it failed, or no stamp could be written then. The stream's next publish, or its next
+ *   archive job, stamps it again.
  */
 export type ArchiveThumbnailState = 'none' | 'unarchived' | 'archived' | 'changed';
 

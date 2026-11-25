@@ -168,6 +168,24 @@ entry names, and the image is then recorded as stamped under that stamp. It foll
 rules: on every pass, outside the quality's counts, and an image that cannot be stamped is logged
 and left out. A stream with no published image has only its frame.
 
+A publish stamps the image too. Once a publish, or a republish by hand, has put an entry that names
+an image on the feed, the admin uploads that image under every archive stamp that holds a copy of
+the stream, can be written, and has no record of that image. So a stream that takes a new image
+has it on its archive stamps without anyone asking.
+
+- **It runs right after the publish**, outside the publish lock, one stamp after another. The
+  publish has answered by then, and whatever becomes of the stamping leaves the publish as it is.
+- **The upload and its rule are the job's:** the same reference, or the stamp is left out. A
+  failure is logged with the stamp, and that stamp is left out.
+- **Each stamp that took the image gets its record**, with who published. The record is the one a
+  job writes, so the card reads one record whichever of the two stamped the image.
+- **A stamp that cannot be written takes none:** one that is full, that sits on a node that is the
+  catalogue node no longer, or that the manager lists no longer. Its record stays as it was.
+- **The next publish, or the stream's next archive job, tries again** wherever the record still
+  lacks the image.
+
+The tests wait for it with `ArchiveService.settled()`.
+
 Every post must answer the address the job expected, and any other answer stops the quality.
 
 The catalogue lives on the catalogue batch, and an uploaded image lives there too, beside its copy
@@ -400,7 +418,9 @@ copy reads as expired or unlisted from it.
   when the image the stream names is on an archive stamp that holds a copy of the stream and has
   not run out, "The thumbnail changed since the archive" when such a stamp carries another image
   of the stream alone, and "Thumbnail not archived" when none carries any. A stream with no
-  published image shows no line.
+  published image shows no line. "The thumbnail changed since the archive" after a publish
+  means the stamping that follows it failed, or found no stamp it could write. The page has no
+  action for it: the stream's next publish or archive job stamps the image again.
 - **List only archived qualities.** A per-stream switch, set by hand, off by default, offered once
   one quality is archived. On, the catalogue entry lists the archived qualities only, which the
   players honour: a quality without an index is not offered. With no quality archived any more, it
