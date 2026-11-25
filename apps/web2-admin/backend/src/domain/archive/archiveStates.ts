@@ -5,8 +5,13 @@ import {
 } from '@streaming-monorepo/contracts';
 import {
   ARCHIVED_STATES,
+  archiveThumbnailState,
+  orderArchiveCopies,
   streamArchiveState,
+  type ArchiveCopy,
+  type ArchiveCopyState,
   type ArchiveStamp,
+  type ArchiveThumbnail,
   type QualityArchiveState,
   type StreamArchiveSummary,
 } from '@streaming-monorepo/web2-admin-common';
@@ -14,7 +19,7 @@ import {
 import type { StreamRenditionRow, StreamRow } from '../../types/index.js';
 import { expiredByClock } from '../stampAge.js';
 
-import type { StreamArchiveRow } from './ArchiveRepository.js';
+import type { StreamArchiveRow, StreamArchiveThumbnailRow } from './ArchiveRepository.js';
 
 /**
  * What a stream and each of its qualities show of their archive, worked out from the copies the admin recorded, the
@@ -82,20 +87,103 @@ export function stampStanding(
   return expiredByClock({ ttlSeconds: batch.ttlSeconds, observedAt: held.observedAt }, now) ? 'expired' : 'listed';
 }
 
-/** One quality's state from its copy, the slot it records now, and the stamps. */
+/** One copy's state, or `none` with no copy: from the copy, the slot its quality records now, and the stamps. */
 export function qualityState(
   copy: StreamArchiveRow | undefined,
   currentIndex: number | null,
   held: ArchiveStampsHeld | null,
   now: number,
 ): QualityArchiveState {
-  if (!copy) return 'none';
+  return copy ? copyState(copy, currentIndex, held, now) : 'none';
+}
+
+/** One copy's state from the copy, the slot its quality records now, and the stamps. */
+export function copyState(
+  copy: StreamArchiveRow,
+  currentIndex: number | null,
+  held: ArchiveStampsHeld | null,
+  now: number,
+): ArchiveCopyState {
   if (copy.state === 'partial') return 'partial';
   const standing = stampStanding(copy.batch_id, held, now, copy.stamp_expires_at);
   if (standing === 'expired') return 'expired';
   if (currentIndex !== null && copy.manifest_index !== currentIndex) return 'outdated';
   if (standing === 'unlisted') return 'unlisted';
   return copy.parity_missing > 0 ? 'reduced' : 'complete';
+}
+
+/** The time a listed stamp has left now: its reading aged from when the manager made it. Null when it was not read. */
+function ttlNow(batch: Pick<CatalogueArchiveBatch, 'ttlSeconds'>, observedAt: string, now: number): number | null {
+  if (batch.ttlSeconds === null) return null;
+  const observed = Date.parse(observedAt);
+  const elapsed = Number.isFinite(observed) ? Math.max(0, Math.floor((now - observed) / 1000)) : 0;
+  return Math.max(0, batch.ttlSeconds - elapsed);
+}
+
+/** One copy as the views show it: its state, what it holds, and its stamp's label and time left. */
+export function toArchiveCopy(
+  copy: StreamArchiveRow,
+  currentIndex: number | null,
+  held: ArchiveStampsHeld | null,
+  now: number,
+): ArchiveCopy {
+  const batch = held?.batches.find((candidate) => candidate.batchId === copy.batch_id);
+  return {
+    batchId: copy.batch_id,
+    batchLabel: batch?.label ?? null,
+    state: copyState(copy, currentIndex, held, now),
+    chunks: copy.chunks,
+    bytes: copy.bytes,
+    parityMissing: copy.parity_missing,
+    completedAt: copy.completed_at?.toISOString() ?? null,
+    completedBy: copy.completed_by,
+    batchTtlSeconds: batch && held ? ttlNow(batch, held.observedAt, now) : null,
+  };
+}
+
+/**
+ * One quality's copies as the views list them, the best first: `rows` are the copies of that quality alone. The
+ * quality's state is the first one's, and `none` with no copy.
+ */
+export function qualityCopies(
+  rows: readonly StreamArchiveRow[],
+  currentIndex: number | null,
+  held: ArchiveStampsHeld | null,
+  now: number,
+): ArchiveCopy[] {
+  return orderArchiveCopies(rows.map((row) => toArchiveCopy(row, currentIndex, held, now)));
+}
+
+/**
+ * How a stream's image stands against its archive: `named` is the reference the stream names, `stamped` the images
+ * recorded as stamped for it, and `copies` its copies. An image counts on a stamp that holds a copy of the stream and
+ * has not run out, by the stamps and by the end the copies keep of it.
+ */
+export function streamArchiveThumbnail(
+  named: string | null,
+  stamped: readonly StreamArchiveThumbnailRow[],
+  copies: readonly StreamArchiveRow[],
+  held: ArchiveStampsHeld | null,
+  now: number,
+): ArchiveThumbnail {
+  const live = stamped.filter((row) => {
+    const onStamp = copies.filter((copy) => copy.batch_id === row.batch_id);
+    if (onStamp.length === 0) return false;
+    const end = onStamp.find((copy) => copy.stamp_expires_at !== null)?.stamp_expires_at ?? null;
+    return stampStanding(row.batch_id, held, now, end) !== 'expired';
+  });
+  const state = archiveThumbnailState(
+    named,
+    live.map((row) => row.thumbnail_ref),
+  );
+  const reference = named?.toLowerCase();
+  return {
+    state,
+    batchIds:
+      state === 'archived'
+        ? live.filter((row) => row.thumbnail_ref.toLowerCase() === reference).map((row) => row.batch_id)
+        : [],
+  };
 }
 
 /** The slot each quality of a stream records now: each rung's, or the stream's own for a single-quality recording. */
@@ -119,7 +207,10 @@ export function streamArchiveSummary(
   }));
   return {
     state: streamArchiveState(states.map((entry) => entry.state)),
-    archived: states.filter((entry) => ARCHIVED_STATES.includes(entry.state)).map((entry) => entry.rendition),
+    // A quality archived on two stamps is named once.
+    archived: [
+      ...new Set(states.filter((entry) => ARCHIVED_STATES.includes(entry.state)).map((entry) => entry.rendition)),
+    ],
     archivedOnly: stream.archived_only,
   };
 }
@@ -152,9 +243,7 @@ export function toArchiveStamp(
   holder: { nodeId: string; nodeLabel: string } | null = null,
 ): ArchiveStamp {
   const effectiveChunks = archiveEffectiveChunks(batch.depth);
-  const observed = Date.parse(observedAt);
-  const elapsed = Number.isFinite(observed) ? Math.max(0, Math.floor((now - observed) / 1000)) : 0;
-  const ttlSeconds = batch.ttlSeconds === null ? null : Math.max(0, batch.ttlSeconds - elapsed);
+  const ttlSeconds = ttlNow(batch, observedAt, now);
   return {
     batchId: batch.batchId,
     label: batch.label,

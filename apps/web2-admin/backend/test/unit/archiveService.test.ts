@@ -350,7 +350,7 @@ describe('ArchiveService', () => {
     await until(async () => (await job()).state === 'verifying', 'verifying');
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal((await job()).state, 'verifying', 'nothing completes while the tag lags');
-    assert.equal(store.archives.get('stream-1:360p')!.state, 'partial');
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.state, 'partial');
     for (const uid of node.tags.keys()) node.push(uid);
     await service.settled();
     assert.equal((await job()).state, 'done');
@@ -390,7 +390,7 @@ describe('ArchiveService', () => {
     const item = (await job()).items[0]!;
     assert.equal(item.result, 'reduced');
     assert.equal(item.parityMissing, 1);
-    assert.equal(store.archives.get('stream-1:360p')!.parity_missing, 1);
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.parity_missing, 1);
     const summary = (await service.summaries([streams.rows.get('stream-1')!])).get('stream-1');
     assert.equal(summary?.state, 'reduced');
   });
@@ -412,7 +412,7 @@ describe('ArchiveService', () => {
     current = await job();
     assert.equal(current.state, 'done');
     assert.equal(current.items[0]!.result, 'complete');
-    assert.equal(store.archives.get('stream-1:360p')!.parity_missing, 0);
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.parity_missing, 0);
   });
 
   it('pauses with the node, not as unreadable, when a segment read goes unanswered while measuring', async () => {
@@ -435,7 +435,7 @@ describe('ArchiveService', () => {
     let current = await job();
     assert.equal(current.state, 'paused');
     assert.equal(current.pauseReason, 'unreadable');
-    assert.equal(store.archives.get('stream-1:360p')!.state, 'partial');
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.state, 'partial');
     assert.deepEqual(current.actions, ['resume', 'cancel']);
 
     node.network.set(lost, bytes);
@@ -503,7 +503,12 @@ describe('ArchiveService', () => {
     await service.settled();
     current = await job();
     assert.equal(current.state, 'done');
-    assert.equal(store.archives.get('stream-1:360p')!.batch_id, OTHER_BATCH);
+    assert.equal(store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.state, 'complete');
+    assert.equal(
+      store.archives.get(`stream-1:360p:${BATCH}`)?.state ?? 'partial',
+      'partial',
+      'nothing on the first stamp reads complete',
+    );
     for (const address of chunksOf('360p')) assert.ok(node.stamped.get(OTHER_BATCH)!.has(address));
   });
 
@@ -729,7 +734,7 @@ describe('ArchiveService', () => {
     catalogue.batches = [...catalogue.batches, archiveBatch(NEW_BATCH, { label: 'Alps archive', depth })];
     await service.settled();
     assert.equal((await job()).state, 'done');
-    assert.equal(store.archives.get('stream-1:360p')!.batch_id, NEW_BATCH);
+    assert.equal(store.archives.get(`stream-1:360p:${NEW_BATCH}`)!.state, 'complete');
     assert.equal(manager.requests.length, 1, 'never bought twice');
     assert.equal(store.purchases.get(requestId)!.state, 'usable');
   });
@@ -764,7 +769,7 @@ describe('ArchiveService', () => {
     );
     await service.settled();
     assert.equal((await job()).state, 'done');
-    assert.equal(store.archives.get('stream-1:360p')!.batch_id, NEW_BATCH);
+    assert.equal(store.archives.get(`stream-1:360p:${NEW_BATCH}`)!.state, 'complete');
   });
 
   it("pauses as batch with the record's reason when the new stamp is still pending at the purchase timeout", async () => {
@@ -1131,7 +1136,7 @@ describe('ArchiveService', () => {
     const stream = recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
     await service.settled();
-    store.archives.get('stream-1:360p')!.stamp_expires_at = new Date(Date.now() - 60_000);
+    store.archives.get(`stream-1:360p:${BATCH}`)!.stamp_expires_at = new Date(Date.now() - 60_000);
     catalogue.batches = [archiveBatch(OTHER_BATCH)];
     const summary = (await service.summaries([stream])).get('stream-1');
     assert.equal(summary?.state, 'expired');
@@ -1141,12 +1146,28 @@ describe('ArchiveService', () => {
     assert.equal(options.qualities.find((quality) => quality.rendition === '360p')?.state, 'expired');
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
     await service.settled();
-    assert.equal(store.archives.get('stream-1:360p')!.batch_id, OTHER_BATCH);
+    assert.equal(store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.state, 'complete');
     assert.equal(
-      store.archives.get('stream-1:360p')!.stamp_expires_at,
+      store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.stamp_expires_at,
       null,
       'a copy onto another stamp waits for its end',
     );
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.state, 'complete', 'the earlier copy stays as it is');
+    const after = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    const quality = after.qualities.find((one) => one.rendition === '360p')!;
+    assert.deepEqual(
+      quality.copies.map((one) => [one.batchId, one.state]),
+      [
+        [OTHER_BATCH, 'complete'],
+        [BATCH, 'expired'],
+      ],
+    );
+    assert.deepEqual([quality.state, quality.batchId], ['complete', OTHER_BATCH], "the quality is its best copy's");
+    assert.deepEqual(after.thumbnail, { state: 'none', batchIds: [] });
+    const [row] = (await service.archivedStreams()).streams;
+    assert.equal(row!.qualities.length, 1, 'the Archive page lists the quality once, with both copies');
+    assert.equal(row!.qualities[0]!.copies.length, 2);
+    assert.deepEqual((await service.summaries([stream])).get('stream-1')?.archived, ['360p']);
   });
 
   it('reads nothing as expired or unlisted from a stamp record that does not carry the archive stamps', async () => {
@@ -1203,7 +1224,7 @@ describe('ArchiveService', () => {
     node.release();
     assert.equal(await cancelling, null);
     assert.equal(await service.current(TEST_OPERATOR.userId), null);
-    assert.equal(store.archives.get('stream-1:720p')!.state, 'partial', 'what was copied stays, as partial');
+    assert.equal(store.archives.get(`stream-1:720p:${BATCH}`)!.state, 'partial', 'what was copied stays, as partial');
   });
 });
 

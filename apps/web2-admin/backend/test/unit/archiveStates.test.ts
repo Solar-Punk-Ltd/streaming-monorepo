@@ -1,14 +1,23 @@
 /**
  * Why a copy cannot be written onto an archive stamp: the state the manager read comes before the node, since the
  * manager calls a stamp not writable in every state but active and full. And when a copy's stamp ran out once the
- * record lists it no longer: the end each record gives it, and what the copy then reads.
+ * record lists it no longer: the end each record gives it, and what the copy then reads. A quality with a copy on more
+ * than one stamp takes its best copy's state, and the stream's image counts on a stamp that holds a copy and lives.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { StreamArchiveRow } from '../../src/domain/archive/ArchiveRepository.js';
-import { archiveStampEnds, qualityState, stampProblem } from '../../src/domain/archive/archiveStates.js';
+import type { StreamArchiveRow, StreamArchiveThumbnailRow } from '../../src/domain/archive/ArchiveRepository.js';
+import {
+  archivedRenditions,
+  archiveStampEnds,
+  qualityCopies,
+  qualityState,
+  stampProblem,
+  streamArchiveSummary,
+  streamArchiveThumbnail,
+} from '../../src/domain/archive/archiveStates.js';
 
 import { archiveBatch } from './support/archiveFakes.js';
 
@@ -74,6 +83,126 @@ describe('a copy whose stamp the record lists no longer', () => {
     const later = Date.parse(OBSERVED_AT) + 2 * DAY;
     const listed = { batches: [archiveBatch(BATCH)], observedAt: new Date(later).toISOString() };
     assert.equal(qualityState(copy(new Date(OBSERVED_AT)), 5, listed, later), 'complete');
+  });
+});
+
+describe('a quality with a copy on more than one stamp', () => {
+  const held = {
+    batches: [
+      archiveBatch(BATCH, { label: 'Talks', ttlSeconds: 10 * 86_400 }),
+      archiveBatch(OTHER, { label: null, ttlSeconds: 86_400 }),
+    ],
+    observedAt: OBSERVED_AT,
+  };
+  const on = (batchId: string, over: Partial<StreamArchiveRow> = {}): StreamArchiveRow => ({
+    ...copy(null),
+    batch_id: batchId,
+    ...over,
+  });
+
+  it('lists its copies the best first, each with its own state, stamp label and time left', () => {
+    const copies = qualityCopies(
+      [on(OTHER, { state: 'partial', completed_at: null, completed_by: null }), on(BATCH, { parity_missing: 4 })],
+      5,
+      held,
+      NOW,
+    );
+    assert.deepEqual(
+      copies.map((one) => [one.batchId, one.state, one.batchLabel, one.batchTtlSeconds, one.parityMissing]),
+      [
+        [BATCH, 'reduced', 'Talks', 10 * 86_400 - 60, 4],
+        [OTHER, 'partial', null, 86_400 - 60, 0],
+      ],
+    );
+    assert.equal(copies[0]!.completedAt, OBSERVED_AT);
+    assert.equal(copies[1]!.completedAt, null);
+  });
+
+  it('stays archived while one copy is, when the other is outdated, expired or stopped', () => {
+    const indexes = new Map([['360p', 5]]);
+    for (const other of [
+      on(OTHER, { manifest_index: 4 }),
+      on(OTHER, { stamp_expires_at: new Date(NOW - DAY) }),
+      on(OTHER, { state: 'partial', completed_at: null, completed_by: null }),
+    ]) {
+      const rows = [other, on(BATCH)];
+      const listed = { batches: [archiveBatch(BATCH)], observedAt: OBSERVED_AT };
+      assert.equal(qualityCopies(rows, 5, listed, NOW)[0]!.batchId, BATCH);
+      const summary = streamArchiveSummary({ archived_only: false }, rows, indexes, listed, NOW);
+      assert.equal(summary?.state, 'complete');
+      assert.deepEqual(summary?.archived, ['360p']);
+    }
+  });
+
+  it('is named once among the archived qualities when two copies are complete', () => {
+    const rows = [on(BATCH), on(OTHER)];
+    const indexes = new Map([['360p', 5]]);
+    assert.deepEqual(streamArchiveSummary({ archived_only: true }, rows, indexes, held, NOW)?.archived, ['360p']);
+    assert.deepEqual([...archivedRenditions(rows, indexes, held, NOW)], ['360p']);
+  });
+
+  it('gives a copy on a stamp the record lists no longer no label and no time left', () => {
+    const [one] = qualityCopies([on(BATCH)], 5, withoutIt(NOW), NOW);
+    assert.deepEqual([one!.state, one!.batchLabel, one!.batchTtlSeconds], ['unlisted', null, null]);
+  });
+});
+
+describe("the stream's image against its archive", () => {
+  const REF = 'f'.repeat(64);
+  const OLD = 'e'.repeat(64);
+  const held = { batches: [archiveBatch(BATCH), archiveBatch(OTHER)], observedAt: OBSERVED_AT };
+  const stamped = (batchId: string, reference: string): StreamArchiveThumbnailRow => ({
+    stream_id: 'stream-1',
+    batch_id: batchId,
+    thumbnail_ref: reference,
+    stamped_at: new Date(OBSERVED_AT),
+    stamped_by_user_id: null,
+    stamped_by: 'operator',
+  });
+  const copyOn = (batchId: string, end: Date | null = null): StreamArchiveRow => ({
+    ...copy(end),
+    batch_id: batchId,
+  });
+
+  it('is archived on each stamp that holds a copy of the stream and carries the image it names', () => {
+    const thumbnail = streamArchiveThumbnail(
+      REF,
+      [stamped(BATCH, REF), stamped(OTHER, REF.toUpperCase())],
+      [copyOn(BATCH), copyOn(OTHER)],
+      held,
+      NOW,
+    );
+    assert.deepEqual(thumbnail, { state: 'archived', batchIds: [BATCH, OTHER] });
+  });
+
+  it('is changed when the stamps carry another image alone, and archived once one carries the new one', () => {
+    const copies = [copyOn(BATCH), copyOn(OTHER)];
+    assert.deepEqual(streamArchiveThumbnail(REF, [stamped(BATCH, OLD)], copies, held, NOW), {
+      state: 'changed',
+      batchIds: [],
+    });
+    assert.deepEqual(streamArchiveThumbnail(REF, [stamped(BATCH, OLD), stamped(OTHER, REF)], copies, held, NOW), {
+      state: 'archived',
+      batchIds: [OTHER],
+    });
+  });
+
+  it('counts no image on a stamp that holds no copy of the stream, or that ran out', () => {
+    assert.equal(streamArchiveThumbnail(REF, [stamped(OTHER, REF)], [copyOn(BATCH)], held, NOW).state, 'unarchived');
+    const expired = { batches: [archiveBatch(BATCH, { state: 'expired', ttlSeconds: 0 })], observedAt: OBSERVED_AT };
+    assert.equal(streamArchiveThumbnail(REF, [stamped(BATCH, REF)], [copyOn(BATCH)], expired, NOW).state, 'unarchived');
+    const ended = copyOn(BATCH, new Date(NOW - DAY));
+    assert.equal(streamArchiveThumbnail(REF, [stamped(BATCH, REF)], [ended], withoutIt(NOW), NOW).state, 'unarchived');
+    const ahead = copyOn(BATCH, new Date(NOW + DAY));
+    assert.equal(streamArchiveThumbnail(REF, [stamped(BATCH, REF)], [ahead], withoutIt(NOW), NOW).state, 'archived');
+  });
+
+  it('is none for a stream that names no image, and unarchived for one that was never stamped', () => {
+    assert.deepEqual(streamArchiveThumbnail(null, [stamped(BATCH, OLD)], [copyOn(BATCH)], held, NOW), {
+      state: 'none',
+      batchIds: [],
+    });
+    assert.equal(streamArchiveThumbnail(REF, [], [copyOn(BATCH)], held, NOW).state, 'unarchived');
   });
 });
 

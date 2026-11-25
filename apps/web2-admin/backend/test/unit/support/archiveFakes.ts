@@ -23,10 +23,12 @@ import type {
   NewArchiveJob,
   NewPurchase,
   NewStreamArchive,
+  NewStreamArchiveThumbnail,
   PlaceRefusal,
   PurchaseChange,
   StreamArchiveChange,
   StreamArchiveRow,
+  StreamArchiveThumbnailRow,
 } from '../../../src/domain/archive/ArchiveRepository.js';
 import {
   BRANCHES,
@@ -296,7 +298,10 @@ export class InMemoryArchiveStore implements ArchiveStore {
   job: ArchiveJobRow | null = null;
   rows: ArchiveItemRow[] = [];
   readonly segments = new Map<string, ArchiveSegmentDone>();
+  /** The copies, each under its stream, its quality and its stamp. */
   readonly archives = new Map<string, StreamArchiveRow>();
+  /** The images stamped, each under its stream and its stamp. */
+  readonly thumbnails = new Map<string, StreamArchiveThumbnailRow>();
   readonly purchases = new Map<string, ArchivePurchaseRow>();
   readonly dismissals = new Set<string>();
   rate: number | null = null;
@@ -505,33 +510,48 @@ export class InMemoryArchiveStore implements ArchiveStore {
   }
 
   async startArchive(row: NewStreamArchive): Promise<void> {
-    const key = `${row.stream_id}:${row.rendition}`;
-    const before = this.archives.get(key);
+    const key = `${row.stream_id}:${row.rendition}:${row.batch_id}`;
     this.archives.set(key, {
       ...row,
       state: 'partial',
       completed_at: null,
       completed_by_user_id: null,
       completed_by: null,
-      stamp_expires_at: before?.batch_id === row.batch_id ? before.stamp_expires_at : null,
+      stamp_expires_at: this.archives.get(key)?.stamp_expires_at ?? null,
     });
   }
 
-  async saveArchive(streamId: string, rendition: string, change: StreamArchiveChange): Promise<void> {
-    const row = this.archives.get(`${streamId}:${rendition}`);
+  async saveArchive(streamId: string, rendition: string, batchId: string, change: StreamArchiveChange): Promise<void> {
+    const row = this.archives.get(`${streamId}:${rendition}:${batchId}`);
     if (!row) return;
     for (const [key, value] of Object.entries(change)) {
       if (value !== undefined) (row as unknown as Record<string, unknown>)[key] = value;
     }
   }
 
-  async completeArchive(streamId: string, rendition: string, byUserId: string | null, by: string): Promise<void> {
-    const row = this.archives.get(`${streamId}:${rendition}`);
+  async completeArchive(
+    streamId: string,
+    rendition: string,
+    batchId: string,
+    byUserId: string | null,
+    by: string,
+  ): Promise<void> {
+    const row = this.archives.get(`${streamId}:${rendition}:${batchId}`);
     if (!row) return;
     row.state = 'complete';
     row.completed_at = new Date();
     row.completed_by_user_id = byUserId;
     row.completed_by = by;
+  }
+
+  async thumbnailsOf(streamIds: readonly string[] | null): Promise<StreamArchiveThumbnailRow[]> {
+    return [...this.thumbnails.values()]
+      .filter((row) => streamIds === null || streamIds.includes(row.stream_id))
+      .map((row) => ({ ...row }));
+  }
+
+  async recordThumbnail(row: NewStreamArchiveThumbnail): Promise<void> {
+    this.thumbnails.set(`${row.stream_id}:${row.batch_id}`, { ...row, stamped_at: new Date() });
   }
 
   async setArchivedOnly(streamId: string, archivedOnly: boolean): Promise<boolean> {

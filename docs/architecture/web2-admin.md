@@ -127,6 +127,8 @@ recording exactly as before. The shapes and the routes are in
 - **It runs in the admin as a background job,** like the export, and shares the export's widget.
 - **A quality is archived once Bee reports every one of its chunks synced** to Swarm.
 - **The archive stamp alone keeps the chunks on Swarm.** The node pins none of them.
+- **A quality can sit on more than one archive stamp.** Each copy stands by itself, and the quality
+  is archived while one of them is.
 
 The copy outlives the stage's batch because Bee's reserve keeps one chunk under several stamps, with
 one item per batch. When the stage batch expires, eviction removes that batch's item only, and the
@@ -158,9 +160,19 @@ its rung's `manifest_index`. Both are posted on every pass, whatever qualities t
 chunk posted again under the same stamp takes no more room. The frame stays outside the quality's
 counts. A frame that cannot be copied is logged and left out.
 
+With the frame goes **the stream's image**. The image the catalogue entry names is uploaded again
+under the job's stamp, through the upload a catalogue move uses
+([stages.md](stages.md#moving-the-catalogue-to-another-batch)): from the bytes the stream's row
+holds, or from the network when the row holds none. The upload has to come out at the reference the
+entry names, and the image is then recorded as stamped under that stamp. It follows the frame's
+rules: on every pass, outside the quality's counts, and an image that cannot be stamped is logged
+and left out. A stream with no published image has only its frame.
+
 Every post must answer the address the job expected, and any other answer stops the quality.
 
-An uploaded thumbnail and the catalogue already live on the catalogue batch. Feed slots below the recorded
+The catalogue lives on the catalogue batch, and an uploaded image lives there too, beside its copy
+under the archive stamp. A viewer finds the image through the catalogue entry, so a stream is
+listed while the catalogue batch lives. Feed slots below the recorded
 index stay with the stage, since a recording is read by index. The ladder's time markers serve a
 live stream alone, and a player of a recording reads none.
 
@@ -233,7 +245,9 @@ The dialog works like this:
 
 One job exists at a time for the whole admin, an export or an archive. An archive is started from
 the stream's page, from the Archive page, or from the download panel's finished export, where the
-recording is already on the node and every chunk of it is readable.
+recording is already on the node and every chunk of it is readable. A further copy of an archived
+quality is started from the Archive page alone
+([Copies on more than one stamp](#copies-on-more-than-one-stamp)).
 
 | State                      | What happens                                                                                                                                                                                                                                                             |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -292,9 +306,38 @@ Chunks already copied stay on Swarm whatever the user chooses, and the quality s
 - **A tag the node no longer knows.** The quality takes a new tag and is posted again from its
   first segment, which costs pushes and no room.
 - **Room.** Room on a stamp is its capacity less the sum of the node's `GET /stamps/{id}/buckets`.
-  `utilization` and `fillRatio` name the fullest bucket. One quality goes whole onto one stamp. A
+  `utilization` and `fillRatio` name the fullest bucket. A job copies onto one stamp, and a copy
+  goes whole onto it. A
   chunk already on the stamp takes no room, so for a stream that recorded again the estimate is an
   upper bound.
+
+### Copies on more than one stamp
+
+A copy is a stream, a quality and an archive stamp, and a quality has one for each stamp it was
+archived onto. Nothing is taken off an immutable batch and no batch is refunded, so moving a
+recording to another stamp is a further copy onto that stamp, after which the first stamp is left
+to run out. A stamp that holds the recordings of one event is a collection in the same way.
+
+- **A quality's state is its best copy's**, in the order of
+  [What a stream shows](#what-a-stream-shows). It is archived while one complete copy's stamp
+  lives, and the badge, the switch and the catalogue entry follow that.
+- **A start is refused per stamp.** A quality is refused onto a stamp that holds an archived copy
+  of it, and accepted onto any other stamp that can be written and has the room, or onto a new one.
+- **The earlier copy stays as it is** while the new one runs and after. A further copy that is
+  paused or cancelled leaves the quality archived, and stays on its stamp as an incomplete copy
+  that a start onto that stamp carries on.
+- **It costs what a first copy costs:** the room on the new stamp, and the bandwidth from the
+  catalogue node's chequebook. The panel says both before a start, and that the copy on the first
+  stamp stays until that stamp runs out.
+- **A stream that recorded again** makes every copy outdated. "Archive again" onto a stamp makes
+  that stamp's copy anew.
+- **A job that changes its stamp**, onto another stamp or a new one in place of the one chosen,
+  leaves what it copied on the first stamp as an incomplete copy and starts one on the second. It
+  is refused onto a stamp that holds an archived copy of one of its qualities.
+- **Where it starts.** The Archive page's "Copy onto another stamp" opens the panel with the
+  stream's archived qualities offered. The stream's archive card and the download panel start a
+  quality's first archive and show an archived quality as archived. Every signed-in user may start
+  either.
 
 ### What it costs
 
@@ -346,10 +389,18 @@ for the switch, and the card and the Archive page say it cannot be topped up fro
 `archiveBatches`, from a manager older than the field, tells nothing of the archive stamps, so no
 copy reads as expired or unlisted from it.
 
-- **Archive page.** Only streams with an archive: title, date, qualities, size, stamp label, the
-  stamp's time left, archived at and by. A user archives more qualities there, and archives again
-  when a copy is outdated. A copy stays on its stamp for the stamp's life.
-- **Stream page.** An archive card with each quality's state, the start action and the switch.
+- **Archive page.** Only streams with an archive: title, date, qualities, size, archived at and by,
+  and every copy of each quality with its stamp's label, its state and the stamp's time left. A
+  user archives more qualities there, archives again when a copy is outdated, and copies an
+  archived quality onto another stamp. A stamp filter lists the streams that have a copy on the
+  chosen stamp, with those copies. A copy stays on its stamp for the stamp's life.
+- **Stream page.** An archive card with each quality's state and its copies, the start action and
+  the switch.
+- **The stream's image.** The card and the Archive page say how it stands: "Thumbnail archived"
+  when the image the stream names is on an archive stamp that holds a copy of the stream and has
+  not run out, "The thumbnail changed since the archive" when such a stamp carries another image
+  of the stream alone, and "Thumbnail not archived" when none carries any. A stream with no
+  published image shows no line.
 - **List only archived qualities.** A per-stream switch, set by hand, off by default, offered once
   one quality is archived. On, the catalogue entry lists the archived qualities only, which the
   players honour: a quality without an index is not offered. With no quality archived any more, it
@@ -361,15 +412,16 @@ copy reads as expired or unlisted from it.
 
 ### What it keeps
 
-| Table                     | Holds                                                                                                                                                   |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `stream_archives`         | one row per stream and quality: the stamp, the playlist slot copied, partial or complete, what the copy holds, and when its stamp runs out as last read |
-| `streams.archived_only`   | the "List only archived qualities" switch                                                                                                               |
-| `archive_jobs`            | at most one row: the stream, the stamp or the purchase, the state, the pause, who started it                                                            |
-| `archive_job_items`       | one per picked quality: its state, its counters and its tag                                                                                             |
-| `archive_job_segments`    | the segments done, which is the resume ledger                                                                                                           |
-| `archive_stamp_purchases` | each purchase, written before the manager is asked                                                                                                      |
-| `archive_rate`            | the rate the last job measured                                                                                                                          |
+| Table                       | Holds                                                                                                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `stream_archives`           | one row per copy, a stream, a quality and a stamp: the playlist slot copied, partial or complete, what the copy holds, and when its stamp runs out as last read |
+| `stream_archive_thumbnails` | one row per stream and stamp: the image reference stamped under that stamp, when and by whom                                                                    |
+| `streams.archived_only`     | the "List only archived qualities" switch                                                                                                                       |
+| `archive_jobs`              | at most one row: the stream, the stamp or the purchase, the state, the pause, who started it                                                                    |
+| `archive_job_items`         | one per picked quality: its state, its counters and its tag                                                                                                     |
+| `archive_job_segments`      | the segments done, which is the resume ledger                                                                                                                   |
+| `archive_stamp_purchases`   | each purchase, written before the manager is asked                                                                                                              |
+| `archive_rate`              | the rate the last job measured                                                                                                                                  |
 
 Its settings are `ARCHIVE_PARALLEL_CHUNKS` (16), the chunks read and posted at once,
 `ARCHIVE_PUSH_WINDOW_CHUNKS` (2000), `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`, `ARCHIVE_TTL_WARNING_DAYS` (30)

@@ -64,7 +64,10 @@ export interface ArchiveItemRow {
   bucket_sum_before: number | null;
 }
 
-/** A row of `stream_archives` (migration 025): one quality's copy. */
+/**
+ * A row of `stream_archives` (migrations 025 and 036): one copy, a quality of a stream on one archive stamp. A quality
+ * has a row for each stamp it was archived onto.
+ */
 export interface StreamArchiveRow {
   stream_id: string;
   rendition: string;
@@ -110,6 +113,24 @@ export type StreamArchiveChange = Partial<
     | 'bzz_spent_estimate_plur'
   >
 >;
+
+/**
+ * A row of `stream_archive_thumbnails` (migration 036): the image of a stream as it was stamped under one archive
+ * stamp. There is one for a stream and a stamp.
+ */
+export interface StreamArchiveThumbnailRow {
+  stream_id: string;
+  /** The archive stamp, 64 hex digits in lower case with no `0x`. */
+  batch_id: string;
+  /** The image's reference, as `streams.thumbnail_ref` held it when it was stamped. */
+  thumbnail_ref: string;
+  stamped_at: Date;
+  stamped_by_user_id: string | null;
+  stamped_by: string;
+}
+
+/** What stamping an image records: everything but the moment. */
+export type NewStreamArchiveThumbnail = Omit<StreamArchiveThumbnailRow, 'stamped_at'>;
 
 /** A row of `archive_stamp_purchases` (migration 027). */
 export interface ArchivePurchaseRow {
@@ -246,11 +267,27 @@ export interface ArchiveStore {
   lastRate(): Promise<number | null>;
   saveRate(chunksPerSecond: number): Promise<void>;
 
+  /** Every copy of the streams named, or of every stream: a row for each quality and stamp. */
   archivesOf(streamIds: readonly string[] | null): Promise<StreamArchiveRow[]>;
-  /** Writes a quality's copy as partial, replacing whatever copy of it was there. */
+  /**
+   * Writes a quality's copy on one stamp as partial, in place of the copy that stamp held of it. The quality's copies
+   * on other stamps stay as they are.
+   */
   startArchive(row: NewStreamArchive): Promise<void>;
-  saveArchive(streamId: string, rendition: string, change: StreamArchiveChange): Promise<void>;
-  completeArchive(streamId: string, rendition: string, byUserId: string | null, by: string): Promise<void>;
+  /** Updates the copy of the quality on the stamp `batchId`. */
+  saveArchive(streamId: string, rendition: string, batchId: string, change: StreamArchiveChange): Promise<void>;
+  /** Marks the copy of the quality on the stamp `batchId` complete. */
+  completeArchive(
+    streamId: string,
+    rendition: string,
+    batchId: string,
+    byUserId: string | null,
+    by: string,
+  ): Promise<void>;
+  /** The images stamped under archive stamps, of the streams named or of every stream. */
+  thumbnailsOf(streamIds: readonly string[] | null): Promise<StreamArchiveThumbnailRow[]>;
+  /** Records the image as stamped under the stamp, in place of the image recorded there for the stream. */
+  recordThumbnail(row: NewStreamArchiveThumbnail): Promise<void>;
   setArchivedOnly(streamId: string, archivedOnly: boolean): Promise<boolean>;
 
   /** Null when another purchase is under way. */
@@ -578,17 +615,14 @@ export class ArchiveRepository implements ArchiveStore {
          (stream_id, rendition, batch_id, feed_owner, feed_topic, manifest_index, state, parity_missing, segments,
           chunks, bytes, chunks_rebuilt, bucket_sum_before, bucket_sum_after, bzz_spent_estimate_plur)
        VALUES ($1, $2, $3, $4, $5, $6, 'partial', $7, $8, $9, $10, $11, $12, $13, $14)
-       ON CONFLICT (stream_id, rendition) DO UPDATE SET
-         batch_id = EXCLUDED.batch_id, feed_owner = EXCLUDED.feed_owner, feed_topic = EXCLUDED.feed_topic,
+       ON CONFLICT (stream_id, rendition, batch_id) DO UPDATE SET
+         feed_owner = EXCLUDED.feed_owner, feed_topic = EXCLUDED.feed_topic,
          manifest_index = EXCLUDED.manifest_index, state = 'partial', parity_missing = EXCLUDED.parity_missing,
          segments = EXCLUDED.segments, chunks = EXCLUDED.chunks, bytes = EXCLUDED.bytes,
          chunks_rebuilt = EXCLUDED.chunks_rebuilt, bucket_sum_before = EXCLUDED.bucket_sum_before,
          bucket_sum_after = EXCLUDED.bucket_sum_after, bzz_spent_estimate_plur = EXCLUDED.bzz_spent_estimate_plur,
          completed_at = NULL, completed_by_user_id = NULL, completed_by = NULL, created_at = NOW(),
-         updated_at = NOW(),
-         stamp_expires_at = CASE
-           WHEN stream_archives.batch_id = EXCLUDED.batch_id THEN stream_archives.stamp_expires_at
-         END`,
+         updated_at = NOW()`,
       [
         row.stream_id,
         row.rendition,
@@ -608,8 +642,8 @@ export class ArchiveRepository implements ArchiveStore {
     );
   }
 
-  async saveArchive(streamId: string, rendition: string, change: StreamArchiveChange): Promise<void> {
-    const values: unknown[] = [streamId, rendition];
+  async saveArchive(streamId: string, rendition: string, batchId: string, change: StreamArchiveChange): Promise<void> {
+    const values: unknown[] = [streamId, rendition, batchId];
     const sets = ['updated_at = NOW()'];
     for (const column of ARCHIVE_COLUMNS) {
       if (change[column] === undefined) continue;
@@ -617,17 +651,45 @@ export class ArchiveRepository implements ArchiveStore {
       sets.push(`${column} = $${values.length}`);
     }
     await this.pool.query(
-      `UPDATE stream_archives SET ${sets.join(', ')} WHERE stream_id = $1 AND rendition = $2`,
+      `UPDATE stream_archives SET ${sets.join(', ')} WHERE stream_id = $1 AND rendition = $2 AND batch_id = $3`,
       values,
     );
   }
 
-  async completeArchive(streamId: string, rendition: string, byUserId: string | null, by: string): Promise<void> {
+  async completeArchive(
+    streamId: string,
+    rendition: string,
+    batchId: string,
+    byUserId: string | null,
+    by: string,
+  ): Promise<void> {
     await this.pool.query(
       `UPDATE stream_archives
-          SET state = 'complete', completed_at = NOW(), completed_by_user_id = $3, completed_by = $4, updated_at = NOW()
-        WHERE stream_id = $1 AND rendition = $2`,
-      [streamId, rendition, byUserId, by],
+          SET state = 'complete', completed_at = NOW(), completed_by_user_id = $4, completed_by = $5, updated_at = NOW()
+        WHERE stream_id = $1 AND rendition = $2 AND batch_id = $3`,
+      [streamId, rendition, batchId, byUserId, by],
+    );
+  }
+
+  async thumbnailsOf(streamIds: readonly string[] | null): Promise<StreamArchiveThumbnailRow[]> {
+    const result =
+      streamIds === null
+        ? await this.pool.query<StreamArchiveThumbnailRow>('SELECT * FROM stream_archive_thumbnails')
+        : await this.pool.query<StreamArchiveThumbnailRow>(
+            'SELECT * FROM stream_archive_thumbnails WHERE stream_id = ANY($1::uuid[])',
+            [streamIds],
+          );
+    return result.rows;
+  }
+
+  async recordThumbnail(row: NewStreamArchiveThumbnail): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO stream_archive_thumbnails (stream_id, batch_id, thumbnail_ref, stamped_by_user_id, stamped_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (stream_id, batch_id) DO UPDATE SET
+         thumbnail_ref = EXCLUDED.thumbnail_ref, stamped_at = NOW(),
+         stamped_by_user_id = EXCLUDED.stamped_by_user_id, stamped_by = EXCLUDED.stamped_by`,
+      [row.stream_id, row.batch_id, row.thumbnail_ref, row.stamped_by_user_id, row.stamped_by],
     );
   }
 
