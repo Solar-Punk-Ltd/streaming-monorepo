@@ -351,7 +351,8 @@ to run out. A stamp that holds the recordings of one event is a collection in th
   that stamp's copy anew.
 - **A job that changes its stamp**, onto another stamp or a new one in place of the one chosen,
   leaves what it copied on the first stamp as an incomplete copy and starts one on the second. It
-  is refused onto a stamp that holds an archived copy of one of its qualities.
+  is refused onto a stamp that holds an archived copy of a quality it still copies. A quality it
+  is done with is not copied again.
 - **Where it starts.** The Archive page's "Copy onto another stamp" opens the panel with the
   stream's archived qualities offered. The stream's archive card and the download panel start a
   quality's first archive and show an archived quality as archived. Every signed-in user may start
