@@ -16,6 +16,8 @@ import {
   archiveHoldsPlace,
   archiveStampFits,
   archiveWalletShortfallPlur,
+  archivedOnStamp,
+  archivedOnStampAlready,
   holdsFinishedRecording,
   isArchived,
   type ArchiveAction,
@@ -202,6 +204,14 @@ function shortBatch(batchId: string): string {
 
 function labelOf(rendition: string): string {
   return rendition === SOURCE_RENDITION ? 'Source' : rendition;
+}
+
+/** Why a quality cannot be copied at all: its recording has not finished. */
+const NOT_FINISHED = 'This quality has not finished recording.';
+
+/** The stamp a job copies onto, as the log names it. */
+function ontoWords(batchId: string | null): string {
+  return batchId ? `onto stamp ${shortBatch(batchId)}` : 'onto a new stamp';
 }
 
 /**
@@ -614,7 +624,9 @@ export class ArchiveService {
    * Starts archiving the chosen qualities of a stream's recording onto an archive stamp, or onto one to be bought once
    * measured. Refused, with the sentence the console shows, while an export or another archive holds the place, for a
    * stream with no finished recording, with no catalogue node, for a stamp that cannot be written, or for a quality
-   * that is archived at its recording already or has not finished. A test stream is refused (`TestStreamError`).
+   * that has not finished. A quality archived already is a further copy: refused onto a stamp that holds an archived
+   * copy of it, and accepted onto any other, or onto a new one. Its other copies stay as they are. A test stream is
+   * refused (`TestStreamError`).
    */
   async start(actor: OperatorActor, streamId: string, request: ArchiveStartRequest): Promise<ArchiveJobSummary> {
     const stream = await this.archivable(streamId);
@@ -632,23 +644,28 @@ export class ArchiveService {
 
     const chosen = [...new Set(request.renditions)];
     if (chosen.length === 0) throw new ArchiveRefusedError('nothing_to_archive', 'Choose at least one quality.');
+    const batchId = 'batchId' in request.target ? normalBatch(request.target.batchId) : null;
     const items: Array<{ rendition: string; feedOwner: string; feedTopic: string; manifestIndex: number }> = [];
+    const furtherCopies: string[] = [];
     for (const rendition of chosen) {
       const quality = qualities.find((candidate) => candidate.rendition === rendition);
       if (!quality) {
         const names = qualities.map((candidate) => candidate.label).join(', ');
         throw new ArchiveRefusedError('nothing_to_archive', `This recording has no ${rendition}; it has ${names}.`);
       }
-      if (quality.unavailable) {
-        throw new ArchiveRefusedError('nothing_to_archive', `${quality.label}: ${quality.unavailable}`);
+      const feed = this.feedOf(stream, rungs, rendition);
+      if (!feed) {
+        throw new ArchiveRefusedError('nothing_to_archive', `${quality.label}: ${NOT_FINISHED}`);
       }
-      const feed = this.feedOf(stream, rungs, rendition)!;
+      // The rule of the stamp: never a second copy onto a stamp that holds an archived one. A new stamp holds none.
+      if (batchId !== null && archivedOnStamp(quality, batchId)) {
+        throw new ArchiveRefusedError('nothing_to_archive', archivedOnStampAlready(quality.label));
+      }
+      if (isArchived(quality.state)) furtherCopies.push(rendition);
       items.push({ rendition, feedOwner: feed.owner, feedTopic: feed.topic, manifestIndex: feed.index });
     }
 
-    let batchId: string | null = null;
-    if ('batchId' in request.target) {
-      batchId = normalBatch(request.target.batchId);
+    if (batchId !== null) {
       const batch = held?.batches.find((candidate) => candidate.batchId === batchId);
       const problem = held ? stampProblem(batch, held.observedAt, now) : 'The manager has pushed no archive stamps.';
       if (problem) throw new ArchiveRefusedError(batch ? 'stamp_unusable' : 'no_stamp', problem);
@@ -675,17 +692,24 @@ export class ArchiveService {
             'Another archive started first. One archive or export runs at a time.');
       throw new ArchiveRefusedError('busy', message);
     }
+    const further = furtherCopies.length > 0 ? `, a further copy of ${furtherCopies.map(labelOf).join(', ')}` : '';
     logger.info(
-      `[Archive] ${describeActor(actor)} started archiving "${stream.title}" (${chosen.map(labelOf).join(', ')}) onto ${
-        batchId ? `stamp ${shortBatch(batchId)}` : 'a new stamp'
-      }`,
+      `[Archive] ${describeActor(actor)} started archiving "${stream.title}" (${chosen.map(labelOf).join(', ')}) ${ontoWords(
+        batchId,
+      )}${further}`,
     );
     await recordAudit(this.audit, {
       actor,
       action: 'archive.start',
       streamId: stream.id,
       topic: stream.topic,
-      details: { archiveId: created.row.id, renditions: chosen, batchId, buyNew: batchId === null },
+      details: {
+        archiveId: created.row.id,
+        renditions: chosen,
+        batchId,
+        buyNew: batchId === null,
+        ...(furtherCopies.length > 0 ? { furtherCopies } : {}),
+      },
     });
     this.launch(created.row.id);
     return (await this.current(actor.userId))!;
@@ -707,9 +731,10 @@ export class ArchiveService {
         actor,
         action: auditAction,
         streamId: view.stream_id,
-        details: { archiveId: jobId, ...details },
+        details: { archiveId: jobId, batchId: view.batch_id, ...details },
       });
     const who = describeActor(actor);
+    const archiveOf = `the archive of "${view.stream_title}" ${ontoWords(view.batch_id)}`;
 
     switch (request.action) {
       case 'pause': {
@@ -720,7 +745,7 @@ export class ArchiveService {
         });
         if (!paused) throw notNow();
         await this.stopJob(jobId);
-        logger.info(`[Archive] ${who} paused the archive of "${view.stream_title}"`);
+        logger.info(`[Archive] ${who} paused ${archiveOf}`);
         await audit('archive.pause', { from: view.state });
         break;
       }
@@ -739,14 +764,14 @@ export class ArchiveService {
           );
         }
         if (!resumed) throw notNow();
-        logger.info(`[Archive] ${who} resumed the archive of "${view.stream_title}"`);
+        logger.info(`[Archive] ${who} resumed ${archiveOf}`);
         await audit('archive.resume', { after: view.pause_reason, state: next });
         this.launch(jobId);
         break;
       }
       case 'wait': {
         if (!(await this.store.transition(jobId, ['paused'], { state: 'waiting' }))) throw notNow();
-        logger.info(`[Archive] ${who} set the archive of "${view.stream_title}" to wait until the stream finishes`);
+        logger.info(`[Archive] ${who} set ${archiveOf} to wait until the stream finishes`);
         await audit('archive.wait');
         await this.tick();
         break;
@@ -762,14 +787,18 @@ export class ArchiveService {
           purchaseId: null,
         });
         if (!moved) throw notNow();
-        logger.info(`[Archive] ${who} chose to buy a new stamp for the archive of "${view.stream_title}"`);
-        await audit('archive.buy_new', { previousBatchId: view.batch_id });
+        logger.info(`[Archive] ${who} chose to buy a new stamp in place of ${archiveOf}`);
+        await audit('archive.buy_new', { batchId: null, previousBatchId: view.batch_id });
         break;
       }
       case 'cancel': {
         if (!(await this.store.removeJob(jobId))) throw new ArchiveNotFoundError(jobId);
         await this.stopJob(jobId);
-        logger.info(`[Archive] ${who} cancelled the archive of "${view.stream_title}"`);
+        logger.info(
+          `[Archive] ${who} cancelled ${archiveOf}${
+            view.batch_id ? '; what it copied stays there as an incomplete copy' : ''
+          }`,
+        );
         await audit('archive.cancel', { state: view.state });
         return null;
       }
@@ -1989,9 +2018,13 @@ export class ArchiveService {
       ? stampProblem(batch, held.observedAt, this.now())
       : 'The manager has pushed no archive stamps.';
     if (problem) throw new ArchiveRefusedError(batch ? 'stamp_unusable' : 'no_stamp', problem);
+    const items = await this.store.items(view.id);
+    const holding = await this.archivedOnto(view.stream_id, batchId, items);
+    if (holding) throw new ArchiveRefusedError('nothing_to_archive', archivedOnStampAlready(holding));
     if (batchId !== view.batch_id) {
-      // What was posted onto another stamp does not count on this one: every quality not done starts over.
-      for (const item of await this.store.items(view.id)) {
+      // What was posted onto another stamp does not count on this one: every quality not done starts over. What the
+      // job copied stays on the first stamp, as an incomplete copy there.
+      for (const item of items) {
         if (item.state === 'done') continue;
         await this.restartItem(view.id, item, { chunksTotal: item.chunks_total, segmentsTotal: item.segments_total });
       }
@@ -2008,7 +2041,9 @@ export class ArchiveService {
     }
     if (!moved) throw notNow();
     logger.info(
-      `[Archive] ${describeActor(actor)} chose stamp ${shortBatch(batchId)} for the archive of "${view.stream_title}"`,
+      `[Archive] ${describeActor(actor)} chose stamp ${shortBatch(batchId)} for the archive of "${view.stream_title}"${
+        view.batch_id && view.batch_id !== batchId ? ` in place of stamp ${shortBatch(view.batch_id)}` : ''
+      }`,
     );
     await recordAudit(this.audit, {
       actor,
@@ -2017,6 +2052,31 @@ export class ArchiveService {
       details: { archiveId: view.id, batchId, previousBatchId: view.batch_id },
     });
     this.launch(view.id);
+  }
+
+  /**
+   * The label of the first quality a job still copies that `batchId` holds an archived copy of, or null. A quality the
+   * job is done with is left out: it is not copied again, and the job's own stamp holds it.
+   */
+  private async archivedOnto(
+    streamId: string,
+    batchId: string,
+    items: readonly ArchiveItemRow[],
+  ): Promise<string | null> {
+    const stream = await this.streams.findById(streamId);
+    if (!stream) return null;
+    const [rungs, copies, catalogueRow] = await Promise.all([
+      this.renditions.listByStream(streamId),
+      this.store.archivesOf([streamId]),
+      this.catalogue.get(),
+    ]);
+    const qualities = this.qualitiesOf(stream, rungs, copies, heldStamps(catalogueRow), this.now(), null);
+    for (const item of items) {
+      if (item.state === 'done') continue;
+      const quality = qualities.find((candidate) => candidate.rendition === item.rendition);
+      if (quality && archivedOnStamp(quality, batchId)) return quality.label;
+    }
+    return null;
   }
 
   // --- what the panel is told -------------------------------------------------------
@@ -2088,7 +2148,7 @@ export class ArchiveService {
       const estimate = estimatedChunks === null ? null : bzzEstimate(estimatedChunks);
       const unavailable =
         option.index === null
-          ? 'This quality has not finished recording.'
+          ? NOT_FINISHED
           : isArchived(state)
             ? 'This quality is archived at its recording already.'
             : null;
@@ -2134,11 +2194,9 @@ export class ArchiveService {
     if (exportBusy) return { problem: 'busy', message: exportBusy };
     const node = nodeOf(catalogueRow);
     if ('problem' in node) return { problem: 'no_node', message: node.problem };
-    if (qualities.every((quality) => quality.unavailable !== null)) {
-      return {
-        problem: 'nothing_to_archive',
-        message: 'Every quality of this recording is archived at its recording already, or has not finished.',
-      };
+    // An archived quality takes a further copy, so only a recording none of whose qualities has finished is refused.
+    if (qualities.every((quality) => quality.unavailable === NOT_FINISHED)) {
+      return { problem: 'nothing_to_archive', message: 'No quality of this recording has finished recording.' };
     }
     return null;
   }

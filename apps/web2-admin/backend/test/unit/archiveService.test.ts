@@ -17,7 +17,11 @@ import {
   type FundingBatchPurchaseRequest,
   type FundingBatchPurchaseStatus,
 } from '@streaming-monorepo/contracts';
-import { ARCHIVE_PURCHASES_NOT_OFFERED, type ArchiveJobSummary } from '@streaming-monorepo/web2-admin-common';
+import {
+  ARCHIVE_PURCHASES_NOT_OFFERED,
+  archivedOnStampAlready,
+  type ArchiveJobSummary,
+} from '@streaming-monorepo/web2-admin-common';
 
 import { ArchiveService, tagComplete, type ArchiveServiceOptions } from '../../src/domain/archive/ArchiveService.js';
 import { ChunkCopier } from '../../src/domain/archive/ChunkCopier.js';
@@ -1089,19 +1093,180 @@ describe('ArchiveService', () => {
     );
   });
 
-  it('refuses a start for a quality archived at its recording already, and onto a stamp that cannot be written', async () => {
+  it('refuses a quality onto the stamp that holds its archived copy, and onto a stamp that cannot be written', async () => {
     recorded();
     await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
     await service.settled();
     await assert.rejects(
       () => service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } }),
-      (error) => error instanceof ArchiveRefusedError && error.problem === 'nothing_to_archive',
+      (error) =>
+        error instanceof ArchiveRefusedError &&
+        error.problem === 'nothing_to_archive' &&
+        error.message === archivedOnStampAlready('360p'),
     );
     catalogue.batches = [archiveBatch(BATCH), archiveBatch(OTHER_BATCH, { state: 'expired' })];
     await assert.rejects(
       () => service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p'], target: { batchId: OTHER_BATCH } }),
       (error) => error instanceof ArchiveRefusedError && error.problem === 'stamp_unusable',
     );
+  });
+
+  it('copies an archived quality onto another stamp, keeping the earlier copy as it is while it runs and after', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const first = { ...store.archives.get(`stream-1:360p:${BATCH}`)! };
+
+    node.holdAfter = node.posts.length + 3;
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
+    await until(() => node.held, 'copying');
+    assert.deepEqual(store.archives.get(`stream-1:360p:${BATCH}`), first, 'the earlier copy is untouched');
+    assert.equal(store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.state, 'partial');
+    assert.deepEqual((await service.summaries([stream])).get('stream-1')?.archived, ['360p'], 'still archived');
+    node.release();
+    await service.settled();
+
+    assert.equal((await job()).state, 'done');
+    assert.equal(store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.state, 'complete');
+    assert.deepEqual(store.archives.get(`stream-1:360p:${BATCH}`), first);
+    for (const address of chunksOf('360p')) assert.ok(node.stamped.get(OTHER_BATCH)!.has(address));
+    const started = audit.entries.filter((entry) => entry.action === 'archive.start').at(-1)!;
+    assert.deepEqual(started.details, {
+      archiveId: jobId(),
+      renditions: ['360p'],
+      batchId: OTHER_BATCH,
+      buyNew: false,
+      furtherCopies: ['360p'],
+    });
+  });
+
+  it('answers no refusal for a stream whose every quality is archived, and one while none has finished', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p', '360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.ok(
+      options.qualities.every((quality) => quality.unavailable !== null),
+      'a first archive is offered none',
+    );
+    assert.equal(options.refusal, null, 'a further copy can start');
+
+    renditions.rows.set('stream-1', [
+      { ...rung('720p', RUNG_720, 720), manifest_index: null },
+      { ...rung('360p', RUNG_360, 360), manifest_index: null },
+    ]);
+    const unfinished = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(unfinished.refusal?.problem, 'nothing_to_archive');
+    assert.equal(unfinished.refusal?.message, 'No quality of this recording has finished recording.');
+    await assert.rejects(
+      () => service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } }),
+      (error) => error instanceof ArchiveRefusedError && error.problem === 'nothing_to_archive',
+    );
+  });
+
+  it('copies a whole archived stream onto a new stamp to be bought', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p', '360p'], target: { batchId: BATCH } });
+    await service.settled();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p', '360p'], target: { buyNew: true } });
+    await service.settled();
+    assert.equal((await job()).state, 'awaiting_purchase');
+  });
+
+  it('leaves the quality archived when a further copy is cancelled, and carries its partial row on onto that stamp', async () => {
+    const stream = recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    node.holdAfter = node.posts.length + 3;
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
+    await until(() => node.held, 'copying');
+    const cancelling = service.act(TEST_OPERATOR, jobId(), { action: 'cancel' });
+    node.release();
+    assert.equal(await cancelling, null);
+
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    const quality = options.qualities.find((one) => one.rendition === '360p')!;
+    assert.equal(quality.state, 'complete', 'the earlier copy still archives it');
+    assert.deepEqual(
+      quality.copies.map((one) => [one.batchId, one.state]),
+      [
+        [BATCH, 'complete'],
+        [OTHER_BATCH, 'partial'],
+      ],
+    );
+    assert.deepEqual((await service.summaries([stream])).get('stream-1')?.archived, ['360p']);
+
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
+    await service.settled();
+    assert.equal(store.archives.get(`stream-1:360p:${OTHER_BATCH}`)!.state, 'complete');
+    assert.equal(store.archives.get(`stream-1:360p:${BATCH}`)!.state, 'complete');
+  });
+
+  it("archives a quality again onto its stamp once the stream recorded again, replacing that stamp's copy", async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    slotFor(OWNER, RUNG_360, 9, playlistText(segments.get('360p')!.map((file) => file.root)), node.network);
+    renditions.rows.set('stream-1', [
+      rung('720p', RUNG_720, 720),
+      { ...rung('360p', RUNG_360, 360), manifest_index: 9 },
+    ]);
+    const options = await service.optionsFor('stream-1', TEST_OPERATOR.userId);
+    assert.equal(options.qualities.find((one) => one.rendition === '360p')!.state, 'outdated');
+
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const row = store.archives.get(`stream-1:360p:${BATCH}`)!;
+    assert.deepEqual([row.state, row.manifest_index], ['complete', 9]);
+    assert.equal([...store.archives.keys()].filter((key) => key.startsWith('stream-1:360p:')).length, 1);
+  });
+
+  it('refuses another stamp for a job when it holds an archived copy of a quality the job copies', async () => {
+    recorded();
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: OTHER_BATCH } });
+    await service.settled();
+    node.refusing.set(BATCH, 'batch_full');
+    await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['720p', '360p'], target: { batchId: BATCH } });
+    await service.settled();
+    const current = await job();
+    assert.equal(current.pauseReason, 'batch');
+
+    await assert.rejects(
+      () => service.act(TEST_OPERATOR, current.id, { action: 'use_stamp', batchId: OTHER_BATCH }),
+      (error) =>
+        error instanceof ArchiveRefusedError &&
+        error.problem === 'nothing_to_archive' &&
+        error.message === archivedOnStampAlready('360p'),
+    );
+    const after = await job();
+    assert.deepEqual([after.state, after.pauseReason], ['paused', 'batch'], 'the job stays as it was');
+    assert.equal(audit.entries.filter((entry) => entry.action === 'archive.use_stamp').length, 0);
+  });
+
+  it('names the stamp in the log and the audit when a user pauses, resumes or cancels', async () => {
+    recorded();
+    const lines: string[] = [];
+    const info = mock.method(Logger.getInstance(), 'info', (line: string) => void lines.push(line));
+    try {
+      node.holdAfter = 3;
+      await service.start(TEST_OPERATOR, 'stream-1', { renditions: ['360p'], target: { batchId: BATCH } });
+      await until(() => node.held, 'copying');
+      const pausing = service.act(TEST_OPERATOR, jobId(), { action: 'pause' });
+      node.release();
+      await pausing;
+      await service.act(TEST_OPERATOR, jobId(), { action: 'cancel' });
+    } finally {
+      info.mock.restore();
+    }
+    const short = `${BATCH.slice(0, 8)}…`;
+    assert.ok(
+      lines.some((line) => line.includes(`paused the archive of "Alps" onto stamp ${short}`)),
+      lines.join('\n'),
+    );
+    assert.ok(lines.some((line) => line.includes(`cancelled the archive of "Alps" onto stamp ${short}`)));
+    for (const action of ['archive.pause', 'archive.cancel'] as const) {
+      assert.equal(audit.entries.find((entry) => entry.action === action)!.details!.batchId, BATCH);
+    }
   });
 
   it('shows a copy as outdated once the stream recorded again, and as expired once its stamp did', async () => {
