@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { Stack, Tab, Tabs, Typography } from '@mui/material';
 
+import { FIRST_AUTO_TOPUP_DRAFT, type AutoTopUpDraft } from '../components/funding/autoTopUp';
+import { AutoTopUpTab } from '../components/funding/AutoTopUpTab';
 import { BalanceTab } from '../components/funding/BalanceTab';
 import { fundAll, fundFocus, type Drafts, type FundNeed, type NodeFocus } from '../components/funding/balance';
 import { FIRST_CHEQUEBOOK_SELECTION, type ChequebookSelection } from '../components/funding/chequebooks';
@@ -8,17 +10,18 @@ import { ChequebooksTab } from '../components/funding/ChequebooksTab';
 import { FIRST_STAMP_SELECTION, type StampSelection } from '../components/funding/stamps';
 import { StampsTab } from '../components/funding/StampsTab';
 
-type FundingTab = 'balance' | 'stamps' | 'chequebooks';
+type FundingTab = 'balance' | 'stamps' | 'chequebooks' | 'autotopup';
 
 /**
  * Funding: keeping the brand's stages alive from the admin. The Balance tab funds the node wallets from the brand
- * wallet, the Stamps tab tops up and dilutes the nodes' batches, and the Chequebooks tab brings the nodes' chequebooks
- * to a target, each node paying from its own wallet. Every operation goes through the manager.
+ * wallet, the Stamps tab tops up and dilutes the nodes' batches, and marks them for auto top-up, the Chequebooks tab
+ * brings the nodes' chequebooks to a target, each node paying from its own wallet, and the Auto top-up tab holds the
+ * settings of auto top-up and what its jobs are doing. Every operation goes through the manager.
  *
  * The tabs are drawn one at a time, so what each holds lives here, not in the tab: the Balance tab's ticks and amounts,
- * the Stamps tab's operation, days, steps and ticks, and the Chequebooks tab's target and ticks. Switching tabs keeps
- * them; a reload or leaving the page does not. Each tab still reads the view afresh when it is shown, and clears its
- * own ticks, with the Balance tab's amounts, once what they ask for is sent.
+ * the Stamps tab's operation, days, steps and ticks, the Chequebooks tab's target and ticks, and the Auto top-up tab's
+ * numbers as typed. Switching tabs keeps them; a reload or leaving the page does not. Each tab still reads the view
+ * afresh when it is shown, and clears its own ticks, with the Balance tab's amounts, once what they ask for is sent.
  *
  * Fund all, on the Stamps or the Chequebooks tab, opens the Balance tab with every node the tab finds short of xBZZ
  * or without xDAI ticked, and its fields raised to what it lacks, into what the Balance tab already holds: the xBZZ,
@@ -31,6 +34,7 @@ export function FundingPage() {
   const [focus, setFocus] = useState<NodeFocus | null>(null);
   const [stamps, setStamps] = useState<StampSelection>(FIRST_STAMP_SELECTION);
   const [chequebooks, setChequebooks] = useState<ChequebookSelection>(FIRST_CHEQUEBOOK_SELECTION);
+  const [autoTopUp, setAutoTopUp] = useState<AutoTopUpDraft>(FIRST_AUTO_TOPUP_DRAFT);
 
   const fund = useCallback((needs: ReadonlyMap<string, FundNeed>) => {
     setDrafts((current) => fundAll(current, needs));
@@ -54,12 +58,14 @@ export function FundingPage() {
         <Tab value="balance" label="Balance" />
         <Tab value="stamps" label="Stamps" />
         <Tab value="chequebooks" label="Chequebooks" />
+        <Tab value="autotopup" label="Auto top-up" />
       </Tabs>
       {tab === 'balance' ? <BalanceTab drafts={drafts} onDrafts={setDrafts} focus={focus} /> : null}
       {tab === 'stamps' ? <StampsTab selection={stamps} onSelection={setStamps} onFund={fund} /> : null}
       {tab === 'chequebooks' ? (
         <ChequebooksTab selection={chequebooks} onSelection={setChequebooks} onFund={fund} />
       ) : null}
+      {tab === 'autotopup' ? <AutoTopUpTab draft={autoTopUp} onDraft={setAutoTopUp} /> : null}
     </Stack>
   );
 }

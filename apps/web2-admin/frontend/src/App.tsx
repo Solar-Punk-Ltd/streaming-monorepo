@@ -8,6 +8,7 @@ import { AccessPage } from './pages/AccessPage';
 import { ArchivePage } from './pages/ArchivePage';
 import { FundingPage } from './pages/FundingPage';
 import { LoginPage } from './pages/LoginPage';
+import { NotificationsPage } from './pages/NotificationsPage';
 import { StagesPage } from './pages/StagesPage';
 import { StreamDetailsPage } from './pages/StreamDetailsPage';
 import { StreamFormPage } from './pages/StreamFormPage';
@@ -38,6 +39,7 @@ export function App() {
               <Route path="/streams/:id" element={<StreamDetailsPage />} />
               <Route path="/stages" element={<StagesPage />} />
               <Route path="/funding" element={<FundingPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
               <Route path="/archive" element={<ArchiveRoute />} />
               <Route path="/access" element={<AccessPage />} />
               {/* The account page folded into Access, which is the one page

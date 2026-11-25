@@ -14,6 +14,7 @@ import * as api from '../../api';
 import { purchaseRefusal } from '../archive/archiveText';
 import { formatShort, formatUnits } from './amounts';
 import { ArchiveStampsFooter, useArchiveStamps } from './ArchiveStamps';
+import { autoTopUpUnread, AutoTopUpBar, useAutoTopUpMarks } from './AutoTopUpMarks';
 import { fundNeeds, type FundNeed } from './balance';
 import { BatchBuyDialog } from './BatchBuyDialog';
 import { buyOfferOf, latestPurchases, purchasesReadFailed, useBatchPurchases, type BuyOffer } from './batchPurchases';
@@ -357,6 +358,10 @@ function useBuyNew(view: FundingView | null, load: () => void) {
  * catalogue's among them, and Clear unticks them all; the tick box in front of a group's name ticks or clears the
  * group's.
  *
+ * Every row the tab tops up, and every marked row, has the Auto top-up switch under its batch, and a marked row says
+ * its last automatic top-up, its next and what stopped the last; Auto top-up on and off, under the tables, mark or
+ * unmark the ticked batches (`AutoTopUpMarks`). `docs/architecture/funding.md`, "Auto top-up".
+ *
  * A batch that no longer pays, expired or gone from its node, and a node with no batch, offer Buy new in their row
  * instead, which buys its replacement in a dialog of its own; the purchase is followed under the row, stage by stage
  * or through the catalogue's move. `docs/architecture/funding.md`, "Buying a new batch".
@@ -400,6 +405,8 @@ export function StampsTab({
     [groups, operation],
   );
   const check = useMemo(() => (inventory ? checkStamps(inventory, selection) : null), [inventory, selection]);
+
+  const marks = useAutoTopUpMarks(inventory, ticked, view?.postage ?? null, read.now);
 
   const onSettled = useCallback(() => {
     setFollowed((current) => current && { ...current, settled: true });
@@ -470,6 +477,32 @@ export function StampsTab({
               {buyNew.notice}
             </Alert>
           ) : null}
+          {marks.unread ? (
+            <Alert
+              severity="warning"
+              action={
+                <Button color="inherit" size="small" onClick={marks.reload}>
+                  Retry
+                </Button>
+              }
+            >
+              {autoTopUpUnread(marks.unread)}
+            </Alert>
+          ) : null}
+          {marks.error ? (
+            <Alert severity="error" onClose={marks.clearError}>
+              {marks.error}
+            </Alert>
+          ) : null}
+          {marks.notices.length > 0 ? (
+            <Alert severity="info" onClose={marks.clearNotices}>
+              <Stack spacing={0.5}>
+                {marks.notices.map((notice) => (
+                  <span key={notice}>{notice}</span>
+                ))}
+              </Stack>
+            </Alert>
+          ) : null}
           {groups.length > 0 ? (
             <SelectAllBar keys={tickable} ticked={ticked} onTicks={setTicks} onClear={clearTicks} />
           ) : null}
@@ -488,6 +521,7 @@ export function StampsTab({
                     footer: <ArchiveStampsFooter read={archive} onBought={load} />,
                   }
                 : { buy: buyNew.controls })}
+              auto={marks.controls}
             />
           ))}
           {check ? (
@@ -500,6 +534,9 @@ export function StampsTab({
               onGo={openConfirm}
               onFund={onFund}
             />
+          ) : null}
+          {marks.controls ? (
+            <AutoTopUpBar on={marks.on.length} off={marks.off.length} busy={marks.busy} onMark={marks.markTicked} />
           ) : null}
         </>
       ) : null}

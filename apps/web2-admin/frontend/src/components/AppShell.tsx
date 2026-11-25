@@ -74,6 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <MenuItem onClick={() => go('/archive')}>Archive</MenuItem>
                   <MenuItem onClick={() => go('/stages')}>Stages</MenuItem>
                   <MenuItem onClick={() => go('/funding')}>Funding</MenuItem>
+                  <MenuItem onClick={() => go('/notifications')}>Notifications</MenuItem>
                   <MenuItem onClick={() => go('/access')}>Access</MenuItem>
                   <Divider />
                   {themeItems}
