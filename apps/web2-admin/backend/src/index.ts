@@ -12,6 +12,7 @@ import { startStreamFinishSweep, StreamFinishService, type StreamFinishSweep } f
 import { BeeArchiveNode } from './domain/archive/ArchiveNode.js';
 import { ArchiveRepository } from './domain/archive/ArchiveRepository.js';
 import { ArchiveService } from './domain/archive/ArchiveService.js';
+import { streamArchiveThumbnails } from './domain/archive/ArchiveThumbnails.js';
 import { ChunkCopier } from './domain/archive/ChunkCopier.js';
 import { BeeFeedGateway } from './domain/BeeFeedGateway.js';
 import { CatalogueBatchService } from './domain/CatalogueBatch.js';
@@ -393,6 +394,7 @@ async function main(): Promise<void> {
     catalogueStampRepository,
     new BeeArchiveNode(),
     new ChunkCopier(new BeeArchiveNode()),
+    streamArchiveThumbnails(streamRepository, gateway),
     managerFunding,
     publishService,
     { exportHoldingPlace: () => exports.exportHoldingPlace() },
@@ -400,6 +402,8 @@ async function main(): Promise<void> {
     { settings: config.archive },
   );
   publishService.listArchivedOnlyWith(archiveService);
+  // A publish whose entry names an image stamps it under the stream's archive stamps, after the publish.
+  publishService.stampArchiveImagesWith(archiveService);
   await archiveService.boot();
 
   // Checking the recordings and removing the lost ones from the Streams page. A check the last process left running

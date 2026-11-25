@@ -166,21 +166,26 @@ under the job's stamp, through the upload a catalogue move uses
 holds, or from the network when the row holds none. The upload has to come out at the reference the
 entry names, and the image is then recorded as stamped under that stamp. It follows the frame's
 rules: on every pass, outside the quality's counts, and an image that cannot be stamped is logged
-and left out. A stream with no published image has only its frame.
+and left out. It goes with the job's first quality whatever the ladder, so a single-quality
+recording, which has no master playlist and no frame, takes its image too. A stream with no
+published image has only its frame, and an image the stream has not published yet waits for its
+publish.
 
 A publish stamps the image too. Once a publish, or a republish by hand, has put an entry that names
 an image on the feed, the admin uploads that image under every archive stamp that holds a copy of
 the stream, can be written, and has no record of that image. So a stream that takes a new image
 has it on its archive stamps without anyone asking.
 
-- **It runs right after the publish**, outside the publish lock, one stamp after another. The
-  publish has answered by then, and whatever becomes of the stamping leaves the publish as it is.
+- **It runs right after the publish**, outside the publish lock, one stamp after another, and one
+  publish after another, so the later image is stamped last. The publish has answered by then, and
+  whatever becomes of the stamping leaves the publish as it is.
 - **The upload and its rule are the job's:** the same reference, or the stamp is left out. A
   failure is logged with the stamp, and that stamp is left out.
 - **Each stamp that took the image gets its record**, with who published. The record is the one a
   job writes, so the card reads one record whichever of the two stamped the image.
-- **A stamp that cannot be written takes none:** one that is full, that sits on a node that is the
-  catalogue node no longer, or that the manager lists no longer. Its record stays as it was.
+- **A stamp that cannot be written takes none:** one that has run out, that is full, that sits on a
+  node that is the catalogue node no longer, or that the manager lists no longer. Its record stays
+  as it was. With no catalogue node, no stamp takes it.
 - **The next publish, or the stream's next archive job, tries again** wherever the record still
   lacks the image.
 
