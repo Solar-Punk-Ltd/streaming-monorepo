@@ -57,7 +57,7 @@ export const NOTIFICATION_TEST_TOO_SOON_ERROR = 'test_too_soon';
  * `PUT /api/notifications/channels/:kind`: save the channel's settings and its secret, behind the operator's password
  * as a send from the brand wallet is: 401 `invalid_credentials` when it is wrong, 429 `too_many_attempts` once locked
  * out. The settings and the secret are checked by `channelSettingsProblems` and `channelSecretProblem`: 400
- * `validation_error` with a sentence for each in `problems`.
+ * `validation_error` with a sentence for each in `errors`, as every refused request body answers.
  *
  * `secret` null keeps the stored secret, and is refused for a channel that has none. A channel saved for the first
  * time starts on, and a later save keeps its switch.
