@@ -127,7 +127,7 @@ The API reads its settings from the environment, or from `.env` in this folder.
 | `ARCHIVE_CHEQUEBOOK_FLOOR_BZZ`        | `0.1`              | under what the catalogue node's chequebook can pay, in BZZ, an archive pauses for `funds`; `0` never pauses                                                                                                                                       |
 | `ARCHIVE_TTL_WARNING_DAYS`            | `30`               | under what time left an archive stamp is shown with a warning, 1 to 365 days                                                                                                                                                                      |
 | `ARCHIVE_BUY_DEFAULT_DAYS`            | `30`               | how long a new archive stamp lasts unless the user says otherwise, 2 to 3650 days                                                                                                                                                                 |
-| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it. The first start creates the wallet. Required with `MANAGER_API_URL`                                                                                                              |
+| `BRAND_WALLET_SECRET`                 | empty              | 64 hex (32 bytes). The brand wallet's key is encrypted under it, and the notification channels' secrets under a key derived from it ([Notifications](#notifications)). The first start creates the wallet. Required with `MANAGER_API_URL`        |
 | `MANAGER_API_URL`                     | empty              | the manager's address for its funding API: https, or plain http to this host only. Read as `MANAGER_FUNDING_URL` when unset. Empty: funding is not set up                                                                                         |
 | `MANAGER_API_TOKEN`                   | with the URL       | 32+ chars, printable ASCII, no space: the manager's `MANAGER_API_TOKEN`. Read as `MANAGER_FUNDING_TOKEN` when unset. Refused without the URL. Never logged                                                                                        |
 | `WEB2_ADMIN_VERSION`                  | unset              | the build's label, which `deploy/deploy.sh` builds into the image. Never in the env file: [The build it runs](#the-build-it-runs)                                                                                                                 |
@@ -2288,6 +2288,32 @@ check's own list, in any order.
 the counts, or `stopped` with why), `recording.lost.delete` and
 `recording.lost.unlist`. Each carries the check's id, and a removal the
 catalogue's feed index.
+
+## Notifications
+
+The channels the admin sends its notices on, set on the Notifications page: email through Brevo, Slack and Telegram.
+`notifications.ts` in common names the paths and the shapes, and
+[docs/architecture/notifications.md](../../../docs/architecture/notifications.md) is the design. One set of channels
+serves the whole admin, and every signed-in user sees and changes it. Each route needs a session, and each write the
+same-site check as well.
+
+A channel's secret, the email service's API key, Slack's webhook URL or Telegram's bot token, is kept in
+`notification_channels` (migration 035) encrypted with AES-256-GCM under a key derived from `BRAND_WALLET_SECRET`
+(`src/domain/notifications/channelSecrets.ts`). Without that secret no channel can be saved or tested. No answer, log
+line or audit row holds a secret: the view says a channel is saved, and a failure's sentence has the secret cut out.
+
+| Method | Path                                        | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/notifications`                        | `NotificationsView`: `available`, false without `BRAND_WALLET_SECRET`, and every channel in the order email, Slack, Telegram, saved or not: whether it is saved and on, its settings, who saved it and when, when it last took a notice, why its last notice failed and when, how many notices wait for it, and when its last test went out and why it failed                                                                                                                                                                          |
+| PUT    | `/api/notifications/channels/:kind`         | `{ password, settings, secret }` in, behind the password as a send: `401 invalid_credentials` when it is wrong, `429 too_many_attempts` once locked out. Then `400 validation_error` with a sentence each from `channelSettingsProblems` and `channelSecretProblem`, and `409 notifications_unavailable` without `BRAND_WALLET_SECRET`. A secret that is null, empty or left out keeps the saved one, and is refused for a channel that has none. A first save switches the channel on, and a later one keeps its switch. The view out |
+| PUT    | `/api/notifications/channels/:kind/enabled` | `{ enabled }` in, with no password: switches a saved channel on or off. Off drops the notices that wait for it. `409 channel_not_saved` for a channel never saved. The view out                                                                                                                                                                                                                                                                                                                                                        |
+| POST   | `/api/notifications/channels/:kind/test`    | no body: sends a test notice that says who asked for it and when, on the saved channel, on or off, with its saved settings and secret. One a minute at most on a channel: `429 test_too_soon` with `retryAfterSeconds` and `Retry-After`. `409 channel_not_saved`, and `409 notifications_unavailable` without `BRAND_WALLET_SECRET`. `{ sent, error, view }` out. It sets the channel's `lastTestAt` and `lastTestError` alone: a test counts as no notice                                                                            |
+| DELETE | `/api/notifications/channels/:kind`         | with no password: removes the channel with its secret and the notices that wait for it. The view out                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+
+`:kind` is `email`, `slack` or `telegram`, and any other is `400`. A write is audited with the user's name:
+`notification.channel.save` with the channel, the settings saved and whether its secret was `set`, `replaced` or
+`kept`, `notification.channel.enabled` with the switch, `notification.channel.remove`, and `notification.channel.test`
+with whether it went out and why not. A refusal is not audited, and neither is the removal of a channel never saved.
 
 ## Migrations
 
