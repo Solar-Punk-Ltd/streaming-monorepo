@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@streaming-monorepo/contracts": "workspace:*",
+    "@streaming-monorepo/notifications": "workspace:*",
     "@streaming-monorepo/web-auth": "workspace:*"
   },
   "devDependencies": {
