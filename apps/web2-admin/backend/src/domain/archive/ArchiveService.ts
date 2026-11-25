@@ -66,10 +66,11 @@ import {
   archivedRenditions,
   bzzEstimate,
   currentIndexes,
-  qualityState,
+  qualityCopies,
   SOURCE_RENDITION,
   stampProblem,
   streamArchiveSummary,
+  streamArchiveThumbnail,
   toArchiveStamp,
   type ArchiveStampsHeld,
 } from './archiveStates.js';
@@ -505,6 +506,13 @@ export class ArchiveService {
       // The reading the job's funds check makes, read now: null without funding or when the manager cannot be read.
       chequebookAvailablePlur: await this.readChequebook().catch(() => null),
       summary,
+      thumbnail: streamArchiveThumbnail(
+        stream.thumbnail_ref,
+        await this.store.thumbnailsOf([stream.id]),
+        copies,
+        held,
+        now,
+      ),
       canListArchivedOnly: rungs.length > 0 && summary.archived.length > 0,
       archivedOnlyHint: null,
       refusal: await this.refusalFor(stream, qualities, catalogueRow, view),
@@ -540,6 +548,7 @@ export class ArchiveService {
   /** The streams that have an archive, newest copy first, for the Archive page. */
   async archivedStreams(): Promise<ArchiveStreamsResponse> {
     const copies = await this.store.archivesOf(null);
+    const thumbnails = await this.store.thumbnailsOf(null);
     const held = heldStamps(await this.catalogue.get());
     const now = this.now();
     const byStream = new Map<string, StreamArchiveRow[]>();
@@ -551,19 +560,25 @@ export class ArchiveService {
       const indexes = currentIndexes(stream, await this.renditions.listByStream(streamId));
       const summary = streamArchiveSummary(stream, own, indexes, held, now);
       if (!summary) continue;
-      const qualities = own.map((copy) => {
-        const batch = held?.batches.find((candidate) => candidate.batchId === copy.batch_id);
-        const stamp =
-          batch && held ? toArchiveStamp(batch, held.observedAt, null, 0, this.settings.ttlWarningDays, now) : null;
+      // Each quality once, with its copies: its own fields are its best copy's.
+      const qualities = [...new Set(own.map((copy) => copy.rendition))].map((rendition) => {
+        const listed = qualityCopies(
+          own.filter((copy) => copy.rendition === rendition),
+          indexes.get(rendition) ?? null,
+          held,
+          now,
+        );
+        const best = listed[0]!;
         return {
-          rendition: copy.rendition,
-          label: labelOf(copy.rendition),
-          state: qualityState(copy, indexes.get(copy.rendition) ?? null, held, now),
-          batchId: copy.batch_id,
-          batchLabel: batch?.label ?? null,
-          bytes: copy.bytes,
-          parityMissing: copy.parity_missing,
-          batchTtlSeconds: stamp?.ttlSeconds ?? null,
+          rendition,
+          label: labelOf(rendition),
+          state: best.state,
+          batchId: best.batchId,
+          batchLabel: best.batchLabel,
+          bytes: best.bytes,
+          parityMissing: best.parityMissing,
+          batchTtlSeconds: best.batchTtlSeconds,
+          copies: listed,
         };
       });
       const newest = own
@@ -578,6 +593,13 @@ export class ArchiveService {
         bytes: qualities
           .filter((quality) => isArchived(quality.state))
           .reduce((sum, quality) => sum + quality.bytes, 0),
+        thumbnail: streamArchiveThumbnail(
+          stream.thumbnail_ref,
+          thumbnails.filter((row) => row.stream_id === streamId),
+          own,
+          held,
+          now,
+        ),
         archivedAt: newest?.completed_at?.toISOString() ?? null,
         archivedBy: newest?.completed_by ?? null,
       });
@@ -1415,7 +1437,7 @@ export class ArchiveService {
         ...this.itemCounters(counters, segmentsDone, segments.length),
         state: 'verifying',
       });
-      await this.store.saveArchive(stream.id, item.rendition, {
+      await this.store.saveArchive(stream.id, item.rendition, batchId, {
         parity_missing: counters.parityMissing,
         segments: segments.length,
         chunks: counters.chunks,
@@ -1623,8 +1645,10 @@ export class ArchiveService {
     const result = item.parity_missing > 0 ? 'reduced' : 'complete';
     const after = await this.node.bucketSum(url, job.batch_id!, signal).catch(() => null);
     await this.store.updateItem(job.id, item.rendition, { state: 'done', result });
-    if (after !== null) await this.store.saveArchive(stream.id, item.rendition, { bucket_sum_after: after });
-    await this.store.completeArchive(stream.id, item.rendition, job.started_by_user_id, job.started_by);
+    if (after !== null) {
+      await this.store.saveArchive(stream.id, item.rendition, job.batch_id!, { bucket_sum_after: after });
+    }
+    await this.store.completeArchive(stream.id, item.rendition, job.batch_id!, job.started_by_user_id, job.started_by);
     logger.info(
       `[Archive] "${stream.title}" at ${labelOf(item.rendition)} is archived on stamp ${shortBatch(job.batch_id!)}${
         result === 'reduced' ? `, with ${item.parity_missing} parity chunks missing` : ''
@@ -1656,10 +1680,10 @@ export class ArchiveService {
     const spent = plurMinus(current.chequebook_before_plur, chequebookAfter);
     const items = await this.store.items(job.id);
     const total = items.reduce((sum, item) => sum + item.chunks_copied, 0);
-    if (spent !== null && total > 0) {
+    if (spent !== null && total > 0 && current.batch_id !== null) {
       for (const item of items) {
         const share = ((BigInt(spent) * BigInt(item.chunks_copied)) / BigInt(total)).toString();
-        await this.store.saveArchive(stream.id, item.rendition, { bzz_spent_estimate_plur: share });
+        await this.store.saveArchive(stream.id, item.rendition, current.batch_id, { bzz_spent_estimate_plur: share });
       }
     }
     if (current.chunks_per_second) await this.store.saveRate(current.chunks_per_second);
@@ -2050,9 +2074,15 @@ export class ArchiveService {
             },
           ];
     return options.map((option) => {
-      const copy = copies.find((candidate) => candidate.rendition === option.rendition);
-      const state = qualityState(copy, option.index, held, now);
-      const batch = copy ? held?.batches.find((candidate) => candidate.batchId === copy.batch_id) : undefined;
+      // The quality's own fields are its best copy's: the first, as the copies are ordered.
+      const listed = qualityCopies(
+        copies.filter((candidate) => candidate.rendition === option.rendition),
+        option.index,
+        held,
+        now,
+      );
+      const best = listed[0];
+      const state = best?.state ?? 'none';
       const estimatedChunks =
         option.bytes === null ? null : Math.ceil(Math.ceil(option.bytes / 4096) * PARITY_ESTIMATE);
       const estimate = estimatedChunks === null ? null : bzzEstimate(estimatedChunks);
@@ -2069,13 +2099,14 @@ export class ArchiveService {
         height: option.height,
         durationSeconds: option.durationSeconds,
         state,
-        batchId: copy?.batch_id ?? null,
-        batchLabel: batch?.label ?? null,
-        chunks: copy ? copy.chunks : null,
-        bytes: copy ? copy.bytes : null,
-        parityMissing: copy?.parity_missing ?? 0,
-        completedAt: copy?.completed_at?.toISOString() ?? null,
-        completedBy: copy?.completed_by ?? null,
+        batchId: best?.batchId ?? null,
+        batchLabel: best?.batchLabel ?? null,
+        chunks: best?.chunks ?? null,
+        bytes: best?.bytes ?? null,
+        parityMissing: best?.parityMissing ?? 0,
+        completedAt: best?.completedAt ?? null,
+        completedBy: best?.completedBy ?? null,
+        copies: listed,
         estimatedChunks,
         estimatedBytes: option.bytes === null ? null : Math.ceil(option.bytes * PARITY_ESTIMATE),
         estimatedBzzLowPlur: estimate?.lowPlur ?? null,

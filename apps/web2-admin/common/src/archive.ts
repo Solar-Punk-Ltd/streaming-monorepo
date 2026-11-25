@@ -19,6 +19,9 @@ import { SECONDS_PER_DAY } from './stampQuote.js';
  * export read an archived recording as before. `docs/architecture/web2-admin.md`, "Archiving a recording", is the
  * design.
  *
+ * A quality can be archived onto more than one stamp. Each copy stands by itself, and the quality is archived while
+ * one of them is. The image the stream names is stamped again under the archive stamp with the recording.
+ *
  * One job exists at a time for the whole admin, an export or an archive. An archive that a user paused, or that waits
  * for a user to confirm a purchase, gives its place up, so an export can run meanwhile.
  *
@@ -88,12 +91,11 @@ export function archiveConfirmPurchasePath(jobId: string): string {
 // What a stream shows
 
 /**
- * One quality's copy:
+ * One copy of a quality, and a quality as a whole, which takes its best copy's:
  * - `none`: nothing of it was copied.
  * - `partial`: a copy stopped before it was complete. What was copied stays on Swarm.
  * - `complete`: every chunk is on the archive stamp, and Bee reported each synced.
  * - `reduced`: complete, but some parity chunks were lost before the copy. The recording plays, with less protection.
- * - `outdated`: the stream recorded again after the copy, so its playlist is another one now.
  * - `unlisted`: complete, on a stamp the manager no longer lists, so it cannot be topped up from the admin. The
  *   recording stays on Swarm until the stamp expires, so it counts as archived.
  * - `outdated`: the stream recorded again after the copy, so its playlist is another one now.
@@ -147,6 +149,46 @@ export const ARCHIVE_BADGE_TEXT: Readonly<Record<StreamArchiveState, string | nu
 export const ARCHIVE_UNLISTED_TEXT =
   "The manager no longer lists this archive stamp, so it can't be topped up here. Its recordings stay on Swarm until the stamp expires.";
 
+/** A copy's state: a quality's, less `none`, since a copy is there once something of it was written. */
+export type ArchiveCopyState = Exclude<QualityArchiveState, 'none'>;
+
+/**
+ * One copy of a quality: that quality on one archive stamp. A quality has one for each stamp it was archived onto, and
+ * each stands by itself, with its own state, what it holds, and its own stamp's time left.
+ */
+export interface ArchiveCopy {
+  /** The stamp it is on, 64 hex digits without `0x`, in lower case. */
+  batchId: string;
+  /** That stamp's label, or null when it has none or the manager lists the stamp no longer. */
+  batchLabel: string | null;
+  state: ArchiveCopyState;
+  /** What the copy holds. */
+  chunks: number;
+  bytes: number;
+  /** Parity chunks that were lost before the copy, 0 unless `reduced`. */
+  parityMissing: number;
+  completedAt: string | null;
+  completedBy: string | null;
+  /** The time left on its stamp, or null when the manager did not read it. */
+  batchTtlSeconds: number | null;
+}
+
+/**
+ * A quality's copies in the order every view lists them, the best first: by state, as {@link streamArchiveState} ranks
+ * them, then the one whose stamp lasts longer, a stamp with no time read last, then by the stamp's id. The first is
+ * the copy a quality's own fields speak of.
+ */
+export function orderArchiveCopies<T extends Pick<ArchiveCopy, 'batchId' | 'state' | 'batchTtlSeconds'>>(
+  copies: readonly T[],
+): T[] {
+  return [...copies].sort(
+    (a, b) =>
+      STATE_RANK[b.state] - STATE_RANK[a.state] ||
+      (b.batchTtlSeconds ?? -1) - (a.batchTtlSeconds ?? -1) ||
+      a.batchId.localeCompare(b.batchId),
+  );
+}
+
 /** A stream's archive, as the stream list and the stream's own answer carry it. */
 export interface StreamArchiveSummary {
   state: StreamArchiveState;
@@ -156,7 +198,10 @@ export interface StreamArchiveSummary {
   archivedOnly: boolean;
 }
 
-/** One quality of a stream, on the panel and on the stream's archive card. */
+/**
+ * One quality of a stream, on the panel and on the stream's archive card. Its `state` is its best copy's, and
+ * `batchId`, `batchLabel`, `chunks`, `bytes`, `parityMissing`, `completedAt` and `completedBy` are that copy's.
+ */
 export interface ArchiveQuality {
   /** What `ArchiveStartRequest.renditions` names: the rung's name, or `source`. */
   rendition: string;
@@ -166,16 +211,18 @@ export interface ArchiveQuality {
   height: number | null;
   durationSeconds: number | null;
   state: QualityArchiveState;
-  /** The stamp its copy is on, without `0x`, and that stamp's label. Null while nothing was copied. */
+  /** The stamp its best copy is on, without `0x`, and that stamp's label. Null while nothing was copied. */
   batchId: string | null;
   batchLabel: string | null;
-  /** What the copy holds, once there is one. */
+  /** What that copy holds, once there is one. */
   chunks: number | null;
   bytes: number | null;
-  /** Parity chunks that were lost before the copy, 0 unless `reduced`. */
+  /** Parity chunks that were lost before that copy, 0 unless `reduced`. */
   parityMissing: number;
   completedAt: string | null;
   completedBy: string | null;
+  /** Every copy of it, one for each stamp it was archived onto, in the order of {@link orderArchiveCopies}. */
+  copies: ArchiveCopy[];
   /** The size before any copy, from the bitrate and length, parity included. An upper bound. */
   estimatedChunks: number | null;
   estimatedBytes: number | null;
@@ -184,8 +231,27 @@ export interface ArchiveQuality {
   estimatedBzzHighPlur: string | null;
   /** How long copying it is expected to take, from the rate the last archive measured. */
   estimatedSeconds: number | null;
-  /** Null when it can be archived now; otherwise the sentence that says why not. */
+  /**
+   * Null when its first archive can start now; otherwise the sentence that says why not: it has not finished
+   * recording, or it is archived at its recording already. An archived quality takes a further copy, onto a stamp
+   * that holds no archived copy of it: {@link archivedOnStamp}.
+   */
   unavailable: string | null;
+}
+
+/**
+ * Whether a quality has an archived copy on this stamp: one it plays from, at its current recording. A further copy of
+ * the quality is refused onto such a stamp, and accepted onto any other that can be written and has the room.
+ * `batchId` in any spelling.
+ */
+export function archivedOnStamp(quality: Pick<ArchiveQuality, 'copies'>, batchId: string): boolean {
+  const bare = batchId.replace(/^0x/i, '').toLowerCase();
+  return quality.copies.some((copy) => copy.batchId === bare && isArchived(copy.state));
+}
+
+/** What a start, and the panel's list of stamps, say of a quality that is archived on the chosen stamp already. */
+export function archivedOnStampAlready(label: string): string {
+  return `${label} is archived on this stamp already. Choose another stamp for a further copy.`;
 }
 
 // Archive stamps
@@ -218,7 +284,7 @@ export interface ArchiveStamp {
   chunksStamped: number | null;
   /** What it still holds: `effectiveChunks` less `chunksStamped`, never under 0, or null when it was not read. */
   roomChunks: number | null;
-  /** How many qualities have their copy on it. */
+  /** How many complete copies are on it: one for each quality of each stream archived onto it. */
   qualitiesArchived: number;
   /** Whether its time left is under the warning threshold. */
   expiresSoon: boolean;
@@ -483,7 +549,9 @@ export function archiveHoldsPlace(state: ArchiveJobState, pauseReason: ArchivePa
  * - `pause`: stop after the chunks in flight. The place is given up.
  * - `resume`: carry on; after `unreadable`, `batch`, `node`, `funds` and `problem` it tries again.
  * - `wait`: after `live`, carry on by itself once the stream is a recording again.
- * - `use_stamp`: copy onto this archive stamp, in place of the one chosen or of a purchase.
+ * - `use_stamp`: copy onto this archive stamp, in place of the one chosen or of a purchase. Refused for a stamp that
+ *   holds an archived copy of one of the job's qualities. What was copied onto the first stamp stays there, as a
+ *   partial copy.
  * - `buy_new`: go to the buy dialog, in place of the stamp chosen.
  * - `cancel`: stop. What was copied stays on Swarm, and its qualities show as partial.
  * - `dismiss`: close the widget of a finished archive, for the user who asks only.
@@ -624,6 +692,44 @@ export interface ArchiveRefusal {
   message: string;
 }
 
+// The stream's image
+
+/**
+ * How a stream's image stands against its archive. Every archive job stamps the image the catalogue entry names again
+ * under its stamp, at the image's own reference.
+ * - `none`: the stream has no published image. Its card shows a frame of the recording, which every archive copies.
+ * - `unarchived`: it has one, and no archive stamp that holds a copy of the stream carries an image of it.
+ * - `archived`: the image it names is on an archive stamp that holds a copy of the stream and has not run out.
+ * - `changed`: such a stamp carries another image of the stream, and none carries the one it names now.
+ */
+export type ArchiveThumbnailState = 'none' | 'unarchived' | 'archived' | 'changed';
+
+/** A stream's image against its archive, on the stream's archive card and on the Archive page. */
+export interface ArchiveThumbnail {
+  state: ArchiveThumbnailState;
+  /** The archive stamps the image the stream names is on, without `0x`. Empty unless `archived`. */
+  batchIds: string[];
+}
+
+/** What the card and the Archive page say for each state, null for nothing. */
+export const ARCHIVE_THUMBNAIL_TEXT: Readonly<Record<ArchiveThumbnailState, string | null>> = {
+  none: null,
+  unarchived: 'Thumbnail not archived',
+  archived: 'Thumbnail archived',
+  changed: 'The thumbnail changed since the archive',
+};
+
+/**
+ * The state from the reference the stream names, null for none, and the references stamped under the archive stamps
+ * that hold a copy of the stream and have not run out.
+ */
+export function archiveThumbnailState(named: string | null, stamped: readonly string[]): ArchiveThumbnailState {
+  if (named === null) return 'none';
+  if (stamped.length === 0) return 'unarchived';
+  const reference = named.toLowerCase();
+  return stamped.some((one) => one.toLowerCase() === reference) ? 'archived' : 'changed';
+}
+
 /** `GET /api/streams/:id/archive`: what the panel and the stream's archive card offer for one stream. */
 export interface ArchiveOptionsResponse {
   streamId: string;
@@ -648,6 +754,8 @@ export interface ArchiveOptionsResponse {
    */
   chequebookAvailablePlur: string | null;
   summary: StreamArchiveSummary;
+  /** How the stream's image stands against its archive. */
+  thumbnail: ArchiveThumbnail;
   /** Whether the switch is offered: one quality plays from an archive stamp. */
   canListArchivedOnly: boolean;
   /** A stage batch that holds a quality with no archive has expired, so the switch is worth turning on. */
@@ -658,7 +766,14 @@ export interface ArchiveOptionsResponse {
   current: ArchiveJobSummary | null;
 }
 
-/** `POST /api/streams/:id/archive`. The qualities are copied in the order named. */
+/**
+ * `POST /api/streams/:id/archive`. The qualities are copied in the order named.
+ *
+ * A quality that is archived at its recording already is accepted as a further copy, onto a stamp that holds no
+ * archived copy of it, or onto a new one, and refused with `nothing_to_archive` and the sentence of
+ * {@link archivedOnStampAlready} onto a stamp that does. Its other copies stay as they are while the new one runs and
+ * after. The console starts a further copy from the Archive page alone.
+ */
 export interface ArchiveStartRequest {
   renditions: string[];
   /** An archive stamp to copy onto, or a new one, sized and confirmed after the job has measured. */
@@ -686,21 +801,29 @@ export interface ArchivedStream {
   /** The day the broadcast started, in UTC: `YYYY-MM-DD`. */
   date: string | null;
   summary: StreamArchiveSummary;
-  /** Every quality that has a copy, whole or not. */
+  /** Every quality that has a copy, whole or not, once each, with its copies. The other fields are its best copy's. */
   qualities: Array<
-    Pick<ArchiveQuality, 'rendition' | 'label' | 'state' | 'batchId' | 'batchLabel' | 'bytes' | 'parityMissing'> & {
-      /** The time left on the stamp its copy is on, or null when the manager did not read it. */
+    Pick<
+      ArchiveQuality,
+      'rendition' | 'label' | 'state' | 'batchId' | 'batchLabel' | 'bytes' | 'parityMissing' | 'copies'
+    > & {
+      /** The time left on the stamp its best copy is on, or null when the manager did not read it. */
       batchTtlSeconds: number | null;
     }
   >;
-  /** The bytes of every archived quality together. */
+  /** The bytes of every archived quality together, each counted once, by its best copy. */
   bytes: number;
+  /** How the stream's image stands against its archive. */
+  thumbnail: ArchiveThumbnail;
   /** When and by whom its newest copy was completed. */
   archivedAt: string | null;
   archivedBy: string | null;
 }
 
-/** `GET /api/archive/streams`: only streams with an archive, newest copy first. */
+/**
+ * `GET /api/archive/streams`: only streams with an archive, newest copy first. The page's stamp filter lists the
+ * streams that have a copy on the chosen stamp, with those copies.
+ */
 export interface ArchiveStreamsResponse {
   streams: ArchivedStream[];
 }

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ARCHIVE_BADGE_TEXT,
   ARCHIVE_UNLISTED_TEXT,
+  type ArchiveCopy,
   type ArchivedStream,
   type StreamArchiveSummary,
 } from '@streaming-monorepo/web2-admin-common';
@@ -22,6 +23,27 @@ function summary(over: Partial<StreamArchiveSummary> = {}): StreamArchiveSummary
   return { state: 'complete', archived: ['1080p', '720p'], archivedOnly: false, ...over };
 }
 
+/** One copy of a quality on a stamp, as the Archive page's answer lists it. */
+function copyOn(
+  batchId: string,
+  batchLabel: string | null,
+  state: ArchiveCopy['state'],
+  bytes: number,
+  batchTtlSeconds: number,
+): ArchiveCopy {
+  return {
+    batchId,
+    batchLabel,
+    state,
+    chunks: Math.ceil(bytes / 4096),
+    bytes,
+    parityMissing: 0,
+    completedAt: '2026-11-03T10:00:00.000Z',
+    completedBy: 'admin',
+    batchTtlSeconds,
+  };
+}
+
 /** A stream with 1080p archived, 720p with reduced protection, and 360p outdated, on two stamps. */
 function makeArchivedStream(over: Partial<ArchivedStream> = {}): ArchivedStream {
   return {
@@ -39,6 +61,7 @@ function makeArchivedStream(over: Partial<ArchivedStream> = {}): ArchivedStream 
         bytes: 2_700_000_000,
         parityMissing: 0,
         batchTtlSeconds: 200 * 86_400,
+        copies: [copyOn(TALKS, 'Talks', 'complete', 2_700_000_000, 200 * 86_400)],
       },
       {
         rendition: '720p',
@@ -49,6 +72,7 @@ function makeArchivedStream(over: Partial<ArchivedStream> = {}): ArchivedStream 
         bytes: 1_300_000_000,
         parityMissing: 12,
         batchTtlSeconds: 200 * 86_400,
+        copies: [{ ...copyOn(TALKS, 'Talks', 'reduced', 1_300_000_000, 200 * 86_400), parityMissing: 12 }],
       },
       {
         rendition: '360p',
@@ -59,9 +83,11 @@ function makeArchivedStream(over: Partial<ArchivedStream> = {}): ArchivedStream 
         bytes: 400_000_000,
         parityMissing: 0,
         batchTtlSeconds: 20 * 86_400,
+        copies: [copyOn(OLD, null, 'outdated', 400_000_000, 20 * 86_400)],
       },
     ],
     bytes: 4_000_000_000,
+    thumbnail: { state: 'none', batchIds: [] },
     archivedAt: '2026-11-03T10:00:00.000Z',
     archivedBy: 'admin',
     ...over,

@@ -240,7 +240,7 @@ describe('ArchiveRepository', () => {
     assert.equal((await archives.segmentsDone(id, '720p')).size, 0);
   });
 
-  it("writes a quality's copy as partial, completes it, and replaces it when it is made again", async () => {
+  it("writes a quality's copy as partial, completes it, and keeps a copy for each stamp it is made onto", async () => {
     const streamId = await stream('itest copies');
     const copy = {
       stream_id: streamId,
@@ -258,20 +258,63 @@ describe('ArchiveRepository', () => {
       bucket_sum_after: null,
       bzz_spent_estimate_plur: null,
     };
+    const on = async (batchId: string) =>
+      (await archives.archivesOf([streamId])).find((row) => row.rendition === '720p' && row.batch_id === batchId);
     await archives.startArchive(copy);
-    await archives.saveArchive(streamId, '720p', { chunks: 900, bytes: 3_600_000, bucket_sum_after: 910 });
-    await archives.completeArchive(streamId, '720p', userId, 'itest');
-    let [row] = await archives.archivesOf([streamId]);
+    await archives.saveArchive(streamId, '720p', BATCH, { chunks: 900, bytes: 3_600_000, bucket_sum_after: 910 });
+    await archives.completeArchive(streamId, '720p', BATCH, userId, 'itest');
+    let row = await on(BATCH);
     assert.equal(row?.state, 'complete');
     assert.equal(row?.chunks, 900);
     assert.equal(row?.completed_by, 'itest');
 
-    await archives.startArchive({ ...copy, manifest_index: 9, batch_id: 'b'.repeat(64) });
-    [row] = await archives.archivesOf([streamId]);
+    // A further copy onto another stamp is a row of its own, and the first stays complete while it runs and after.
+    await archives.startArchive({ ...copy, batch_id: OTHER });
+    assert.equal((await archives.archivesOf([streamId])).length, 2);
+    assert.equal((await on(OTHER))?.state, 'partial');
+    assert.equal((await on(BATCH))?.state, 'complete');
+    await archives.saveArchive(streamId, '720p', OTHER, { chunks: 450 });
+    await archives.completeArchive(streamId, '720p', OTHER, null, 'itest two');
+    assert.deepEqual([(await on(OTHER))?.chunks, (await on(OTHER))?.completed_by], [450, 'itest two']);
+    assert.deepEqual([(await on(BATCH))?.chunks, (await on(BATCH))?.completed_by], [900, 'itest']);
+
+    // Made again onto a stamp, after the stream recorded again, the copy takes that stamp's row alone.
+    await archives.startArchive({ ...copy, manifest_index: 9 });
+    assert.equal((await archives.archivesOf([streamId])).length, 2);
+    row = await on(BATCH);
     assert.equal(row?.state, 'partial');
     assert.equal(row?.manifest_index, 9);
     assert.equal(row?.completed_at, null);
     assert.equal(row?.chunks, 0);
+    assert.equal((await on(OTHER))?.state, 'complete');
+  });
+
+  it("records the stream's image under a stamp, one for each stream and stamp, the later image taking the row", async () => {
+    const streamId = await stream('itest thumbnails');
+    const other = await stream('itest thumbnails two');
+    const image = {
+      stream_id: streamId,
+      batch_id: BATCH,
+      thumbnail_ref: 'f'.repeat(64),
+      stamped_by_user_id: userId,
+      stamped_by: 'itest',
+    };
+    assert.deepEqual(await archives.thumbnailsOf([streamId]), []);
+    await archives.recordThumbnail(image);
+    await archives.recordThumbnail({ ...image, batch_id: OTHER });
+    await archives.recordThumbnail({ ...image, stream_id: other, stamped_by_user_id: null });
+    const own = await archives.thumbnailsOf([streamId]);
+    assert.deepEqual(own.map((row) => row.batch_id).sort(), [BATCH, OTHER]);
+    assert.ok(own.every((row) => row.thumbnail_ref === 'f'.repeat(64) && row.stamped_at instanceof Date));
+
+    await archives.recordThumbnail({ ...image, thumbnail_ref: 'e'.repeat(64), stamped_by: 'itest two' });
+    const again = (await archives.thumbnailsOf([streamId])).find((row) => row.batch_id === BATCH);
+    assert.deepEqual([again?.thumbnail_ref, again?.stamped_by], ['e'.repeat(64), 'itest two']);
+    assert.equal((await archives.thumbnailsOf([streamId])).length, 2);
+    assert.ok((await archives.thumbnailsOf(null)).some((row) => row.stream_id === other));
+
+    await database.pool.query('DELETE FROM streams WHERE id = $1', [other]);
+    assert.equal((await archives.thumbnailsOf([other])).length, 0, 'deleting the stream deletes its rows');
   });
 
   it("gives a copy its stamp's end as each catalogue stamp record arrives, from the latest reading only", async () => {
@@ -295,9 +338,9 @@ describe('ArchiveRepository', () => {
     };
     await archives.startArchive(copy);
     await archives.startArchive({ ...copy, rendition: '360p', batch_id: OTHER });
-    const endOf = async (rendition: string) =>
+    const endOf = async (rendition: string, batchId = rendition === '720p' ? BATCH : OTHER) =>
       (await archives.archivesOf([streamId]))
-        .find((row) => row.rendition === rendition)
+        .find((row) => row.rendition === rendition && row.batch_id === batchId)
         ?.stamp_expires_at?.toISOString() ?? null;
     const arrive = (time: string, ...batches: CatalogueArchiveBatch[]) =>
       catalogue.upsert(catalogueStampRecord({ observedAt: `2030-01-01T${time}.000Z`, archiveBatches: batches }));
@@ -323,7 +366,11 @@ describe('ArchiveRepository', () => {
     await archives.startArchive({ ...copy, manifest_index: 9 });
     assert.equal(await endOf('720p'), '2030-01-03T11:00:00.000Z', 'made again on the same stamp, the end stays');
     await archives.startArchive({ ...copy, batch_id: OTHER });
-    assert.equal(await endOf('720p'), null, 'made again onto another stamp, the end waits for a record');
+    assert.equal(await endOf('720p', OTHER), null, 'a copy onto another stamp waits for a record to give its end');
+    assert.equal(await endOf('720p'), '2030-01-03T11:00:00.000Z', 'and the copy on the first stamp keeps its own');
+    await arrive('14:00:00', archiveBatch(OTHER, { ttlSeconds: 86_400 }));
+    assert.equal(await endOf('720p', OTHER), '2030-01-02T14:00:00.000Z', 'every copy on a stamp takes its end');
+    assert.equal(await endOf('360p'), '2030-01-02T14:00:00.000Z');
   });
 
   it('keeps one purchase under way at a time, and marks one sent or never received', async () => {

@@ -12,21 +12,27 @@ import {
   ARCHIVE_STAMP_PURCHASES_PATH,
   ARCHIVE_STAMPS_PATH,
   ARCHIVE_STREAMS_PATH,
+  ARCHIVE_THUMBNAIL_TEXT,
   ARCHIVED_STATES,
   archiveActionPath,
   archiveBuyAmountPerChunkPlur,
   archiveBuyProblem,
   archiveBuyQuote,
   archiveConfirmPurchasePath,
+  archivedOnStamp,
+  archivedOnStampAlready,
   archiveHoldsPlace,
   archivePauseNeedsDecision,
   archiveStampFits,
   archiveStampPurchasePath,
+  archiveThumbnailState,
   archiveWalletShortfallPlur,
   isArchived,
+  orderArchiveCopies,
   streamArchiveListingPath,
   streamArchivePath,
   streamArchiveState,
+  type ArchiveCopy,
   type ArchiveJobState,
   type ArchivePauseReason,
   type QualityArchiveState,
@@ -97,6 +103,109 @@ describe("a stream's archive state", () => {
     assert.equal(ARCHIVE_BADGE_TEXT.unlisted, 'Archive stamp not listed');
     assert.equal(ARCHIVE_BADGE_TEXT.outdated, 'Archive outdated');
     assert.equal(ARCHIVE_BADGE_TEXT.expired, 'Archive expired');
+  });
+});
+
+describe("a quality's copies", () => {
+  const copy = (batchId: string, over: Partial<ArchiveCopy> = {}): ArchiveCopy => ({
+    batchId,
+    batchLabel: null,
+    state: 'complete',
+    chunks: 300,
+    bytes: 1_200_000,
+    parityMissing: 0,
+    completedAt: '2026-11-17T14:18:01.000Z',
+    completedBy: 'operator',
+    batchTtlSeconds: 86_400,
+    ...over,
+  });
+  const A = 'a'.repeat(64);
+  const B = 'b'.repeat(64);
+  const C = 'c'.repeat(64);
+
+  it('are listed the best first, by state as a stream ranks its qualities', () => {
+    const ordered = orderArchiveCopies([
+      copy(A, { state: 'partial' }),
+      copy(B, { state: 'expired' }),
+      copy(C, { state: 'reduced' }),
+    ]);
+    assert.deepEqual(
+      ordered.map((one) => one.state),
+      ['reduced', 'expired', 'partial'],
+    );
+    assert.equal(streamArchiveState(ordered.map((one) => one.state)), ordered[0]!.state);
+  });
+
+  it('are listed, among equals, by the stamp that lasts longer, one with no time read last, then by the stamp', () => {
+    const ordered = orderArchiveCopies([
+      copy(C, { batchTtlSeconds: null }),
+      copy(B, { batchTtlSeconds: 86_400 }),
+      copy(A, { batchTtlSeconds: 86_400 }),
+      copy('d'.repeat(64), { batchTtlSeconds: 30 * 86_400 }),
+    ]);
+    assert.deepEqual(
+      ordered.map((one) => one.batchId[0]),
+      ['d', 'a', 'b', 'c'],
+    );
+  });
+
+  it('leave the list they were given as it was', () => {
+    const given = [copy(A, { state: 'partial' }), copy(B)];
+    orderArchiveCopies(given);
+    assert.deepEqual(
+      given.map((one) => one.batchId),
+      [A, B],
+    );
+  });
+
+  it('refuse a further copy onto a stamp that holds an archived one, in any spelling of the stamp', () => {
+    const quality = { copies: [copy(A), copy(B, { state: 'outdated' }), copy(C, { state: 'partial' })] };
+    assert.equal(archivedOnStamp(quality, A), true);
+    assert.equal(archivedOnStamp(quality, `0x${A.toUpperCase()}`), true);
+    assert.equal(archivedOnStamp(quality, B), false, 'an outdated copy is made again on its stamp');
+    assert.equal(archivedOnStamp(quality, C), false, 'a copy that stopped is carried on on its stamp');
+    assert.equal(archivedOnStamp(quality, 'd'.repeat(64)), false);
+    assert.equal(archivedOnStamp({ copies: [] }, A), false);
+    for (const state of ARCHIVED_STATES) {
+      assert.equal(archivedOnStamp({ copies: [copy(A, { state: state as ArchiveCopy['state'] })] }, A), true, state);
+    }
+  });
+
+  it('name the quality in the sentence of a stamp that holds it already', () => {
+    assert.equal(
+      archivedOnStampAlready('1080p'),
+      '1080p is archived on this stamp already. Choose another stamp for a further copy.',
+    );
+  });
+});
+
+describe("a stream's image against its archive", () => {
+  const REF = 'f'.repeat(64);
+  const OLD = 'e'.repeat(64);
+
+  it('is none for a stream that names no image, whatever was stamped', () => {
+    assert.equal(archiveThumbnailState(null, []), 'none');
+    assert.equal(archiveThumbnailState(null, [OLD]), 'none');
+  });
+
+  it('is unarchived while no archive stamp carries an image of the stream', () => {
+    assert.equal(archiveThumbnailState(REF, []), 'unarchived');
+  });
+
+  it('is archived once a stamp carries the image the stream names, in any case of the reference', () => {
+    assert.equal(archiveThumbnailState(REF, [REF]), 'archived');
+    assert.equal(archiveThumbnailState(REF.toUpperCase(), [OLD, REF]), 'archived');
+  });
+
+  it('is changed when the stamps carry another image alone', () => {
+    assert.equal(archiveThumbnailState(REF, [OLD]), 'changed');
+  });
+
+  it('has a line for every state but none', () => {
+    assert.equal(ARCHIVE_THUMBNAIL_TEXT.none, null);
+    assert.equal(ARCHIVE_THUMBNAIL_TEXT.unarchived, 'Thumbnail not archived');
+    assert.equal(ARCHIVE_THUMBNAIL_TEXT.archived, 'Thumbnail archived');
+    assert.equal(ARCHIVE_THUMBNAIL_TEXT.changed, 'The thumbnail changed since the archive');
   });
 });
 
