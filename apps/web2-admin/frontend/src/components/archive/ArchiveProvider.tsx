@@ -8,14 +8,14 @@ import {
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { actOnArchive, confirmArchivePurchase, fetchCurrentArchive, startArchive } from '../../api';
-import type { ArchiveContextValue, ArchivePanelState } from './archiveSeams';
+import type { ArchiveContextValue, ArchivePanelMode, ArchivePanelState } from './archiveSeams';
 
 /** While an archive is unfinished, it is read this often. */
 export const ARCHIVE_POLL_ACTIVE_MS = 2_000;
 /** Otherwise this often, so an archive another user starts shows up for everyone. */
 export const ARCHIVE_POLL_IDLE_MS = 10_000;
 
-const CLOSED: ArchivePanelState = { open: false, streamId: null, preselect: [] };
+const CLOSED: ArchivePanelState = { open: false, streamId: null, preselect: [], mode: 'archive' };
 
 const nothing = async () => undefined;
 
@@ -92,12 +92,15 @@ export function ArchiveProvider({ children }: { children: ReactNode }) {
     }
     if (surfaced.current === key) return;
     surfaced.current = key;
-    setPanel({ open: true, streamId: null, preselect: [] });
+    setPanel({ open: true, streamId: null, preselect: [], mode: 'archive' });
   }, [current]);
 
-  const openPanel = useCallback((streamId: string | null, preselect: readonly string[] = []) => {
-    setPanel({ open: true, streamId, preselect: [...preselect] });
-  }, []);
+  const openPanel = useCallback(
+    (streamId: string | null, preselect: readonly string[] = [], mode: ArchivePanelMode = 'archive') => {
+      setPanel({ open: true, streamId, preselect: [...preselect], mode });
+    },
+    [],
+  );
   const closePanel = useCallback(() => setPanel((was) => ({ ...was, open: false })), []);
   const start = useCallback(async (streamId: string, request: ArchiveStartRequest) => {
     setCurrent(await startArchive(streamId, request));

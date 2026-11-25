@@ -581,7 +581,9 @@ and every signed-in user sees it
   quality on a finished export, it shows the recording's day and each quality with its state and
   its estimate: the bytes, the chunks, what the copy costs the catalogue node's chequebook and how
   long it takes. The qualities it was opened with are ticked, or else the best one not archived
-  yet, and an archived quality cannot be ticked. When the high end of what the ticked qualities may
+  yet, and an archived quality cannot be ticked. When every quality that finished recording is
+  archived, nothing can be ticked, and the panel says so, and that a further copy starts from the
+  Archive page. When the high end of what the ticked qualities may
   cost is above what the catalogue node's chequebook can pay now, a warning says the chequebook may
   run out and the archive would then pause for funds; Start archive stays enabled, and with no
   reading of the chequebook there is no warning. Under them, where the copy goes: an archive stamp
@@ -589,12 +591,23 @@ and every signed-in user sees it
   stamp", sized once the recording is measured. Start archive starts it, and the panel follows it.
   While an archive is unfinished, the panel follows that archive, whichever stream it is, and says
   one exists at a time.
+- **A further copy.** The Archive page's Copy onto another stamp opens the panel in its copy mode,
+  the third argument of `openPanel`; every other opener keeps the archive mode. It offers the
+  stream's archived qualities alone, every one ticked, so the whole recording moves, each with the
+  stamps its copies are on and what a copy holds; a quality not archived is archived first from the
+  stream's card or the download panel. A stamp that holds an archived copy of a ticked quality is
+  greyed out with why, and "Buy a new archive stamp" is offered as for a first archive. Before Start
+  copy it says the room the copy takes on the stamp chosen, counted from what the archived copies
+  hold, what its bandwidth costs the catalogue node's chequebook, as a first copy's does, and, for
+  each stamp a copy is on now, that the copy there stays until that stamp runs out. The start is
+  the request a first archive sends.
 - **Following an archive.** Where it stands, with a bar for the whole and one for each quality as it
   copies and verifies, the rate and the time left, what it is expected to cost the chequebook and
   what the chequebook can pay, with a warning when it holds less, who started it and when, in UTC,
   and the buttons for what it allows now: Pause; Resume, or Try again and Try again after
   funding it, after the pauses that ask for them; Wait until it finishes, when
   the stream went live again; Use another stamp, which lists the other stamps that can be written,
+  one that holds an archived copy of a quality the archive copies greyed out with why,
   and Buy a new archive stamp, when the stamp lacks room; and Cancel archive, which asks first,
   since what was copied stays on Swarm and its qualities show as "Archive incomplete". Once it is
   done, each quality's result, how long it took and what the chequebook went down by.
