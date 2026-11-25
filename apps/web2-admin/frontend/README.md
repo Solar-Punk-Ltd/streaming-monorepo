@@ -199,6 +199,10 @@ The recordings carry an archive each, whichever `MOCK_ARCHIVE` is:
 - `waiting`: one whose stream went live again.
 - `done`, `done_reduced`: a finished one, the second with 12 parity chunks of 1080p left out.
 
+On the Archive page, "Ended days ago" also has 1080p on "Short talks", beside its copy on "Archive
+2026", and its image is archived; the image of "Workshop recording" is not archived, and that of
+"Keynote, recorded twice" changed since the archive. The other streams have no published image.
+
 `GET /api/archive/streams` answers the Archive page, and the stream answers carry each stream's
 `archive`. With the default `MOCK_EXPORT` an export runs at start, and a new archive is refused
 until it is done, as the API keeps one job at a time: set `MOCK_EXPORT=off` to start one at once.
@@ -258,12 +262,24 @@ shows nothing of them.
 ### Archive, `#/archive`
 
 Only the streams that have an archive, newest copy first, from `GET /api/archive/streams`: the
-title, linked to the stream's page, with its badge, the date, each copied quality with its state,
-the size archived, the stamp each copy is on with its time left, in amber under
-`ARCHIVE_TTL_WARNING_DAYS`, under a copy on a stamp the manager no longer lists the sentence that it
-cannot be topped up here and stays on Swarm until the stamp expires, and when and by whom the newest copy was completed. Archive more
-qualities opens the archive panel on the stream, and Archive again opens it with the outdated
-qualities ticked. Nothing is removed from a stamp, so there is no un-archive.
+title, linked to the stream's page, with its badge and how its image stands ("Thumbnail archived",
+"Thumbnail not archived" or "The thumbnail changed since the archive", and nothing for a stream with
+no published image), the date, every copy of each quality, the best first as `orderArchiveCopies`
+orders them, with its state, the size archived, the stamp each copy is on, by its label or its
+short id, with its time left, in amber under `ARCHIVE_TTL_WARNING_DAYS`, under a copy on a stamp the
+manager no longer lists the sentence that it cannot be topped up here and stays on Swarm until the
+stamp expires, and when and by whom the newest copy was completed.
+
+The Stamp filter above the list offers every stamp that holds a copy, from the same answer, with
+All stamps first. A stamp chosen lists the streams that have a copy on it, with those copies alone
+and the size the archived ones hold: the stamp as a collection. It filters in the console; there is
+no route for it.
+
+Archive more qualities opens the archive panel on the stream, and Archive again opens it with the
+outdated qualities ticked. Copy onto another stamp, on a stream with an archived quality, opens it
+with the stream's archived qualities, for a further copy onto another stamp; the copies already made
+stay on their stamps. A further copy starts from this page alone. Nothing is removed from a stamp,
+so there is no un-archive.
 
 ### Create and edit, `#/create` and `#/edit/:id`
 
@@ -335,10 +351,13 @@ the address is not read.
   indicator do: the stream is live again, or it recorded again after the export.
 - On a finished recording, or a stream with an archive, the archive card, above the downloaded file:
   each quality with its state, "Archived", "Archived, reduced protection", "Archive stamp not
-  listed", "Archive incomplete", "Archive outdated", "Archive expired" or "Not archived", and what
-  its copy holds, on which stamp, completed when and by whom, or else its estimate; a copy on a stamp
-  the manager no longer lists also says it cannot be topped up here and stays on Swarm until the
-  stamp expires. Every stamp that holds a copy and runs out soon, a full one included, is named
+  listed", "Archive incomplete", "Archive outdated", "Archive expired" or "Not archived", and under
+  it every copy, the best first as `orderArchiveCopies` orders them, as the Archive page lists
+  them: its state, what it holds, on which stamp, completed when and by whom, and that stamp's time
+  left; or, with no copy, its estimate. A copy on a stamp the manager no longer lists also says it
+  cannot be topped up here and stays on Swarm until the stamp expires. Under the qualities, how the
+  stream's image stands, in the Archive page's words, and nothing for a stream with no published
+  image. Every stamp that holds a copy and runs out soon, a full one included, is named
   with its time left and where it is topped up: on the Funding page's Stamps tab, or outside the
   admin for a stamp left on a node that is the catalogue node no longer. A stamp that has run out
   is not, as its copy says it expired. "Archive this recording", "Archive more qualities" or "Archive again"
