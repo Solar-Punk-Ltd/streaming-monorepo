@@ -1877,6 +1877,29 @@ batch replaced and the price of postage it was worked out at),
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `batch_purchases` | migration 030: one row per purchase, by `id`, the request id the manager knows it by, with `purpose`, the node's id and label, `depth`, `immutable`, `days`, `amount_per_chunk_plur`, `cost_plur`, `replaces_batch_id`, `state`, `batch_id`, `tx_hash`, `error`, `stages`, `released_at`, `relayed_at`, who started it, and when. One under way per node |
 
+### Stamp auto top-up
+
+The settings of stamp auto top-up and where it stands, under `/api/funding/auto-top-up` (`autoTopUp.ts` in common
+names the paths and the shapes). Each route needs a session, and each write answers the whole view and is audited with
+the user's name: `funding.auto_topup.settings`, `.mark`, `.unmark` and `.job`. The store is
+`StampAutoTopUpRepository`, migrations 034 and 035. `docs/architecture/funding.md`, "Auto top-up", is the design.
+
+| Method | Path                                 | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/funding/auto-top-up`           | `AutoTopUpView`: the settings, or `AUTO_TOPUP_DEFAULTS` while none were saved, and who saved them; the three jobs; each notification channel's status; every marked stamp with its last automatic top-up, its coming top-up and its problem; the monthly estimate and the daily ceiling in force, both null without the manager's inventory or a price of postage; what the system sent in the last 24 hours; and the warnings, each with when a notice last told of it |
+| PUT    | `/api/funding/auto-top-up/settings`  | `{ password, settings }` in, behind the password as a send: `401 invalid_credentials` when it is wrong, `429 too_many_attempts` once locked out, `400 validation_error` with `autoTopUpSettingsProblems`                                                                                                                                                                                                                                                                |
+| PUT    | `/api/funding/auto-top-up/marks`     | `{ marked, items: [{ nodeId, batchId }] }` in. A mark is checked against the manager's inventory read now: a batch a stage's node or the catalogue node uploads with, or an archive stamp such a node holds, read whole, usable and not expired. Any other is `409 not_markable` with a sentence each in `problems`, and nothing is marked. An unmark takes each stamp's alert and warnings with it, and asks the manager nothing                                       |
+| PUT    | `/api/funding/auto-top-up/jobs/:job` | `{ paused }` in: pauses `alert`, `wallet` or `stamp`, or lets it run again; `400` for any other job                                                                                                                                                                                                                                                                                                                                                                     |
+
+A marked stamp shows a coming top-up while its alert is recorded and the manager's inventory reads it with a price of
+postage: the figures are the alert's, and when it falls due is the plan's now. `sendAt` is the end of the alert's wait,
+while something is sent for it and the alert was given.
+
+The view's `notifications` are the channels of the Notifications page, in the order of `NOTIFICATION_CHANNEL_KINDS`,
+read from `NotificationRepository` (migration 035): whether each was saved and is on, when it last took a notice, why
+its last notice could not be sent and when, and how many notices wait for it. A channel never saved is off. With none
+on, the alerts and warnings show on the Auto top-up tab alone. `docs/architecture/notifications.md` is the design.
+
 ## Exporting a recording
 
 A user exports a finished recording, published or not, from its stream's page:
