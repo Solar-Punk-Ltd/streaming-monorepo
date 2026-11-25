@@ -1,7 +1,10 @@
 import {
+  ARCHIVE_THUMBNAIL_TEXT,
   ARCHIVE_UNLISTED_TEXT,
   holdsFinishedRecording,
   isArchived,
+  orderArchiveCopies,
+  type ArchiveCopy,
   type ArchiveOptionsResponse,
   type ArchiveQuality,
   type ArchiveStamp,
@@ -48,30 +51,52 @@ export function startLabel(qualities: readonly ArchiveQuality[]): string {
   return 'Archive this recording';
 }
 
+/** What a copy's line is told from: a copy, or a quality's own fields, which are its best copy's. */
+type CopyFacts = Pick<ArchiveCopy, 'state' | 'batchLabel' | 'parityMissing' | 'completedAt' | 'completedBy'> & {
+  batchId: string | null;
+  bytes: number | null;
+};
+
+/** What one copy holds and where, as a sentence that starts in lower case, with what a lesser copy lacks. */
+function copyFacts(copy: CopyFacts): string {
+  const where = copy.batchLabel
+    ? `“${copy.batchLabel}”`
+    : copy.batchId
+      ? `the stamp ${shortHex(copy.batchId)}`
+      : 'an archive stamp';
+  const size = copy.bytes !== null ? `${formatBytes(copy.bytes)} ` : '';
+  const done = copy.completedAt
+    ? `, completed ${formatUtc(copy.completedAt)}${copy.completedBy ? ` by ${copy.completedBy}` : ''}`
+    : '';
+  let line = `${size}on ${where}${done}.`;
+  if (copy.state === 'partial') line = `${size}copied onto ${where} before the copy stopped.`;
+  if (copy.state === 'reduced') {
+    line += ` ${formatCount(copy.parityMissing)} parity chunk${copy.parityMissing === 1 ? '' : 's'} could not be read, so it plays with less protection.`;
+  }
+  if (copy.state === 'unlisted') line += ` ${ARCHIVE_UNLISTED_TEXT}`;
+  if (copy.state === 'outdated') line += ' The stream recorded again after the copy.';
+  if (copy.state === 'expired') line += ' The stamp has expired.';
+  return line;
+}
+
 /**
- * Where one quality's copy stands: `2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice`, with what a
+ * Where one quality's best copy stands: `2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice`, with what a
  * reduced, unlisted, outdated or expired copy lacks; or, with no copy, its estimate or why it cannot be archived.
  */
 export function copyLine(quality: ArchiveQuality): string {
   if (quality.state === 'none') return quality.unavailable ?? estimateLine(estimateOf([quality]));
-  const where = quality.batchLabel
-    ? `“${quality.batchLabel}”`
-    : quality.batchId
-      ? `the stamp ${shortHex(quality.batchId)}`
-      : 'an archive stamp';
-  const size = quality.bytes !== null ? `${formatBytes(quality.bytes)} ` : '';
-  const done = quality.completedAt
-    ? `, completed ${formatUtc(quality.completedAt)}${quality.completedBy ? ` by ${quality.completedBy}` : ''}`
-    : '';
-  let line = `${size}on ${where}${done}.`;
-  if (quality.state === 'partial') line = `${size}copied onto ${where} before the copy stopped.`;
-  if (quality.state === 'reduced') {
-    line += ` ${formatCount(quality.parityMissing)} parity chunk${quality.parityMissing === 1 ? '' : 's'} could not be read, so it plays with less protection.`;
-  }
-  if (quality.state === 'unlisted') line += ` ${ARCHIVE_UNLISTED_TEXT}`;
-  if (quality.state === 'outdated') line += ' The stream recorded again after the copy.';
-  if (quality.state === 'expired') line += ' The stamp has expired.';
+  const line = copyFacts({ ...quality, state: quality.state });
   return line.charAt(0).toUpperCase() + line.slice(1);
+}
+
+/**
+ * One copy of a quality, as the Archive page lists it: its state, what it holds on which stamp, and that stamp's time
+ * left: `Archived: 2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice. 200 days left on the stamp.`
+ */
+export function copyOnStampLine(copy: ArchiveCopy): string {
+  const ttl = copy.batchTtlSeconds;
+  const left = ttl !== null && ttl > 0 ? ` ${formatTimeLeft(ttl)} left on the stamp.` : '';
+  return `${qualityStateText(copy.state)}: ${copyFacts(copy)}${left}`;
 }
 
 /** Whether a stamp has run out: read expired or gone, or its time left gone by since the reading. */
@@ -100,8 +125,9 @@ function runningOutText(stamp: ArchiveStamp): string {
 }
 
 /**
- * On a stream's page: its archive, quality by quality, with the action that starts one, and the "List only archived
- * qualities" switch once a quality plays from an archive stamp. Shown for a stream that holds a finished recording or
+ * On a stream's page: its archive, quality by quality, each with its copies in the order of `orderArchiveCopies`, how
+ * the stream's image stands, the action that starts one, and the "List only archived qualities" switch once a quality
+ * plays from an archive stamp. Shown for a stream that holds a finished recording or
  * has a copy. It reads the stream's archive again whenever the archive of this stream changes state.
  */
 export function ArchiveCard({ stream, onChanged }: { stream: Stream; onChanged?: () => void }) {
@@ -203,12 +229,32 @@ export function ArchiveCard({ stream, onChanged }: { stream: Stream; onChanged?:
                     label={qualityStateText(quality.state)}
                   />
                 </Stack>
-                <Typography variant="body2" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
-                  {copyLine(quality)}
-                </Typography>
+                {quality.copies.length > 0 ? (
+                  orderArchiveCopies(quality.copies).map((copy) => (
+                    <Typography
+                      key={copy.batchId}
+                      variant="body2"
+                      sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}
+                    >
+                      {copyOnStampLine(copy)}
+                    </Typography>
+                  ))
+                ) : (
+                  <Typography variant="body2" sx={{ color: 'text.secondary', overflowWrap: 'anywhere' }}>
+                    {copyLine(quality)}
+                  </Typography>
+                )}
               </Box>
             ))}
           </Stack>
+          {ARCHIVE_THUMBNAIL_TEXT[options.thumbnail.state] ? (
+            <Typography
+              variant="body2"
+              sx={{ color: options.thumbnail.state === 'archived' ? 'text.secondary' : 'warning.main' }}
+            >
+              {ARCHIVE_THUMBNAIL_TEXT[options.thumbnail.state]}
+            </Typography>
+          ) : null}
           {stampsRunningOut(options).map((stamp) => (
             <Alert key={stamp.batchId} severity="warning">
               {runningOutText(stamp)}

@@ -2243,36 +2243,84 @@ function archiveJobOptions(row, user, now = Date.now()) {
   };
 }
 
-/** The Archive page: the streams that have a copy, newest copy first. */
+/** The Archive page's further copies, by stream: copies of a quality on stamps beside the one `archiveCopies` holds. */
+const archivePageFurtherCopies = new Map();
+/** How each stream's image stands against its archive, on the Archive page, by stream: `none` for any other. */
+const archivePageThumbnails = new Map();
+
+/** A copy as the Archive page's answer carries it, with its stamp's time left. */
+function archivePageCopy(copy, now) {
+  const stamp = archiveJobStamps.find((candidate) => candidate.batchId === copy.batchId);
+  return {
+    batchId: copy.batchId,
+    batchLabel: copy.batchLabel,
+    state: copy.state,
+    chunks: copy.chunks,
+    bytes: copy.bytes,
+    parityMissing: copy.parityMissing,
+    completedAt: copy.completedAt,
+    completedBy: copy.completedBy,
+    batchTtlSeconds: stamp ? archiveJobStampAnswer(stamp, now).ttlSeconds : null,
+  };
+}
+
+/** A quality's copies the best first, as the contract's `orderArchiveCopies` orders them. */
+function archivePageOrder(copies) {
+  return [...copies].sort(
+    (a, b) =>
+      ARCHIVE_JOB_STATE_RANK[b.state] - ARCHIVE_JOB_STATE_RANK[a.state] ||
+      (b.batchTtlSeconds ?? -1) - (a.batchTtlSeconds ?? -1) ||
+      a.batchId.localeCompare(b.batchId),
+  );
+}
+
+/** The Archive page: the streams that have a copy, newest copy first, each quality with every copy it has. */
 function archivedStreamsAnswer(now = Date.now()) {
   const list = [];
   for (const [streamId, copies] of archiveCopies) {
     const row = streams.get(streamId);
     if (!row || copies.size === 0) continue;
+    const further = archivePageFurtherCopies.get(streamId) ?? [];
     const qualities = [...copies.values()].map((copy) => {
-      const stamp = archiveJobStamps.find((candidate) => candidate.batchId === copy.batchId);
+      const every = archivePageOrder(
+        [copy, ...further.filter((other) => other.rendition === copy.rendition)].map((one) =>
+          archivePageCopy(one, now),
+        ),
+      );
+      const best = every[0];
       return {
         rendition: copy.rendition,
         label: copy.rendition,
-        state: copy.state,
-        batchId: copy.batchId,
-        batchLabel: copy.batchLabel,
-        bytes: copy.bytes,
-        parityMissing: copy.parityMissing,
-        batchTtlSeconds: stamp ? archiveJobStampAnswer(stamp, now).ttlSeconds : null,
+        state: best.state,
+        batchId: best.batchId,
+        batchLabel: best.batchLabel,
+        bytes: best.bytes,
+        parityMissing: best.parityMissing,
+        batchTtlSeconds: best.batchTtlSeconds,
+        copies: every,
       };
     });
-    const archived = [...copies.values()].filter((copy) => ARCHIVE_JOB_ARCHIVED.has(copy.state));
-    const newest = [...copies.values()]
+    const newest = [...copies.values(), ...further]
       .filter((copy) => copy.completedAt !== null)
       .sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0];
+    const thumbnail = archivePageThumbnails.get(streamId) ?? 'none';
+    // The image is on every stamp that holds a copy of the stream and has not run out.
+    const stamped = new Set(
+      qualities
+        .flatMap((quality) => quality.copies)
+        .filter((copy) => copy.batchTtlSeconds !== 0)
+        .map((copy) => copy.batchId),
+    );
     list.push({
       streamId,
       title: row.title,
       date: (row.liveSince ?? row.scheduledStartTime ?? '').slice(0, 10) || null,
       summary: streamArchiveSummaryOf(row),
       qualities,
-      bytes: archived.reduce((sum, copy) => sum + copy.bytes, 0),
+      bytes: qualities
+        .filter((quality) => ARCHIVE_JOB_ARCHIVED.has(quality.state))
+        .reduce((sum, quality) => sum + quality.bytes, 0),
+      thumbnail: { state: thumbnail, batchIds: thumbnail === 'archived' ? [...stamped] : [] },
       archivedAt: newest?.completedAt ?? null,
       archivedBy: newest?.completedBy ?? null,
     });
@@ -2347,6 +2395,24 @@ function seedArchivedRecording(title, description, endedMinutesAgo) {
   // A stamp that is in no listing, as one removed in the manager is.
   const removed = archiveJobStamp('Removed archive', 21, 300_000, 120);
   setArchiveCopies(conference, [archiveCopy(conference, '1080p', 'unlisted', removed, by)]);
+}
+
+// The Archive page's own seeds: a further copy of 1080p of the archived recording on "Short talks", beside its copy on
+// "Archive 2026", and one stream for each way its image stands against its archive.
+{
+  const [, nearlyFull] = archiveJobStamps;
+  const titled = (title) => [...streams.values()].find((row) => row.title === title);
+  const archivedRecording = archiveHintStreamId === null ? undefined : streams.get(archiveHintStreamId);
+  if (archivedRecording) {
+    archivePageFurtherCopies.set(archivedRecording.id, [
+      archiveCopy(archivedRecording, '1080p', 'complete', nearlyFull, EXPORT_OTHER_USER.username),
+    ]);
+    archivePageThumbnails.set(archivedRecording.id, 'archived');
+  }
+  const workshop = titled('Workshop recording');
+  if (workshop) archivePageThumbnails.set(workshop.id, 'unarchived');
+  const keynote = titled('Keynote, recorded twice');
+  if (keynote) archivePageThumbnails.set(keynote.id, 'changed');
 }
 
 // The archive seeded at start, of the first seeded recording, MOCK_ARCHIVE deciding which.

@@ -2,9 +2,11 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ARCHIVE_THUMBNAIL_TEXT,
   BACKGROUND_READ_HEADER,
   BACKGROUND_READ_VALUE,
   type ArchiveBuyTerms,
+  type ArchiveCopy,
   type ArchiveJobItem,
   type ArchiveJobSummary,
   type ArchiveOptionsResponse,
@@ -437,6 +439,54 @@ describe("the stream page's archive card", () => {
     expect(bodyOf(fetchMock, 'PUT', `/api/streams/${ID}/archive/listing`)).toEqual({ archivedOnly: true });
     // Once it is on, the hint to turn it on is said no more.
     expect(within(card).queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it('lists each copy of a quality, the best first, with its stamp’s time left, and how the image stands', async () => {
+    const copy = (batchId: string, batchLabel: string, state: ArchiveCopy['state'], days: number): ArchiveCopy => ({
+      batchId,
+      batchLabel,
+      state,
+      chunks: state === 'partial' ? 200_000 : 540_000,
+      bytes: state === 'partial' ? 800_000_000 : 2_200_000_000,
+      parityMissing: 0,
+      completedAt: state === 'partial' ? null : '2026-11-12T09:51:10.000Z',
+      completedBy: state === 'partial' ? null : 'operator-a',
+      batchTtlSeconds: days * 86_400,
+    });
+    const options = makeOptions({
+      qualities: [
+        onTalks({
+          completedBy: 'operator-a',
+          copies: [
+            copy(AUTUMN, 'Autumn', 'partial', 300),
+            copy(SPRING, 'Spring', 'complete', 40),
+            copy(TALKS, 'Talks', 'complete', 200),
+          ],
+        }),
+        q720(),
+      ],
+      summary: { state: 'complete', archived: ['1080p'], archivedOnly: false },
+      thumbnail: { state: 'changed', batchIds: [] },
+    });
+    renderPage(recorded({ archive: options.summary }), jobRoutes(null, options));
+
+    const card = await screen.findByRole('region', { name: 'archive' });
+    const lines = await within(card).findAllByText(/^Archive[^:]*: \d/);
+    expect(lines.map((line) => line.textContent)).toEqual([
+      'Archived: 2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by operator-a. 200 days left on the stamp.',
+      'Archived: 2.2 GB on “Spring”, completed 2026-11-12 09:51:10 UTC by operator-a. 40 days left on the stamp.',
+      'Archive incomplete: 800 MB copied onto “Autumn” before the copy stopped. 300 days left on the stamp.',
+    ]);
+    expect(within(card).getByText(ARCHIVE_THUMBNAIL_TEXT.changed as string)).toBeInTheDocument();
+  });
+
+  it('says nothing of the image for a stream that has none', async () => {
+    const options = makeOptions({ qualities: [onTalks(), q720()] });
+    renderPage(recorded(), jobRoutes(null, options));
+
+    const card = await screen.findByRole('region', { name: 'archive' });
+    await within(card).findByText('2.2 GB on “Talks”, completed 2026-11-12 09:51:10 UTC by alice.');
+    expect(within(card).queryByText(/thumbnail/i)).not.toBeInTheDocument();
   });
 
   it('warns of a full stamp that holds a copy and runs out soon, though no new copy can go onto it', async () => {
