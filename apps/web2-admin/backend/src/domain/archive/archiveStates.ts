@@ -166,6 +166,8 @@ export function streamArchiveThumbnail(
   held: ArchiveStampsHeld | null,
   now: number,
 ): ArchiveThumbnail {
+  // A stream with no copy has no archive for its image to stand against.
+  if (copies.length === 0) return { state: 'none', batchIds: [] };
   const live = stamped.filter((row) => {
     const onStamp = copies.filter((copy) => copy.batch_id === row.batch_id);
     if (onStamp.length === 0) return false;
