@@ -204,6 +204,14 @@ describe("the stream's image against its archive", () => {
     });
     assert.equal(streamArchiveThumbnail(REF, [], [copyOn(BATCH)], held, NOW).state, 'unarchived');
   });
+
+  it('is none for a stream with no copy, whatever image it names', () => {
+    assert.deepEqual(streamArchiveThumbnail(REF, [], [], held, NOW), { state: 'none', batchIds: [] });
+    assert.deepEqual(streamArchiveThumbnail(REF, [stamped(BATCH, REF)], [], held, NOW), {
+      state: 'none',
+      batchIds: [],
+    });
+  });
 });
 
 describe('archiveStampEnds', () => {
