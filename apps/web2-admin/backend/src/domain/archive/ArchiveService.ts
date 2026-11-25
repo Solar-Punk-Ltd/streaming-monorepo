@@ -47,6 +47,7 @@ import { getErrorMessage } from '../../utils/errorUtils.js';
 import { describeActor, type Actor, type OperatorActor } from '../actor.js';
 import { recordAudit, type AuditAction, type AuditLog } from '../AuditLog.js';
 import { withoutCatalogueNode } from '../catalogueNodeText.js';
+import type { CatalogueTarget, ThumbnailFile } from '../FeedGateway.js';
 import { ArchiveNotFoundError, ArchiveRefusedError, StreamNotFoundError, TestStreamError } from '../errors/index.js';
 import { broadcastDay } from '../export/names.js';
 import { parseRecordingPlaylist, PlaylistFormatError } from '../export/playlist.js';
@@ -64,6 +65,7 @@ import type {
   ArchiveStore,
   StreamArchiveRow,
 } from './ArchiveRepository.js';
+import type { ArchiveThumbnails } from './ArchiveThumbnails.js';
 import {
   archivedRenditions,
   bzzEstimate,
@@ -397,6 +399,8 @@ export class ArchiveService {
   private readonly purchaseTimeoutMs: number;
   private readonly purchaseAnswerWaitMs: number;
   private inventoryRead: { at: number; inventory: FundingInventory } | null = null;
+  /** The stamping of the images publishes named, one publish after another (`imagePublished`). */
+  private imageStamping: Promise<void> = Promise.resolve();
   private readonly now: () => number;
 
   constructor(
@@ -406,6 +410,7 @@ export class ArchiveService {
     private readonly catalogue: ArchiveCatalogue,
     private readonly node: ArchiveNode,
     private readonly copier: ChunkCopier,
+    private readonly thumbnails: ArchiveThumbnails,
     private readonly manager: ArchiveManager | null,
     private readonly publisher: ArchivePublisher,
     private readonly exports: ArchiveExports,
@@ -937,6 +942,73 @@ export class ArchiveService {
     return stream;
   }
 
+  // --- a publish that names an image ---------------------------------------------
+
+  /**
+   * `PublishArchiveImages`: a publish put an entry naming `stream.thumbnail_ref` on the feed, and released the publish
+   * lock. Returns at once and never throws. The image is then stamped under every archive stamp that holds a copy of
+   * the stream, can be written, and has no record of that image, one stamp after another, and one publish after
+   * another. A stamp that cannot be written, or whose upload fails or answers another reference, is said in the log and
+   * left out, and its record stays as it was (`docs/architecture/web2-admin.md`, "What is copied").
+   */
+  imagePublished(stream: StreamRow, actor: Actor): void {
+    const reference = stream.thumbnail_ref;
+    if (!reference || this.stopping) return;
+    const by = { userId: actor.kind === 'operator' ? actor.userId : null, name: describeActor(actor) };
+    this.imageStamping = this.imageStamping
+      .then(() => this.stampPublishedImage(stream, reference, by))
+      .catch((error: unknown) => {
+        logger.warn(
+          `[Archive] the image of "${stream.title}" is not stamped under its archive stamps: ${getErrorMessage(error)}`,
+        );
+      });
+  }
+
+  private async stampPublishedImage(
+    stream: StreamRow,
+    reference: string,
+    by: { userId: string | null; name: string },
+  ): Promise<void> {
+    const [copies, stamped, catalogueRow] = await Promise.all([
+      this.store.archivesOf([stream.id]),
+      this.store.thumbnailsOf([stream.id]),
+      this.catalogue.get(),
+    ]);
+    const named = reference.toLowerCase();
+    const recorded = new Set(
+      stamped.filter((row) => row.thumbnail_ref.toLowerCase() === named).map((row) => row.batch_id),
+    );
+    const batchIds = [...new Set(copies.map((copy) => copy.batch_id))].filter((batchId) => !recorded.has(batchId));
+    if (batchIds.length === 0) return;
+    const node = nodeOf(catalogueRow);
+    if ('problem' in node) {
+      logger.warn(`[Archive] the image of "${stream.title}" is not stamped under its archive stamps: ${node.problem}`);
+      return;
+    }
+    const held = heldStamps(catalogueRow);
+    let file: ThumbnailFile | null | undefined;
+    for (const batchId of batchIds) {
+      if (this.stopping) return;
+      const batch = held?.batches.find((candidate) => candidate.batchId === batchId);
+      const problem = held
+        ? stampProblem(batch, held.observedAt, this.now())
+        : 'The manager has pushed no archive stamps.';
+      const label = batch?.label ?? shortBatch(batchId);
+      if (problem) {
+        logger.info(`[Archive] the image of "${stream.title}" is not stamped under ${label}: ${problem}`);
+        continue;
+      }
+      try {
+        file ??= await this.thumbnails.fileOf(stream.id);
+        await this.stampImage(stream, reference, file, { beeApiUrl: node.url, batchId }, by);
+      } catch (error) {
+        logger.warn(
+          `[Archive] the image of "${stream.title}" is not stamped under ${label}: ${getErrorMessage(error)}`,
+        );
+      }
+    }
+  }
+
   // --- the process's own lifecycle ---------------------------------------------
 
   /** At boot: carries on with a job the last process left running, and starts the watch. */
@@ -965,14 +1037,25 @@ export class ArchiveService {
       await job.promise.catch(() => undefined);
     }
     await this.ticking;
+    // The image a publish named is stamped no further than the stamp under way.
+    await this.imageStamped();
     // A purchase still asked of the manager is not waited for: it can take minutes, the manager journals it under its
     // id, and the next start reads where it stands.
   }
 
-  /** Resolves once no job and no purchase look is running. For the tests. */
+  /** Resolves once no job, no purchase look and no stamping of a published image is running. For the tests. */
   async settled(): Promise<void> {
     while (this.job) await this.job.promise.catch(() => undefined);
     await Promise.all(this.advancing.values());
+    await this.imageStamped();
+  }
+
+  /** Resolves once the stamping of every image published so far is over. */
+  private async imageStamped(): Promise<void> {
+    for (let stamping = this.imageStamping; ; stamping = this.imageStamping) {
+      await stamping;
+      if (stamping === this.imageStamping) return;
+    }
   }
 
   /**
@@ -1431,6 +1514,8 @@ export class ArchiveService {
         });
         await this.copyFrame(ctx, stream, rungs, master);
       }
+      // The image the catalogue entry names, with the first quality, whatever the ladder.
+      if (item.position === 0) await this.copyImage(stream, { beeApiUrl: node.url, batchId }, job, signal);
       const payload = await this.copier.copySlot(ctx, feed);
       if (slotsCounted) {
         counters.chunks = held.chunks;
@@ -1514,6 +1599,66 @@ export class ArchiveService {
     } finally {
       Object.assign(ctx.counters, { ...before, posts: ctx.counters.posts });
     }
+  }
+
+  /**
+   * The image the stream's catalogue entry names, stamped again under the job's stamp at its own reference, with the
+   * first quality on every pass, beside the card frame (`docs/architecture/web2-admin.md`, "What is copied"). It is
+   * uploaded, not posted under a tag, so it stays outside the quality's counts. A stream with no published image has
+   * nothing to stamp: an image it has and has not published yet waits for the publish. An image that cannot be stamped
+   * is said in the log and left out, and the job's own qualities still complete.
+   */
+  private async copyImage(
+    stream: StreamRow,
+    target: CatalogueTarget,
+    job: ArchiveJobRow,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const reference = stream.thumbnail_ref;
+    if (!reference) {
+      if (stream.has_thumbnail) {
+        logger.info(`[Archive] the image of "${stream.title}" is not published yet; its publish stamps it`);
+      }
+      return;
+    }
+    try {
+      await this.stampImage(stream, reference, await this.thumbnails.fileOf(stream.id), target, {
+        userId: job.started_by_user_id,
+        name: job.started_by,
+      });
+    } catch (error) {
+      if (signal.aborted) throw error;
+      logger.warn(
+        `[Archive] the image of "${stream.title}" is not stamped under ${shortBatch(target.batchId)}: ${getErrorMessage(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Uploads the image under the target's stamp, and records it as stamped there when it came out at the reference the
+   * stream names. Any other answer is said in the log, and nothing is recorded. Throws what the upload threw.
+   */
+  private async stampImage(
+    stream: StreamRow,
+    reference: string,
+    file: ThumbnailFile | null,
+    target: CatalogueTarget,
+    by: { userId: string | null; name: string },
+  ): Promise<void> {
+    const answered = await this.thumbnails.restamp(reference, file, target);
+    if (answered.toLowerCase() !== reference.toLowerCase()) {
+      logger.warn(
+        `[Archive] the image ${reference} of "${stream.title}" came out as ${answered} under ${shortBatch(target.batchId)}, so it is not recorded as stamped there`,
+      );
+      return;
+    }
+    await this.store.recordThumbnail({
+      stream_id: stream.id,
+      batch_id: target.batchId,
+      thumbnail_ref: reference,
+      stamped_by_user_id: by.userId,
+      stamped_by: by.name,
+    });
   }
 
   private itemCounters(counters: CopyCounters, segmentsDone: number, segmentsTotal: number): ArchiveItemChange {

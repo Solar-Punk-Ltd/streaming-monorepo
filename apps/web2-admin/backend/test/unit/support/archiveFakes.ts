@@ -39,6 +39,8 @@ import {
   SOC_HEADER_BYTES,
   type RedundancyLevel,
 } from '../../../src/domain/archive/chunkTree.js';
+import type { ArchiveThumbnails } from '../../../src/domain/archive/ArchiveThumbnails.js';
+import type { CatalogueTarget, ThumbnailFile } from '../../../src/domain/FeedGateway.js';
 import type { CatalogueStampRow } from '../../../src/types/index.js';
 
 /** Fakes for archiving a recording: chunk trees as Bee builds them, a node that holds them, and the job's store. */
@@ -660,5 +662,43 @@ export class FakeCatalogue {
       active_batch_id: 'c'.repeat(64),
       active_record: record,
     } as unknown as CatalogueStampRow;
+  }
+}
+
+/**
+ * The archive's image in memory: the files the stream rows hold, and each upload with the reference it answers, which
+ * is the reference asked for unless `answers` names another, or the error `failNext` holds.
+ */
+export class FakeArchiveThumbnails implements ArchiveThumbnails {
+  readonly files = new Map<string, ThumbnailFile>();
+  readonly restamped: { reference: string; file: ThumbnailFile | null; target: CatalogueTarget }[] = [];
+  readonly answers = new Map<string, string>();
+  /** The batch ids whose upload throws, every time. */
+  readonly failing = new Set<string>();
+  /** Holds each upload until `release()`, when set. */
+  private gate: { promise: Promise<void>; open: () => void } | null = null;
+
+  hold(): void {
+    let open!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    this.gate = { promise, open };
+  }
+
+  release(): void {
+    this.gate?.open();
+    this.gate = null;
+  }
+
+  async fileOf(streamId: string): Promise<ThumbnailFile | null> {
+    return this.files.get(streamId) ?? null;
+  }
+
+  async restamp(reference: string, file: ThumbnailFile | null, target: CatalogueTarget): Promise<string> {
+    await this.gate?.promise;
+    this.restamped.push({ reference, file, target });
+    if (this.failing.has(target.batchId)) throw new Error('the node refused the upload');
+    return this.answers.get(reference) ?? reference;
   }
 }

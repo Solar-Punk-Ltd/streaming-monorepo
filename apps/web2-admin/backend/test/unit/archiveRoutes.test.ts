@@ -37,6 +37,7 @@ import { userRow } from './support/authFixtures.js';
 import {
   buildFile,
   FakeArchiveNode,
+  FakeArchiveThumbnails,
   FakeCatalogue,
   InMemoryArchiveStore,
   playlistText,
@@ -151,6 +152,7 @@ before(async () => {
     new FakeCatalogue(),
     node,
     new ChunkCopier(node, { retryDelaysMs: [1] }),
+    new FakeArchiveThumbnails(),
     manager,
     { republishWithState: async () => undefined },
     { exportHoldingPlace: async () => null },

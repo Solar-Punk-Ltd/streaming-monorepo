@@ -1,4 +1,6 @@
-import type { CatalogueTarget, ThumbnailFile } from '../FeedGateway.js';
+import type { StreamRow, ThumbnailRow } from '../../types/index.js';
+import type { CatalogueRestamper, CatalogueTarget, ThumbnailFile } from '../FeedGateway.js';
+import { THUMBNAIL_FILE_EXTENSIONS } from '../PublishService.js';
 
 /**
  * The stream's image, for the archive: the file the admin holds of it, and the upload that stamps it again.
@@ -25,4 +27,33 @@ export interface ArchiveThumbnails {
    * The catalogue move's upload, `CatalogueRestamper.restampThumbnail`, is this one.
    */
   restamp(reference: string, file: ThumbnailFile | null, target: CatalogueTarget): Promise<string>;
+}
+
+/** The slice of the stream store the archive's image needs: the row, for the topic its file is named by, and its bytes. */
+export interface ArchiveThumbnailStreams {
+  findById(id: string): Promise<Pick<StreamRow, 'topic'> | null>;
+  findThumbnail(id: string): Promise<ThumbnailRow | null>;
+}
+
+/**
+ * The admin's `ArchiveThumbnails`: the file a publish uploaded, named and typed as a publish and a catalogue move name
+ * it, so the same bytes come out at the same reference, and the catalogue move's upload.
+ */
+export function streamArchiveThumbnails(
+  streams: ArchiveThumbnailStreams,
+  restamper: Pick<CatalogueRestamper, 'restampThumbnail'>,
+): ArchiveThumbnails {
+  return {
+    async fileOf(streamId) {
+      const [stream, stored] = await Promise.all([streams.findById(streamId), streams.findThumbnail(streamId)]);
+      if (!stream || !stored) return null;
+      const contentType = stored.thumbnail_mime ?? 'image/png';
+      return {
+        bytes: new Uint8Array(stored.thumbnail),
+        filename: `${stream.topic}.${THUMBNAIL_FILE_EXTENSIONS[contentType] ?? 'bin'}`,
+        contentType,
+      };
+    },
+    restamp: (reference, file, target) => restamper.restampThumbnail(reference, file, target),
+  };
 }

@@ -341,6 +341,13 @@ broadcast, so the row says what its entry says. Any failure puts the previous
 status back with `publish_error` set and answers `502 publish_failed`. Publish
 and unpublish are serialised through one in-process mutex.
 
+A publish, or a republish by hand, whose entry names an image tells the archive
+once it has its answer and the mutex is released, whether it uploaded the image
+or reused it (`PublishArchiveImages`, set at boot with `stampArchiveImagesWith`).
+The archive then stamps the image under the stream's archive stamps, and nothing
+it does changes the publish or its answer. A state report, a reconcile and an
+unpublish tell it nothing.
+
 `POST /streams/:id/publish` and `POST /streams/:id/unpublish` answer
 `PublishResult`: `{ stream, feed: { owner, topic, topicHex, index, entryCount },
 written }`. `written` is whether the call wrote the catalogue, and `index` is
@@ -1993,6 +2000,17 @@ the design.
   the same stamp takes no more room. The frame stays outside the quality's counts,
   and a frame that cannot be copied is logged and left out. Every post must
   answer the address the chunk was read at.
+- **The stream's image.** With its first quality, on every pass, the job uploads
+  the image the stream names (`streams.thumbnail_ref`) again under its stamp,
+  through the catalogue move's `restampThumbnail`: from `streams.thumbnail`, or
+  from the network when the row holds no bytes (`ArchiveThumbnails`). It is
+  recorded in `stream_archive_thumbnails`, with who started the job, only when
+  the upload answers that reference. A publish that names an image does the same
+  under every archive stamp that holds a copy of the stream, can be written and
+  has no record of that image, after the publish and one stamp after another,
+  recording who published (`ArchiveService.imagePublished`). Either way a failure
+  or another reference is logged and left out, and stops neither the copy nor
+  the publish. `ArchiveService.settled()` waits for the publish's stamping.
 - **Measuring.** Before any postage is spent, each segment's root is read: its
   span gives the bytes and its erasure level the chunks, by Bee's parity tables
   (`treeShape` in `chunkTree.ts`). That is an upper bound, and it finds a root no

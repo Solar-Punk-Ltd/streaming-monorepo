@@ -354,6 +354,7 @@ export const THUMBNAIL_FILE_EXTENSIONS: Record<string, string> = {
  */
 export class PublishService {
   private archiveListing: PublishArchiveListing | null = null;
+  private archiveImages: PublishArchiveImages | null = null;
 
   constructor(
     private readonly streams: PublishStreamStore,
@@ -376,9 +377,23 @@ export class PublishService {
     this.archiveListing = listing;
   }
 
-  /** Refused with `TestStreamError` for a test stream, in every status, before anything is claimed or written. */
+  /**
+   * From now on, a publish or a republish by hand whose entry names an image tells the archive, which stamps that
+   * image under the stream's archive stamps. Set once at boot, after the archive service, as `listArchivedOnlyWith`.
+   */
+  stampArchiveImagesWith(images: PublishArchiveImages): void {
+    this.archiveImages = images;
+  }
+
+  /**
+   * Refused with `TestStreamError` for a test stream, in every status, before anything is claimed or written.
+   *
+   * Once the entry is on the feed and the lock is released, an entry that names an image is told to the archive
+   * (`PublishArchiveImages`), whether this publish uploaded the image or reused it. Whatever becomes of that leaves the
+   * answer as it is.
+   */
   async publish(actor: Actor, id: string): Promise<PublishOutcome> {
-    return this.mutex.run(async () => {
+    const outcome = await this.mutex.run(async () => {
       const before = await this.read(id);
       if (before.test) throw new TestStreamError(id, 'publish');
       // A stream that is `live` or `vod` is republished as it is: the
@@ -387,6 +402,20 @@ export class PublishService {
       // The `publishing` claim the first publish uses would lose that.
       return hasReportedState(before) ? this.republishByHand(actor, before) : this.doPublish(actor, before);
     });
+    this.tellArchiveOfImage(outcome, actor);
+    return outcome;
+  }
+
+  /** Tells the archive the image a publish's entry names. Never throws: the publish has its answer already. */
+  private tellArchiveOfImage(outcome: PublishOutcome, actor: Actor): void {
+    if (!this.archiveImages || outcome.entryStatus === null || !outcome.stream.thumbnail_ref) return;
+    try {
+      this.archiveImages.imagePublished(outcome.stream, actor);
+    } catch (error) {
+      logger.warn(
+        `[Publish] the archive was not told the image of ${describeStream(outcome.stream)}: ${getErrorMessage(error)}`,
+      );
+    }
   }
 
   /** Refused with `TestStreamError` for a test stream, which has no entry to take off, a live one included. */
