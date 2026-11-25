@@ -1,7 +1,7 @@
 # Funding from the admin
 
 This is a concepts page. It explains how a brand keeps its stages funded from the admin: the brand
-wallet, the three tabs of the Funding page, who signs and pays for each operation, and the rules
+wallet, the four tabs of the Funding page, who signs and pays for each operation, and the rules
 that keep the money safe. Every funding operation goes through the manager, and the admin talks
 to no Bee node and no chain itself.
 
@@ -27,7 +27,7 @@ One admin holds one brand wallet.
 
 ## The Funding page
 
-The page has three tabs. They keep what you tick, type and choose while you stay on the Funding
+The page has four tabs. The first three keep what you tick, type and choose while you stay on the Funding
 page, so a trip to the Balance tab to fund the nodes loses nothing. A reload starts afresh.
 
 ### Balance tab
@@ -48,6 +48,10 @@ operation runs, because each node pays from its own wallet and nothing leaves th
 - A dilution takes at most 2 steps and must leave the batch 7 days or more.
 - The catalogue batch can be topped up and diluted like any other. A move of the catalogue to
   another batch is not handled here: the tab lists only the designated catalogue batch.
+- **Auto top-up** is a switch on the row of every batch the tab tops up. Marking takes a session
+  and no password, as a top-up by hand does. A marked row shows its last automatic top-up, when the
+  next one falls due and what it costs, and what stopped the last attempt.
+  [Auto top-up](#auto-top-up) says what a mark does.
 - **Buy new** is on the row of a rung's batch, of a single-node stage's batch and of the catalogue
   batch once that batch has expired, once its node holds it no more, and where none is set. A batch
   that is ending or full keeps Top up and Dilute. [Buying a new batch](#buying-a-new-batch) says
@@ -86,6 +90,19 @@ the password, starts the moves.
   chequebook.
 - The manager carries each move out through its own chequebook path and journal, so a move from the
   admin shows in the manager's chequebook history too.
+
+### Auto top-up tab
+
+The settings of [auto top-up](#auto-top-up), and what its three jobs are doing.
+
+- **The numbers:** Top up when under (7 days), Top up to (14 days), Look ahead (1 day), Margin
+  (10%), the xDAI warning (0.1 xDAI) and the daily ceiling, which is half the monthly estimate
+  while the field is empty. Saving them asks for the password.
+- **A pause switch for each job**, with the job's last run and its outcome.
+- **Where things stand:** the monthly estimate for the marked stamps beside the brand wallet's
+  balances, what the wallet job sent in the last 24 hours, the top-ups coming up, the warnings that
+  stand, and each notification channel: whether it is on, when it last took a notice and why one
+  failed. The channels are set on the Notifications page ([notifications.md](notifications.md)).
 
 ### Fund all and Select all
 
@@ -178,6 +195,114 @@ A release the manager refuses ends the catalogue purchase as done, with the mana
 its row: the catalogue is written with the new batch, and the previous one is released on the
 manager's own page.
 
+## Auto top-up
+
+A stamp marked for auto top-up is kept alive by the admin. A marked stamp with under 7 days left is
+topped up to 14 days at the price of that moment, paid by the node that holds it. When that node's
+wallet is short, the brand wallet sends it what the top-up lacks, a day after an alert announced
+it.
+
+Every batch the Stamps tab tops up can be marked: the catalogue batch, the archive stamps and each
+stage's batches. A mark belongs to one batch. A new batch starts unmarked, and so does one bought
+with Buy new in place of a marked stamp. The time a stamp has left decides, read from a node whose
+view of the chain is within 120 blocks of the tip. How full a batch is plays no part.
+
+### The three jobs
+
+A tick every 10 minutes reads the manager's inventory once and runs three jobs in order. Each has a
+pause switch on the Auto top-up tab. One backend runs a tick at a time, under a lock in the
+database.
+
+1. **The alert job** moves no money. For a marked stamp within a day of the threshold it works out
+   the days the top-up adds, its cost, the cost plus the margin, and what the brand wallet will
+   send the stamp's node. It records that alert, shows it on the Auto top-up tab and sends it as a
+   notice. It also sends the notices of every warning that stands.
+2. **The wallet job** sends from the brand wallet, signed with no password. For a due top-up whose
+   node holds less xBZZ than it costs, it sends the node what it lacks for the cost plus the
+   margin. A node that holds less than 0.001 xDAI for each of its due top-ups is sent 0.01 xDAI.
+   One send carries a transfer for each node, over the path a send from the Balance tab takes.
+3. **The stamp job** asks for one stamp operation with the top-up of every due stamp whose node
+   holds its cost in xBZZ and 0.001 xDAI for its gas. A top-up adds the whole days missing to the
+   level. A short node's stamps follow at a later tick, once the wallet job's send is mined.
+
+Several stamps on one wallet are counted together, the one with the least time left first. A job
+that meets a person's open send or stamp operation waits for the next tick.
+
+### From alert to top-up
+
+| Time left on the stamp | What happens                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| 14 days                | It was just topped up                                                                                             |
+| Under 8 days           | The alert is recorded and sent as a notice: the 7 days the top-up adds, its cost, the cost plus 10%, and the send |
+| Under 7 days           | The top-up is due. A node that holds enough is topped up in that tick. A short node is sent what it lacks         |
+| About 10 minutes later | The send is mined, the stamp is topped up and is back at 14 days                                                  |
+
+- **The notice rule.** The wallet job sends for a top-up once its alert is a day old. The day
+  counts from one notification channel taking the alert's notice, or, with no channel on, from the
+  alert showing on the tab. A stamp with under 2 days left is sent for at once, and the notice says
+  so.
+- **The amount rule.** A send is at most what its alert said. When a top-up lacks more than that,
+  a new alert goes out with the new figure and its day counts again. The margin covers a day of
+  the price's fastest rise: the price oracle moves it by at most 0.08% each 152 blocks, 9.5% a day.
+
+What a marked stamp's state means for the stamp job:
+
+| The stamp                                              | What happens                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| At the threshold or above                              | Nothing                                                                |
+| Under the threshold, its node holds enough             | Topped up to the level                                                 |
+| Under the threshold, its node is short                 | Waits for the wallet job's send                                        |
+| Expired, or its node holds it no more                  | One notice goes out, and the row keeps Buy new                         |
+| Bought and waiting to be usable                        | Waits until the node calls it usable                                   |
+| Its node is unread, or its view of the chain is behind | Left for that tick. After an hour it is a failure                      |
+| Full                                                   | Topped up like any other. Room is a dilution's or a new batch's matter |
+| Topped up automatically in the last 24 hours           | Left, and reported as a failure: the price or a reading is far off     |
+
+### Notices and warnings
+
+The alerts and warnings show on the Auto top-up tab and go out as notices on every notification
+channel that is on: email, Slack and Telegram ([notifications.md](notifications.md)). With no
+channel on they show on the tab alone.
+
+| Notice                          | When it goes                                                                              | What it says                                                                                              |
+| ------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Top-ups coming up               | A marked stamp comes within a day of its top-up. Once for each top-up                     | Each stamp's node, time left, days to add, cost and cost plus the margin, and what each node will be sent |
+| The brand wallet is low on xBZZ | Its xBZZ is under the monthly estimate. Once, then daily                                  | The balance, the estimate, the gap, the days of top-ups it covers, and the address to send xBZZ to        |
+| The brand wallet is low on xDAI | Its xDAI is under 0.1. Once, then daily                                                   | The balance, the threshold and the address to send xDAI to                                                |
+| A top-up failed                 | A due marked stamp could not be topped up, or for an hour its node was unread or unfunded | The stamp, the time it has left, the reason and what a person can do                                      |
+| A marked stamp expired          | Once                                                                                      | Which stamp, and that it takes a Buy new                                                                  |
+
+A warning is recorded by the job that sees its cause, at once and in the database, so it stands
+whichever backend runs the next tick. The alert job sends the notices of every warning that stands.
+
+| Warning                             | Raised by      | For                                                                                                                                            |
+| ----------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| A top-up failed                     | the stamp job  | An operation refused or failed, a stamp due again within 24 hours, a node the admin funds no more                                              |
+| A top-up failed                     | the wallet job | A stamp due for an hour that no send can go for: the daily ceiling, a short brand wallet, an unconfirmed or changed address, an `unknown` send |
+| A top-up failed                     | the alert job  | A node unread or behind for an hour, and a node short for an hour while the wallet job is paused                                               |
+| The brand wallet is low, both kinds | the alert job  | The brand wallet's xBZZ under the monthly estimate, its xDAI under the threshold                                                               |
+| A marked stamp expired              | the alert job  | A marked stamp that ran out                                                                                                                    |
+
+The stamp job clears "a top-up failed" after a top-up, and the alert job clears it once the stamp
+is due no longer. The alert job also keeps, for every marked stamp, since when its node is unread
+or behind; a node whose view of the chain the manager does not report counts as behind. For an
+unread node it raises "a top-up failed" only for a stamp whose top-up was coming at its last
+reading.
+
+- The monthly estimate is 30 days of top-ups for every marked stamp that can be topped up, at
+  today's price, with no margin.
+- A "top-ups coming up" notice also lists every other top-up falling due within two days, and
+  those are announced by it. At most one such notice goes out a day, and each top-up is announced a
+  day ahead or more.
+- A standing warning's first notice goes at once, together with the others raised by the same
+  tick. The daily repeats go as one notice that lists every warning still standing.
+- A notice is given once one channel took it. One that no channel took is sent again at the next
+  tick. A channel that could not take a notice another channel took gets it again at each tick for
+  a day, with the time it was raised, while something it tells of still stands. The tab says why a
+  channel failed. The top-ups go on.
+- The alert job sends every notice and tries the waiting ones again, so while it is paused no
+  notice goes out.
+
 ## Who does what
 
 | Action                | Who signs                      | Paid from                   | Carried out by                                                               |
@@ -189,6 +314,9 @@ manager's own page.
 | Buy a rung's batch    | the rung's node                | the rung's node's wallet    | the manager, which then sets it and restarts the uploaders that follow       |
 | Buy a catalogue batch | the catalogue node             | the catalogue node's wallet | the manager, which then designates it; the admin moves the catalogue onto it |
 | Move chequebooks      | the node                       | the node's wallet           | the manager, through each node's Bee API                                     |
+
+Auto top-up runs the first two rows by itself: the wallet job is the brand wallet funding a node
+wallet, and the stamp job is a node topping up its batch.
 
 An archive stamp stays with the node that bought it: one left on a former catalogue node is topped
 up by that node, from its own wallet, and never diluted, since nothing is written to it any more.
@@ -213,7 +341,7 @@ off and every path under it answers 404.
 It answers:
 
 - every stage's nodes, with their wallet balances, batches (depth, time left, fill) and
-  chequebook balances,
+  chequebook balances, and how many blocks each node's view of the chain is behind the tip,
 - the catalogue node and its batch,
 - the archive batches, each with the node that holds it,
 - the brand wallet's balances,
@@ -260,7 +388,19 @@ host.
   carries. It releases a catalogue batch only as the one a purchase moved the catalogue from.
 - A chequebook is brought to no target under 1 xBZZ, and a withdrawal goes to its node's own
   wallet, the one place Bee sends one.
-- Every operator may fund. The password is asked again before every send from the brand wallet.
+- Every operator may fund. The password is asked again before every send a person starts from the
+  brand wallet, and before the numbers of the Auto top-up tab are saved.
+- The wallet job of [auto top-up](#auto-top-up) sends from the brand wallet with no password,
+  within these limits:
+  - only for a due top-up of a marked stamp;
+  - only to a node whose address an operator confirmed, while it answers that address;
+  - a day after the top-up's alert, or at once for a stamp with under 2 days left;
+  - at most what the alert said, apart from a stamp with under 2 days left;
+  - at most the daily ceiling in any 24 hours, half the monthly estimate while none is saved;
+  - one gas transfer to a node in 24 hours;
+  - one send at a time, behind the 30 minutes an `unknown` item holds the next send back.
+- The stamp job tops up only: a marked stamp to the level and no further, at most once in 24
+  hours. Dilutions, purchases and chequebook moves stay a person's.
 - Every operation and every send gets an audit entry with its transaction hash.
 
 ## Settling a send
@@ -280,13 +420,13 @@ the next send and the Funding page refresh the open one, and the page resumes it
 
 ## Settings
 
-| Setting               | Where                        | What it is                                                                                                                 |
-| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under. Unset, no wallet exists                           |
-| `MANAGER_API_URL`     | the admin's env file         | the manager's address. Read as `MANAGER_FUNDING_URL` when unset. Empty, funding is not set up and the Funding page says so |
-| `MANAGER_API_TOKEN`   | the admin's env file         | the manager's `MANAGER_API_TOKEN`, the same value. Read as `MANAGER_FUNDING_TOKEN` when unset                              |
-| `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off                         |
-| `FUNDING_RPC_URL`     | the manager's `manager/.env` | the chain endpoint the funding API reads and broadcasts through. Unset, it is `BEE_RPC_ENDPOINT`                           |
+| Setting               | Where                        | What it is                                                                                                                                                                                         |
+| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under, and the notification channels' secrets through a key derived from it. Unset, no wallet exists and no channel can be saved |
+| `MANAGER_API_URL`     | the admin's env file         | the manager's address. Read as `MANAGER_FUNDING_URL` when unset. Empty, funding is not set up and the Funding page says so                                                                         |
+| `MANAGER_API_TOKEN`   | the admin's env file         | the manager's `MANAGER_API_TOKEN`, the same value. Read as `MANAGER_FUNDING_TOKEN` when unset                                                                                                      |
+| `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off                                                                                                 |
+| `FUNDING_RPC_URL`     | the manager's `manager/.env` | the chain endpoint the funding API reads and broadcasts through. Unset, it is `BEE_RPC_ENDPOINT`                                                                                                   |
 
 The sample env files describe each setting in full, and the admin's deploy script refuses the
 sample values of the secret and the token.
