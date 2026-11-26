@@ -23,6 +23,8 @@ import {
   noticeServiceEnabledPath,
   noticeServicePath,
   noticeTopicsProblem,
+  NOTIFICATION_TEST_EVERY_SECONDS,
+  NOTIFICATION_WAIT_SECONDS,
   NOTIFICATIONS_PATH,
   STARTING_NOTICE_TOPICS,
   storedNoticeTopics,
@@ -79,7 +81,9 @@ describe('the notification routes', () => {
     assert.equal(MY_TELEGRAM_CHAT_PATH, '/api/notifications/me/telegram/chat');
   });
 
-  it('keep a code to find a chat for ten minutes', () => {
+  it('take one test a minute on a destination, keep a waiting notice for a day and a code for ten minutes', () => {
+    assert.equal(NOTIFICATION_TEST_EVERY_SECONDS, 60);
+    assert.equal(NOTIFICATION_WAIT_SECONDS, 24 * 60 * 60);
     assert.equal(TELEGRAM_CHAT_CODE_SECONDS, 600);
   });
 

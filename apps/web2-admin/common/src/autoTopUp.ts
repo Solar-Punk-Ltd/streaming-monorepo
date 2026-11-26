@@ -10,7 +10,6 @@
 
 import { FUNDING_PATH, type FundingPostage } from './funding.js';
 import type { NoticeTopic } from './notices.js';
-import type { NotificationChannelStatus } from './notifications.js';
 import { SECONDS_PER_DAY, stampTopUpQuote } from './stampQuote.js';
 
 /** `GET`: the Auto top-up tab's view, which the Stamps tab reads its marks from as well. */
@@ -268,12 +267,6 @@ export interface AutoTopUpView {
   settingsSavedAt: string | null;
   /** The three jobs, in the order of {@link AUTO_TOPUP_JOBS}. */
   jobs: AutoTopUpJobState[];
-  /**
-   * Each notification channel, in the order of `NOTIFICATION_CHANNEL_KINDS`: whether it is on, and how its last
-   * notice went. The channels are set on the Notifications page. With none on, the alerts and warnings show on this
-   * page alone (`notificationsOn`).
-   */
-  notifications: NotificationChannelStatus[];
   /** Every marked stamp. */
   stamps: AutoTopUpStampState[];
   /**

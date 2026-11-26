@@ -170,7 +170,6 @@ export class StampAutoTopUpService {
         lastOk: job.lastOk,
         lastOutcome: job.lastOutcome,
       })),
-      notifications: [],
       stamps,
       monthlyEstimatePlur,
       dailyCeilingPlur: monthlyEstimatePlur === null ? null : autoTopUpDailyCeilingPlur(settings, monthlyEstimatePlur),

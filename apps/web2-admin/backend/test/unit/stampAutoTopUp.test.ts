@@ -69,8 +69,6 @@ describe("stamp auto top-up's view", () => {
         ['stamp', false, null],
       ],
     );
-    // Each user's notices are their own: the tab reads the Notifications page's view for them.
-    assert.deepEqual(view.notifications, []);
     assert.deepEqual(view.stamps, []);
     assert.equal(view.monthlyEstimatePlur, '0');
     assert.equal(view.dailyCeilingPlur, '0');

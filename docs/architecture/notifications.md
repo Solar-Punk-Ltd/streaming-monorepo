@@ -73,9 +73,11 @@ on.
   reaches them again once the service is saved again.
 - **?** beside a service's name shows and hides how to set it up: what to make at the service and
   what to enter on the card.
-- For each service the page shows whether it is on, when it last took a notice, its latest failure,
-  how many users have a destination on it, how many of those failed their last notice, and how many
-  notices wait. To a user with the admin role it also shows the settings, and who saved it and when.
+- To a user with the admin role, each service's card shows whether it is on, its settings, who saved
+  it and when, when it last took a notice, its latest failure and how many notices wait.
+- How each service stands shows to every user on the Auto top-up tab of the Funding page: whether
+  it is set up and on, when it last took a notice, its latest failure, how many destinations on it
+  are on and how many of those failed their last notice.
 
 ### My notifications
 

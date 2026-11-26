@@ -446,7 +446,6 @@ export function makeAutoTopUpView(over: Partial<AutoTopUpView> = {}): AutoTopUpV
       lastOk: true,
       lastOutcome: `The ${job} job found nothing to do.`,
     })),
-    notifications: [],
     stamps: [],
     monthlyEstimatePlur: xbzz('3'),
     dailyCeilingPlur: xbzz('1.5'),

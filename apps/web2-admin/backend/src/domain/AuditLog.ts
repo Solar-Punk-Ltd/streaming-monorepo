@@ -103,11 +103,6 @@ export type AuditAction =
   | 'funding.purchase.release'
   | 'funding.purchase.done'
   | 'funding.purchase.failed'
-  // The Notifications page: a channel saved, switched on or off, or removed, and a test notice sent on it.
-  | 'notification.channel.save'
-  | 'notification.channel.enabled'
-  | 'notification.channel.remove'
-  | 'notification.channel.test'
   // The Notifications page's shared services: one saved, switched on or off, or removed, by a user with the admin
   // role. The details name the service and its settings, never its secret.
   | 'notification.service.save'

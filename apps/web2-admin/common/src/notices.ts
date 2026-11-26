@@ -186,7 +186,10 @@ export interface NoticeEnabledRequest {
   enabled: boolean;
 }
 
-/** How one service stands, as the Notifications page and the Auto top-up tab show it to every user. */
+/**
+ * How one service stands. The Auto top-up tab shows it to every user, and the Notifications page to a user with the
+ * admin role; any other user reads there whether the service is set up and on.
+ */
 export interface NoticeServiceStatus {
   kind: NoticeServiceKind;
   /** Whether it was saved, with its settings and its secret. One never saved is off. */

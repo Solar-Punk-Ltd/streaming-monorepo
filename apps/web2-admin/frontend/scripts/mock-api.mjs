@@ -3464,8 +3464,6 @@ function autoTopUpView() {
         lastOutcome: AUTO_TOPUP_JOB_OUTCOMES[job],
       };
     }),
-    // The channels of before each user had destinations of their own, which the tab reads no more.
-    notifications: [],
     stamps: marks.map((mark) => ({ ...mark, lastTopUp: null, coming: null, problem: null })),
     monthlyEstimatePlur: estimate.toString(),
     dailyCeilingPlur: autoTopUp.settings.dailyCeilingPlur ?? (estimate / 2n).toString(),
