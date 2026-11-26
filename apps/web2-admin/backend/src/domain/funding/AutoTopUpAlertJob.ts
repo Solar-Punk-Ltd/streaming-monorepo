@@ -427,6 +427,8 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     const standing = new Set([
       ...warnings.map(autoTopUpWarningSubject),
       ...[...alerts].flatMap(([batchId, alert]) => (alert === null ? [] : [autoTopUpComingSubject(batchId)])),
+      // And a listed stamp not on auto top-up, the rows as the last run left them, an expired one included.
+      ...((await this.unmarked?.standingSubjects()) ?? []),
     ]);
     const outcome = await this.notifier.retryWaiting(now, (subject) => standing.has(subject));
     const parts = [
