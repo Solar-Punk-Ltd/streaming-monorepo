@@ -105,6 +105,7 @@ import {
   FUNDING_AUTO_TOPUP_MARKS_PATH,
   FUNDING_AUTO_TOPUP_PATH,
   FUNDING_AUTO_TOPUP_SETTINGS_PATH,
+  FUNDING_AUTO_TOPUP_UNMARKED_PATH,
   fundingAutoTopUpJobPath,
   type AutoTopUpJob,
   type AutoTopUpJobRequest,
@@ -112,6 +113,7 @@ import {
   type AutoTopUpMarksRequest,
   type AutoTopUpSettings,
   type AutoTopUpSettingsRequest,
+  type AutoTopUpUnmarkedView,
   type AutoTopUpView,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -561,12 +563,14 @@ export async function fetchFundingChequebookOperations(bulkId: string): Promise<
 
 // --- stamp auto top-up -------------------------------------------------------
 
-/**
- * The Auto top-up tab's view: the numbers, the jobs, how each notification channel stands, the marked stamps and the
- * warnings.
- */
+/** The Auto top-up tab's view: the numbers, the jobs, the marked stamps and the warnings. */
 export function fetchAutoTopUp(): Promise<AutoTopUpView> {
   return getJson<AutoTopUpView>(FUNDING_AUTO_TOPUP_PATH);
+}
+
+/** The stamps not marked for auto top-up that are running low, the one with the least time left first. */
+export function fetchAutoTopUpUnmarked(): Promise<AutoTopUpUnmarkedView> {
+  return getJson<AutoTopUpUnmarkedView>(FUNDING_AUTO_TOPUP_UNMARKED_PATH);
 }
 
 /**

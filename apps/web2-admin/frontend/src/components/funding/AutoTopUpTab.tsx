@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Link as RouterLink } from 'react-router';
 import {
   Alert,
@@ -19,16 +19,25 @@ import {
   Typography,
 } from '@mui/material';
 import {
-  NOTIFICATION_CHANNEL_NAMES,
-  notificationsOn,
+  NOTICE_SERVICE_NAMES,
+  NOTICE_TOPIC_GROUPS,
+  NOTICE_TOPIC_NAMES,
+  noticePeople,
+  UNMARKED_STAMP_LAST_DAYS,
+  unmarkedStampTopic,
   type AutoTopUpComing,
   type AutoTopUpJob,
   type AutoTopUpJobState,
   type AutoTopUpStampState,
+  type AutoTopUpUnmarkedStamp,
+  type AutoTopUpUnmarkedView,
   type AutoTopUpView,
   type AutoTopUpWarning,
+  type AutoTopUpWarningKind,
   type FundingView,
-  type NotificationChannelStatus,
+  type NoticeServiceView,
+  type NoticesView,
+  type NoticeTopic,
 } from '@streaming-monorepo/web2-admin-common';
 
 import * as api from '../../api';
@@ -37,6 +46,8 @@ import { errorMessage } from '../../errors';
 import { shortHex } from '../../format';
 import { ApiError } from '../../http';
 import { monoFont } from '../../theme/createAdminTheme';
+import { destinationsText, serviceSetUpText, yourDestination } from '../notifications/noticeText';
+import { useNotices, type NoticesRead } from '../notifications/useNotices';
 import {
   numbersDraftOf,
   readNumbersDraft,
@@ -151,8 +162,29 @@ function Coming({ stamps }: { stamps: readonly AutoTopUpStampState[] }) {
   );
 }
 
-/** The warnings that stand, each with since when and when a notice last told of it, or a line saying there are none. */
-function Warnings({ warnings }: { warnings: readonly AutoTopUpWarning[] }) {
+/** The topic each warning goes out under: the two of the brand wallet share one, and the others are their own. */
+const WARNING_TOPICS: Readonly<Record<AutoTopUpWarningKind, NoticeTopic>> = {
+  wallet_xbzz: 'wallet_low',
+  wallet_xdai: 'wallet_low',
+  topup_failed: 'topup_failed',
+  stamp_expired: 'stamp_expired',
+};
+
+/** Whether nobody gets the notices of a topic, so what it tells of shows on this tab alone. Unknown while unread. */
+function nobodyGets(notices: NoticesView | null, topic: NoticeTopic): boolean {
+  return notices !== null && noticePeople(notices, topic) === 0;
+}
+
+/** Said of something whose topic nobody gets, beside it. */
+function shownHereAlone(topic: NoticeTopic): string {
+  return `Nobody gets "${NOTICE_TOPIC_NAMES[topic]}", so it shows here alone.`;
+}
+
+/**
+ * The warnings that stand, each with since when and when a notice last told of it, or that nobody gets its topic and
+ * it shows here alone, or a line saying there are none.
+ */
+function Warnings({ warnings, notices }: { warnings: readonly AutoTopUpWarning[]; notices: NoticesView | null }) {
   if (warnings.length === 0) {
     return (
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -162,69 +194,164 @@ function Warnings({ warnings }: { warnings: readonly AutoTopUpWarning[] }) {
   }
   return (
     <Stack spacing={1}>
-      {warnings.map((warning) => (
-        <Alert key={`${warning.kind}:${warning.batchId ?? ''}:${warning.since}`} severity="warning">
-          <Stack spacing={0.25}>
-            <span>{warning.message}</span>
-            <Typography variant="caption">
-              {`Since ${formatDateTime(warning.since)}, ${warning.notifiedAt ? `notified ${formatDateTime(warning.notifiedAt)}` : 'not notified yet'}.`}
-            </Typography>
-          </Stack>
-        </Alert>
-      ))}
+      {warnings.map((warning) => {
+        const since = `Since ${formatDateTime(warning.since)}`;
+        const topic = WARNING_TOPICS[warning.kind];
+        let notified = `${since}, not notified yet.`;
+        if (warning.notifiedAt) notified = `${since}, notified ${formatDateTime(warning.notifiedAt)}.`;
+        else if (nobodyGets(notices, topic)) notified = `${since}. ${shownHereAlone(topic)}`;
+        return (
+          <Alert key={`${warning.kind}:${warning.batchId ?? ''}:${warning.since}`} severity="warning">
+            <Stack spacing={0.25}>
+              <span>{warning.message}</span>
+              <Typography variant="caption">{notified}</Typography>
+            </Stack>
+          </Alert>
+        );
+      })}
     </Stack>
   );
 }
 
-/** A channel's status line: not set up, or on or off with its last notice, and its last failure under it. */
-function ChannelLine({ channel, now }: { channel: NotificationChannelStatus; now: number }) {
-  const name = NOTIFICATION_CHANNEL_NAMES[channel.kind];
-  let state = `${name}: not set up.`;
-  if (channel.saved) {
-    const last = channel.lastSentAt ? `last sent ${formatAgo(channel.lastSentAt, now)}` : 'nothing sent yet';
-    state = `${name}: ${channel.enabled ? 'on' : 'off'}, ${last}.`;
+/** The stamps not on auto top-up that are running low, as the tab reads them: the list once read, or why it was not. */
+interface UnmarkedRead {
+  view: AutoTopUpUnmarkedView | null;
+  error: string | null;
+  load: () => void;
+}
+
+/**
+ * Reads `GET /api/funding/auto-top-up/unmarked` when the tab mounts, and again on `load`. Only the latest read is
+ * answered.
+ */
+function useUnmarked(): UnmarkedRead {
+  const [view, setView] = useState<AutoTopUpUnmarkedView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const reads = useRef(0);
+
+  const load = useCallback(() => {
+    reads.current += 1;
+    const read = reads.current;
+    setError(null);
+    api
+      .fetchAutoTopUpUnmarked()
+      .then((next) => {
+        if (read === reads.current) setView(next);
+      })
+      .catch((e: unknown) => {
+        if (read === reads.current) setError(errorMessage(e, 'The list could not be read.'));
+      });
+  }, []);
+
+  useEffect(load, [load]);
+
+  return { view, error, load };
+}
+
+/** The node a stamp is on, by its label on the Funding view, or by its id while the view does not list it. */
+function nodeName(funding: FundingView | null, nodeId: string): string {
+  const nodes = [
+    ...(funding?.catalogue ? [funding.catalogue] : []),
+    ...(funding?.stages ?? []).flatMap((s) => s.nodes),
+  ];
+  return nodes.find((node) => node.nodeId === nodeId)?.label ?? nodeId;
+}
+
+/** Where a low unmarked stamp stands, and since when: under the threshold, under the last days, or expired. */
+function levelText(stamp: AutoTopUpUnmarkedStamp, underDays: number): string {
+  const under = `Under ${dayCount(underDays)} since ${formatDateTime(stamp.since)}`;
+  switch (stamp.level) {
+    case 'low':
+      return `${under}.`;
+    case 'last':
+      return `${under}, under ${dayCount(UNMARKED_STAMP_LAST_DAYS)} since ${formatDateTime(stamp.levelSince)}.`;
+    case 'expired':
+      return `Expired since ${formatDateTime(stamp.levelSince)}.`;
   }
-  const when = channel.lastErrorAt ? ` ${formatAgo(channel.lastErrorAt, now)}` : '';
-  const waiting = channel.waiting === 1 ? ' 1 notice waits for it.' : ` ${channel.waiting} notices wait for it.`;
+}
+
+/** How an unmarked stamp's level reads as an alert: blue while low, orange in its last days, red once it ran out. */
+const LEVEL_SEVERITY = { low: 'info', last: 'warning', expired: 'error' } as const;
+
+/**
+ * The stamps not on auto top-up that are running low, the one with the least time left first: what the alert job said
+ * of each, the topic it goes out under, its node and batch, since when it has been low, and when a notice last told
+ * of it, or that nobody gets its topic. `docs/architecture/funding.md`, "Stamps not on auto top-up".
+ */
+function Unmarked({
+  read,
+  underDays,
+  funding,
+  notices,
+}: {
+  read: UnmarkedRead;
+  underDays: number;
+  funding: FundingView | null;
+  notices: NoticesView | null;
+}) {
+  if (read.error) {
+    return (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={read.load}>
+            Retry
+          </Button>
+        }
+      >
+        {`The stamps not on auto top-up could not be read: ${read.error}`}
+      </Alert>
+    );
+  }
+  if (read.view === null) return null;
+  if (read.view.stamps.length === 0) {
+    return (
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        No stamp off auto top-up is running low.
+      </Typography>
+    );
+  }
   return (
-    <Stack spacing={0.25} data-channel={channel.kind}>
-      <Typography variant="body2">{state}</Typography>
-      {channel.lastError ? (
-        <Typography variant="caption" sx={{ color: 'error.main' }}>
-          {`The last notice could not be sent${when}: ${channel.lastError}${channel.waiting > 0 ? waiting : ''}`}
-        </Typography>
-      ) : null}
+    <Stack spacing={1}>
+      {read.view.stamps.map((stamp) => {
+        const topic = unmarkedStampTopic(stamp.holder);
+        let notified = 'Not notified yet.';
+        if (stamp.notifiedAt) notified = `Notified ${formatDateTime(stamp.notifiedAt)}.`;
+        else if (nobodyGets(notices, topic)) notified = shownHereAlone(topic);
+        return (
+          <Alert key={`${stamp.nodeId}:${stamp.batchId}`} severity={LEVEL_SEVERITY[stamp.level]}>
+            <Stack spacing={0.25}>
+              <span>{stamp.message}</span>
+              <Typography variant="caption">
+                {`${NOTICE_TOPIC_NAMES[topic]} · ${nodeName(funding, stamp.nodeId)} · `}
+                <Box component="span" title={stamp.batchId} sx={{ fontFamily: monoFont }}>
+                  {shortHex(stamp.batchId)}
+                </Box>
+              </Typography>
+              <Typography variant="caption">{`${levelText(stamp, underDays)} ${notified}`}</Typography>
+            </Stack>
+          </Alert>
+        );
+      })}
     </Stack>
   );
 }
 
 /**
- * Where the alerts and warnings go: a status line per notification channel, with a link to the Notifications page
- * where they are set up. With none on, they show on this page alone.
+ * Where things stand: the estimate beside the brand wallet, the ceiling, today's sends, what is coming, the warnings
+ * and the stamps not on auto top-up that are running low.
  */
-function ChannelStates({ view, now }: { view: AutoTopUpView; now: number }) {
-  return (
-    <Stack spacing={0.5}>
-      <Typography variant="subtitle2" component="h3">
-        Notifications
-      </Typography>
-      {notificationsOn(view.notifications) ? null : (
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          No channel is on, so the alerts and warnings show on this page alone.
-        </Typography>
-      )}
-      {view.notifications.map((channel) => (
-        <ChannelLine key={channel.kind} channel={channel} now={now} />
-      ))}
-      <Link component={RouterLink} to="/notifications" variant="body2">
-        Set the channels up on the Notifications page
-      </Link>
-    </Stack>
-  );
-}
-
-/** Where things stand: the estimate beside the brand wallet, the ceiling, today's sends, the channels, what is coming. */
-function Standing({ view, funding, now }: { view: AutoTopUpView; funding: FundingView | null; now: number }) {
+function Standing({
+  view,
+  funding,
+  notices,
+  unmarked,
+}: {
+  view: AutoTopUpView;
+  funding: FundingView | null;
+  notices: NoticesView | null;
+  unmarked: UnmarkedRead;
+}) {
   const wallet = funding?.wallet ?? null;
   const walletText =
     wallet && wallet.xbzzPlur !== null && wallet.xdaiWei !== null
@@ -247,7 +374,6 @@ function Standing({ view, funding, now }: { view: AutoTopUpView; funding: Fundin
         </Fact>
         <Fact label="Sent in the last 24 hours">{xbzzText(view.sentTodayPlur)}</Fact>
       </Stack>
-      <ChannelStates view={view} now={now} />
       <Typography variant="subtitle2" component="h3">
         Top-ups coming up
       </Typography>
@@ -255,7 +381,112 @@ function Standing({ view, funding, now }: { view: AutoTopUpView; funding: Fundin
       <Typography variant="subtitle2" component="h3">
         Warnings
       </Typography>
-      <Warnings warnings={view.warnings} />
+      <Warnings warnings={view.warnings} notices={notices} />
+      <Typography variant="subtitle2" component="h3">
+        Stamps not on auto top-up
+      </Typography>
+      <Unmarked read={unmarked} underDays={view.settings.topUpUnderDays} funding={funding} notices={notices} />
+    </Section>
+  );
+}
+
+/** How many people get a topic's notices, beside its name, or that nobody does and it shows here alone. */
+function reachLine(people: number): string {
+  if (people === 0) return 'Nobody: it shows here alone.';
+  return people === 1 ? '1 person gets it.' : `${people} people get it.`;
+}
+
+/**
+ * A service as every user reads it here: whether it is set up and on, when it last took a notice, how many
+ * destinations on it are on and how many of those failed their last notice, and its latest failure. Counts alone of
+ * the users.
+ */
+function ServiceLine({ service, now }: { service: NoticeServiceView; now: number }) {
+  const name = NOTICE_SERVICE_NAMES[service.kind];
+  let state = `${name}: not set up.`;
+  if (service.saved) {
+    const last = service.lastSentAt ? `last took a notice ${formatAgo(service.lastSentAt, now)}` : 'no notice sent yet';
+    state = `${name}: ${serviceSetUpText(service)}, ${last}. ${destinationsText(service)}`;
+  }
+  return (
+    <Stack spacing={0.25} data-service={service.kind}>
+      <Typography variant="body2">{state}</Typography>
+      {service.lastFailure ? (
+        <Typography variant="caption" sx={{ color: 'error.main' }}>
+          {`The latest failure${service.lastFailureAt ? `, ${formatAgo(service.lastFailureAt, now)}` : ''}: ${service.lastFailure}`}
+        </Typography>
+      ) : null}
+    </Stack>
+  );
+}
+
+/**
+ * The notices: beside each kind, how many people get it, or that nobody does and it shows here alone; each service,
+ * with how many of its destinations failed; and the viewer's own destinations that failed, with why. Each user sets
+ * theirs on the Notifications page. It reads `GET /api/notifications`, as that page does.
+ */
+function Notices({ read, now }: { read: NoticesRead; now: number }) {
+  const { view } = read;
+  const failed = (view?.destinations ?? []).filter(
+    (destination) => destination.address !== null && destination.lastError !== null,
+  );
+  return (
+    <Section title="Notices">
+      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+        Who gets each notice of auto top-up. Each user sets where their own notices go, and which ones they get, on the
+        Notifications page.
+      </Typography>
+      {read.error ? (
+        <Alert
+          severity="error"
+          action={
+            <Button color="inherit" size="small" onClick={read.load}>
+              Retry
+            </Button>
+          }
+        >
+          {`The notices could not be read: ${read.error}`}
+        </Alert>
+      ) : null}
+      {view ? (
+        <>
+          {NOTICE_TOPIC_GROUPS.map((group) => (
+            <Stack key={group.name} spacing={0.5}>
+              <Typography variant="subtitle2" component="h3">
+                {group.name}
+              </Typography>
+              {group.topics.map((topic) => (
+                <Fact key={topic} label={NOTICE_TOPIC_NAMES[topic]}>
+                  {reachLine(noticePeople(view, topic))}
+                </Fact>
+              ))}
+            </Stack>
+          ))}
+          <Stack spacing={0.5}>
+            <Typography variant="subtitle2" component="h3">
+              Services
+            </Typography>
+            {view.services.map((service) => (
+              <ServiceLine key={service.kind} service={service} now={now} />
+            ))}
+          </Stack>
+          {failed.length > 0 ? (
+            <Stack spacing={0.5}>
+              <Typography variant="subtitle2" component="h3">
+                Yours
+              </Typography>
+              {failed.map((destination) => (
+                <Typography key={destination.kind} variant="body2" sx={{ color: 'error.main' }}>
+                  {`The last notice to ${yourDestination(destination.kind)} could not be sent${destination.lastErrorAt ? ` ${formatAgo(destination.lastErrorAt, now)}` : ''}: ${destination.lastError}`}
+                </Typography>
+              ))}
+            </Stack>
+          ) : null}
+          <Link component={RouterLink} to="/notifications" variant="body2">
+            Choose your notices on the Notifications page
+          </Link>
+        </>
+      ) : null}
     </Section>
   );
 }
@@ -457,11 +688,11 @@ function Numbers({
 /**
  * The Auto top-up tab: the settings of stamp auto top-up and what its three jobs are doing. Where things stand comes
  * first, the monthly estimate for the marked stamps beside the brand wallet's balances from the Funding view, the daily
- * ceiling in force, what the wallet job sent in the last 24 hours, how each notification channel stands with a link to
- * the Notifications page, the top-ups coming up and the warnings; then the jobs with their pause switches; then the
- * numbers, saved behind the password. Each write answers the whole view, which the tab then shows. The numbers as
- * typed, `draft`, are the Funding page's, so they stay while another tab is shown. `docs/architecture/funding.md`,
- * "Auto top-up tab".
+ * ceiling in force, what the wallet job sent in the last 24 hours, the top-ups coming up, the warnings and the stamps
+ * not on auto top-up that are running low; then the notices, how many people get each kind and how each service
+ * stands, read from the Notifications page's view; then the jobs with their pause switches; then the numbers, saved
+ * behind the password. Each write answers the whole view, which the tab then shows. The numbers as typed, `draft`, are
+ * the Funding page's, so they stay while another tab is shown. `docs/architecture/funding.md`, "Auto top-up tab".
  */
 export function AutoTopUpTab({
   draft,
@@ -472,6 +703,8 @@ export function AutoTopUpTab({
 }) {
   const funding = useFundingView(NO_FOLLOW);
   const auto = useAutoTopUp();
+  const notices = useNotices();
+  const unmarked = useUnmarked();
   const { view } = auto;
 
   return (
@@ -491,7 +724,8 @@ export function AutoTopUpTab({
       ) : null}
       {view ? (
         <>
-          <Standing view={view} funding={funding.view} now={funding.now} />
+          <Standing view={view} funding={funding.view} notices={notices.view} unmarked={unmarked} />
+          <Notices read={notices} now={funding.now} />
           <Jobs view={view} now={funding.now} onView={auto.setView} />
           <Numbers
             view={view}

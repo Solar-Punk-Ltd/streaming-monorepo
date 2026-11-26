@@ -547,13 +547,21 @@ write answers the whole view, which the tab then shows (`components/funding/Auto
 
 - **Where things stand:** the monthly estimate for the marked stamps beside the brand wallet's xBZZ
   and xDAI, the daily ceiling in force (said to be half the estimate while the field is empty), and
-  what the wallet job sent in the last 24 hours. Under them, a line per notification channel: not
-  set up, or on or off with when it last took a notice, and in red why its last notice failed and
-  how many notices wait for it, with a link to the [Notifications](#notifications-notifications)
-  page, and a line saying the alerts and warnings show on this tab alone while no channel is on;
-  the top-ups coming up, the soonest first, with each one's cost, the cost with the margin, what the
-  brand wallet sends its node, and when the alert went out and the send may go; and the warnings
-  that stand, with since when and when a notice last told of each.
+  what the wallet job sent in the last 24 hours; the top-ups coming up, the soonest first, with each
+  one's cost, the cost with the margin, what the brand wallet sends its node, and when the alert
+  went out and the send may go; the warnings that stand, with since when and when a notice last
+  told of each, or that nobody gets its notice and it shows here alone; and the stamps not on auto
+  top-up that are running low, the one with the least time left first, from
+  `GET /api/funding/auto-top-up/unmarked`: what the alert job said of each, its topic, node and
+  batch, since when it has been under Top up when under and under 2 days, or since when it
+  expired, and when a notice told of it, or that nobody gets its topic.
+- **Notices:** beside each kind of notice, in the groups of the Notifications page, how many people
+  get it, or that nobody does and it shows here alone; each service, whether it is set up and on,
+  when it last took a notice, how many destinations on it are on and how many of those failed their
+  last notice, and its latest failure; and the viewer's own destinations whose last notice failed,
+  with why. It reads `GET /api/notifications`, as the [Notifications](#notifications-notifications)
+  page does, with a link to it. When it or the list of stamps cannot be read, it says so with
+  Retry.
 - **Jobs:** the alert, wallet and stamp jobs, each with a pause switch that is on while it runs, who
   paused it and when, and its last run with its outcome, in red when it failed.
 - **Numbers:** Top up when under, Top up to, Look ahead, Margin, the xDAI warning and the daily
