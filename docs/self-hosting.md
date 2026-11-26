@@ -520,7 +520,8 @@ on the Funding page alone.
 
 A channel is saved on the page with its settings and its secret, behind your password. The admin
 keeps the secret encrypted under `BRAND_WALLET_SECRET` and shows it nowhere. **Send a test notice**
-on a saved channel shows at once whether it works.
+on a saved channel shows at once whether it works. The **?** beside a channel's name on the page
+shows how to set that channel up.
 
 The admin host calls each service over HTTPS on port 443, so its outgoing traffic has to reach the
 hosts of the channels you use: `api.brevo.com`, `hooks.slack.com` and `api.telegram.org`.
@@ -542,10 +543,14 @@ Brevo's free plan carries this mail: a normal week is a handful of mails.
 for the channel the notices go to. The webhook's URL, which starts with
 `https://hooks.slack.com/services/`, is the channel's secret.
 
-**Telegram.** Create a bot with BotFather, which gives its token: the channel's secret. Add the bot
-to the group the notices go to, or make it an administrator of a channel. The chat id is the
-group's number, which is negative, such as `-1001234567890`, or a public channel's name, such as
-`@channelname`. The Bot API's `getUpdates` shows a group's number once a message was written in it.
+**Telegram.** Create a bot with BotFather, which gives its token: the channel's secret. Then let
+the bot reach the chat the notices go to: press Start in your own chat with the bot, add the bot to
+a group and send it `/start@` with its username there, or make it an administrator of a channel.
+The chat id is the chat's number, positive for your own chat and negative for a group, such as
+`-1001234567890`, or a public channel's name, such as `@channelname`. On the page, enter the token
+and press **Find chat id**: it lists the chats that wrote to the bot in the last day, and fills in
+the one you pick. Without the page, open `https://api.telegram.org/bot<token>/getUpdates` in a
+browser, with the token in place of `<token>`, and read the number after `"chat":{"id":`.
 
 The Notifications page shows for each channel when it last took a notice and why one failed, and
 the Auto top-up tab of the Funding page shows the same in short.

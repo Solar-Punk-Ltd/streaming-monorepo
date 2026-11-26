@@ -50,6 +50,11 @@ One set of channels serves the whole admin, and every signed-in user can see and
 - **Send a test notice** sends one notice on a saved channel, on or off, that says who asked for
   it and when. One goes out a minute at most on a channel. A test counts in no rule.
 - **Remove** deletes a channel with its secret.
+- **?** beside a channel's name shows and hides how to set it up: what to make at its service and
+  what to enter on the card.
+- **Find chat id**, on the Telegram card under the bot's token, lists the chats that wrote to the
+  bot within the last day, read with the token typed or, with none typed, the saved one, and fills
+  in the chat picked. It needs no password and changes nothing until the channel is saved.
 - For each channel the page shows whether it is on, who saved it and when, when it last took a
   notice, why its last one failed, how many notices wait for it, and how its last test went.
 
@@ -83,7 +88,7 @@ page of whoever raised it: the Auto top-up tab for stamp auto top-up.
 - No log line and no audit entry holds a secret or an address that was called: Telegram's address
   carries the bot's token, and Slack's is the secret itself. A failure is recorded as a sentence
   with the service's status and a short part of its answer, the secret cut out of it.
-- A secret is opened for the one send that needs it.
+- A secret is opened for the one send or the one Find chat id that needs it.
 
 ## The outgoing calls
 
@@ -92,19 +97,23 @@ page of whoever raised it: the Auto top-up tab for stamp auto top-up.
   on Slack's host.
 - No redirect is followed.
 - A call ends after 10 seconds, and at most 16 KB of the answer are read.
+- Find chat id is the one call that reads its answer: the Bot API's `getUpdates`, for at most 20
+  updates. It sends no `offset`, so Telegram marks no update as read, and no `allowed_updates`,
+  which Telegram would keep for the bot. An answer longer than 16 KB is refused, not read in part.
 - The admin host's outgoing traffic has to reach the hosts of the channels in use, on port 443.
 
 ## The API
 
 Under `/api/notifications`, behind the session, the writes behind the same-site check as well.
 
-| Route                                   | What it does                                                 |
-| --------------------------------------- | ------------------------------------------------------------ |
-| `GET /api/notifications`                | The page's view: every channel, saved or not                 |
-| `PUT /api/notifications/channels/:kind` | Saves a channel, behind the password                         |
-| `PUT …/channels/:kind/enabled`          | Switches a saved channel on or off                           |
-| `POST …/channels/:kind/test`            | Sends a test notice, and answers whether the service took it |
-| `DELETE …/channels/:kind`               | Removes a channel with its secret                            |
+| Route                                   | What it does                                                  |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `GET /api/notifications`                | The page's view: every channel, saved or not                  |
+| `PUT /api/notifications/channels/:kind` | Saves a channel, behind the password                          |
+| `PUT …/channels/:kind/enabled`          | Switches a saved channel on or off                            |
+| `POST …/channels/:kind/test`            | Sends a test notice, and answers whether the service took it  |
+| `POST …/channels/telegram/chats`        | Find chat id: the chats that wrote to the Telegram bot lately |
+| `DELETE …/channels/:kind`               | Removes a channel with its secret                             |
 
 `:kind` is `email`, `slack` or `telegram`.
 
