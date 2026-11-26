@@ -1,13 +1,27 @@
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { IngestPanel, NO_STAGE_NOTE, RETIRED_STAGE_NOTE } from '../components/IngestPanel';
+import {
+  IngestPanel,
+  NO_STAGE_NOTE,
+  RETIRED_STAGE_NOTE,
+  RTMP_INTRO_NOTE,
+  rtmpUnencryptedNote,
+} from '../components/IngestPanel';
 import { RTMP_OFFERED, makeIngest, mockFetch, renderWithProviders } from './helpers';
 
 const renderPanel = (details = makeIngest()) =>
   renderWithProviders(<IngestPanel streamId="stream-1" details={details} onRotated={vi.fn()} />);
 
-const section = (name: 'SRT Connection') => within(screen.getByRole('region', { name }));
+const section = (name: 'SRT Connection' | 'RTMP') => within(screen.getByRole('region', { name }));
+
+const otherProtocols = () => screen.getByRole('button', { name: 'Other protocols' });
+
+/** Opens the Other protocols section, which every panel starts with folded. */
+const openOtherProtocols = () => {
+  fireEvent.click(otherProtocols());
+  expect(otherProtocols()).toHaveAttribute('aria-expanded', 'true');
+};
 
 const shownValue = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value;
 
@@ -81,29 +95,117 @@ describe('IngestPanel', () => {
     expect(srt.getByLabelText('copy srt server')).toBeInTheDocument();
   });
 
-  it('shows SRT and no RTMP, even where the stage takes RTMP and the API sends its details', () => {
-    mockFetch([]);
-
-    renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
-
-    expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
-    expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
-    expect(screen.queryByRole('region', { name: 'RTMP' })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('RTMP Server')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('RTMP Stream Key')).not.toBeInTheDocument();
-    expect(screen.queryByText(/pick one of the two protocols/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/RTMP/)).not.toBeInTheDocument();
-    expect(screen.queryByDisplayValue(RTMP_OFFERED.server)).not.toBeInTheDocument();
-  });
-
-  it('shows SRT alone on a stage that takes no RTMP', () => {
+  it('shows SRT alone on a stage that takes no RTMP, with no Other protocols section', () => {
     mockFetch([]);
 
     renderPanel(makeIngest({ rtmp: null }));
 
     expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
     expect(screen.getByText(/copy the SRT values below into OBS/)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Other protocols' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Other protocols' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Other protocols/)).not.toBeInTheDocument();
     expect(screen.queryByText(/RTMP/)).not.toBeInTheDocument();
+  });
+
+  it('keeps RTMP folded under Other protocols, after SRT, where the stage takes it', () => {
+    mockFetch([]);
+
+    renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
+
+    expect(screen.getByRole('region', { name: 'SRT Connection' })).toBeInTheDocument();
+    expect(screen.getByText(/copy the SRT values below into OBS/)).toHaveTextContent(RTMP_INTRO_NOTE);
+    expect(screen.getByRole('region', { name: 'Other protocols' })).toBeInTheDocument();
+    expect(otherProtocols()).toHaveAttribute('aria-expanded', 'false');
+
+    // Folded, the section holds nothing: no RTMP values, and no key, are in the page.
+    expect(screen.queryByRole('region', { name: 'RTMP' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('RTMP Server')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('RTMP Stream Key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/RTMP is not encrypted/)).not.toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(RTMP_OFFERED.server);
+    expect(document.body.innerHTML).not.toContain(RTMP_OFFERED.streamKey);
+  });
+
+  it('starts Other protocols folded each time the panel opens', () => {
+    mockFetch([]);
+    const details = makeIngest({ rtmp: RTMP_OFFERED });
+
+    const first = renderPanel(details);
+    openOtherProtocols();
+    expect(screen.getByLabelText('RTMP Server')).toBeInTheDocument();
+    first.unmount();
+
+    renderPanel(details);
+    expect(otherProtocols()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByLabelText('RTMP Server')).not.toBeInTheDocument();
+  });
+
+  it('warns beside RTMP that it is not encrypted, what a key read off the network allows, and what SRT keeps', () => {
+    mockFetch([]);
+
+    renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
+    openOtherProtocols();
+
+    const warning = section('RTMP').getByText(rtmpUnencryptedNote(true));
+    expect(warning).toHaveTextContent(/RTMP is not encrypted/);
+    expect(warning).toHaveTextContent(/publishes to this stream over RTMP/);
+    expect(warning).toHaveTextContent(/replace your live broadcast/);
+    expect(warning).toHaveTextContent(/keeps your picture private but not your key/);
+    expect(warning).toHaveTextContent(/whichever protocol it was read from/);
+    expect(section('SRT Connection').queryByText(/RTMP is not encrypted/)).not.toBeInTheDocument();
+  });
+
+  it('does not recommend an SRT passphrase beside RTMP on a stage that has none', () => {
+    mockFetch([]);
+    const details = makeIngest({ rtmp: RTMP_OFFERED });
+
+    renderPanel({ ...details, srt: { ...details.srt!, passphrase: null } });
+    openOtherProtocols();
+
+    const warning = section('RTMP').getByText(rtmpUnencryptedNote(false));
+    expect(warning).toHaveTextContent(/has no SRT passphrase, so the picture is not private either/);
+    expect(warning).not.toHaveTextContent(/keeps your picture private/);
+    expect(section('SRT Connection').getByText('No SRT passphrase is configured on this stage.')).toBeInTheDocument();
+  });
+
+  it('says what goes in the OBS Server and Stream Key boxes for RTMP once Other protocols is opened', () => {
+    mockFetch([]);
+    const details = makeIngest({ rtmp: RTMP_OFFERED });
+
+    renderPanel(details);
+    openOtherProtocols();
+    const rtmp = section('RTMP');
+
+    // The RTMP server carries no secret, so it is shown as-is.
+    expect(rtmp.getByLabelText('RTMP Server')).toHaveValue(RTMP_OFFERED.server);
+    expect(rtmp.getByText('Paste into the Server box.')).toBeInTheDocument();
+
+    const key = shownValue('RTMP Stream Key');
+    expect(key).toContain('key=••••••••');
+    expect(key).not.toContain(details.publishKey);
+    expect(rtmp.getByText('Paste into the Stream Key box.')).toBeInTheDocument();
+    fireEvent.click(rtmp.getByLabelText('show rtmp stream key'));
+    expect(rtmp.getByLabelText('RTMP Stream Key')).toHaveValue(RTMP_OFFERED.streamKey);
+
+    expect(rtmp.getByLabelText('copy rtmp server')).toBeInTheDocument();
+    expect(rtmp.getByLabelText('copy rtmp stream key')).toBeInTheDocument();
+  });
+
+  it('copies the real RTMP stream key while it is masked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    mockFetch([]);
+
+    renderPanel(makeIngest({ rtmp: RTMP_OFFERED }));
+    openOtherProtocols();
+    fireEvent.click(screen.getByLabelText('copy rtmp stream key'));
+
+    expect(await screen.findByText('RTMP Stream Key copied to your clipboard.')).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith(RTMP_OFFERED.streamKey);
   });
 
   it('copies the real SRT Server line while it is masked', async () => {
