@@ -337,7 +337,9 @@ it.
 - An unmarked stamp is read as a marked one is: its batch whole and usable, on a node whose view of
   the chain is current. One that could not be read keeps its place on the list for that tick.
 - A stamp is listed from the tick that first reads it under "Top up when under" with time left. An
-  expired one stays listed while the manager lists its batch, and for a day after that.
+  expired one stays listed for a day from when it expired, and after that for as long as the manager
+  lists its batch.
+- A notice that waits for a destination tells of a stamp while that stamp is listed.
 - Nothing here raises a warning, fails a job or moves money, and the monthly estimate counts the
   marked stamps alone.
 
