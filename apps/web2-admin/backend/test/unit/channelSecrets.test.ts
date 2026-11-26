@@ -1,14 +1,15 @@
 /**
- * How a notification channel's secret is kept: sealed under a key derived from BRAND_WALLET_SECRET, opened only as
- * the channel it was sealed for. Unit test. `pnpm test`.
+ * How a notification service's secret is kept: sealed under a key derived from BRAND_WALLET_SECRET, opened only as
+ * the service it was sealed for. Unit test. `pnpm test`.
  *
- * What is pinned here: the key of version 1, byte for byte, since a change of it leaves every saved channel unreadable;
- * that it is another key than the secret itself; that a sealed secret comes back whole under that key and its own
- * channel and under no other; and that nothing a refusal says carries the secret or the key. Every secret here is
+ * What is pinned here: the key of version 1, byte for byte, since a change of it leaves every saved service unreadable;
+ * the label a secret is bound to, `notification_channels:<kind>:v1`, under which migration 037 carried the secrets of
+ * 035 over; that it is another key than the secret itself; that a sealed secret comes back whole under that key and its
+ * own service and under no other; and that nothing a refusal says carries the secret or the key. Every secret here is
  * made up for the test.
  */
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createCipheriv, randomBytes } from 'node:crypto';
 import { describe, it } from 'node:test';
 import { inspect } from 'node:util';
 
@@ -70,7 +71,7 @@ describe("a channel's secret", () => {
     assert.notDeepEqual(first.ciphertext, second.ciphertext);
   });
 
-  it('opens under no other key, as no other channel, and with no byte changed', () => {
+  it('opens under no other key, as no other service, and with no byte changed', () => {
     const sealed = sealChannelSecret('telegram', TOKEN, KEY);
     const flipped = (bytes: Buffer) => {
       const copy = Buffer.from(bytes);
@@ -80,7 +81,7 @@ describe("a channel's secret", () => {
     const refusals: (() => string)[] = [
       () => openChannelSecret('telegram', sealed, channelSecretKeyFrom('cd'.repeat(32))),
       () => openChannelSecret('telegram', sealed, randomBytes(16)),
-      () => openChannelSecret('slack', sealed, KEY),
+      () => openChannelSecret('email', sealed, KEY),
       () => openChannelSecret('telegram', { ...sealed, ciphertext: flipped(sealed.ciphertext) }, KEY),
       () => openChannelSecret('telegram', { ...sealed, iv: flipped(sealed.iv) }, KEY),
       () => openChannelSecret('telegram', { ...sealed, authTag: flipped(sealed.authTag) }, KEY),
@@ -102,8 +103,17 @@ describe("a channel's secret", () => {
     }
   });
 
+  it('opens a secret sealed under the label of migration 035, as 037 carried it over', () => {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', KEY, iv, { authTagLength: 16 });
+    cipher.setAAD(Buffer.from('notification_channels:telegram:v1', 'utf8'));
+    const ciphertext = Buffer.concat([cipher.update(TOKEN, 'utf8'), cipher.final()]);
+    const carried = { ciphertext, iv, authTag: cipher.getAuthTag(), keyVersion: 1 };
+    assert.equal(openChannelSecret('telegram', carried, KEY), TOKEN);
+  });
+
   it('is sealed only when there is one, under a key of 32 bytes', () => {
-    assert.throws(() => sealChannelSecret('slack', '', KEY), ChannelSecretError);
-    assert.throws(() => sealChannelSecret('slack', 'secret', randomBytes(16)), ChannelSecretError);
+    assert.throws(() => sealChannelSecret('email', '', KEY), ChannelSecretError);
+    assert.throws(() => sealChannelSecret('email', 'secret', randomBytes(16)), ChannelSecretError);
   });
 });

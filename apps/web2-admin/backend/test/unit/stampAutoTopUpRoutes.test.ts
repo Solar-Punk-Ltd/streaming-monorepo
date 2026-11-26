@@ -33,7 +33,6 @@ import {
 } from './support/authFixtures.js';
 import { InMemoryAuditLog } from './support/fakes.js';
 import { BATCH_STAGE, FakeFundingManager, NODE_A, NODE_B, stampInventory } from './support/fundingFakes.js';
-import { InMemoryNotificationStore } from './support/notificationFakes.js';
 
 const PASSWORD = 'a-long-enough-password';
 
@@ -55,8 +54,7 @@ before(async () => {
   store = new InMemoryStampAutoTopUpStore();
   const manager = new FakeFundingManager();
   manager.inventoryAnswer = stampInventory();
-  const notifications = new InMemoryNotificationStore();
-  const autoTopUp = new StampAutoTopUpService({ store, manager, audit, notifications });
+  const autoTopUp = new StampAutoTopUpService({ store, manager, audit });
 
   const app = express();
   app.use(express.json());

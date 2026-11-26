@@ -37,7 +37,6 @@ import {
   POSTAGE,
   stampInventory,
 } from './support/fundingFakes.js';
-import { InMemoryNotificationStore } from './support/notificationFakes.js';
 
 const NOW = Date.parse('2026-11-24T12:00:00.000Z');
 const BATCH_ARCHIVE = `0x${'e4'.repeat(32)}`;
@@ -49,13 +48,12 @@ function setup(over: { manager?: FakeFundingManager | null } = {}) {
   const manager = over.manager === undefined ? new FakeFundingManager() : over.manager;
   if (manager) manager.inventoryAnswer = stampInventory();
   const audit = new InMemoryAuditLog();
-  const notifications = new InMemoryNotificationStore();
-  const service = new StampAutoTopUpService({ store, manager, audit, notifications, now: () => NOW });
-  return { store, manager, audit, service, transfers, stamps, notifications };
+  const service = new StampAutoTopUpService({ store, manager, audit, now: () => NOW });
+  return { store, manager, audit, service, transfers, stamps };
 }
 
 describe("stamp auto top-up's view", () => {
-  it('answers the defaults, the three jobs, no stamps, and every channel as never saved and off', async () => {
+  it('answers the defaults, the three jobs, no stamps, and no notification channel', async () => {
     const { service } = setup();
 
     const view = await service.view();
@@ -71,75 +69,13 @@ describe("stamp auto top-up's view", () => {
         ['stamp', false, null],
       ],
     );
-    assert.deepEqual(
-      view.notifications,
-      (['email', 'slack', 'telegram'] as const).map((kind) => ({
-        kind,
-        saved: false,
-        enabled: false,
-        lastSentAt: null,
-        lastError: null,
-        lastErrorAt: null,
-        waiting: 0,
-      })),
-    );
+    // Each user's notices are their own: the tab reads the Notifications page's view for them.
+    assert.deepEqual(view.notifications, []);
     assert.deepEqual(view.stamps, []);
     assert.equal(view.monthlyEstimatePlur, '0');
     assert.equal(view.dailyCeilingPlur, '0');
     assert.equal(view.sentTodayPlur, '0');
     assert.deepEqual(view.warnings, []);
-  });
-
-  it("shows each saved channel's switch, its last notice and the notices that wait for it", async () => {
-    const { service, notifications } = setup();
-    const sealed = () => ({
-      ciphertext: Buffer.from('sealed'),
-      iv: Buffer.alloc(12),
-      authTag: Buffer.alloc(16),
-      keyVersion: 1,
-    });
-    await notifications.saveChannel({ kind: 'slack', settings: {}, secret: sealed() }, 'owner', new Date(NOW));
-    await notifications.saveChannel(
-      { kind: 'telegram', settings: { chatId: '@channelname' }, secret: sealed() },
-      'owner',
-      new Date(NOW),
-    );
-    await notifications.setEnabled('telegram', false);
-    await notifications.recordSent('slack', new Date(NOW - 7200_000));
-    await notifications.recordFailed('slack', new Date(NOW - 3600_000), 'Slack answered 500.');
-    await notifications.addWaiting([
-      {
-        channel: 'slack',
-        title: 'Stamp auto top-up',
-        text: 'A warning.',
-        subjects: [],
-        raisedAt: new Date(NOW),
-        error: 'Slack answered 500.',
-      },
-    ]);
-
-    const [email, slack, telegram] = (await service.view()).notifications;
-
-    assert.deepEqual(email, {
-      kind: 'email',
-      saved: false,
-      enabled: false,
-      lastSentAt: null,
-      lastError: null,
-      lastErrorAt: null,
-      waiting: 0,
-    });
-    assert.deepEqual(slack, {
-      kind: 'slack',
-      saved: true,
-      enabled: true,
-      lastSentAt: new Date(NOW - 7200_000).toISOString(),
-      lastError: 'Slack answered 500.',
-      lastErrorAt: new Date(NOW - 3600_000).toISOString(),
-      waiting: 1,
-    });
-    assert.equal(telegram?.saved, true);
-    assert.equal(telegram?.enabled, false);
   });
 
   it('has no estimate and no ceiling without a manager, or when it cannot be read, or without a price', async () => {

@@ -19,7 +19,7 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { FundingBatch, FundingInventory, FundingNode } from '@streaming-monorepo/contracts';
-import { NotificationSendError, type ChannelFactory } from '@streaming-monorepo/notifications';
+import { NotificationSendError, type DestinationChannelFactory } from '@streaming-monorepo/notifications';
 
 import {
   AutoTopUpAlertJob,
@@ -39,11 +39,11 @@ import {
 import type { NotifyOutcome, Notifier, OutgoingNotice, RetryOutcome } from '../../src/domain/notifications/Notifier.js';
 
 import { markedStampsOf, type AutoTopUpTickContext } from '../../src/domain/funding/autoTopUpJobs.js';
-import { NotificationDispatcher } from '../../src/domain/notifications/NotificationDispatcher.js';
+import { NoticeDispatcher } from '../../src/domain/notifications/NoticeDispatcher.js';
 import { channelSecretKeyFrom, sealChannelSecret } from '../../src/domain/notifications/channelSecrets.js';
 
 import { InMemoryStampAutoTopUpStore } from './support/autoTopUpFakes.js';
-import { InMemoryNotificationStore } from './support/notificationFakes.js';
+import { InMemoryNoticeStore } from './support/notificationFakes.js';
 import {
   BATCH_CATALOGUE,
   BATCH_STAGE,
@@ -504,34 +504,30 @@ describe('the waiting notices', () => {
     assert.equal(notifier.retries.length, 1);
   });
 
-  it('wait for a channel that failed while another took the notice, and are dropped once their warning clears', async () => {
-    const notices = new InMemoryNotificationStore();
+  it('wait for a destination that failed while another took the notice, and are dropped once their warning clears', async () => {
+    const notices = new InMemoryNoticeStore();
     const key = channelSecretKeyFrom('ab'.repeat(32));
-    await notices.saveChannel(
+    await notices.saveService(
       {
         kind: 'email',
-        settings: {
-          provider: 'brevo',
-          senderAddress: 'alerts@example.com',
-          senderName: '',
-          recipients: ['ops@example.com'],
-        },
+        settings: { provider: 'brevo', senderAddress: 'alerts@example.com', senderName: '' },
         secret: sealChannelSecret('email', 'xkeysib-made-up-for-the-test', key),
       },
       'operator',
       T0,
     );
-    await notices.saveChannel(
-      {
-        kind: 'telegram',
-        settings: { chatId: '-1001234567890' },
-        secret: sealChannelSecret('telegram', `1234567890:${'A'.repeat(35)}`, key),
-      },
+    await notices.saveService(
+      { kind: 'telegram', settings: {}, secret: sealChannelSecret('telegram', `1234567890:${'A'.repeat(35)}`, key) },
       'operator',
       T0,
     );
+    // One person, on email and on Telegram, with the topics a user starts with.
+    const userId = '00000000-0000-4000-8000-0000000000a1';
+    const topics = ['topups_coming', 'wallet_low', 'topup_failed', 'stamp_expired'] as const;
+    await notices.saveDestination({ userId, kind: 'email' }, 'ops@example.com', T0, topics);
+    await notices.saveDestination({ userId, kind: 'telegram' }, '-1001234567890', T0, topics);
     const taken: string[] = [];
-    const channelFrom: ChannelFactory = (config) => ({
+    const channelFrom: DestinationChannelFactory = (config) => ({
       kind: config.kind,
       send: async (notice) => {
         if (config.kind === 'telegram') throw new NotificationSendError('The telegram service answered 502.');
@@ -540,14 +536,14 @@ describe('the waiting notices', () => {
     });
     job = new AutoTopUpAlertJob(
       store,
-      new NotificationDispatcher({ store: notices, key, channelFrom, logger: silent }),
+      new NoticeDispatcher({ store: notices, key, channelFrom, logger: silent }),
       silent,
     );
 
     const dry = { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: (XDAI / 20n).toString() };
     await run(input({}, T0, { brandWallet: dry }));
     assert.deepEqual(taken, ['Stamp auto top-up: the brand wallet is low on xDAI']);
-    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0, 'notified once one channel took it');
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0, 'notified once one destination took it');
     assert.equal(notices.waitingRows.length, 1);
     assert.deepEqual(notices.waitingRows[0]!.subjects, [
       autoTopUpWarningSubject({ kind: 'wallet_xdai', batchId: null }),

@@ -4,7 +4,6 @@ import {
   NOT_TEST_STREAM_ERROR,
   NOTICE_DESTINATION_NOT_SAVED_ERROR,
   NOTICE_SERVICE_NOT_SAVED_ERROR,
-  NOTIFICATION_CHANNEL_NOT_SAVED_ERROR,
   NOTIFICATION_TEST_TOO_SOON_ERROR,
   NOTIFICATIONS_UNAVAILABLE_ERROR,
   TELEGRAM_CODE_NOT_STARTED_ERROR,
@@ -40,9 +39,7 @@ import {
   NoticeTestTooSoonError,
   NoUsersError,
   NotTestStreamError,
-  NotificationChannelNotSavedError,
   NotificationsUnavailableError,
-  NotificationTestTooSoonError,
   PublishFailedError,
   RequestShapeError,
   StageLockedError,
@@ -313,13 +310,9 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     res.status(502).json({ error: 'publish_failed', id: err.streamId, message: err.reason });
     return;
   }
-  // The Notifications page's refusals (notifications.ts in web2-admin-common): the page shows each sentence as it is.
+  // The Notifications page's refusals (notices.ts in web2-admin-common): the page shows each sentence as it is.
   if (err instanceof NotificationsUnavailableError) {
     res.status(409).json({ error: NOTIFICATIONS_UNAVAILABLE_ERROR, message: err.message });
-    return;
-  }
-  if (err instanceof NotificationChannelNotSavedError) {
-    res.status(409).json({ error: NOTIFICATION_CHANNEL_NOT_SAVED_ERROR, kind: err.kind, message: err.message });
     return;
   }
   if (err instanceof NoticeServiceNotSavedError) {
@@ -335,16 +328,6 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return;
   }
   if (err instanceof NoticeTestTooSoonError) {
-    res.setHeader('Retry-After', String(err.retryAfterSeconds));
-    res.status(429).json({
-      error: NOTIFICATION_TEST_TOO_SOON_ERROR,
-      kind: err.kind,
-      retryAfterSeconds: err.retryAfterSeconds,
-      message: err.message,
-    });
-    return;
-  }
-  if (err instanceof NotificationTestTooSoonError) {
     res.setHeader('Retry-After', String(err.retryAfterSeconds));
     res.status(429).json({
       error: NOTIFICATION_TEST_TOO_SOON_ERROR,

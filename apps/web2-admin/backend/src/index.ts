@@ -1,5 +1,5 @@
 import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
-import { channelFrom } from '@streaming-monorepo/notifications';
+import { destinationChannelFrom, findTelegramChatByCode, lookUpTelegramBot } from '@streaming-monorepo/notifications';
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
 import { useRestartWindow } from './api/presenters.js';
@@ -54,9 +54,9 @@ import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
 import { channelSecretKeyFrom } from './domain/notifications/channelSecrets.js';
-import { NotificationDispatcher } from './domain/notifications/NotificationDispatcher.js';
-import { NotificationRepository } from './domain/notifications/NotificationRepository.js';
-import { NotificationService } from './domain/notifications/NotificationService.js';
+import { NoticeDispatcher } from './domain/notifications/NoticeDispatcher.js';
+import { NoticeRepository } from './domain/notifications/NoticeRepository.js';
+import { NoticeService } from './domain/notifications/NoticeService.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { createRecordings, type RecordingCheckService } from './domain/recordings/index.js';
@@ -381,24 +381,26 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   batchPurchases.boot();
-  // The admin's notification channels, set on the Notifications page, and the notices that wait for one.
-  const notificationStore = new NotificationRepository(database.pool);
-  // Stamp auto top-up's settings, marks and pauses; its view shows each notification channel's status.
+  // The admin's notification services, each user's own destinations and topics, and the notices that wait for one.
+  const noticeStore = new NoticeRepository(database.pool);
+  // Stamp auto top-up's settings, marks and pauses.
   const autoTopUpStore = new StampAutoTopUpRepository(database.pool);
   const autoTopUp = new StampAutoTopUpService({
     store: autoTopUpStore,
     manager: managerFunding,
     audit: auditLog,
-    notifications: notificationStore,
   });
-  // A channel's secret is sealed under a key derived from BRAND_WALLET_SECRET: without that secret no channel can be
-  // saved or tested, and the Notifications page says so.
+  // A service's secret is sealed under a key derived from BRAND_WALLET_SECRET: without that secret no service can be
+  // saved and no notice goes out, and the Notifications page says so.
   const channelSecretKey = config.brandWalletSecret === null ? null : channelSecretKeyFrom(config.brandWalletSecret);
-  // The Notifications page: a channel's save, switch, removal and test notice.
-  const notifications = new NotificationService({
-    store: notificationStore,
+  // The Notifications page: the shared services, and each user's own destinations, topics, test notice and Telegram
+  // chat. Each call to a service goes over the package's channel and lookups.
+  const notifications = new NoticeService({
+    store: noticeStore,
     secretKey: channelSecretKey,
-    channelFrom,
+    channelFrom: (destination) => destinationChannelFrom(destination),
+    lookUpTelegramBot: (token) => lookUpTelegramBot(token),
+    findTelegramChat: (token, code) => findTelegramChatByCode(token, code),
     audit: auditLog,
   });
   const fundingService = new FundingService({
@@ -420,8 +422,8 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   // Stamp auto top-up's tick: every 10 minutes, from three minutes after the start, under a lock one backend holds,
-  // the alert job, the wallet job and the stamp job. The alert job sends its notices on the channels of the
-  // Notifications page, opened under the same key. The wallet job sends through the Balance tab's send, and the stamp
+  // the alert job, the wallet job and the stamp job. The alert job sends its notices to each user's own destinations,
+  // through the services of the Notifications page, opened under the same key. The wallet job sends through the Balance tab's send, and the stamp
   // job asks through the Stamps tab's stamp operation, as the system.
   autoTopUpTick = new AutoTopUpTick({
     store: autoTopUpStore,
@@ -431,7 +433,12 @@ async function main(): Promise<void> {
     jobs: [
       new AutoTopUpAlertJob(
         autoTopUpStore,
-        new NotificationDispatcher({ store: notificationStore, key: channelSecretKey, channelFrom, logger }),
+        new NoticeDispatcher({
+          store: noticeStore,
+          key: channelSecretKey,
+          channelFrom: (destination) => destinationChannelFrom(destination),
+          logger,
+        }),
         logger,
       ),
       new AutoTopUpWalletJob({ funding: fundingService, store: autoTopUpStore }),

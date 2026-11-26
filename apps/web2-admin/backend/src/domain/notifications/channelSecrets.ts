@@ -1,21 +1,23 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 
-import type { NotificationChannelKind } from '@streaming-monorepo/web2-admin-common';
+import { NOTICE_SERVICE_NAMES, type NoticeServiceKind } from '@streaming-monorepo/web2-admin-common';
 
 import { BRAND_WALLET_SECRET_KEY, brandWalletSecretProblem } from '../../utils/fundingSettings.js';
 
-import type { SealedSecret } from './NotificationStore.js';
+import type { SealedSecret } from './NoticeStore.js';
 
 /**
- * How a notification channel's secret is kept (docs/architecture/notifications.md): the email service's API key,
- * Slack's webhook URL, Telegram's bot token. Each is encrypted with AES-256-GCM, as the brand wallet's key is, and
- * stored in `notification_channels` (migration 035) with the version of the key it is under.
+ * How a notification service's secret is kept (docs/architecture/notifications.md): the email service's API key and
+ * the Telegram bot's token. Each is encrypted with AES-256-GCM, as the brand wallet's key is, and stored in
+ * `notification_services` (migration 037) with the version of the key it is under.
  *
  * The key of version 1 is derived from `BRAND_WALLET_SECRET` with HKDF-SHA-256 under a label of its own, so it is a
- * different key from the one the brand wallet's key is encrypted under, and neither is in the database. The channel's
- * kind and the key's version are bound into the encryption, so a row's secret opens only as that channel's.
+ * different key from the one the brand wallet's key is encrypted under, and neither is in the database. The service's
+ * kind and the key's version are bound into the encryption, so a row's secret opens only as that service's. The
+ * binding keeps the words of migration 035, `notification_channels:<kind>:v1`, under which the secrets 037 carried
+ * over were sealed, so they open as before.
  *
- * A secret is opened for the one send that needs it. Nothing here logs or answers a secret or a key.
+ * A secret is opened for the one send, test or lookup that needs it. Nothing here logs or answers a secret or a key.
  */
 
 /** The version of the key a secret is sealed under now. */
@@ -30,7 +32,7 @@ const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
 
-/** Why a channel's secret could not be sealed or opened, in a sentence. Never carries a secret or a key. */
+/** Why a service's secret could not be sealed or opened, in a sentence. Never carries a secret or a key. */
 export class ChannelSecretError extends Error {
   constructor(message: string) {
     super(message);
@@ -50,15 +52,15 @@ export function channelSecretKeyFrom(brandWalletSecret: string): Buffer {
   }
 }
 
-/** What binds a sealed secret to its channel and its key's version. */
-function boundTo(kind: NotificationChannelKind, keyVersion: number): Buffer {
+/** What binds a sealed secret to its service and its key's version: migration 035's words, which 037 kept. */
+function boundTo(kind: NoticeServiceKind, keyVersion: number): Buffer {
   return Buffer.from(`notification_channels:${kind}:v${keyVersion}`, 'utf8');
 }
 
-/** The channel's secret encrypted under the key, with an IV drawn for it. */
-export function sealChannelSecret(kind: NotificationChannelKind, secret: string, key: Buffer): SealedSecret {
-  if (key.length !== KEY_BYTES) throw new ChannelSecretError('The key of the channel secrets is 32 bytes.');
-  if (secret === '') throw new ChannelSecretError('A channel has a secret.');
+/** The service's secret encrypted under the key, with an IV drawn for it. */
+export function sealChannelSecret(kind: NoticeServiceKind, secret: string, key: Buffer): SealedSecret {
+  if (key.length !== KEY_BYTES) throw new ChannelSecretError('The key of the service secrets is 32 bytes.');
+  if (secret === '') throw new ChannelSecretError('A service has a secret.');
   const plain = Buffer.from(secret, 'utf8');
   try {
     const iv = randomBytes(IV_BYTES);
@@ -72,13 +74,13 @@ export function sealChannelSecret(kind: NotificationChannelKind, secret: string,
 }
 
 /**
- * The channel's secret, decrypted. A key that fails GCM's tag, a changed byte, another channel's row and a version
+ * The service's secret, decrypted. A key that fails GCM's tag, a changed byte, another service's row and a version
  * this code has no key for are refused alike, in a sentence that carries neither the secret nor the key.
  */
-export function openChannelSecret(kind: NotificationChannelKind, sealed: SealedSecret, key: Buffer): string {
+export function openChannelSecret(kind: NoticeServiceKind, sealed: SealedSecret, key: Buffer): string {
   const refused = () =>
     new ChannelSecretError(
-      `The ${kind} channel's secret does not open with this ${BRAND_WALLET_SECRET_KEY}: it was saved under another secret, or its row was changed. Save the channel again with its secret.`,
+      `The ${NOTICE_SERVICE_NAMES[kind]} service's secret does not open with this ${BRAND_WALLET_SECRET_KEY}: it was saved under another secret, or its row was changed. Save the service again with its secret.`,
     );
   if (sealed.keyVersion !== CHANNEL_SECRET_KEY_VERSION || key.length !== KEY_BYTES) throw refused();
   let plain: Buffer;

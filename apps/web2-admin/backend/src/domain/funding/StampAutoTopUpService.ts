@@ -21,7 +21,6 @@ import { recordAudit, type AuditLog } from '../AuditLog.js';
 import { FundingManagerUnavailableError, FundingRefusedError, RequestShapeError } from '../errors/index.js';
 import { AutoTopUpNotMarkableError } from '../errors/AutoTopUpNotMarkableError.js';
 import { Logger } from '../Logger.js';
-import { notificationChannelStatuses, type NotificationStatusSource } from '../notifications/channelStatus.js';
 
 import { ADMIN_FUNDING_CHAIN_ID, managerProblem } from './FundingService.js';
 import type { ManagerFundingClient } from './ManagerFundingClient.js';
@@ -42,8 +41,6 @@ export interface StampAutoTopUpServiceDeps {
   /** The manager's funding API, or null without MANAGER_API_URL and MANAGER_API_TOKEN. */
   manager: AutoTopUpManager | null;
   audit: AuditLog;
-  /** The admin's notification channels, whose status the view shows. */
-  notifications: NotificationStatusSource;
   now?: () => number;
 }
 
@@ -104,28 +101,26 @@ export class StampAutoTopUpService {
   private readonly store: StampAutoTopUpStore;
   private readonly manager: AutoTopUpManager | null;
   private readonly audit: AuditLog;
-  private readonly notifications: NotificationStatusSource;
   private readonly now: () => number;
 
   constructor(deps: StampAutoTopUpServiceDeps) {
     this.store = deps.store;
     this.manager = deps.manager;
     this.audit = deps.audit;
-    this.notifications = deps.notifications;
     this.now = deps.now ?? Date.now;
   }
 
   /**
    * `GET /api/funding/auto-top-up`. The stamps' plans, the monthly estimate and the daily ceiling are read from the
    * manager's inventory now; without one, or without a price of postage, the estimate and the ceiling are null and no
-   * stamp shows a coming top-up, while its alert stays recorded. The channels' status is the notification store's.
+   * stamp shows a coming top-up, while its alert stays recorded. It holds no notification channel: each user's notices
+   * are their own, and the tab reads the Notifications page's view for them.
    */
   async view(): Promise<AutoTopUpView> {
     const now = this.now();
-    const [saved, jobs, notifications, marks, warnings, sends] = await Promise.all([
+    const [saved, jobs, marks, warnings, sends] = await Promise.all([
       this.store.settings(),
       this.store.jobs(),
-      notificationChannelStatuses(this.notifications),
       this.store.marks(),
       this.store.warnings(),
       this.store.systemSendsSince(new Date(now - SECONDS_PER_DAY * 1000)),
@@ -175,7 +170,7 @@ export class StampAutoTopUpService {
         lastOk: job.lastOk,
         lastOutcome: job.lastOutcome,
       })),
-      notifications,
+      notifications: [],
       stamps,
       monthlyEstimatePlur,
       dailyCeilingPlur: monthlyEstimatePlur === null ? null : autoTopUpDailyCeilingPlur(settings, monthlyEstimatePlur),
