@@ -31,7 +31,8 @@ const CANNOT_REMOVE = {
   forbidden: 'Only an admin can remove a user.',
   self: 'You cannot remove your own account. Ask another admin to remove it.',
   last: 'This is the last user. Removing it would lock everyone out.',
-  lastAdmin: 'This is the last admin. Removing it would leave nobody who can manage users.',
+  lastAdmin:
+    'This is the last admin. Removing it would leave nobody who can manage users or the notification services.',
   none: '',
 } as const;
 

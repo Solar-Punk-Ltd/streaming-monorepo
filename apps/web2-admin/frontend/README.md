@@ -621,7 +621,8 @@ alone.
 
 ### Access, `#/access`
 
-Who can sign in. An admin adds and removes users and signs anyone out. Everyone else sees the list.
+Who can sign in. An admin adds and removes users, signs anyone out, and sets up the notification
+services on the [Notifications](#notifications-notifications) page. Everyone else sees the list.
 Everyone can change their own password. `#/account` redirects here.
 
 ## How the console behaves

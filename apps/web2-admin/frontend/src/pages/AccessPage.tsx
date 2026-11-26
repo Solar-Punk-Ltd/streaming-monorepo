@@ -7,9 +7,10 @@ import { UsersCard } from '../components/access/UsersCard';
 import { useUsers } from '../components/access/useUsers';
 
 /**
- * Who can log in. An admin adds and removes the others and signs anyone out.
- * Everyone else sees the list, and can change their own password and sign
- * themselves out everywhere.
+ * Who can log in. An admin adds and removes the others, signs anyone out and
+ * sets up the notification services on the Notifications page. Everyone else
+ * sees the list, and can change their own password and sign themselves out
+ * everywhere.
  *
  * This is also where the account's own password lives, so there is one page
  * about logging in rather than two.
@@ -28,8 +29,10 @@ export function AccessPage() {
       </Typography>
 
       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-        {canManage ? 'You can add and remove users here.' : 'Only an admin adds or removes a user.'} A session lasts
-        twelve hours of inactivity, and fourteen days at most.
+        {canManage
+          ? 'You can add and remove users here, and set up the notification services on the Notifications page.'
+          : 'Only an admin adds or removes a user, or sets up the notification services.'}{' '}
+        A session lasts twelve hours of inactivity, and fourteen days at most.
       </Typography>
 
       <UsersCard users={users} error={error} currentUsername={currentUsername} canManage={canManage} reload={reload} />
