@@ -1,12 +1,17 @@
 /**
- * Find chat id: the chats that wrote to a Telegram bot lately, read from the Bot API's `getUpdates` with the bot's
- * token, so a person picks the chat the notices go to rather than reading the Bot API's answer themselves.
+ * The reads of a Telegram bot with its token, each a `readService` call: a `POST` to Telegram's fixed host, no redirect
+ * followed, an end after `NOTIFICATION_CALL_TIMEOUT_MS`, at most `NOTIFICATION_ANSWER_MAX_BYTES` of the answer read,
+ * and a failure's sentence that never holds the token. None sends `allowed_updates`, which Telegram would keep for the
+ * bot.
+ *
+ * Find my chat reads two: {@link lookUpTelegramBot}, the bot's name from `getMe`, and {@link findTelegramChatByCode},
+ * the one chat that sent a person's code, from `getUpdates` with an offset of -{@link TELEGRAM_CHATS_UPDATES_LIMIT}.
+ *
+ * Find chat id lists the chats that wrote to the bot lately with {@link findTelegramChats}, read from `getUpdates`, so a
+ * person picks the chat the notices go to rather than reading the Bot API's answer themselves.
  * https://core.telegram.org/bots/api#getupdates
  *
- * - The call is `readService`'s: a `POST` to Telegram's fixed host, no redirect followed, an end after
- *   `NOTIFICATION_CALL_TIMEOUT_MS`, at most `NOTIFICATION_ANSWER_MAX_BYTES` of the answer read.
- * - It sends no `offset`, so Telegram marks no update as read and forgets none, and no `allowed_updates`, which
- *   Telegram would keep for the bot.
+ * - It sends no `offset`, so Telegram marks no update as read and forgets none.
  * - Telegram keeps a bot's updates for a day, so the chats are those that wrote to the bot, added it or posted in its
  *   channel within the last day: the oldest {@link TELEGRAM_CHATS_UPDATES_LIMIT} of those updates.
  * - A bot whose updates go to a webhook has none to read here, and Telegram says so in its refusal.
@@ -16,10 +21,14 @@ import { readService, type NotificationCallOptions } from './call.js';
 import { NotificationSendError } from './channel.js';
 import {
   channelSecretProblem,
+  isTelegramBotUsername,
+  isTelegramChatCode,
   isTelegramChatKind,
   storedChannelSecret,
   TELEGRAM_API_HOST,
   TELEGRAM_CHAT_NAME_MAX_LENGTH,
+  telegramTextSendsCode,
+  type TelegramBot,
   type TelegramChat,
 } from './rules.js';
 
@@ -55,7 +64,11 @@ function nameOf(chat: Record<string, unknown>): string {
       ? [oneLine(chat.first_name), oneLine(chat.last_name)].filter((part) => part !== '').join(' ')
       : oneLine(chat.title);
   const username = oneLine(chat.username);
-  const name = username === '' ? own : own === '' ? `@${username}` : `${own} (@${username})`;
+  return shortened(username === '' ? own : own === '' ? `@${username}` : `${own} (@${username})`);
+}
+
+/** A name of at most `TELEGRAM_CHAT_NAME_MAX_LENGTH` characters, the last of a longer one an ellipsis. */
+function shortened(name: string): string {
   const characters = Array.from(name);
   if (characters.length <= TELEGRAM_CHAT_NAME_MAX_LENGTH) return name;
   return `${characters
@@ -108,6 +121,42 @@ export function chatsOfUpdates(answer: string): TelegramChat[] {
   return [...chats.values()];
 }
 
+/** The token as it is called with, trimmed. Throws, calling nothing, for one BotFather would not give out. */
+function checkedToken(token: string): string {
+  const bare = storedChannelSecret(token);
+  if (channelSecretProblem('telegram', bare) !== null) {
+    throw new NotificationSendError("The bot's token is not one BotFather gives out, so Telegram was not called.");
+  }
+  return bare;
+}
+
+/** Reads one Bot API method's answer with the bot's token. */
+function readBotApi(token: string, method: string, body: unknown, options: NotificationCallOptions): Promise<string> {
+  return readService(
+    {
+      service: 'Telegram',
+      host: TELEGRAM_API_HOST,
+      path: `/bot${token}/${method}`,
+      body,
+      // The token is the secret, and the part after its colon is the bot's key.
+      secrets: [token, token.slice(token.indexOf(':') + 1)],
+    },
+    options.fetch,
+  );
+}
+
+/** The `result` of a Bot API answer that is `ok`. Throws the error with this sentence for any other answer. */
+function resultOf(answer: string, unreadable: string): unknown {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(answer);
+  } catch {
+    throw new NotificationSendError(unreadable);
+  }
+  if (!isRecord(parsed) || parsed.ok !== true) throw new NotificationSendError(unreadable);
+  return parsed.result;
+}
+
 /**
  * The chats that wrote to the bot whose token this is within the last day, the latest first, each once. Rejects with
  * a {@link NotificationSendError} whose sentence never holds the token: for a token BotFather would not give out,
@@ -115,20 +164,76 @@ export function chatsOfUpdates(answer: string): TelegramChat[] {
  * for an answer that is not the bot's updates.
  */
 export async function findTelegramChats(token: string, options: NotificationCallOptions = {}): Promise<TelegramChat[]> {
-  const bare = storedChannelSecret(token);
-  if (channelSecretProblem('telegram', bare) !== null) {
-    throw new NotificationSendError("The bot's token is not one BotFather gives out, so Telegram was not called.");
+  const bare = checkedToken(token);
+  return chatsOfUpdates(await readBotApi(bare, 'getUpdates', { limit: TELEGRAM_CHATS_UPDATES_LIMIT }, options));
+}
+
+// ------------------------------------------------------------- the bot itself
+
+const NOT_A_BOT = "Telegram's answer could not be read as a bot.";
+
+/**
+ * The bot a token is of, from the Bot API's `getMe`: the `TelegramBotLookup` Find my chat names the bot with, and links
+ * to it by its username. https://core.telegram.org/bots/api#getme
+ *
+ * Rejects with a {@link NotificationSendError} whose sentence never holds the token: for a token BotFather would not
+ * give out, without calling Telegram; for Telegram's refusal; and for an answer that is not a bot's with a username a
+ * `t.me` link can name.
+ */
+export async function lookUpTelegramBot(token: string, options: NotificationCallOptions = {}): Promise<TelegramBot> {
+  const bare = checkedToken(token);
+  const bot = resultOf(await readBotApi(bare, 'getMe', {}, options), NOT_A_BOT);
+  if (!isRecord(bot) || bot.is_bot !== true || !isTelegramBotUsername(bot.username)) {
+    throw new NotificationSendError(NOT_A_BOT);
   }
-  const answer = await readService(
-    {
-      service: 'Telegram',
-      host: TELEGRAM_API_HOST,
-      path: `/bot${bare}/getUpdates`,
-      body: { limit: TELEGRAM_CHATS_UPDATES_LIMIT },
-      // The token is the secret, and the part after its colon is the bot's key.
-      secrets: [bare, bare.slice(bare.indexOf(':') + 1)],
-    },
-    options.fetch,
-  );
-  return chatsOfUpdates(answer);
+  const shown = oneLine(bot.first_name);
+  return { username: bot.username, name: shortened(shown === '' ? bot.username : shown) };
+}
+
+// ------------------------------------------------- the chat that sent a code
+
+/** The parts of an update that are a message with a text: in a person's chat, a group or a channel. */
+const MESSAGE_PARTS = ['message', 'edited_message', 'channel_post', 'edited_channel_post'] as const;
+
+/**
+ * The chat of the latest message in a `getUpdates` answer whose text sends the code, or null when none does. Rejects
+ * with a {@link NotificationSendError} for an answer that is not the bot's updates.
+ */
+export function chatThatSentCode(answer: string, code: string): TelegramChat | null {
+  const result = resultOf(answer, UNREADABLE);
+  if (!Array.isArray(result)) throw new NotificationSendError(UNREADABLE);
+  // Telegram lists the updates oldest first.
+  for (const update of [...result].reverse()) {
+    if (!isRecord(update)) continue;
+    for (const part of MESSAGE_PARTS) {
+      const message = update[part];
+      if (!isRecord(message) || typeof message.text !== 'string') continue;
+      if (!telegramTextSendsCode(message.text, code)) continue;
+      const chat = chatOf(message.chat);
+      if (chat !== null) return chat;
+    }
+  }
+  return null;
+}
+
+/**
+ * Finds the chat that sent a code to the bot whose token this is: the `TelegramChatLookup` of Find my chat. It reads
+ * the Bot API's `getUpdates` with an offset of -{@link TELEGRAM_CHATS_UPDATES_LIMIT}, which answers the bot's latest
+ * updates and on which Telegram forgets the ones before those, and answers the chat of the latest message whose text
+ * sends the code (`telegramTextSendsCode`), or null when none does. It answers that one chat, never a list.
+ *
+ * Rejects with a {@link NotificationSendError} whose sentence never holds the token, as {@link lookUpTelegramBot} does,
+ * for an answer that is not the bot's updates, and, without calling Telegram, for a code `isTelegramChatCode` refuses.
+ */
+export async function findTelegramChatByCode(
+  token: string,
+  code: string,
+  options: NotificationCallOptions = {},
+): Promise<TelegramChat | null> {
+  const bare = checkedToken(token);
+  if (!isTelegramChatCode(code)) {
+    throw new NotificationSendError('The code is not one Find my chat gives out, so Telegram was not called.');
+  }
+  const answer = await readBotApi(bare, 'getUpdates', { offset: -TELEGRAM_CHATS_UPDATES_LIMIT }, options);
+  return chatThatSentCode(answer, code);
 }

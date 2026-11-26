@@ -7,9 +7,27 @@ import { describe, it } from 'node:test';
 import { inspect } from 'node:util';
 
 import { BrevoEmailProvider } from './brevo.js';
-import { NotificationSendError, type ChannelConfig, type ChannelFactory, type NotificationFetch } from './channel.js';
-import { channelFrom, cutAtLineBreaks, escapeForSlack, SLACK_MESSAGE_MAX_LENGTH } from './channels.js';
-import { TELEGRAM_MESSAGE_MAX_LENGTH, type EmailChannelSettings, type Notice } from './rules.js';
+import {
+  NotificationSendError,
+  type ChannelConfig,
+  type ChannelFactory,
+  type DestinationChannelConfig,
+  type DestinationChannelFactory,
+  type NotificationFetch,
+} from './channel.js';
+import {
+  channelFrom,
+  cutAtLineBreaks,
+  destinationChannelFrom,
+  escapeForSlack,
+  SLACK_MESSAGE_MAX_LENGTH,
+} from './channels.js';
+import {
+  TELEGRAM_MESSAGE_MAX_LENGTH,
+  type EmailChannelSettings,
+  type EmailServiceSettings,
+  type Notice,
+} from './rules.js';
 
 const BREVO_KEY = `xkeysib-${'a'.repeat(64)}-${'B'.repeat(16)}`;
 const SLACK_URL = 'https://hooks.slack.com/services/T0001/B0001/abcdefABCDEF0123456789xy';
@@ -300,6 +318,96 @@ describe('a text cut at line breaks', () => {
   it('measures a part as it is sent, and never cuts inside what one character is sent as', () => {
     assert.deepEqual(cutAtLineBreaks('&&&\n&&&', 15, escapeForSlack), ['&amp;&amp;&amp;', '&amp;&amp;&amp;']);
     assert.deepEqual(cutAtLineBreaks('&&&&', 12, escapeForSlack), ['&amp;&amp;', '&amp;&amp;']);
+  });
+});
+
+describe('the channel to one destination', () => {
+  const sender: EmailServiceSettings = { provider: 'brevo', senderAddress: 'alerts@example.org', senderName: 'Alerts' };
+  const toAda: DestinationChannelConfig = {
+    kind: 'email',
+    settings: sender,
+    secret: BREVO_KEY,
+    address: 'ada@example.org',
+  };
+  const toChat: DestinationChannelConfig = {
+    kind: 'telegram',
+    settings: {},
+    secret: TELEGRAM_TOKEN,
+    address: '111111111',
+  };
+
+  it('is the DestinationChannelFactory, and builds a channel for each service', () => {
+    const factory: DestinationChannelFactory = destinationChannelFrom;
+    assert.deepEqual(
+      [toAda, toChat].map((config) => factory(config).kind),
+      ['email', 'telegram'],
+    );
+  });
+
+  it("mails one person's notice to their address alone, from the service's sender", async () => {
+    const { fetch, sent } = fakeFetch(() => new Response('{}', { status: 201 }));
+    await destinationChannelFrom(toAda, { fetch }).send(notice);
+    assert.deepEqual(sent, [
+      {
+        method: 'POST',
+        url: 'https://api.brevo.com/v3/smtp/email',
+        headers: { accept: 'application/json', 'api-key': BREVO_KEY, 'content-type': 'application/json' },
+        body: {
+          sender: { email: 'alerts@example.org', name: 'Alerts' },
+          to: [{ email: 'ada@example.org' }],
+          subject: 'Stamp top-ups coming up',
+          textContent: 'Two stamps are due for a top-up.\nThe brand wallet sends tomorrow.',
+        },
+      },
+    ]);
+  });
+
+  it("sends two people's notices as two mails, neither naming the other", async () => {
+    const { fetch, sent } = fakeFetch(() => new Response('{}', { status: 201 }));
+    await destinationChannelFrom(toAda, { fetch }).send(notice);
+    await destinationChannelFrom({ ...toAda, address: 'grace@example.org' }, { fetch }).send(notice);
+    assert.deepEqual(
+      sent.map(({ body }) => body.to),
+      [[{ email: 'ada@example.org' }], [{ email: 'grace@example.org' }]],
+    );
+  });
+
+  it('sends to the Telegram chat the destination names, as the Telegram channel does', async () => {
+    const { fetch, sent } = fakeFetch(() => new Response('{"ok":true}', { status: 200 }));
+    await destinationChannelFrom(toChat, { fetch }).send(notice);
+    assert.deepEqual(sent, [
+      {
+        method: 'POST',
+        url: `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
+        headers: { 'content-type': 'application/json' },
+        body: {
+          chat_id: '111111111',
+          text: `${notice.title}\n\n${notice.text}`,
+          link_preview_options: { is_disabled: true },
+        },
+      },
+    ]);
+  });
+
+  it("keeps the service's secret out of sight, and calls nothing with one it would not have saved", async () => {
+    for (const config of [toAda, toChat]) {
+      const channel = destinationChannelFrom(config);
+      assert.equal(inspect(channel, { showHidden: true, depth: 10 }).includes(config.secret), false, config.kind);
+      assert.equal(JSON.stringify(channel).includes(config.secret), false, config.kind);
+    }
+    const { fetch, sent } = fakeFetch();
+    for (const config of [toAda, toChat]) {
+      await failure(destinationChannelFrom({ ...config, secret: 'too short' }, { fetch }).send(notice));
+    }
+    assert.equal(sent.length, 0);
+  });
+
+  it('sends through no email service it does not have', async () => {
+    const { fetch, sent } = fakeFetch();
+    const other = { ...sender, provider: 'other' } as unknown as EmailServiceSettings;
+    const error = await failure(destinationChannelFrom({ ...toAda, settings: other }, { fetch }).send(notice));
+    assert.equal(error.message, "The email channel's service is not one a notice can go out through.");
+    assert.equal(sent.length, 0);
   });
 });
 

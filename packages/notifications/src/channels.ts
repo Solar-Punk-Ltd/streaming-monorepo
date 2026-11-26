@@ -1,6 +1,7 @@
 /**
- * The channels a notice goes out on, built by {@link channelFrom}: email through its provider, Slack through an
- * incoming webhook, Telegram through a bot. `channel.ts` says what each one sends, and `call.ts` makes the calls.
+ * The channels a notice goes out on: email through its provider, Slack through an incoming webhook, Telegram through a
+ * bot. {@link destinationChannelFrom} builds the channel to one person's destination, and {@link channelFrom} a channel
+ * from its own settings. `channel.ts` says what each one sends, and `call.ts` makes the calls.
  */
 
 import { BrevoEmailProvider } from './brevo.js';
@@ -9,6 +10,7 @@ import {
   NotificationSendError,
   type Channel,
   type ChannelConfig,
+  type DestinationChannelConfig,
   type EmailProvider,
   type NotificationFetch,
 } from './channel.js';
@@ -19,10 +21,9 @@ import {
   storedChannelSecret,
   TELEGRAM_API_HOST,
   TELEGRAM_MESSAGE_MAX_LENGTH,
-  type EmailChannelSettings,
   type EmailProviderKind,
+  type EmailServiceSettings,
   type Notice,
-  type TelegramChannelSettings,
 } from './rules.js';
 
 /**
@@ -152,14 +153,19 @@ function emailProviderFrom(kind: string, apiKey: string, options: NotificationCa
   return Object.hasOwn(EMAIL_PROVIDERS, kind) ? EMAIL_PROVIDERS[kind as EmailProviderKind](apiKey, options) : null;
 }
 
-/** Email: the title is the subject, the text is the body, and the provider the settings name sends it. */
+/**
+ * Email: the title is the subject, the text is the body, and the provider the settings name sends it from the
+ * service's sender to the recipients, every one named in the one mail.
+ */
 class EmailChannel implements Channel {
   readonly kind = 'email';
-  readonly #settings: EmailChannelSettings;
+  readonly #sender: EmailServiceSettings;
+  readonly #recipients: readonly string[];
   readonly #provider: EmailProvider | null;
 
-  constructor(settings: EmailChannelSettings, provider: EmailProvider | null) {
-    this.#settings = settings;
+  constructor(sender: EmailServiceSettings, recipients: readonly string[], provider: EmailProvider | null) {
+    this.#sender = sender;
+    this.#recipients = recipients;
     this.#provider = provider;
   }
 
@@ -169,9 +175,9 @@ class EmailChannel implements Channel {
       throw new NotificationSendError("The email channel's service is not one a notice can go out through.");
     }
     await this.#provider.send({
-      senderAddress: this.#settings.senderAddress,
-      senderName: this.#settings.senderName,
-      recipients: this.#settings.recipients,
+      senderAddress: this.#sender.senderAddress,
+      senderName: this.#sender.senderName,
+      recipients: this.#recipients,
       subject: notice.title,
       text: notice.text,
     });
@@ -224,8 +230,8 @@ class TelegramChannel implements Channel {
   readonly #token: string;
   readonly #fetch: NotificationFetch | undefined;
 
-  constructor(settings: TelegramChannelSettings, token: string, options: NotificationCallOptions) {
-    this.#chatId = settings.chatId;
+  constructor(chatId: string, token: string, options: NotificationCallOptions) {
+    this.#chatId = chatId;
     this.#token = token;
     this.#fetch = options.fetch;
   }
@@ -263,10 +269,40 @@ class TelegramChannel implements Channel {
 export function channelFrom(config: ChannelConfig, options: NotificationCallOptions = {}): Channel {
   switch (config.kind) {
     case 'email':
-      return new EmailChannel(config.settings, emailProviderFrom(config.settings.provider, config.secret, options));
+      return new EmailChannel(
+        config.settings,
+        config.settings.recipients,
+        emailProviderFrom(config.settings.provider, config.secret, options),
+      );
     case 'slack':
       return new SlackChannel(config.secret, options);
     case 'telegram':
-      return new TelegramChannel(config.settings, config.secret, options);
+      return new TelegramChannel(config.settings.chatId, config.secret, options);
+  }
+}
+
+/**
+ * Builds the channel a notice reaches one person on, from the service's kind, settings and secret and the person's
+ * destination: the `DestinationChannelFactory` the admin sends each person's notice through. It makes no call.
+ *
+ * - **email** sends one mail, from the service's sender, to the destination's address alone, so two people's notices
+ *   are two mails and neither names the other.
+ * - **telegram** sends to the chat whose id the destination is, as the Telegram channel always does.
+ *
+ * A channel whose secret no longer passes `serviceSecretProblem` calls nothing and fails its sends.
+ */
+export function destinationChannelFrom(
+  config: DestinationChannelConfig,
+  options: NotificationCallOptions = {},
+): Channel {
+  switch (config.kind) {
+    case 'email':
+      return new EmailChannel(
+        config.settings,
+        [config.address],
+        emailProviderFrom(config.settings.provider, config.secret, options),
+      );
+    case 'telegram':
+      return new TelegramChannel(config.address, config.secret, options);
   }
 }
