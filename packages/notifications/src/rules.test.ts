@@ -12,21 +12,35 @@ import {
   BREVO_API_HOST,
   channelSecretProblem,
   channelSettingsProblems,
+  destinationAddressProblem,
   emailAddressProblem,
   EMAIL_RECIPIENTS_MAX,
   emailRecipientsProblems,
+  isNoticeServiceKind,
   isNotificationChannelKind,
+  isTelegramBotUsername,
+  isTelegramChatCode,
+  NOTICE_SERVICE_KINDS,
   NOTICE_TITLE_MAX_LENGTH,
   noticeProblem,
   NOTIFICATION_CHANNEL_KINDS,
   NOTIFICATION_SECRET_MAX_LENGTH,
   SLACK_WEBHOOK_HOST,
+  serviceSecretProblem,
+  serviceSettingsProblems,
   storedChannelSecret,
   storedChannelSettings,
+  storedDestinationAddress,
   storedEmailAddress,
+  storedServiceSettings,
   TELEGRAM_API_HOST,
+  TELEGRAM_CHAT_CODE_ALPHABET,
+  TELEGRAM_CHAT_CODE_LENGTH,
   TELEGRAM_MESSAGE_MAX_LENGTH,
+  telegramStartLink,
+  telegramTextSendsCode,
   type EmailChannelSettings,
+  type EmailServiceSettings,
 } from './rules.js';
 
 const email: EmailChannelSettings = {
@@ -226,5 +240,109 @@ describe("a channel's settings", () => {
     });
     assert.deepEqual(storedChannelSettings('telegram', { chatId: ' -42 ' }), { chatId: '-42' });
     assert.deepEqual(storedChannelSettings('slack', {}), {});
+  });
+});
+
+const emailService: EmailServiceSettings = {
+  provider: 'brevo',
+  senderAddress: 'alerts@example.org',
+  senderName: 'Stream alerts',
+};
+
+describe('the services', () => {
+  it('are email and Telegram, in that order', () => {
+    assert.deepEqual([...NOTICE_SERVICE_KINDS], ['email', 'telegram']);
+    assert.equal(isNoticeServiceKind('telegram'), true);
+    assert.equal(isNoticeServiceKind('slack'), false);
+    assert.equal(isNoticeServiceKind(undefined), false);
+  });
+
+  it('take a provider and a sender for email, and name no recipient', () => {
+    assert.deepEqual(serviceSettingsProblems('email', emailService), []);
+    assert.deepEqual(serviceSettingsProblems('email', { ...emailService, senderName: '' }), []);
+    assert.equal(serviceSettingsProblems('email', { ...emailService, provider: 'smtp' }).length, 1);
+    assert.equal(serviceSettingsProblems('email', { ...emailService, senderAddress: 'alerts' }).length, 1);
+    assert.equal(serviceSettingsProblems('email', { ...emailService, senderName: 'One\nTwo' }).length, 1);
+    assert.equal(serviceSettingsProblems('email', {}).length, 3);
+    assert.equal(serviceSettingsProblems('email', null).length, 1);
+    assert.deepEqual(
+      storedServiceSettings('email', {
+        ...emailService,
+        senderAddress: ' Alerts@Example.org ',
+        senderName: ' Stream alerts ',
+        recipients: ['ops@example.org'],
+      } as EmailServiceSettings),
+      emailService,
+    );
+  });
+
+  it('take no settings for Telegram, and keep none a form sent', () => {
+    assert.deepEqual(serviceSettingsProblems('telegram', {}), []);
+    assert.equal(serviceSettingsProblems('telegram', 'bot').length, 1);
+    assert.deepEqual(storedServiceSettings('telegram', { chatId: '1' } as unknown as Record<string, never>), {});
+  });
+
+  it('check a secret as the channel of the same kind does', () => {
+    assert.equal(serviceSecretProblem('telegram', TELEGRAM_TOKEN), null);
+    assert.notEqual(serviceSecretProblem('telegram', 'not a token'), null);
+    assert.equal(serviceSecretProblem('email', 'xkeysib-made-up-for-the-test'), null);
+    assert.notEqual(serviceSecretProblem('email', 'short'), null);
+  });
+});
+
+describe('a destination', () => {
+  it('is an email address on the email service, kept trimmed and in lower case', () => {
+    assert.equal(destinationAddressProblem('email', 'ops@example.org'), null);
+    assert.notEqual(destinationAddressProblem('email', 'ops'), null);
+    assert.notEqual(destinationAddressProblem('email', ''), null);
+    assert.notEqual(destinationAddressProblem('email', ['ops@example.org']), null);
+    assert.equal(storedDestinationAddress('email', ' Ops@Example.org '), 'ops@example.org');
+  });
+
+  it("is a chat's id or a public channel's name on Telegram, kept trimmed", () => {
+    for (const chatId of ['123456789', '-1001234567890', '@channelname']) {
+      assert.equal(destinationAddressProblem('telegram', chatId), null, chatId);
+    }
+    for (const chatId of ['', '0', '012', '12.5', 'channelname', '@ab', 'https://t.me/channelname']) {
+      assert.notEqual(destinationAddressProblem('telegram', chatId), null, chatId);
+    }
+    assert.notEqual(destinationAddressProblem('telegram', 123456789), null);
+    assert.equal(storedDestinationAddress('telegram', ' -1001234567890 '), '-1001234567890');
+  });
+});
+
+describe("the code that finds one's Telegram chat", () => {
+  const code = 'ABCDEFGH23';
+
+  it('is ten characters of its alphabet, which leaves out the ones read for one another', () => {
+    assert.equal(TELEGRAM_CHAT_CODE_LENGTH, 10);
+    for (const confused of ['I', 'L', 'O', '0', '1']) {
+      assert.equal(TELEGRAM_CHAT_CODE_ALPHABET.includes(confused), false, confused);
+    }
+    assert.equal(isTelegramChatCode(code), true);
+    assert.equal(isTelegramChatCode(TELEGRAM_CHAT_CODE_ALPHABET.slice(0, TELEGRAM_CHAT_CODE_LENGTH)), true);
+    assert.equal(isTelegramChatCode('ABCDEFGH2'), false);
+    assert.equal(isTelegramChatCode('ABCDEFGH2O'), false);
+    assert.equal(isTelegramChatCode('abcdefgh23'), false);
+    assert.equal(isTelegramChatCode(undefined), false);
+  });
+
+  it('is sent by a message that holds it alone, or after /start', () => {
+    assert.equal(telegramTextSendsCode(code, code), true);
+    assert.equal(telegramTextSendsCode(` ${code.toLowerCase()}\n`, code), true);
+    assert.equal(telegramTextSendsCode(`/start ${code}`, code), true);
+    assert.equal(telegramTextSendsCode(`/start@stream_alerts_bot ${code}`, code), true);
+    assert.equal(telegramTextSendsCode(`my code is ${code}`, code), false);
+    assert.equal(telegramTextSendsCode('/start', code), false);
+    assert.equal(telegramTextSendsCode(`${code}X`, code), false);
+    assert.equal(telegramTextSendsCode('not a code', 'not a code'), false);
+  });
+
+  it("goes in the bot's start link, which takes these characters", () => {
+    assert.equal(isTelegramBotUsername('stream_alerts_bot'), true);
+    assert.equal(isTelegramBotUsername('@stream_alerts_bot'), false);
+    assert.equal(isTelegramBotUsername('bot'), false);
+    assert.equal(telegramStartLink('stream_alerts_bot', code), `https://t.me/stream_alerts_bot?start=${code}`);
+    assert.match(TELEGRAM_CHAT_CODE_ALPHABET, /^[A-Za-z0-9_-]+$/);
   });
 });

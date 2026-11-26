@@ -1,18 +1,8 @@
 import type { NotificationChannelKind, NotificationChannelSettingsByKind } from '@streaming-monorepo/web2-admin-common';
 
-/**
- * A channel's secret as it is kept: encrypted with AES-256-GCM under the key of `keyVersion`. `channelSecrets.ts`
- * seals and opens it.
- */
-export interface SealedSecret {
-  ciphertext: Buffer;
-  /** The 12 random bytes this encryption used. */
-  iv: Buffer;
-  /** GCM's 16-byte tag. */
-  authTag: Buffer;
-  /** Which key it is under. */
-  keyVersion: number;
-}
+import type { SealedSecret } from './NoticeStore.js';
+
+export type { SealedSecret } from './NoticeStore.js';
 
 /** One row of `notification_channels`, migration 035: a saved channel. */
 export type NotificationChannelRow = {

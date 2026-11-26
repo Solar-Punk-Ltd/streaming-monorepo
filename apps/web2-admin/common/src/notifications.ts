@@ -1,10 +1,7 @@
 /**
- * The admin's notifications: the channels a notice goes out on, set on the Notifications page, and what that page and
- * the Funding page's Auto top-up tab show of them. `docs/architecture/notifications.md` is the design.
- *
- * The channels, their settings and the checks of those are the shared notifications package's, re-exported here, so
- * the console's forms and the API refuse the same values. What is written here is the admin's own: its routes and
- * what they answer. Every moment on the wire is ISO 8601.
+ * The channels a notice went out on before each user had destinations of their own: one set for the whole admin,
+ * email, Slack and Telegram. `notices.ts` holds what the admin goes by now, and migration 037 has taken these
+ * channels' tables. These shapes stay for the code that still reads them, and go with it.
  */
 
 import type {
@@ -13,10 +10,7 @@ import type {
   TelegramChat,
 } from '@streaming-monorepo/notifications/rules';
 
-export * from '@streaming-monorepo/notifications/rules';
-
-/** `GET`: the Notifications page's view. */
-export const NOTIFICATIONS_PATH = '/api/notifications';
+import { NOTIFICATIONS_PATH } from './notices.js';
 
 /** `PUT`: save a channel, behind the operator's password. `DELETE`: remove it, with its secret. */
 export function notificationChannelPath(kind: NotificationChannelKind): string {
@@ -36,26 +30,8 @@ export function notificationChannelTestPath(kind: NotificationChannelKind): stri
 /** `POST`: Find chat id, the chats that wrote to the Telegram bot within the last day. */
 export const TELEGRAM_CHATS_PATH = `${NOTIFICATIONS_PATH}/channels/telegram/chats`;
 
-/** The least time between two test notices on one channel: a minute. */
-export const NOTIFICATION_TEST_EVERY_SECONDS = 60;
-
-/**
- * How long a notice waits for a channel that could not take it while another did: a day from when it was raised.
- * After that it is dropped.
- */
-export const NOTIFICATION_WAIT_SECONDS = 24 * 60 * 60;
-
-/** 409: the admin has no secret to seal a channel's secret under, so no channel can be saved. */
-export const NOTIFICATIONS_UNAVAILABLE_ERROR = 'notifications_unavailable';
-
 /** 409: the channel named was never saved, so there is nothing to switch or to test. */
 export const NOTIFICATION_CHANNEL_NOT_SAVED_ERROR = 'channel_not_saved';
-
-/**
- * 429: a test notice went out on this channel less than {@link NOTIFICATION_TEST_EVERY_SECONDS} ago. The answer
- * carries `retryAfterSeconds`.
- */
-export const NOTIFICATION_TEST_TOO_SOON_ERROR = 'test_too_soon';
 
 /**
  * `PUT /api/notifications/channels/:kind`: save the channel's settings and its secret, behind the operator's password

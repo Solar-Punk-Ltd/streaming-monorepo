@@ -2,6 +2,7 @@ import { NotificationSendError, type Channel, type ChannelFactory } from '@strea
 import {
   NOTIFICATION_WAIT_SECONDS,
   type Notice,
+  type NoticeTopic,
   type NotificationChannelKind,
 } from '@streaming-monorepo/web2-admin-common';
 
@@ -12,9 +13,12 @@ import type { NotifyOutcome, Notifier, OutgoingNotice, RetryOutcome } from './No
 import { ChannelSecretError, openChannelSecret } from './channelSecrets.js';
 
 /**
- * The admin's {@link Notifier} (docs/architecture/notifications.md): it sends a notice on every channel that is on,
+ * The admin's {@link Notifier} over the channels of migration 035: it sends a notice on every channel that is on,
  * side by side, records on each how it went, and keeps a notice for each channel that could not take it while another
  * did. It decides nothing of what a notice says or when one goes out.
+ *
+ * It reads the channels where the `Notifier` speaks of people: every channel that is on gets every topic, so a notice
+ * goes out whole, written from all its parts, and a channel counts as one person with one destination.
  *
  * A channel is built for each send from its saved row: its secret is opened for that send and handed to the factory,
  * and nothing keeps it. With no key, as when `BRAND_WALLET_SECRET` is unset, a saved channel cannot be opened, and
@@ -65,12 +69,23 @@ export class NotificationDispatcher implements Notifier {
     this.now = options.now ?? (() => new Date());
   }
 
-  async on(): Promise<boolean> {
+  async on(_topic: NoticeTopic): Promise<boolean> {
     return (await this.store.channels()).some((channel) => channel.enabled);
   }
 
-  async notify(notice: OutgoingNotice): Promise<NotifyOutcome> {
+  async notify<T>(outgoing: OutgoingNotice<T>): Promise<NotifyOutcome> {
     const channels = (await this.store.channels()).filter((channel) => channel.enabled);
+    const outcomeOf = (sent: number, failed: number): NotifyOutcome => ({
+      parts: outgoing.parts.map((part) => ({ subject: part.subject, people: channels.length, taken: sent > 0 })),
+      sent,
+      failed,
+    });
+    if (channels.length === 0) return outcomeOf(0, 0);
+    const notice = {
+      ...outgoing.compose(outgoing.parts),
+      raisedAt: outgoing.raisedAt,
+      subjects: outgoing.parts.map((part) => part.subject),
+    };
     const results = await Promise.all(
       channels.map(async (row) => ({
         kind: row.kind,
@@ -79,7 +94,7 @@ export class NotificationDispatcher implements Notifier {
     );
     const at = this.now();
     const taken: NotificationChannelKind[] = [];
-    const failed: NotifyOutcome['failed'] = [];
+    const failed: { kind: NotificationChannelKind; error: string }[] = [];
     for (const { kind, error } of results) {
       if (error === null) {
         taken.push(kind);
@@ -105,7 +120,7 @@ export class NotificationDispatcher implements Notifier {
         );
       }
     }
-    return { notified: taken.length > 0, taken, failed };
+    return outcomeOf(taken.length, failed.length);
   }
 
   /**

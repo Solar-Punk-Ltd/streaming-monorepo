@@ -101,8 +101,12 @@ The settings of [auto top-up](#auto-top-up), and what its three jobs are doing.
 - **A pause switch for each job**, with the job's last run and its outcome.
 - **Where things stand:** the monthly estimate for the marked stamps beside the brand wallet's
   balances, what the wallet job sent in the last 24 hours, the top-ups coming up, the warnings that
-  stand, and each notification channel: whether it is on, when it last took a notice and why one
-  failed. The channels are set on the Notifications page ([notifications.md](notifications.md)).
+  stand, and the [stamps not on auto top-up](#stamps-not-on-auto-top-up) that are running low.
+- **The notices:** beside each kind of notice, how many people get it, or that nobody does and it
+  shows here alone. Each notification service: whether it is on, when it last took a notice, its
+  latest failure, and how many destinations failed their last notice. Your own destinations, with
+  why one failed. Each user sets where their notices go, and which ones they get, on the
+  Notifications page ([notifications.md](notifications.md)).
 
 ### Fund all and Select all
 
@@ -216,7 +220,8 @@ database.
 1. **The alert job** moves no money. For a marked stamp within a day of the threshold it works out
    the days the top-up adds, its cost, the cost plus the margin, and what the brand wallet will
    send the stamp's node. It records that alert, shows it on the Auto top-up tab and sends it as a
-   notice. It also sends the notices of every warning that stands.
+   notice. It also sends the notices of every warning that stands, and of the stamps not on auto
+   top-up that are running low.
 2. **The wallet job** sends from the brand wallet, signed with no password. For a due top-up whose
    node holds less xBZZ than it costs, it sends the node what it lacks for the cost plus the
    margin. A node that holds less than 0.001 xDAI for each of its due top-ups is sent 0.01 xDAI.
@@ -238,9 +243,9 @@ that meets a person's open send or stamp operation waits for the next tick.
 | About 10 minutes later | The send is mined, the stamp is topped up and is back at 14 days                                                  |
 
 - **The notice rule.** The wallet job sends for a top-up once its alert is a day old. The day
-  counts from one notification channel taking the alert's notice, or, with no channel on, from the
-  alert showing on the tab. A stamp with under 2 days left is sent for at once, and the notice says
-  so.
+  counts from the first destination taking a notice that holds the alert, or, while nobody gets
+  "Top-ups coming up", from the alert showing on the tab. A stamp with under 2 days left is sent
+  for at once, and the notice says so.
 - **The amount rule.** A send is at most what its alert said. When a top-up lacks more than that,
   a new alert goes out with the new figure and its day counts again. The margin covers a day of
   the price's fastest rise: the price oracle moves it by at most 0.08% each 152 blocks, 9.5% a day.
@@ -260,9 +265,11 @@ What a marked stamp's state means for the stamp job:
 
 ### Notices and warnings
 
-The alerts and warnings show on the Auto top-up tab and go out as notices on every notification
-channel that is on: email, Slack and Telegram ([notifications.md](notifications.md)). With no
-channel on they show on the tab alone.
+The alerts and warnings show on the Auto top-up tab and go out as notices to the people who ticked
+their topic on the Notifications page, each to their own email address and Telegram chat
+([notifications.md](notifications.md)). A notice whose topic nobody gets shows on the tab alone,
+and the tab says so beside it. The two notices of the brand wallet share the topic "The brand wallet
+is low", and every other notice of this table is a topic by its own name.
 
 | Notice                          | When it goes                                                                              | What it says                                                                                              |
 | ------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -296,12 +303,43 @@ reading.
   day ahead or more.
 - A standing warning's first notice goes at once, together with the others raised by the same
   tick. The daily repeats go as one notice that lists every warning still standing.
-- A notice is given once one channel took it. One that no channel took is sent again at the next
-  tick. A channel that could not take a notice another channel took gets it again at each tick for
-  a day, with the time it was raised, while something it tells of still stands. The tab says why a
-  channel failed. The top-ups go on.
+- Each person reads one notice for what a tick raised under the topics they ticked: one for the
+  coming top-ups, one for the new warnings, one for the warnings still standing.
+- A top-up or a warning is given once one destination took a notice that told of it. One that no
+  destination took is sent again at the next tick. A destination that could not take its notice,
+  while another took what it tells of, gets it again at each tick for a day, with the time it was
+  raised, while something it tells of still stands. Each user reads on the Notifications page why
+  their destination failed, and the tab counts the destinations that did. The top-ups go on.
 - The alert job sends every notice and tries the waiting ones again, so while it is paused no
   notice goes out.
+
+### Stamps not on auto top-up
+
+The alert job also reads every stamp the Stamps tab lists without a mark: the catalogue batch, the
+archive stamps and each stage's batches. The admin tops none of them up. One that runs low is listed
+on the Auto top-up tab and told of in a notice, so a person can top it up on the Stamps tab or mark
+it.
+
+| The unmarked stamp                                | What happens                                           |
+| ------------------------------------------------- | ------------------------------------------------------ |
+| Under "Top up when under", 7 days                 | It is listed on the tab, and a notice tells of it      |
+| Still under it, a day after it was last told of   | The day's notice lists it with every other one that is |
+| Under 2 days                                      | A second notice tells of it                            |
+| Expired, or its node holds it no more             | A last notice tells of it, once                        |
+| Topped up to "Top up when under" or above, marked | It leaves the list, and a mark's own rule takes over   |
+
+- The notices go under two topics, which each user ticks on the Notifications page: "Catalogue and
+  archive stamps" and "Stage stamps". Both start unticked. A stage's batch runs out by design after
+  its event, so its topic is one to tick for the stages that are meant to last.
+- The stamps a tick finds go as one notice, and each person's holds the stamps of the topics they
+  ticked. A notice names each stamp as a marked one is named, with the time it has left and what a
+  person can do.
+- An unmarked stamp is read as a marked one is: its batch whole and usable, on a node whose view of
+  the chain is current. One that could not be read keeps its place on the list for that tick.
+- A stamp is listed from the tick that first reads it under "Top up when under" with time left. An
+  expired one stays listed while the manager lists its batch, and for a day after that.
+- Nothing here raises a warning, fails a job or moves money, and the monthly estimate counts the
+  marked stamps alone.
 
 ## Who does what
 
@@ -422,7 +460,7 @@ the next send and the Funding page refresh the open one, and the page resumes it
 
 | Setting               | Where                        | What it is                                                                                                                                                                                         |
 | --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under, and the notification channels' secrets through a key derived from it. Unset, no wallet exists and no channel can be saved |
+| `BRAND_WALLET_SECRET` | the admin's env file         | 64 hex characters. The secret the brand wallet's key is encrypted under, and the notification services' secrets through a key derived from it. Unset, no wallet exists and no service can be saved |
 | `MANAGER_API_URL`     | the admin's env file         | the manager's address. Read as `MANAGER_FUNDING_URL` when unset. Empty, funding is not set up and the Funding page says so                                                                         |
 | `MANAGER_API_TOKEN`   | the admin's env file         | the manager's `MANAGER_API_TOKEN`, the same value. Read as `MANAGER_FUNDING_TOKEN` when unset                                                                                                      |
 | `MANAGER_API_TOKEN`   | the manager's `manager/.env` | 32 characters or more with no space. Read as `FUNDING_API_TOKEN` when unset. Unset, the API is off                                                                                                 |

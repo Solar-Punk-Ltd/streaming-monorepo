@@ -15,6 +15,7 @@ import {
   autoTopUpStampPlan,
   type AutoTopUpSettings,
   type FundingPostage,
+  type Notice,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { FundingBatch, FundingInventory, FundingNode } from '@streaming-monorepo/contracts';
@@ -74,25 +75,39 @@ function at(seconds: number): Date {
   return new Date(T0.getTime() + seconds * 1000);
 }
 
+/** A notice as a destination took it: written from all its parts, with when it was raised and what it tells of. */
+interface TakenNotice extends Notice {
+  raisedAt: Date;
+  subjects: string[];
+}
+
 /**
- * A notifier with one channel, email, that records each notice it takes, and fails while `failWith` is set. It records
- * each call to try the waiting notices again, with what stood then.
+ * A notifier with one person, who gets every topic on one destination. It records each notice that destination takes,
+ * fails while `failWith` is set, and has nobody to send to while `isOn` is false. It records each call to try the
+ * waiting notices again, with what stood then.
  */
 class RecordingNotifier implements Notifier {
   isOn = true;
   failWith: string | null = null;
-  sent: OutgoingNotice[] = [];
+  sent: TakenNotice[] = [];
   retries: { now: Date; stands: (subject: string) => boolean }[] = [];
   async on(): Promise<boolean> {
     return this.isOn;
   }
-  async notify(notice: OutgoingNotice): Promise<NotifyOutcome> {
-    if (!this.isOn) return { notified: false, taken: [], failed: [] };
-    if (this.failWith !== null) {
-      return { notified: false, taken: [], failed: [{ kind: 'email', error: this.failWith }] };
-    }
-    this.sent.push(notice);
-    return { notified: true, taken: ['email'], failed: [] };
+  async notify<T>(notice: OutgoingNotice<T>): Promise<NotifyOutcome> {
+    const outcome = (people: number, sent: number, failed: number): NotifyOutcome => ({
+      parts: notice.parts.map((part) => ({ subject: part.subject, people, taken: sent > 0 })),
+      sent,
+      failed,
+    });
+    if (!this.isOn) return outcome(0, 0, 0);
+    if (this.failWith !== null) return outcome(1, 0, 1);
+    this.sent.push({
+      ...notice.compose(notice.parts),
+      raisedAt: notice.raisedAt,
+      subjects: notice.parts.map((part) => part.subject),
+    });
+    return outcome(1, 1, 0);
   }
   async retryWaiting(now: Date, stands: (subject: string) => boolean): Promise<RetryOutcome> {
     this.retries.push({ now, stands });
@@ -251,7 +266,7 @@ describe('the alert job records an alert', () => {
     assert.equal(notifier.sent.length, 0);
     assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
     assert.equal(outcome.ok, true);
-    assert.match(outcome.outcome, /no notification channel is on/);
+    assert.match(outcome.outcome, /nobody gets the notices/);
   });
 
   it('names what the brand wallet sends a short node, and when', async () => {
@@ -427,7 +442,7 @@ describe('a notice no channel took', () => {
     assert.equal(outcome.ok, false);
     assert.match(
       outcome.outcome,
-      /No channel took the notice "Stamp auto top-up: 1 top-up coming up": email: The email service answered 401/,
+      /No destination took the notice "Stamp auto top-up: 1 top-up coming up": 1 destination could not take it/,
     );
     assert.ok(alertOf(BATCH_1) !== null, 'the alert is recorded all the same');
     assert.equal(alertOf(BATCH_1)?.alertedAt, null);

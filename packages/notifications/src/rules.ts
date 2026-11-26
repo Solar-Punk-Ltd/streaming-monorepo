@@ -332,3 +332,196 @@ export function storedChannelSettings(
       return { chatId: (settings as TelegramChannelSettings).chatId.trim() };
   }
 }
+
+// ------------------------------------------- the services and the destinations
+
+/**
+ * The services a notice goes out through, in the order a view lists them: an email service, and a Telegram bot. One
+ * of each serves everyone. Its settings and its secret are the shared part, which a view may show and nothing shows:
+ * the email service's sender and its API key, and the Telegram bot's token.
+ */
+export const NOTICE_SERVICE_KINDS = ['email', 'telegram'] as const;
+export type NoticeServiceKind = (typeof NOTICE_SERVICE_KINDS)[number];
+
+export function isNoticeServiceKind(value: unknown): value is NoticeServiceKind {
+  return (NOTICE_SERVICE_KINDS as readonly unknown[]).includes(value);
+}
+
+/** What a view calls each service. */
+export const NOTICE_SERVICE_NAMES: Readonly<Record<NoticeServiceKind, string>> = {
+  email: 'Email',
+  telegram: 'Telegram',
+};
+
+/** What each service's secret is, as a form names its field. */
+export const NOTICE_SERVICE_SECRET_NAMES: Readonly<Record<NoticeServiceKind, string>> = {
+  email: 'API key',
+  telegram: 'Bot token',
+};
+
+/** The email service's settings. Its secret is the service's API key. */
+export interface EmailServiceSettings {
+  /** The service the mails go through. */
+  provider: EmailProviderKind;
+  /** The address the mails come from, one the service sends for. Trimmed, in lower case. */
+  senderAddress: string;
+  /** The name shown beside that address, or empty for none. */
+  senderName: string;
+}
+
+/** The Telegram service's settings: none. Its secret is the bot's token. */
+export type TelegramServiceSettings = Record<string, never>;
+
+/** Each service's settings, by its kind. */
+export interface NoticeServiceSettingsByKind {
+  email: EmailServiceSettings;
+  telegram: TelegramServiceSettings;
+}
+
+export type NoticeServiceSettings = NoticeServiceSettingsByKind[NoticeServiceKind];
+
+/**
+ * Why these cannot be the service's settings, a sentence each, or an empty list when they can be saved. It takes what
+ * a request's body holds, of any shape.
+ */
+export function serviceSettingsProblems(kind: NoticeServiceKind, settings: unknown): string[] {
+  if (!isRecord(settings)) return [`The ${NOTICE_SERVICE_NAMES[kind]} settings are missing.`];
+  switch (kind) {
+    case 'email': {
+      const problems: string[] = [];
+      if (!(EMAIL_PROVIDER_KINDS as readonly unknown[]).includes(settings.provider)) {
+        problems.push(`The email service is one of: ${EMAIL_PROVIDER_KINDS.join(', ')}.`);
+      }
+      if (typeof settings.senderAddress !== 'string') {
+        problems.push('Enter the sender address.');
+      } else {
+        const problem = emailAddressProblem(settings.senderAddress);
+        if (problem !== null) problems.push(`The sender address: ${problem}`);
+      }
+      if (
+        typeof settings.senderName !== 'string' ||
+        settings.senderName.trim().length > EMAIL_SENDER_NAME_MAX_LENGTH ||
+        !SENDER_NAME_PATTERN.test(settings.senderName)
+      ) {
+        problems.push(
+          `The sender's name is one line of at most ${EMAIL_SENDER_NAME_MAX_LENGTH} characters, with no quotation mark, angle bracket or backslash.`,
+        );
+      }
+      return problems;
+    }
+    case 'telegram':
+      return [];
+  }
+}
+
+/**
+ * The settings as they are kept, once {@link serviceSettingsProblems} found nothing: the sender's address trimmed and
+ * in lower case, its name trimmed, and nothing a form sent beside them.
+ */
+export function storedServiceSettings<K extends NoticeServiceKind>(
+  kind: K,
+  settings: NoticeServiceSettingsByKind[K],
+): NoticeServiceSettingsByKind[K];
+export function storedServiceSettings(kind: NoticeServiceKind, settings: NoticeServiceSettings): NoticeServiceSettings {
+  switch (kind) {
+    case 'email': {
+      const email = settings as EmailServiceSettings;
+      return {
+        provider: email.provider,
+        senderAddress: storedEmailAddress(email.senderAddress),
+        senderName: email.senderName.trim(),
+      };
+    }
+    case 'telegram':
+      return {};
+  }
+}
+
+/** Why this cannot be the service's secret, in a sentence that never repeats it, or null. A secret is kept trimmed. */
+export function serviceSecretProblem(kind: NoticeServiceKind, secret: string): string | null {
+  return channelSecretProblem(kind, secret);
+}
+
+/**
+ * A destination is where one person's notices go on one service, as one line of text: for email the person's address,
+ * and for Telegram the id of the chat the bot writes to, a whole number, negative for a group, or a public channel's
+ * name with its `@`. This is what a view calls each.
+ */
+export const NOTICE_DESTINATION_NAMES: Readonly<Record<NoticeServiceKind, string>> = {
+  email: 'Email address',
+  telegram: 'Telegram chat',
+};
+
+/** A destination's address as it is kept: trimmed, and an email address in lower case. */
+export function storedDestinationAddress(kind: NoticeServiceKind, address: string): string {
+  return kind === 'email' ? storedEmailAddress(address) : address.trim();
+}
+
+/** Why this cannot be a destination on the service, in a sentence, or null. It takes what a request's body holds. */
+export function destinationAddressProblem(kind: NoticeServiceKind, address: unknown): string | null {
+  if (typeof address !== 'string') return `Enter the ${NOTICE_DESTINATION_NAMES[kind].toLowerCase()}.`;
+  switch (kind) {
+    case 'email':
+      return emailAddressProblem(address);
+    case 'telegram': {
+      const chatId = address.trim();
+      return TELEGRAM_CHAT_NUMBER_PATTERN.test(chatId) || TELEGRAM_CHAT_NAME_PATTERN.test(chatId)
+        ? null
+        : "The chat id is a whole number, such as 123456789 for your own chat with the bot, or a public channel's name, such as @channelname.";
+    }
+  }
+}
+
+// ------------------------------------------------------- finding one's chat
+
+/**
+ * A Telegram bot as the Bot API's `getMe` names it: the bot a person writes to, so that it can write to them.
+ * https://core.telegram.org/bots/api#getme
+ */
+export interface TelegramBot {
+  /** Its username, with no `@`: the name in its `t.me` link. */
+  username: string;
+  /** The name it shows in a chat, one line of at most {@link TELEGRAM_CHAT_NAME_MAX_LENGTH} characters. */
+  name: string;
+}
+
+/** A bot's username: a letter, then letters, digits and underscores, 5 to 32 in all. */
+const TELEGRAM_BOT_USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{4,31}$/;
+
+export function isTelegramBotUsername(value: unknown): value is string {
+  return typeof value === 'string' && TELEGRAM_BOT_USERNAME_PATTERN.test(value);
+}
+
+/**
+ * The code a person sends to the bot from the chat their notices are to go to, so that the chat can be told from every
+ * other one that wrote to the bot. It is drawn at random for one person and holds for a short while, and it tells
+ * nothing by itself.
+ */
+export const TELEGRAM_CHAT_CODE_LENGTH = 10;
+
+/** The characters a code is drawn from: capital letters and digits, without the ones read for one another. */
+export const TELEGRAM_CHAT_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+const TELEGRAM_CHAT_CODE_PATTERN = new RegExp(`^[${TELEGRAM_CHAT_CODE_ALPHABET}]{${TELEGRAM_CHAT_CODE_LENGTH}}$`);
+
+export function isTelegramChatCode(value: unknown): value is string {
+  return typeof value === 'string' && TELEGRAM_CHAT_CODE_PATTERN.test(value);
+}
+
+/**
+ * Whether a message's text sends this code: the code alone, or after `/start`, which is what Telegram sends when a
+ * person opens {@link telegramStartLink} and presses Start, in a group with the bot's name after the command. Spaces
+ * around it and the case of its letters make no difference.
+ */
+export function telegramTextSendsCode(text: string, code: string): boolean {
+  const said = text.trim().replace(/^\/start(@[A-Za-z0-9_]+)?\s+/i, '');
+  return isTelegramChatCode(code) && said.toUpperCase() === code;
+}
+
+/**
+ * The link that opens a person's own chat with the bot and, once they press Start, sends the code from it.
+ * https://core.telegram.org/bots/features#deep-linking
+ */
+export function telegramStartLink(botUsername: string, code: string): string {
+  return `https://t.me/${botUsername}?start=${code}`;
+}

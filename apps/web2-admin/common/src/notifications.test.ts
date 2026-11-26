@@ -8,10 +8,8 @@ import { describe, it } from 'node:test';
 import * as shared from '@streaming-monorepo/notifications/rules';
 
 import * as common from './index.js';
+import { NOTIFICATION_TEST_EVERY_SECONDS, NOTIFICATION_WAIT_SECONDS, NOTIFICATIONS_PATH } from './notices.js';
 import {
-  NOTIFICATION_TEST_EVERY_SECONDS,
-  NOTIFICATION_WAIT_SECONDS,
-  NOTIFICATIONS_PATH,
   notificationChannelEnabledPath,
   notificationChannelPath,
   notificationChannelTestPath,

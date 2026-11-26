@@ -513,47 +513,48 @@ have the details of both paths.
 ## Notifications from the admin
 
 The admin sends the alerts and warnings of its stamp auto top-up
-([funding.md](architecture/funding.md#auto-top-up)) as notices on the channels set on its
-Notifications page: email, Slack and Telegram ([notifications.md](architecture/notifications.md)).
-Every notice goes out on every channel that is on. With no channel on, the alerts and warnings show
-on the Funding page alone.
+([funding.md](architecture/funding.md#auto-top-up)) as notices to its users, each to their own
+email address and Telegram chat ([notifications.md](architecture/notifications.md)). The brand sets
+up the services the notices go out through, once. Each user then enters where their own notices go
+and ticks the ones they want. A notice nobody gets shows on the Funding page alone.
 
-A channel is saved on the page with its settings and its secret, behind your password. The admin
-keeps the secret encrypted under `BRAND_WALLET_SECRET` and shows it nowhere. **Send a test notice**
-on a saved channel shows at once whether it works. The **?** beside a channel's name on the page
-shows how to set that channel up.
+**The services** are saved on the Notifications page by a user with the admin role, each with its
+settings and its secret, behind the password. The admin keeps the secret encrypted under
+`BRAND_WALLET_SECRET` and shows it nowhere. The **?** beside a service's name on the page shows how
+to set that service up.
 
 The admin host calls each service over HTTPS on port 443, so its outgoing traffic has to reach the
-hosts of the channels you use: `api.brevo.com`, `hooks.slack.com` and `api.telegram.org`.
+hosts of the services you use: `api.brevo.com` and `api.telegram.org`.
 
 **Email, through Brevo.** Create an account at Brevo, and then:
 
-1. Make an API key in the account's settings. It is the channel's secret.
+1. Make an API key in the account's settings. It is the service's secret.
 2. Give the mails a sender Brevo sends for. With your own domain, add the DNS records Brevo gives
    you to the domain and wait until Brevo shows it as authenticated: the sender is then any address
    of that domain, such as `alerts@example.org`. With no access to a domain's DNS, add one address
    as a sender in Brevo and confirm it from its mailbox.
 3. Authorise the admin host's address under the account's security settings. Brevo refuses a key
    used from an address the account has not authorised.
-4. On the Notifications page enter the key, the sender address and the recipients, 20 at most.
+4. On the Notifications page enter the key and the sender address.
 
-Brevo's free plan carries this mail: a normal week is a handful of mails.
+Brevo's free plan carries this mail: a normal week is a handful of mails for each user.
 
-**Slack.** Create a Slack app in your workspace, switch on its incoming webhooks and add a webhook
-for the channel the notices go to. The webhook's URL, which starts with
-`https://hooks.slack.com/services/`, is the channel's secret.
+**Telegram.** Create a bot with BotFather, which gives its token: the service's secret. Enter the
+token on the Notifications page.
 
-**Telegram.** Create a bot with BotFather, which gives its token: the channel's secret. Then let
-the bot reach the chat the notices go to: press Start in your own chat with the bot, add the bot to
-a group and send it `/start@` with its username there, or make it an administrator of a channel.
-The chat id is the chat's number, positive for your own chat and negative for a group, such as
-`-1001234567890`, or a public channel's name, such as `@channelname`. On the page, enter the token
-and press **Find chat id**: it lists the chats that wrote to the bot in the last day, and fills in
-the one you pick. Without the page, open `https://api.telegram.org/bot<token>/getUpdates` in a
-browser, with the token in place of `<token>`, and read the number after `"chat":{"id":`.
+**Each user** opens the Notifications page and, under My notifications:
 
-The Notifications page shows for each channel when it last took a notice and why one failed, and
-the Auto top-up tab of the Funding page shows the same in short.
+1. Enters their email address and saves it behind their password.
+2. Presses **Find my chat** for Telegram, opens the bot's link it shows and presses Start, then
+   presses **I sent it** and saves the chat it found. In a group the bot is in, the code is sent as
+   a message there, and the group becomes that user's chat.
+3. Presses **Send me a test notice** on each, which shows at once whether it works.
+4. Ticks the notices they want. The four of stamp auto top-up are ticked from the first saved
+   destination, and the two of the stamps not on auto top-up are theirs to tick.
+
+The Notifications page shows each user when their destinations last took a notice and why one
+failed. The Auto top-up tab of the Funding page shows how many people get each notice and how each
+service stands.
 
 ## Firewall advice
 
@@ -614,3 +615,10 @@ than from a build keeps its settings and its running deployments through a manag
 
 An admin env file can carry keys the admin no longer reads, such as `INGEST_*`, `BEE_URL` and
 `POSTAGE_BATCH_ID`. The admin's deploy names each one it finds, and you can delete them.
+
+An admin whose notices went out on channels shared by every user, with a list of email recipients,
+one Telegram chat and a Slack channel, keeps its email service, with the key and the sender, and its
+Telegram bot's token through the upgrade. The recipients, the chat and the Slack channel end with
+it: each user enters their own destination on the Notifications page
+([Notifications from the admin](#notifications-from-the-admin)), and until one does, the notices
+show on the Funding page alone.

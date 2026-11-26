@@ -109,30 +109,49 @@ function setUp(options: { key?: Buffer | null } = {}) {
   return { store, channels, log, dispatcher };
 }
 
-function notice(overrides: Partial<OutgoingNotice> = {}): OutgoingNotice {
-  return {
-    title: 'Stamp auto top-up: a top-up failed',
-    text: 'The catalogue batch could not be topped up.',
-    raisedAt: NOW,
-    subjects: ['auto-top-up/warning/topup_failed/0x01'],
-    ...overrides,
+/** A notice of one part for each subject, which reads the same whichever of its parts it is written from. */
+function notice(
+  overrides: { title?: string; text?: string; raisedAt?: Date; subjects?: readonly string[] } = {},
+): OutgoingNotice {
+  const written: Notice = {
+    title: overrides.title ?? 'Stamp auto top-up: a top-up failed',
+    text: overrides.text ?? 'The catalogue batch could not be topped up.',
   };
+  return {
+    raisedAt: overrides.raisedAt ?? NOW,
+    parts: (overrides.subjects ?? ['auto-top-up/warning/topup_failed/0x01']).map((subject) => ({
+      topic: 'topup_failed' as const,
+      subject,
+      item: null,
+    })),
+    compose: () => written,
+  };
+}
+
+/** The outcome of a notice of one part: how many channels were on, and how many took it and could not. */
+function outcomeOf(
+  people: number,
+  sent: number,
+  failed: number,
+  subjects: readonly string[] = ['auto-top-up/warning/topup_failed/0x01'],
+) {
+  return { parts: subjects.map((subject) => ({ subject, people, taken: sent > 0 })), sent, failed };
 }
 
 describe('NotificationDispatcher.on', () => {
   it('is off with no channel saved, and with every saved channel switched off', async () => {
     const { store, dispatcher } = setUp();
-    assert.equal(await dispatcher.on(), false);
+    assert.equal(await dispatcher.on('topup_failed'), false);
     await save(store, 'slack');
     await store.setEnabled('slack', false);
-    assert.equal(await dispatcher.on(), false);
+    assert.equal(await dispatcher.on('topup_failed'), false);
   });
 
   it('is on once one saved channel is', async () => {
     const { store, dispatcher } = setUp();
     await save(store, 'slack', 'telegram');
     await store.setEnabled('slack', false);
-    assert.equal(await dispatcher.on(), true);
+    assert.equal(await dispatcher.on('topup_failed'), true);
   });
 });
 
@@ -142,7 +161,7 @@ describe('NotificationDispatcher.notify', () => {
     await save(store, 'email');
     await store.setEnabled('email', false);
     const outcome = await dispatcher.notify(notice());
-    assert.deepEqual(outcome, { notified: false, taken: [], failed: [] });
+    assert.deepEqual(outcome, outcomeOf(0, 0, 0));
     assert.equal(channels.sent.length, 0);
     assert.equal(store.waitingRows.length, 0);
   });
@@ -153,7 +172,7 @@ describe('NotificationDispatcher.notify', () => {
     await store.setEnabled('slack', false);
     const outcome = await dispatcher.notify(notice());
 
-    assert.deepEqual(outcome, { notified: true, taken: ['email', 'telegram'], failed: [] });
+    assert.deepEqual(outcome, outcomeOf(2, 2, 0));
     assert.deepEqual(
       channels.configs.map((config) => [config.kind, config.secret, config.settings]),
       [
@@ -196,7 +215,7 @@ describe('NotificationDispatcher.notify', () => {
     });
     channels.gates.set('telegram', async () => telegramCalled());
     const outcome = await dispatcher.notify(notice());
-    assert.deepEqual(outcome.taken, ['email', 'telegram']);
+    assert.deepEqual(outcome, outcomeOf(2, 2, 0));
   });
 
   it('keeps the notice for a channel that failed while another took it, with its subjects and when it was raised', async () => {
@@ -208,7 +227,7 @@ describe('NotificationDispatcher.notify', () => {
     const outcome = await dispatcher.notify(notice({ raisedAt, subjects }));
 
     const error = 'The slack service answered 500: down for the test.';
-    assert.deepEqual(outcome, { notified: true, taken: ['email', 'telegram'], failed: [{ kind: 'slack', error }] });
+    assert.deepEqual(outcome, outcomeOf(3, 2, 1, subjects));
     assert.equal(store.channelRows.get('slack')?.lastError, error);
     assert.deepEqual(store.channelRows.get('slack')?.lastErrorAt, NOW);
     assert.deepEqual(
@@ -233,11 +252,7 @@ describe('NotificationDispatcher.notify', () => {
     channels.behaviour.email = 'fail';
     channels.behaviour.telegram = 'fail';
     const outcome = await dispatcher.notify(notice());
-    assert.equal(outcome.notified, false);
-    assert.deepEqual(
-      outcome.failed.map((failure) => failure.kind),
-      ['email', 'telegram'],
-    );
+    assert.deepEqual(outcome, outcomeOf(2, 0, 2));
     assert.equal(store.waitingRows.length, 0);
     assert.match(store.channelRows.get('email')?.lastError ?? '', /email service answered 500/);
     assert.match(store.channelRows.get('telegram')?.lastError ?? '', /telegram service answered 500/);
@@ -260,7 +275,7 @@ describe('NotificationDispatcher.notify', () => {
     const outcome = await dispatcher.notify(notice());
 
     const error = 'The telegram channel could not send the notice: an unexpected error.';
-    assert.deepEqual(outcome.failed, [{ kind: 'telegram', error }]);
+    assert.deepEqual(outcome, outcomeOf(2, 1, 1));
     assert.equal(store.channelRows.get('telegram')?.lastError, error);
     assert.equal(store.waitingRows[0]?.lastError, error);
     const everything = JSON.stringify({ outcome, rows: [...store.channelRows.values()], log: log.lines });
@@ -271,18 +286,18 @@ describe('NotificationDispatcher.notify', () => {
     const { store, channels, dispatcher } = setUp({ key: null });
     await save(store, 'email');
     const outcome = await dispatcher.notify(notice());
-    assert.equal(outcome.notified, false);
+    assert.deepEqual(outcome, outcomeOf(1, 0, 1));
     assert.equal(channels.configs.length, 0);
-    assert.match(outcome.failed[0]?.error ?? '', /BRAND_WALLET_SECRET/);
+    assert.match(store.channelRows.get('email')?.lastError ?? '', /BRAND_WALLET_SECRET/);
   });
 
   it('fails a channel whose secret does not open under the key', async () => {
     const { store, channels, dispatcher } = setUp({ key: channelSecretKeyFrom('cd'.repeat(32)) });
     await save(store, 'email');
     const outcome = await dispatcher.notify(notice());
-    assert.equal(outcome.notified, false);
+    assert.deepEqual(outcome, outcomeOf(1, 0, 1));
     assert.equal(channels.configs.length, 0);
-    assert.match(outcome.failed[0]?.error ?? '', /does not open/);
+    assert.match(store.channelRows.get('email')?.lastError ?? '', /does not open/);
   });
 });
 

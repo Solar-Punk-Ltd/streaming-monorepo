@@ -9,11 +9,15 @@
  */
 
 import { FUNDING_PATH, type FundingPostage } from './funding.js';
+import type { NoticeTopic } from './notices.js';
 import type { NotificationChannelStatus } from './notifications.js';
 import { SECONDS_PER_DAY, stampTopUpQuote } from './stampQuote.js';
 
 /** `GET`: the Auto top-up tab's view, which the Stamps tab reads its marks from as well. */
 export const FUNDING_AUTO_TOPUP_PATH = `${FUNDING_PATH}/auto-top-up`;
+
+/** `GET`: the stamps that are not marked for auto top-up and are running low, which the Auto top-up tab lists. */
+export const FUNDING_AUTO_TOPUP_UNMARKED_PATH = `${FUNDING_AUTO_TOPUP_PATH}/unmarked`;
 
 /** `PUT`: save the numbers, behind the operator's password. */
 export const FUNDING_AUTO_TOPUP_SETTINGS_PATH = `${FUNDING_AUTO_TOPUP_PATH}/settings`;
@@ -456,4 +460,65 @@ export function autoTopUpMonthlyEstimatePlur(depths: readonly number[], postage:
 /** The daily ceiling in force: the one saved, or half the monthly estimate while none is. PLUR as a decimal string. */
 export function autoTopUpDailyCeilingPlur(settings: AutoTopUpSettings, monthlyEstimatePlur: string): string {
   return settings.dailyCeilingPlur ?? (BigInt(monthlyEstimatePlur) / 2n).toString();
+}
+
+// ------------------------------------------------ the stamps not on auto top-up
+
+/**
+ * The stamps that are not marked for auto top-up are watched by the alert job as well: the catalogue batch, the
+ * archive stamps and each stage's batches, every one the Stamps tab lists without a mark. The admin tops none of them
+ * up. One that runs low is listed on the Auto top-up tab and told of in a notice, under the topic of whoever holds it.
+ */
+export const UNMARKED_STAMP_HOLDERS = ['catalogue', 'stage'] as const;
+export type UnmarkedStampHolder = (typeof UNMARKED_STAMP_HOLDERS)[number];
+
+/** The topic a low unmarked stamp is told of under: the catalogue batch and the archive stamps, or a stage's batch. */
+export function unmarkedStampTopic(holder: UnmarkedStampHolder): NoticeTopic {
+  return holder === 'catalogue' ? 'unmarked_catalogue' : 'unmarked_stage';
+}
+
+/**
+ * Where a low unmarked stamp stands: `low` under "Top up when under", `last` under {@link UNMARKED_STAMP_LAST_DAYS},
+ * and `expired` once it ran out or its node holds it no more. A notice tells of each level once, when the stamp reaches
+ * it, and while a stamp is `low` or `last` one notice a day lists it with every other one that is.
+ */
+export const UNMARKED_STAMP_LEVELS = ['low', 'last', 'expired'] as const;
+export type UnmarkedStampLevel = (typeof UNMARKED_STAMP_LEVELS)[number];
+
+/** The days left under which an unmarked stamp is told of a second time: 2. */
+export const UNMARKED_STAMP_LAST_DAYS = 2;
+
+/**
+ * The level of an unmarked stamp read whole (`operableBatch`), with `ttlSeconds` left: `last` under
+ * {@link UNMARKED_STAMP_LAST_DAYS}, `low` under the settings' "Top up when under", and null at that or above, which is
+ * a stamp the alert job has nothing to say of.
+ */
+export function unmarkedStampLevel(
+  ttlSeconds: number,
+  settings: Pick<AutoTopUpSettings, 'topUpUnderDays'>,
+): Exclude<UnmarkedStampLevel, 'expired'> | null {
+  if (ttlSeconds < UNMARKED_STAMP_LAST_DAYS * SECONDS_PER_DAY) return 'last';
+  return ttlSeconds < settings.topUpUnderDays * SECONDS_PER_DAY ? 'low' : null;
+}
+
+/** One low unmarked stamp, as the Auto top-up tab lists it. */
+export interface AutoTopUpUnmarkedStamp {
+  /** `0x` and 64 hex digits, lower case. */
+  batchId: string;
+  nodeId: string;
+  holder: UnmarkedStampHolder;
+  level: UnmarkedStampLevel;
+  /** Since when it has been under "Top up when under". */
+  since: string;
+  /** Since when it has been at its level. */
+  levelSince: string;
+  /** What it is, how long it has left and what a person can do, in a sentence or two, as the last run worded it. */
+  message: string;
+  /** When a notice last told of it, or null: none went yet, or nobody gets its topic. */
+  notifiedAt: string | null;
+}
+
+/** `GET /api/funding/auto-top-up/unmarked`: every low unmarked stamp, the one with the least time left first. */
+export interface AutoTopUpUnmarkedView {
+  stamps: AutoTopUpUnmarkedStamp[];
 }

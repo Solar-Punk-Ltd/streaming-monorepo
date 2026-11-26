@@ -16,10 +16,14 @@
 import type {
   EmailChannelSettings,
   EmailProviderKind,
+  EmailServiceSettings,
   Notice,
   NotificationChannelKind,
   SlackChannelSettings,
+  TelegramBot,
   TelegramChannelSettings,
+  TelegramChat,
+  TelegramServiceSettings,
 } from './rules.js';
 
 /**
@@ -98,3 +102,38 @@ export type ChannelFactory = (config: ChannelConfig) => Channel;
 
 /** `fetch`, as the channels call it. A test hands in its own. */
 export type NotificationFetch = typeof fetch;
+
+/**
+ * What a channel to one person is built from: the service's kind, its settings and its secret, which everyone shares,
+ * and the person's own destination on it.
+ */
+export type DestinationChannelConfig =
+  | { kind: 'email'; settings: EmailServiceSettings; secret: string; address: string }
+  | { kind: 'telegram'; settings: TelegramServiceSettings; secret: string; address: string };
+
+/**
+ * Builds the channel a notice reaches one person on. It makes no call and checks nothing with the service: the
+ * settings, the secret and the address passed `serviceSettingsProblems`, `serviceSecretProblem` and
+ * `destinationAddressProblem` when they were saved.
+ *
+ * - **email** sends one mail to the one address: the subject is the title and the body is the text. Two people's
+ *   notices are two mails, and neither names the other.
+ * - **telegram** posts `sendMessage` to the chat whose id the address is, as {@link Channel} says.
+ */
+export type DestinationChannelFactory = (config: DestinationChannelConfig) => Channel;
+
+/**
+ * Reads the bot a token is of, with the Bot API's `getMe`. Rejects with a {@link NotificationSendError} whose sentence
+ * never holds the token: for a token BotFather would not give out, without calling Telegram, for Telegram's refusal,
+ * and for an answer that is not a bot's.
+ */
+export type TelegramBotLookup = (token: string) => Promise<TelegramBot>;
+
+/**
+ * Finds the chat that sent a code to the bot whose token this is, or null when none of the bot's latest updates holds
+ * it. It reads the Bot API's `getUpdates` and answers the chat of the latest message whose text sends the code
+ * (`telegramTextSendsCode`). It answers that one chat and never a list, so a person finds their own chat and learns of
+ * no other. Rejects with a {@link NotificationSendError} whose sentence never holds the token, as
+ * {@link TelegramBotLookup} does, and for a code `isTelegramChatCode` refuses, without calling Telegram.
+ */
+export type TelegramChatLookup = (token: string, code: string) => Promise<TelegramChat | null>;

@@ -107,7 +107,19 @@ export type AuditAction =
   | 'notification.channel.save'
   | 'notification.channel.enabled'
   | 'notification.channel.remove'
-  | 'notification.channel.test';
+  | 'notification.channel.test'
+  // The Notifications page's shared services: one saved, switched on or off, or removed, by a user with the admin
+  // role. The details name the service and its settings, never its secret.
+  | 'notification.service.save'
+  | 'notification.service.enabled'
+  | 'notification.service.remove'
+  // A user's own notifications: a destination saved, switched on or off, or removed, a test notice sent to it, and
+  // the topics saved. The details name the service and the topics, never the address.
+  | 'notification.destination.save'
+  | 'notification.destination.enabled'
+  | 'notification.destination.remove'
+  | 'notification.destination.test'
+  | 'notification.topics.save';
 
 /**
  * One row of `audit_log`: who did what to which stream, and what it moved.
@@ -119,8 +131,8 @@ export type AuditAction =
  * batches, nodes and costs of a stamp operation, the target, nodes and moves
  * of a chequebook operation. Never a secret: no publish
  * key, no password or hash, no session token, no SRT passphrase, no uploader
- * token or its hash, no signed transaction or wallet key, and no notification
- * channel's secret.
+ * token or its hash, no signed transaction or wallet key, no notification
+ * service's secret, and no user's email address or Telegram chat.
  */
 export interface AuditEntry {
   actor: Actor;
