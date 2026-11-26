@@ -6,14 +6,15 @@
  * secret with the package's rules, every problem at once, seals the secret, switches a first save on and keeps a later
  * one's switch, and keeps the saved secret when none is typed; a switch and a removal ask for nothing more; a test
  * notice goes out on a saved channel, on or off, with its saved values, a minute at most per channel, and records its
- * outcome apart from the notices; without BRAND_WALLET_SECRET nothing is saved or tested; and no answer, sentence or
- * audit row carries a secret. Every secret here is made up for the test.
+ * outcome apart from the notices; without BRAND_WALLET_SECRET nothing is saved or tested; Find chat id reads the
+ * Telegram bot's chats with the token typed or the saved one and changes nothing; and no answer, sentence or audit row
+ * carries a secret. Every secret here is made up for the test.
  */
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it } from 'node:test';
 
 import { type ChannelConfig, type ChannelFactory, NotificationSendError } from '@streaming-monorepo/notifications';
-import { type Notice, noticeProblem } from '@streaming-monorepo/web2-admin-common';
+import { type Notice, noticeProblem, type TelegramChat } from '@streaming-monorepo/web2-admin-common';
 
 import type { OperatorActor } from '../../src/domain/actor.js';
 import {
@@ -593,5 +594,119 @@ describe('a test notice', () => {
     assert.ok(error instanceof NotificationsUnavailableError);
     assert.equal(store.channelRows.get('slack')!.lastTestAt, null);
     assert.equal(channels.configs.length, 0);
+  });
+});
+
+describe('Find chat id', () => {
+  const CHATS: TelegramChat[] = [
+    { id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' },
+    { id: '-1001234567890', kind: 'supergroup', name: 'Stream ops' },
+  ];
+
+  /** The service with a lookup that keeps the tokens it was handed, and answers `answer` or fails with it. */
+  function withLookup(answer: TelegramChat[] | Error, secretKey: Buffer | null = KEY) {
+    const tokens: string[] = [];
+    const lookups = new NotificationService({
+      store,
+      secretKey,
+      channelFrom: channels.channelFrom,
+      audit,
+      now: () => clock.now,
+      findTelegramChats: async (token) => {
+        tokens.push(token);
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+    });
+    return { lookups, tokens };
+  }
+
+  it('reads the chats with the token as typed, trimmed, and changes and audits nothing', async () => {
+    const { lookups, tokens } = withLookup(CHATS);
+
+    const answer = await lookups.telegramChats(ALICE, `  ${TELEGRAM_TOKEN}  `);
+
+    assert.deepEqual(answer, { chats: CHATS, error: null });
+    assert.deepEqual(tokens, [TELEGRAM_TOKEN]);
+    assert.equal(store.channelRows.size, 0);
+    assert.equal(audit.entries.length, 0);
+  });
+
+  it('reads them with a typed token without BRAND_WALLET_SECRET, since nothing is opened or sealed', async () => {
+    const { lookups, tokens } = withLookup(CHATS, null);
+
+    assert.deepEqual(await lookups.telegramChats(ALICE, TELEGRAM_TOKEN), { chats: CHATS, error: null });
+    assert.deepEqual(tokens, [TELEGRAM_TOKEN]);
+  });
+
+  it("reads them with the saved channel's token when none is typed", async () => {
+    await service.save(ALICE, 'telegram', { settings: TELEGRAM_SETTINGS, secret: TELEGRAM_TOKEN });
+    const { lookups, tokens } = withLookup(CHATS);
+
+    for (const typed of [null, '', '   ']) {
+      assert.deepEqual(await lookups.telegramChats(BOB, typed), { chats: CHATS, error: null });
+    }
+    assert.deepEqual(tokens, [TELEGRAM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_TOKEN]);
+    assert.equal(audit.entries.length, 1);
+  });
+
+  it('refuses a typed token the rules refuse, and asks Telegram nothing', async () => {
+    const { lookups, tokens } = withLookup(CHATS);
+
+    for (const typed of ['not a token', `${TELEGRAM_TOKEN}/../getMe`, SLACK_URL]) {
+      const error = await caught(lookups.telegramChats(ALICE, typed));
+      assert.ok(error instanceof RequestShapeError);
+      assert.deepEqual(error.problems, [
+        "Enter the bot's token as BotFather gave it: the bot's number, a colon, and its key.",
+      ]);
+    }
+    assert.deepEqual(tokens, []);
+  });
+
+  it('is refused with none typed: without BRAND_WALLET_SECRET, and for a channel never saved', async () => {
+    const { lookups, tokens } = withLookup(CHATS);
+    const notSaved = await caught(lookups.telegramChats(ALICE, null));
+    assert.ok(notSaved instanceof NotificationChannelNotSavedError);
+    assert.equal(notSaved.kind, 'telegram');
+
+    await service.save(ALICE, 'telegram', { settings: TELEGRAM_SETTINGS, secret: TELEGRAM_TOKEN });
+    const unavailable = await caught(withLookup(CHATS, null).lookups.telegramChats(ALICE, null));
+    assert.ok(unavailable instanceof NotificationsUnavailableError);
+    assert.deepEqual(tokens, []);
+  });
+
+  it('answers the sentence of a token saved under another BRAND_WALLET_SECRET, and asks Telegram nothing', async () => {
+    await serviceWith(OTHER_KEY).save(ALICE, 'telegram', { settings: TELEGRAM_SETTINGS, secret: TELEGRAM_TOKEN });
+    const { lookups, tokens } = withLookup(CHATS);
+
+    const answer = await lookups.telegramChats(ALICE, null);
+
+    assert.deepEqual(answer.chats, []);
+    assert.match(answer.error ?? '', /^The telegram channel's secret does not open with this BRAND_WALLET_SECRET/);
+    assert.deepEqual(tokens, []);
+    assertNoSecret(seen(answer));
+  });
+
+  it('answers why Telegram could not be asked, with the token cut out', async () => {
+    const refusal = new NotificationSendError(`Telegram answered with status 404: Not Found: bot${TELEGRAM_TOKEN}.`, {
+      status: 404,
+    });
+    const { lookups } = withLookup(refusal);
+
+    const answer = await lookups.telegramChats(ALICE, TELEGRAM_TOKEN);
+
+    assert.deepEqual(answer, { chats: [], error: 'Telegram answered with status 404: Not Found: bot[secret].' });
+    assertNoSecret(seen(answer));
+  });
+
+  it("answers a sentence of its own for an error that is not Telegram's", async () => {
+    const { lookups } = withLookup(new Error(`socket closed for bot${TELEGRAM_TOKEN}`));
+
+    const answer = await lookups.telegramChats(ALICE, TELEGRAM_TOKEN);
+
+    assert.deepEqual(answer, {
+      chats: [],
+      error: "The bot's chats could not be read: the admin met an error of its own. Its log has more.",
+    });
   });
 });

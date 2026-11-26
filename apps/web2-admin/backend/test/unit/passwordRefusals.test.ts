@@ -83,6 +83,7 @@ const notifications: NotificationRoutesDeps['notifications'] = {
   setEnabled: notReached,
   remove: notReached,
   test: notReached,
+  telegramChats: notReached,
 };
 
 async function startPasswordTestApp(): Promise<AuthTestApp> {

@@ -21,6 +21,9 @@ import {
   notificationChannelTestPath,
   type NotificationsView,
   type NotificationTestResponse,
+  TELEGRAM_CHATS_PATH,
+  type TelegramChat,
+  type TelegramChatsResponse,
 } from '@streaming-monorepo/web2-admin-common';
 import { LoginLimiter } from '@streaming-monorepo/web-auth';
 import express from 'express';
@@ -53,11 +56,14 @@ const KEY = channelSecretKeyFrom('ab'.repeat(32));
 const SLACK_URL = 'https://hooks.slack.com/services/T0001/B0001/abcdefABCDEF0123456789xy';
 const TELEGRAM_TOKEN = `1234567890:${'A'.repeat(35)}`;
 const TELEGRAM_SETTINGS = { chatId: '-1001234567890' };
+const TELEGRAM_CHATS: TelegramChat[] = [{ id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' }];
 
 interface NotificationTestApp extends AuthTestApp {
   store: InMemoryNotificationStore;
   configs: ChannelConfig[];
   clock: { now: number };
+  /** The tokens Find chat id's lookup was handed, in turn: no call leaves the test. */
+  lookups: string[];
 }
 
 async function startNotificationTestApp(options: { secretKey?: Buffer | null } = {}): Promise<NotificationTestApp> {
@@ -78,12 +84,17 @@ async function startNotificationTestApp(options: { secretKey?: Buffer | null } =
     configs.push(structuredClone(config));
     return { kind: config.kind, send: async () => undefined };
   };
+  const lookups: string[] = [];
   const notifications = new NotificationService({
     store,
     secretKey: options.secretKey === undefined ? KEY : options.secretKey,
     channelFrom,
     audit,
     now: () => clock.now,
+    findTelegramChats: async (token) => {
+      lookups.push(token);
+      return TELEGRAM_CHATS;
+    },
   });
   const requireAuth = createRequireAuth(authService);
 
@@ -109,6 +120,7 @@ async function startNotificationTestApp(options: { secretKey?: Buffer | null } =
     store,
     configs,
     clock,
+    lookups,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }
@@ -154,12 +166,20 @@ describe('the routes', () => {
       ['PUT', notificationChannelPath('telegram')],
       ['PUT', notificationChannelEnabledPath('telegram')],
       ['POST', notificationChannelTestPath('telegram')],
+      ['POST', TELEGRAM_CHATS_PATH],
       ['DELETE', notificationChannelPath('telegram')],
     ];
     for (const [method, path] of paths) {
       const res = await call(app, method, path, { body: method === 'GET' ? undefined : {} });
       assert.equal(res.status, 401, `${method} ${path}`);
     }
+    const crossSiteLookup = await call(app, 'POST', TELEGRAM_CHATS_PATH, {
+      cookie,
+      requestedWith: false,
+      body: { secret: TELEGRAM_TOKEN },
+    });
+    assert.equal(crossSiteLookup.status, 403);
+    assert.deepEqual(app.lookups, []);
     const crossSite = await call(app, 'PUT', notificationChannelPath('telegram'), {
       cookie,
       requestedWith: false,
@@ -389,5 +409,60 @@ describe('switching, testing and removing a channel', () => {
       app.audit.entries.filter((entry) => entry.action.startsWith('notification.')).map((entry) => entry.action),
       ['notification.channel.save', 'notification.channel.remove'],
     );
+  });
+});
+
+describe('Find chat id', () => {
+  it('answers the chats read with the token typed, with no password, and saves nothing', async () => {
+    const res = await notificationsCall('POST', TELEGRAM_CHATS_PATH, { secret: TELEGRAM_TOKEN });
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body as TelegramChatsResponse, { chats: TELEGRAM_CHATS, error: null });
+    assert.deepEqual(app.lookups, [TELEGRAM_TOKEN]);
+    assert.equal(app.store.channelRows.size, 0);
+  });
+
+  it("reads with the saved channel's token when the body names none", async () => {
+    await saveTelegram();
+
+    for (const body of [{ secret: null }, { secret: '' }, {}]) {
+      const res = await notificationsCall('POST', TELEGRAM_CHATS_PATH, body);
+      assert.equal(res.status, 200, JSON.stringify(body));
+      assert.deepEqual((res.body as TelegramChatsResponse).chats, TELEGRAM_CHATS);
+    }
+    assert.deepEqual(app.lookups, [TELEGRAM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_TOKEN]);
+  });
+
+  it('answers 400 validation_error for a token the rules refuse, and for a body that is not a lookup', async () => {
+    const refused = await notificationsCall('POST', TELEGRAM_CHATS_PATH, { secret: 'not a token' });
+    assert.equal(refused.status, 400);
+    assert.equal((refused.body as { error: string }).error, 'validation_error');
+    assert.deepEqual((refused.body as { errors: string[] }).errors, [
+      "Enter the bot's token as BotFather gave it: the bot's number, a colon, and its key.",
+    ]);
+
+    const shapes: [Record<string, unknown>, string][] = [
+      [{ secret: 1234567890 }, "Enter the bot's token as BotFather gave it: the bot's number, a colon, and its key."],
+      [{ secret: { token: TELEGRAM_TOKEN } }, "secret is the bot's token, or null for the saved one"],
+    ];
+    for (const [body, sentence] of shapes) {
+      const res = await notificationsCall('POST', TELEGRAM_CHATS_PATH, body);
+      assert.equal(res.status, 400, JSON.stringify(body));
+      assert.deepEqual(res.body, { error: 'validation_error', errors: [sentence] });
+    }
+    assert.deepEqual(app.lookups, []);
+  });
+
+  it('answers 409 channel_not_saved with no token typed and none saved, and 409 notifications_unavailable without BRAND_WALLET_SECRET', async () => {
+    const notSaved = await notificationsCall('POST', TELEGRAM_CHATS_PATH, { secret: null });
+    assert.equal(notSaved.status, 409);
+    assert.equal((notSaved.body as { error: string }).error, 'channel_not_saved');
+
+    await app.close();
+    await useApp({ secretKey: null });
+    const unavailable = await notificationsCall('POST', TELEGRAM_CHATS_PATH, { secret: null });
+    assert.equal(unavailable.status, 409);
+    assert.equal((unavailable.body as { error: string }).error, 'notifications_unavailable');
+    assert.deepEqual(app.lookups, []);
   });
 });

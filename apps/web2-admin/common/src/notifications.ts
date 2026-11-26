@@ -10,6 +10,7 @@
 import type {
   NotificationChannelKind,
   NotificationChannelSettingsByKind,
+  TelegramChat,
 } from '@streaming-monorepo/notifications/rules';
 
 export * from '@streaming-monorepo/notifications/rules';
@@ -31,6 +32,9 @@ export function notificationChannelEnabledPath(kind: NotificationChannelKind): s
 export function notificationChannelTestPath(kind: NotificationChannelKind): string {
   return `${notificationChannelPath(kind)}/test`;
 }
+
+/** `POST`: Find chat id, the chats that wrote to the Telegram bot within the last day. */
+export const TELEGRAM_CHATS_PATH = `${NOTIFICATIONS_PATH}/channels/telegram/chats`;
 
 /** The least time between two test notices on one channel: a minute. */
 export const NOTIFICATION_TEST_EVERY_SECONDS = 60;
@@ -131,6 +135,24 @@ export interface NotificationTestResponse {
   /** Why it could not be sent, in a sentence, or null. */
   error: string | null;
   view: NotificationsView;
+}
+
+/**
+ * `POST /api/notifications/channels/telegram/chats`: Find chat id. `secret` is the bot's token as typed on the page, or
+ * null to use the saved channel's. A typed token `channelSecretProblem` refuses is 400 `validation_error`; with none
+ * typed, 409 `notifications_unavailable` without `BRAND_WALLET_SECRET` and 409 `channel_not_saved` for a channel never
+ * saved. A session is enough: it reads, and changes nothing at Telegram or in the admin.
+ */
+export interface TelegramChatsRequest {
+  secret: string | null;
+}
+
+/** What Find chat id found: the chats that wrote to the bot within the last day, the latest first, or why none came. */
+export interface TelegramChatsResponse {
+  /** Each chat once. Empty when none wrote to the bot, and when Telegram could not be asked. */
+  chats: TelegramChat[];
+  /** Why Telegram could not be asked or its answer read, in a sentence that holds no token, or null. */
+  error: string | null;
 }
 
 /** Whether notifications are on: one channel or more is. With none, a view is the only place a notice shows. */

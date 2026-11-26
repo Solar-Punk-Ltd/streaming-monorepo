@@ -4,6 +4,7 @@ import {
   type NotificationsView,
   type NotificationTestResponse,
   PASSWORD_MAX_LENGTH,
+  type TelegramChatsResponse,
 } from '@streaming-monorepo/web2-admin-common';
 import { clientIpOf } from '@streaming-monorepo/web-auth';
 import { Request, RequestHandler, Response, Router } from 'express';
@@ -16,7 +17,7 @@ import { actorOf, signedInSession } from '../middleware/requireAuth.js';
 import { validateBody, validateParams } from '../middleware/validate.js';
 
 export interface NotificationRoutesDeps {
-  notifications: Pick<NotificationService, 'view' | 'save' | 'setEnabled' | 'remove' | 'test'>;
+  notifications: Pick<NotificationService, 'view' | 'save' | 'setEnabled' | 'remove' | 'test' | 'telegramChats'>;
   /** The password check saving a channel asks for, a send's own. */
   authService: Pick<AuthService, 'confirmPassword'>;
   requireAuth: RequestHandler;
@@ -41,6 +42,11 @@ const saveSchema = object({
 
 const enabledSchema = object({ enabled: boolean().required('enabled is true or false') }).noUnknown(true);
 
+/** The bot's token as typed, or null or left out for the saved one. The sentence is the schema's own, as above. */
+const telegramChatsSchema = object({
+  secret: string().typeError("secret is the bot's token, or null for the saved one").nullable(),
+}).noUnknown(true);
+
 function kindOf(req: Request): NotificationChannelKind {
   return String(req.params.kind) as NotificationChannelKind;
 }
@@ -60,6 +66,9 @@ function kindOf(req: Request): NotificationChannelKind {
  * - `POST /channels/:kind/test` takes no body: 409 `notifications_unavailable` and `channel_not_saved` as above, and
  *   429 `test_too_soon` with `retryAfterSeconds` within a minute of the channel's last test. It answers
  *   `NotificationTestResponse`.
+ * - `POST /channels/telegram/chats` takes `TelegramChatsRequest`, with no password: Find chat id, which reads the
+ *   chats that wrote to the bot within the last day. 400 `validation_error` for a typed token the rules refuse; with
+ *   none typed, 409 `notifications_unavailable` and `channel_not_saved` as above. It answers `TelegramChatsResponse`.
  * - `DELETE /channels/:kind`, with no password, removes the channel with its secret, and answers the view.
  */
 export function createNotificationsRouter(deps: NotificationRoutesDeps): Router {
@@ -112,6 +121,16 @@ export function createNotificationsRouter(deps: NotificationRoutesDeps): Router 
     validateParams(kindParamsSchema),
     asyncHandler(async (req: Request, res: Response) => {
       const response: NotificationTestResponse = await notifications.test(actorOf(req), kindOf(req));
+      res.json(response);
+    }),
+  );
+
+  router.post(
+    '/channels/telegram/chats',
+    validateBody(telegramChatsSchema),
+    asyncHandler(async (req: Request, res: Response) => {
+      const { secret } = req.body as { secret?: string | null };
+      const response: TelegramChatsResponse = await notifications.telegramChats(actorOf(req), secret ?? null);
       res.json(response);
     }),
   );

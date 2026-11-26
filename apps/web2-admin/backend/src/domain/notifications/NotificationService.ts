@@ -1,4 +1,9 @@
-import { type ChannelConfig, type ChannelFactory, NotificationSendError } from '@streaming-monorepo/notifications';
+import {
+  type ChannelConfig,
+  type ChannelFactory,
+  findTelegramChats,
+  NotificationSendError,
+} from '@streaming-monorepo/notifications';
 import {
   channelSecretProblem,
   channelSettingsProblems,
@@ -14,6 +19,8 @@ import {
   type NotificationTestResponse,
   storedChannelSecret,
   storedChannelSettings,
+  type TelegramChat,
+  type TelegramChatsResponse,
 } from '@streaming-monorepo/web2-admin-common';
 
 import { getErrorMessage } from '../../utils/errorUtils.js';
@@ -45,6 +52,8 @@ export interface NotificationServiceDeps {
   channelFrom: ChannelFactory;
   audit: AuditLog;
   now?: () => number;
+  /** Find chat id's lookup at Telegram with a bot's token: the package's own unless a test hands in another. */
+  findTelegramChats?: (token: string) => Promise<TelegramChat[]>;
 }
 
 /** A save as the route hands it over, once the operator's password passed. */
@@ -63,6 +72,9 @@ const SECRET_CUT = '[secret]';
 
 /** The sentence of a test that met an error of the admin's own, which may quote anything: never shown as it is. */
 const OWN_ERROR = 'The test notice could not be sent: the admin met an error of its own. Its log has more.';
+
+/** The sentence of a Find chat id that met an error of the admin's own. */
+const CHATS_OWN_ERROR = "The bot's chats could not be read: the admin met an error of its own. Its log has more.";
 
 /** `2026-11-25 14:10 UTC`: a moment as a notice writes it. */
 function momentText(at: Date): string {
@@ -130,10 +142,13 @@ function channelViewOf(
  * - A test notice goes out on a saved channel, on or off, with its saved settings and secret: one a minute at most on
  *   a channel, claimed in the store so two requests at once send one. Its outcome is the channel's `lastTestAt` and
  *   `lastTestError` alone: it counts as no notice, records no send or failure, and leaves the waiting notices be.
+ * - Find chat id reads, with the bot's token as typed or the saved one, the chats that wrote to the Telegram bot within
+ *   the last day. It changes nothing, so it is neither audited nor limited, and it logs how many chats it found, never
+ *   their names.
  *
  * Every write is audited with the operator's name, and logged with the channel and the outcome. No answer, log line or
- * audit row carries a channel's secret: a secret is opened for the one test that needs it, and a failure's sentence
- * has it cut out.
+ * audit row carries a channel's secret: a secret is opened for the one test or lookup that needs it, and a failure's
+ * sentence has it cut out.
  */
 export class NotificationService {
   private readonly store: NotificationStore;
@@ -141,6 +156,7 @@ export class NotificationService {
   private readonly channelFrom: ChannelFactory;
   private readonly audit: AuditLog;
   private readonly now: () => number;
+  private readonly findTelegramChats: (token: string) => Promise<TelegramChat[]>;
 
   constructor(deps: NotificationServiceDeps) {
     this.store = deps.store;
@@ -148,6 +164,7 @@ export class NotificationService {
     this.channelFrom = deps.channelFrom;
     this.audit = deps.audit;
     this.now = deps.now ?? Date.now;
+    this.findTelegramChats = deps.findTelegramChats ?? ((token) => findTelegramChats(token));
   }
 
   /** `GET /api/notifications`: every channel, saved or not, in the order of `NOTIFICATION_CHANNEL_KINDS`. */
@@ -272,6 +289,55 @@ export class NotificationService {
       details: { kind, sent: error === null, error },
     });
     return { sent: error === null, error, view: await this.view() };
+  }
+
+  /**
+   * `POST /api/notifications/channels/telegram/chats`: Find chat id. Reads the chats that wrote to the bot within the
+   * last day with `typed`, the token as typed on the page, or with the saved channel's when none is typed. A typed
+   * token the rules refuse is a `RequestShapeError`. With none typed, it is refused without `BRAND_WALLET_SECRET` and
+   * for a channel never saved. Why Telegram could not be asked, or its answer read, is the answer's `error`.
+   */
+  async telegramChats(actor: OperatorActor, typed: string | null): Promise<TelegramChatsResponse> {
+    const typedToken = typed === null ? '' : storedChannelSecret(typed);
+    let token: string;
+    if (typedToken !== '') {
+      const problem = channelSecretProblem('telegram', typedToken);
+      if (problem !== null) throw new RequestShapeError([problem]);
+      token = typedToken;
+    } else {
+      const key = this.requireKey();
+      const row = (await this.store.channels()).find((channel) => channel.kind === 'telegram');
+      if (!row) throw new NotificationChannelNotSavedError('telegram');
+      try {
+        token = openChannelSecret('telegram', row.secret, key);
+      } catch (error) {
+        // openChannelSecret's sentences name the channel and the setting, never the secret or the key.
+        if (error instanceof ChannelSecretError) return { chats: [], error: error.message };
+        logger.error(`[Notifications] the telegram channel's secret could not be opened: ${getErrorMessage(error)}`);
+        return { chats: [], error: CHATS_OWN_ERROR };
+      }
+    }
+
+    const lookup = `${describeActor(actor)} looked up the Telegram bot's chats with ${
+      typedToken === '' ? "the saved channel's token" : 'the token typed'
+    }`;
+    try {
+      const chats = await this.findTelegramChats(token);
+      logger.info(`[Notifications] ${lookup}: ${chats.length === 1 ? '1 chat' : `${chats.length} chats`} found`);
+      return { chats, error: null };
+    } catch (error) {
+      if (error instanceof NotificationSendError) {
+        const sentence = withoutSecret(error.message, token);
+        logger.warn(`[Notifications] ${lookup}: ${quoteForLog(sentence)}`);
+        return { chats: [], error: sentence };
+      }
+      logger.error(
+        `[Notifications] a lookup of the Telegram bot's chats met an error of the admin's own: ${quoteForLog(
+          withoutSecret(getErrorMessage(error), token),
+        )}`,
+      );
+      return { chats: [], error: CHATS_OWN_ERROR };
+    }
   }
 
   /** The key, or a `NotificationsUnavailableError` while the admin has no `BRAND_WALLET_SECRET`. */
