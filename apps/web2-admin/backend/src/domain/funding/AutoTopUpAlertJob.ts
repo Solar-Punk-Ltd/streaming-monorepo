@@ -30,6 +30,7 @@ import {
   type AutoTopUpWarningRow,
   type StampAutoTopUpStore,
 } from './StampAutoTopUpStore.js';
+import type { UnmarkedStampPass } from './UnmarkedStampPass.js';
 import {
   comingNotice,
   newWarningsNotice,
@@ -209,16 +210,21 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     private readonly store: StampAutoTopUpStore,
     private readonly notifier: Notifier,
     private readonly logger: Pick<Logger, 'info' | 'warn'>,
+    /** The stamps not on auto top-up, watched after the marked ones; absent in the tests that are not about them. */
+    private readonly unmarked: UnmarkedStampPass | null = null,
   ) {}
 
   /** One run in a tick: the tick's reading of the marked stamps, and whether the wallet job is paused. */
   async run(context: AutoTopUpTickContext): Promise<AutoTopUpJobResult> {
     const walletJob = (await this.store.jobs()).find((row) => row.job === 'wallet');
     const input = alertJobInputOf(context, walletJob?.paused === true);
-    return this.runReadings(
+    const result = await this.runReadings(
       input,
       context.stamps.map((stamp) => stamp.mark),
     );
+    // The stamps not on auto top-up, through the same notifier. What their pass says never fails the run.
+    const unmarked = this.unmarked === null ? null : await this.unmarked.run(context, this.notifier);
+    return unmarked === null ? result : { ok: result.ok, outcome: `${result.outcome} ${unmarked}` };
   }
 
   /** The run over readings already made, for these marks. */
