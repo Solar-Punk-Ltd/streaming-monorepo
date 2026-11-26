@@ -9,11 +9,13 @@
 import assert from 'node:assert/strict';
 import { after, before, beforeEach, describe, it } from 'node:test';
 
+import { FUNDING_AUTO_TOPUP_UNMARKED_PATH, type AutoTopUpUnmarkedView } from '@streaming-monorepo/web2-admin-common';
+
 import { Database } from '../../src/domain/Database.js';
 import { UnmarkedStampRepository } from '../../src/domain/funding/UnmarkedStampRepository.js';
 import type { UnmarkedStampReading } from '../../src/domain/funding/UnmarkedStampStore.js';
 
-import { releaseStack, requireStack, stack } from './helpers.js';
+import { api, login, raw, releaseStack, requireStack, stack } from './helpers.js';
 
 let database: Database;
 let store: UnmarkedStampRepository;
@@ -139,5 +141,19 @@ describe('the stamps not on auto top-up, in Postgres', () => {
     await assert.rejects(store.record(reading({ level: 'gone' as never }), AT), /stamp_watch_notices_level_check/);
     await assert.rejects(store.record(reading({ message: '' }), AT), /stamp_watch_notices_message_check/);
     assert.deepEqual(await store.rows(), []);
+  });
+});
+
+describe('the list of the stamps not on auto top-up, from the backend', () => {
+  it('answers 401 without a session, and the listed stamps to one', async () => {
+    assert.equal((await raw('GET', FUNDING_AUTO_TOPUP_UNMARKED_PATH, { anonymous: true })).status, 401);
+
+    await store.record(reading(), AT);
+    await login();
+    const view = await api<AutoTopUpUnmarkedView>('GET', FUNDING_AUTO_TOPUP_UNMARKED_PATH);
+    assert.deepEqual(
+      view.stamps.map((stamp) => [stamp.batchId, stamp.level, stamp.since, stamp.message]),
+      [[BATCH_A, 'low', AT.toISOString(), 'The stage batch has 5 days left.']],
+    );
   });
 });

@@ -4,6 +4,7 @@ import {
   ARCHIVE_PATH,
   EXPORT_PATH,
   FUNDING_AUTO_TOPUP_PATH,
+  FUNDING_AUTO_TOPUP_UNMARKED_PATH,
   FUNDING_PATH,
   NOTIFICATIONS_PATH,
   VERSION_PATH,
@@ -21,6 +22,7 @@ import type { ExportService } from '../domain/export/ExportService.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import type { FundingService } from '../domain/funding/FundingService.js';
 import type { StampAutoTopUpService } from '../domain/funding/StampAutoTopUpService.js';
+import type { UnmarkedStampStore } from '../domain/funding/UnmarkedStampStore.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
@@ -45,6 +47,7 @@ import { createArchiveRouter } from './routes/archive.js';
 import { createExportRouter } from './routes/exports.js';
 import { createFeedRouter } from './routes/feed.js';
 import { createAutoTopUpRouter } from './routes/autoTopUp.js';
+import { createAutoTopUpUnmarkedRouter } from './routes/autoTopUpUnmarked.js';
 import { createFundingRouter } from './routes/funding.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
@@ -94,6 +97,11 @@ export interface ApiDeps {
    * it, and then `/api/funding/auto-top-up` answers 404.
    */
   autoTopUp?: StampAutoTopUpService;
+  /**
+   * The stamps not on auto top-up that are running low, as the alert job left them. Absent in the tests that are not
+   * about them, and then `/api/funding/auto-top-up/unmarked` answers 404.
+   */
+  unmarkedStamps?: Pick<UnmarkedStampStore, 'rows'>;
   /**
    * The Notifications page: the services the brand shares, and each user's own destinations and topics. Absent in the
    * tests that are not about it, and then `/api/notifications` answers 404.
@@ -208,6 +216,14 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
       requireAuth,
     }),
   );
+
+  // Ahead of the auto top-up router, whose path holds this one.
+  if (deps.unmarkedStamps) {
+    app.use(
+      FUNDING_AUTO_TOPUP_UNMARKED_PATH,
+      createAutoTopUpUnmarkedRouter({ unmarkedStamps: deps.unmarkedStamps, requireAuth }),
+    );
+  }
 
   if (deps.autoTopUp) {
     app.use(

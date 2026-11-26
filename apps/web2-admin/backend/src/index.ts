@@ -49,6 +49,8 @@ import { FundingTransferRepository } from './domain/funding/FundingTransferRepos
 import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
 import { StampAutoTopUpRepository } from './domain/funding/StampAutoTopUpRepository.js';
 import { StampAutoTopUpService } from './domain/funding/StampAutoTopUpService.js';
+import { UnmarkedStampPass } from './domain/funding/UnmarkedStampPass.js';
+import { UnmarkedStampRepository } from './domain/funding/UnmarkedStampRepository.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
@@ -385,6 +387,8 @@ async function main(): Promise<void> {
   const noticeStore = new NoticeRepository(database.pool);
   // Stamp auto top-up's settings, marks and pauses.
   const autoTopUpStore = new StampAutoTopUpRepository(database.pool);
+  // The stamps not on auto top-up that are running low: the alert job lists them, and the Auto top-up tab reads them.
+  const unmarkedStamps = new UnmarkedStampRepository(database.pool);
   const autoTopUp = new StampAutoTopUpService({
     store: autoTopUpStore,
     manager: managerFunding,
@@ -440,6 +444,7 @@ async function main(): Promise<void> {
           logger,
         }),
         logger,
+        new UnmarkedStampPass({ store: unmarkedStamps, logger }),
       ),
       new AutoTopUpWalletJob({ funding: fundingService, store: autoTopUpStore }),
       new AutoTopUpStampJob({
@@ -511,6 +516,7 @@ async function main(): Promise<void> {
       recordings,
       fundingService,
       autoTopUp,
+      unmarkedStamps,
       notifications,
       consoleSettings,
       internalApiToken: config.internalApiToken,
