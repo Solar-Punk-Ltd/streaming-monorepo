@@ -639,11 +639,16 @@ otherwise.
 ### The OBS panel
 
 The panel on a stream's details page tells an operator what to type into OBS's Server and Stream
-Key boxes. It is built from the stream's stage, as the manager pushed it, and offers SRT only, under
-the heading SRT Connection. Its Stream Key line says to leave that box empty. On a
-stage that also takes RTMP the API still answers the RTMP server and stream key, and the panel
-leaves them out. The SRT Server line carries the stream's `key=` and, where OBS can read it there,
-the SRT passphrase, so the panel hides those values, and the SRT Password field when there is one,
+Key boxes. It is built from the stream's stage, as the manager pushed it, and offers SRT first, under
+the heading SRT Connection. Its Stream Key line says to leave that box empty. On a stage that also
+takes RTMP, an SRS stage, the API answers the RTMP server and stream key too, and the panel keeps them
+under Other protocols, after SRT, with one sentence in its intro saying so. That section starts
+folded each time the panel opens and renders nothing until it is opened, so no RTMP key is in the
+page before then. Opened, it shows the RTMP section: a warning that RTMP is not encrypted, the RTMP
+Server as it is, and the RTMP Stream Key. The port is the stack's, see
+[RTMP](../../hls-stream/deploy/README.md#rtmp) in its deploy guide. The SRT Server line carries the
+stream's `key=` and, where OBS can read it there, the SRT passphrase, and the RTMP Stream Key carries
+the same `key=`, so the panel hides those values, and the SRT Password field when there is one,
 until the operator reveals them. Copy always copies the real value. `navigator.clipboard` exists
 only in a secure context, so on a console served over plain http Copy falls back to
 `document.execCommand('copy')` and, failing that, selects the value for a manual copy. Rotate key
