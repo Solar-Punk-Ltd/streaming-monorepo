@@ -22,6 +22,9 @@ export { FundingRefusedError, type FundingRefusalProblem } from './FundingRefuse
 export { InvalidStateError } from './InvalidStateError.js';
 export { InvalidStateTransitionError } from './InvalidStateTransitionError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
+export { NoticeDestinationNotSavedError } from './NoticeDestinationNotSavedError.js';
+export { NoticeServiceNotSavedError } from './NoticeServiceNotSavedError.js';
+export { NoticeTestTooSoonError } from './NoticeTestTooSoonError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { NotTestStreamError } from './NotTestStreamError.js';
 export { NotificationChannelNotSavedError } from './NotificationChannelNotSavedError.js';
@@ -39,6 +42,7 @@ export { StreamLockedError } from './StreamLockedError.js';
 export { StreamNotStartedError } from './StreamNotStartedError.js';
 export { StreamNotFoundError } from './StreamNotFoundError.js';
 export { StreamPublishedError } from './StreamPublishedError.js';
+export { TelegramCodeNotStartedError } from './TelegramCodeNotStartedError.js';
 export { TestStreamError } from './TestStreamError.js';
 export { ThumbnailCheckError } from './ThumbnailCheckError.js';
 export { ThumbnailNotAnImageError } from './ThumbnailNotAnImageError.js';

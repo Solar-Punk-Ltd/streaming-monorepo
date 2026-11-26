@@ -2,9 +2,12 @@ import { ADMIN_ERROR_STREAM_NOT_FOUND, ADMIN_ERROR_UNAUTHENTICATED } from '@stre
 import { AUTO_TOPUP_NOT_MARKABLE_ERROR } from '@streaming-monorepo/web2-admin-common';
 import {
   NOT_TEST_STREAM_ERROR,
+  NOTICE_DESTINATION_NOT_SAVED_ERROR,
+  NOTICE_SERVICE_NOT_SAVED_ERROR,
   NOTIFICATION_CHANNEL_NOT_SAVED_ERROR,
   NOTIFICATION_TEST_TOO_SOON_ERROR,
   NOTIFICATIONS_UNAVAILABLE_ERROR,
+  TELEGRAM_CODE_NOT_STARTED_ERROR,
   TEST_STREAM_ERROR,
   type TestStreamRefusal,
 } from '@streaming-monorepo/web2-admin-common';
@@ -32,6 +35,9 @@ import {
   InvalidStateTransitionError,
   InvalidUsernameError,
   MediaTypeLockedError,
+  NoticeDestinationNotSavedError,
+  NoticeServiceNotSavedError,
+  NoticeTestTooSoonError,
   NoUsersError,
   NotTestStreamError,
   NotificationChannelNotSavedError,
@@ -49,6 +55,7 @@ import {
   StreamNotFoundError,
   StreamNotStartedError,
   StreamPublishedError,
+  TelegramCodeNotStartedError,
   TestStreamError,
   ThumbnailNotAnImageError,
   ThumbnailNotFoundError,
@@ -313,6 +320,28 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
   }
   if (err instanceof NotificationChannelNotSavedError) {
     res.status(409).json({ error: NOTIFICATION_CHANNEL_NOT_SAVED_ERROR, kind: err.kind, message: err.message });
+    return;
+  }
+  if (err instanceof NoticeServiceNotSavedError) {
+    res.status(409).json({ error: NOTICE_SERVICE_NOT_SAVED_ERROR, kind: err.kind, message: err.message });
+    return;
+  }
+  if (err instanceof NoticeDestinationNotSavedError) {
+    res.status(409).json({ error: NOTICE_DESTINATION_NOT_SAVED_ERROR, kind: err.kind, message: err.message });
+    return;
+  }
+  if (err instanceof TelegramCodeNotStartedError) {
+    res.status(409).json({ error: TELEGRAM_CODE_NOT_STARTED_ERROR, message: err.message });
+    return;
+  }
+  if (err instanceof NoticeTestTooSoonError) {
+    res.setHeader('Retry-After', String(err.retryAfterSeconds));
+    res.status(429).json({
+      error: NOTIFICATION_TEST_TOO_SOON_ERROR,
+      kind: err.kind,
+      retryAfterSeconds: err.retryAfterSeconds,
+      message: err.message,
+    });
     return;
   }
   if (err instanceof NotificationTestTooSoonError) {
