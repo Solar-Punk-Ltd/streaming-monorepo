@@ -113,7 +113,7 @@ To debug the uploader natively, set `stream-uploader` to `"native"` and run it o
 | `bee-uploader-1080p` | `ethersphere/bee:2.8.3`                           | The 1080p rung's own Bee node. Off by default                                         |
 | `bee-gateway`        | `ethersphere/bee:2.8.3`                           | The Bee node viewers read through                                                     |
 | `stream-uploader`    | Built from `Dockerfile.uploader`                  | Receives segments and publishes them to Swarm                                         |
-| `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | SRT and RTMP to HLS, ABR transcode. See the [engines reference](../engines/README.md) |
+| `srs`                | `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5` | SRT and RTMP to HLS, ABR transcode. See the [engines reference](../engines/README.md) |
 | `ome`                | `airensoft/ovenmediaengine:v0.21.0`               | SRT ingest. The uploader pulls HLS over HTTP                                          |
 | `client`             | Built from `Dockerfile.client`                    | The viewer (nginx), which proxies `/bee/` to `bee-gateway`                            |
 

@@ -14,9 +14,9 @@
  *     work_dir /no/such/directory;
  *
  * Two observations on
- * ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a,
- * which is the image the stack runs, taken on this laptop on 2026-10-20 with the
- * template substituted the way the check substitutes it:
+ * ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5@sha256:e1153c3bcddeb8bf8cd8767b0a45a3e941fe4bc281cb303269735c4b55347619,
+ * which is the image the stack runs, taken on this laptop on its linux/arm64 build
+ * on 2026-11-26 with the template substituted the way the check substitutes it:
  *
  *   1. The parse the manager runs, `./objs/srs -t -c /check/srs.conf` in a
  *      throwaway container with --network none, exited 0 and printed
@@ -24,7 +24,7 @@
  *      this file, which is the whole point: a file the check refuses would
  *      never reach a rollout.
  *   2. The start the stack's entrypoint runs, `./objs/srs -c conf/srs.conf`,
- *      left the container exited with code 255 one second in, printing
+ *      left the container exited with code 255 within a second, printing
  *      "Failed, code=-1 : chdir to /no/such/directory, r0=-1" and
  *      "do_main() [./src/main/srs_main_server.cpp:150][errno=2](No such file
  *      or directory)". SRS reads its config, then changes directory, and only

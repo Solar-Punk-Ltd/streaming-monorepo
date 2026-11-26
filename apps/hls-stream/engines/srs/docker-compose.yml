@@ -1,6 +1,6 @@
 services:
   srs:
-    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a
+    image: ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5@sha256:e1153c3bcddeb8bf8cd8767b0a45a3e941fe4bc281cb303269735c4b55347619
     container_name: srs
     restart: unless-stopped
     entrypoint: ['/bin/bash', '/usr/local/srs/conf/entrypoint.sh']
