@@ -87,7 +87,7 @@ fails when that row, the harness and the stack's compose files disagree.
 | Image                                             | Digest                                                                    | Resolved   | Used by                                         |
 | ------------------------------------------------- | ------------------------------------------------------------------------- | ---------- | ----------------------------------------------- |
 | `postgres:16.15-alpine`                           | `sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea` | 2026-09-27 | database, browser, integration                  |
-| `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` | `sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a` | 2026-10-05 | srs-parser, and the engine startup observations |
+| `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5` | `sha256:e1153c3bcddeb8bf8cd8767b0a45a3e941fe4bc281cb303269735c4b55347619` | 2026-11-26 | srs-parser, and the engine startup observations |
 | `airensoft/ovenmediaengine`                       | `sha256:172da9129d32093f3c92c426d385a318db38c7e70de0a3a685693e69614672a6` | 2026-09-08 | ome-gate                                        |
 
 `SRS_CHECK_IMAGE` overrides the SRS harness image and is refused unless it carries `@sha256:`.

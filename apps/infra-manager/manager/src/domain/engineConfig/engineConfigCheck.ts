@@ -40,7 +40,7 @@ const SRS_CHECK_PATH = '/check/srs.conf';
  * SRS knows and stock SRS refuses a valid file over them.
  */
 export const SRS_DEFAULT_IMAGE =
-  'ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a';
+  'ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5@sha256:e1153c3bcddeb8bf8cd8767b0a45a3e941fe4bc281cb303269735c4b55347619';
 /** Each check writes its copy into a directory of its own, `check-<random>/srs.conf`. */
 const CHECK_DIR_PREFIX = 'check-';
 const CHECK_FILE_NAME = 'srs.conf';

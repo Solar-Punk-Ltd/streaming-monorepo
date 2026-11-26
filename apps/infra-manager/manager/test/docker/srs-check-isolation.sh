@@ -21,8 +21,8 @@
 # the image below. No funds, no host, no network beyond the image: every check
 # container runs with --network none.
 #
-# Evidence, 2026-10-20, this laptop, arm64, Docker 29.9.1, on the image below,
-# which is built for amd64 and ran under emulation: PASS. Eight checks at once,
+# Evidence, 2026-11-26, this laptop, arm64, Docker 29.9.3, on the image below,
+# whose linux/arm64 build ran natively: PASS. Eight checks at once,
 # four accepted, four refused, each refusal naming only its own directive,
 # scratch directory empty. The four refusal strings are the ones
 # test/unit/srsCheckIsolation.test.ts records.
@@ -33,7 +33,7 @@ STACK="$(cd "$ROOT/../hls-stream" && pwd)"
 # The image and digest the stack's compose files pin for its srs service, so
 # the parser here is the parser a deployment gets. test/unit/srsImagePin.test.ts
 # fails when the two differ.
-IMAGE="${SRS_CHECK_IMAGE:-ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4@sha256:090f7b4e9017629b6837866e314e5576f7a1becf4cf3bfd85f393ada0e5f5d5a}"
+IMAGE="${SRS_CHECK_IMAGE:-ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5@sha256:e1153c3bcddeb8bf8cd8767b0a45a3e941fe4bc281cb303269735c4b55347619}"
 
 # An override is for pinning a different build, never for going back to a tag.
 # A tag moves, and the whole claim of this harness is that the parser it asks

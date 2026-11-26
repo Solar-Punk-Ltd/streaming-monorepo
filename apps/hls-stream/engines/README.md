@@ -37,16 +37,18 @@ this stack.
   H.264 sequence header aborts the whole server. Upstream merged it only on its development line, so
   the fork carries it on 6.0.
 
-The compose files run `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4` and pin it by digest, so every
+The compose files run `ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5` and pin it by digest, so every
 deploy runs the same build. A workflow in the fork builds SRS's own root `Dockerfile` for
-`linux/amd64` with upstream's release flags (`--sanitizer=off --gb28181=on`). That Dockerfile copies
-ffmpeg from upstream's build image.
+`linux/amd64` and `linux/arm64` under one tag, with upstream's release flags
+(`--sanitizer=off --gb28181=on`), so the same pin runs on arm64 hosts such as Apple silicon Macs.
+That Dockerfile copies ffmpeg from upstream's build image.
 
 | Image tag        | Adds                                                                                                                                                                               |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `6.0-r2-swarm.2` | The SRT takeover                                                                                                                                                                   |
 | `6.0-r2-swarm.3` | The RTMP takeover, and `, vhost=<vhost>` at the end of each RTMP publisher's statistics line, which the manager reads for RTMP ingest health                                       |
 | `6.0-r2-swarm.4` | Keeps a new RTMP broadcast's source while its publisher is still getting ready (upstream [ossrs/srs#4755](https://github.com/ossrs/srs/issues/4755), fixed upstream only in SRS 7) |
+| `6.0-r2-swarm.5` | The same SRS as `swarm.4`, built for `linux/arm64` as well as `linux/amd64`                                                                                                        |
 
 Without the `swarm.4` change, stock SRS 6 can drop a new RTMP source between the publisher connecting
 and its `on_publish` hook answering. The publisher then publishes into the dropped source while the
@@ -289,7 +291,7 @@ Use the fork's image, because stock SRS refuses the template's `takeover` lines:
 ```bash
 sed -E '/^(TRANSCODE|ABR_VHOST)_PLACEHOLDER$/d; s/[A-Z_]+_PLACEHOLDER/1/g' my-srs.conf > my-srs.check.conf
 docker run --rm -v "$PWD/my-srs.check.conf:/check/srs.conf:ro" \
-  ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.4 ./objs/srs -t -c /check/srs.conf
+  ghcr.io/solar-punk-ltd/swarm-srs:6.0-r2-swarm.5 ./objs/srs -t -c /check/srs.conf
 ```
 
 Deploy `my-srs.conf` itself, not the checked copy. The entrypoint fills its tokens from the
