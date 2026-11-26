@@ -210,6 +210,32 @@ const TELEGRAM_CHAT_NUMBER_PATTERN = /^-?[1-9][0-9]{0,18}$/;
 /** A public channel's or group's name: `@`, a letter, then letters, digits and underscores, 5 to 32 in all. */
 const TELEGRAM_CHAT_NAME_PATTERN = /^@[A-Za-z][A-Za-z0-9_]{4,31}$/;
 
+/** The kinds of Telegram chat, as the Bot API names them: a person's own chat with the bot, a group, a channel. */
+export const TELEGRAM_CHAT_KINDS = ['private', 'group', 'supergroup', 'channel'] as const;
+export type TelegramChatKind = (typeof TELEGRAM_CHAT_KINDS)[number];
+
+export function isTelegramChatKind(value: unknown): value is TelegramChatKind {
+  return (TELEGRAM_CHAT_KINDS as readonly unknown[]).includes(value);
+}
+
+/** The longest a chat's name is shown. */
+export const TELEGRAM_CHAT_NAME_MAX_LENGTH = 160;
+
+/**
+ * A chat that wrote to the bot lately, as Find chat id lists it: what the Telegram channel's chat id is set to when it
+ * is picked.
+ */
+export interface TelegramChat {
+  /** Its numeric id as the chat id field takes it: positive for a person's own chat, negative for a group or channel. */
+  id: string;
+  kind: TelegramChatKind;
+  /**
+   * The person's name, or the group's or channel's title, then its `@username` when it has one; one line of at most
+   * {@link TELEGRAM_CHAT_NAME_MAX_LENGTH} characters, and empty when Telegram gave neither.
+   */
+  name: string;
+}
+
 // -------------------------------------------------------------- the settings
 
 /** Each channel's settings, by its kind. */

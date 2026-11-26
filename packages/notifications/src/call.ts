@@ -4,6 +4,9 @@
  * the answer. It resolves once the service answers with a 2xx status, and otherwise rejects with a
  * {@link NotificationSendError} whose sentence holds the status and a short part of the service's own words, with the
  * secret and the address that was called cut out of them.
+ *
+ * `readService` makes the same call and answers the text of a 2xx answer, for the one read the package makes:
+ * Telegram's `getUpdates`, which Find chat id lists a bot's chats from.
  */
 
 import { NotificationSendError, type NotificationFetch } from './channel.js';
@@ -161,23 +164,34 @@ function discard(response: Response): void {
   void response.body?.cancel().catch(() => undefined);
 }
 
+/** What was read of an answer. */
+interface AnswerRead {
+  text: string;
+  /** Whether that is the whole answer: it ended within `NOTIFICATION_ANSWER_MAX_BYTES`, unbroken and in time. */
+  whole: boolean;
+}
+
 /**
  * The answer's text: `NOTIFICATION_ANSWER_MAX_BYTES` of it at most, read until it ends, until that much came, or until
- * the call's end, whichever is first. What came before an answer broke off is kept, since it is read for its words
- * alone. The signal stops a body that stops arriving, whether or not the fetch ties it to the body.
+ * the call's end, whichever is first. What came before an answer broke off is kept, since a failure is read for its
+ * words alone. The signal stops a body that stops arriving, whether or not the fetch ties it to the body.
  */
-async function readAnswer(response: Response, signal: AbortSignal): Promise<string> {
-  if (response.body === null) return '';
+async function readAnswer(response: Response, signal: AbortSignal): Promise<AnswerRead> {
+  if (response.body === null) return { text: '', whole: true };
   const reader = response.body.getReader();
   const stop = () => void reader.cancel().catch(() => undefined);
   signal.addEventListener('abort', stop, { once: true });
   const decoder = new TextDecoder();
   let text = '';
   let bytes = 0;
+  let whole = false;
   try {
     while (bytes < NOTIFICATION_ANSWER_MAX_BYTES && !signal.aborted) {
       const chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) {
+        whole = true;
+        break;
+      }
       const part = chunk.value.subarray(0, NOTIFICATION_ANSWER_MAX_BYTES - bytes);
       bytes += part.byteLength;
       text += decoder.decode(part, { stream: true });
@@ -188,7 +202,7 @@ async function readAnswer(response: Response, signal: AbortSignal): Promise<stri
     signal.removeEventListener('abort', stop);
     stop();
   }
-  return text + decoder.decode();
+  return { text: text + decoder.decode(), whole };
 }
 
 /**
@@ -197,6 +211,20 @@ async function readAnswer(response: Response, signal: AbortSignal): Promise<stri
  * did not come in time, a redirect, and any other status.
  */
 export async function callService(call: ServiceCall, fetchFn: NotificationFetch = fetch): Promise<void> {
+  await exchange(call, fetchFn, false);
+}
+
+/**
+ * Makes the call as {@link callService} does, and answers the text of the service's 2xx answer. Rejects as it does,
+ * and as well for an answer that did not come whole: longer than `NOTIFICATION_ANSWER_MAX_BYTES`, broken off, or not
+ * in time.
+ */
+export async function readService(call: ServiceCall, fetchFn: NotificationFetch = fetch): Promise<string> {
+  return exchange(call, fetchFn, true);
+}
+
+/** The call of {@link callService} and {@link readService}: a 2xx answer is read when `read` is true, else dropped. */
+async function exchange(call: ServiceCall, fetchFn: NotificationFetch, read: boolean): Promise<string> {
   const address = addressOf(call);
   // Aborted at the deadline, and once the call is over, so an answer left unread does not hold the connection.
   const finished = new AbortController();
@@ -228,10 +256,23 @@ export async function callService(call: ServiceCall, fetchFn: NotificationFetch 
       });
     }
     if (response.ok) {
-      discard(response);
-      return;
+      if (!read) {
+        discard(response);
+        return '';
+      }
+      const answer = await readAnswer(response, finished.signal);
+      if (late) throw timedOut(call.service);
+      if (!answer.whole) {
+        throw new NotificationSendError(
+          `${call.service}'s answer could not be read whole: it broke off, or it is longer than ${
+            NOTIFICATION_ANSWER_MAX_BYTES / 1024
+          } KB.`,
+          { status: response.status },
+        );
+      }
+      return answer.text;
     }
-    const words = serviceWords(await readAnswer(response, finished.signal), [address, ...call.secrets]);
+    const words = serviceWords((await readAnswer(response, finished.signal)).text, [address, ...call.secrets]);
     const said = words === '' ? '' : `: ${words}`;
     throw new NotificationSendError(sentence(`${call.service} answered with status ${response.status}${said}`), {
       status: response.status,
