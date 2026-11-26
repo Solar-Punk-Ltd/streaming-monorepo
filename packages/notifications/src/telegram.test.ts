@@ -1,6 +1,6 @@
 /**
- * Find chat id's lookup: `getUpdates` with the bot's token, and the chats its updates name. Every token and chat here
- * is made up for the test.
+ * Find my chat's lookups: `getMe` for the bot, and `getUpdates` for the one chat that sent a code. Every token, code
+ * and chat here is made up for the test.
  */
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -12,12 +12,7 @@ import {
   type TelegramChatLookup,
 } from './channel.js';
 import { TELEGRAM_CHAT_NAME_MAX_LENGTH, type TelegramBot, type TelegramChat } from './rules.js';
-import {
-  findTelegramChatByCode,
-  findTelegramChats,
-  lookUpTelegramBot,
-  TELEGRAM_CHATS_UPDATES_LIMIT,
-} from './telegram.js';
+import { findTelegramChatByCode, lookUpTelegramBot, TELEGRAM_CHATS_UPDATES_LIMIT } from './telegram.js';
 
 const TOKEN = `1234567890:${'A'.repeat(35)}`;
 
@@ -64,123 +59,57 @@ async function failure(finding: Promise<unknown>): Promise<NotificationSendError
   assert.fail('The lookup found chats.');
 }
 
-describe("Find chat id's lookup", () => {
-  it(`asks getUpdates for at most ${TELEGRAM_CHATS_UPDATES_LIMIT} updates, with no offset, following no redirect`, async () => {
-    const { fetch, sent } = fakeFetch(updates());
-    assert.deepEqual(await findTelegramChats(` ${TOKEN} `, { fetch }), []);
-    assert.deepEqual(sent, [
-      {
-        method: 'POST',
-        url: `https://api.telegram.org/bot${TOKEN}/getUpdates`,
-        redirect: 'manual',
-        body: { limit: TELEGRAM_CHATS_UPDATES_LIMIT },
-      },
-    ]);
+describe('the chat Find my chat answers', () => {
+  const CODE = 'QRSTU78923';
+
+  /** The chat that sends the code, when it is the one update. */
+  async function found(chat: unknown): Promise<TelegramChat | null> {
+    const { fetch } = fakeFetch(updates({ message: { chat, text: CODE } }));
+    return findTelegramChatByCode(TOKEN, CODE, { fetch });
+  }
+
+  it("is named by a person's name or a title, then its username in brackets", async () => {
+    assert.deepEqual(await found(ADA), { id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' });
+    assert.deepEqual(await found(OPS), { id: '-1001234567890', kind: 'supergroup', name: 'Stream ops' });
+    assert.deepEqual(await found(ALERTS), { id: '-1009876543210', kind: 'channel', name: 'Alerts (@streamalerts)' });
+    assert.deepEqual(await found(OTHER), { id: '-4123456789', kind: 'group', name: 'Other' });
   });
 
-  it('lists the chats the updates name, the latest first and each once, with their names', async () => {
-    const { fetch } = fakeFetch(
-      updates(
-        { message: { message_id: 1, chat: ADA, text: '/start' } },
-        { my_chat_member: { chat: OPS, date: 1 } },
-        { message: { message_id: 2, chat: ADA, text: 'hi' } },
-        { channel_post: { message_id: 3, chat: ALERTS, text: 'post' } },
-        { callback_query: { id: 'q', message: { message_id: 4, chat: OTHER } } },
-      ),
-    );
-    assert.deepEqual(await findTelegramChats(TOKEN, { fetch }), [
-      { id: '-4123456789', kind: 'group', name: 'Other' },
-      { id: '-1009876543210', kind: 'channel', name: 'Alerts (@streamalerts)' },
-      { id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' },
-      { id: '-1001234567890', kind: 'supergroup', name: 'Stream ops' },
-    ]);
+  it('is named by its username alone, or by nothing, when Telegram gave no name or title', async () => {
+    assert.equal((await found({ id: 222222222, type: 'private', username: 'nameless' }))?.name, '@nameless');
+    assert.equal((await found({ id: 333333333, type: 'private' }))?.name, '');
   });
 
-  it('names a chat by its username alone, or by nothing, when Telegram gave no name or title', async () => {
-    const { fetch } = fakeFetch(
-      updates(
-        { message: { chat: { id: 222222222, type: 'private', username: 'nameless' } } },
-        { message: { chat: { id: 333333333, type: 'private' } } },
-      ),
-    );
-    assert.deepEqual(await findTelegramChats(TOKEN, { fetch }), [
-      { id: '333333333', kind: 'private', name: '' },
-      { id: '222222222', kind: 'private', name: '@nameless' },
-    ]);
-  });
-
-  it(`shows a name as one line of at most ${TELEGRAM_CHAT_NAME_MAX_LENGTH} characters`, async () => {
-    const { fetch } = fakeFetch(
-      updates(
-        { message: { chat: { id: -100111, type: 'supergroup', title: 'Line one\nline\ttwo​' } } },
-        { message: { chat: { id: -100222, type: 'supergroup', title: 'x'.repeat(400) } } },
-      ),
-    );
-    const [long, multiline] = await findTelegramChats(TOKEN, { fetch });
+  it(`shows its name as one line of at most ${TELEGRAM_CHAT_NAME_MAX_LENGTH} characters`, async () => {
+    const multiline = await found({ id: -100111, type: 'supergroup', title: 'Line one\nline\ttwo​' });
     assert.equal(multiline?.name, 'Line one line two');
+    const long = await found({ id: -100222, type: 'supergroup', title: 'x'.repeat(400) });
     assert.equal(Array.from(long?.name ?? '').length, TELEGRAM_CHAT_NAME_MAX_LENGTH);
     assert.ok(long?.name.endsWith('…'));
   });
 
-  it('passes over what is not a chat: an id that is not a whole number, a kind Telegram has not, a part with none', async () => {
+  it('is never what is not a chat: an id that is not a whole number, a kind Telegram has not, none at all', async () => {
+    for (const chat of [
+      { id: '111111111', type: 'private' },
+      { id: 1.5, type: 'private' },
+      { id: 2 ** 60, type: 'private' },
+      { id: 0, type: 'private' },
+      { id: 444444444, type: 'secret' },
+      undefined,
+    ]) {
+      assert.equal(await found(chat), null, JSON.stringify(chat));
+    }
     const { fetch } = fakeFetch(
-      updates(
-        { message: { chat: { id: '111111111', type: 'private' } } },
-        { message: { chat: { id: 1.5, type: 'private' } } },
-        { message: { chat: { id: 2 ** 60, type: 'private' } } },
-        { message: { chat: { id: 0, type: 'private' } } },
-        { message: { chat: { id: 444444444, type: 'secret' } } },
-        { message: { text: 'no chat' } },
-        { poll: { id: 'p', question: 'Which?' } },
-        { message: { chat: ADA } },
-      ),
+      updates({ message: { chat: ADA, text: CODE } }, { message: { chat: { id: 0, type: 'private' }, text: CODE } }),
     );
-    assert.deepEqual(await findTelegramChats(TOKEN, { fetch }), [
-      { id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' },
-    ]);
+    assert.equal((await findTelegramChatByCode(TOKEN, CODE, { fetch }))?.id, '111111111');
   });
 
-  it('says why Telegram refused, without the token', async () => {
-    for (const [status, description, expected] of [
-      [401, 'Unauthorized', 'Telegram answered with status 401: Unauthorized.'],
-      [
-        409,
-        "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first",
-        "Telegram answered with status 409: Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first.",
-      ],
-      [404, `Not Found: bot${TOKEN}`, 'Telegram answered with status 404: Not Found: bot[hidden].'],
-    ] as const) {
-      const { fetch } = fakeFetch(
-        () => new Response(JSON.stringify({ ok: false, error_code: status, description }), { status }),
-      );
-      const error = await failure(findTelegramChats(TOKEN, { fetch }));
-      assert.equal(error.message, expected);
-      assert.equal(error.status, status);
-    }
-  });
-
-  it("refuses an answer that is not the bot's updates", async () => {
-    for (const body of ['<html>busy</html>', '{"ok":false}', '{"ok":true,"result":{}}', '[]']) {
-      const { fetch } = fakeFetch(() => new Response(body, { status: 200 }));
-      const error = await failure(findTelegramChats(TOKEN, { fetch }));
-      assert.equal(error.message, "Telegram's answer could not be read as the bot's updates.");
-    }
-  });
-
-  it('refuses an answer longer than the most that is read of one, rather than reading part of it', async () => {
+  it('is read from a whole answer only: one longer than the most that is read is refused, not read in part', async () => {
     const message = { message_id: 1, chat: ADA, text: 'y'.repeat(4000) };
     const { fetch } = fakeFetch(updates(...Array.from({ length: 5 }, () => ({ message }))));
-    const error = await failure(findTelegramChats(TOKEN, { fetch }));
+    const error = await failure(findTelegramChatByCode(TOKEN, CODE, { fetch }));
     assert.equal(error.message, "Telegram's answer could not be read whole: it broke off, or it is longer than 16 KB.");
-  });
-
-  it('calls nothing with a token BotFather would not give out', async () => {
-    const { fetch, sent } = fakeFetch(updates());
-    for (const token of [`${TOKEN}/../getMe`, `${TOKEN}?offset=1`, 'not a token', '']) {
-      const error = await failure(findTelegramChats(token, { fetch }));
-      assert.equal(error.message, "The bot's token is not one BotFather gives out, so Telegram was not called.");
-    }
-    assert.equal(sent.length, 0);
   });
 });
 

@@ -5,8 +5,8 @@
  * {@link NotificationSendError} whose sentence holds the status and a short part of the service's own words, with the
  * secret and the address that was called cut out of them.
  *
- * `readService` makes the same call and answers the text of a 2xx answer, for the one read the package makes:
- * Telegram's `getUpdates`, which Find chat id lists a bot's chats from.
+ * `readService` makes the same call and answers the text of a 2xx answer, for the two reads the package makes, both for
+ * Find my chat: Telegram's `getMe` and `getUpdates`.
  */
 
 import { NotificationSendError, type NotificationFetch } from './channel.js';
@@ -15,7 +15,6 @@ import {
   NOTIFICATION_ANSWER_MAX_BYTES,
   NOTIFICATION_CALL_TIMEOUT_MS,
   NOTIFICATION_SERVICE_WORDS_MAX_LENGTH,
-  SLACK_WEBHOOK_HOST,
   TELEGRAM_API_HOST,
 } from './rules.js';
 
@@ -26,13 +25,13 @@ export interface NotificationCallOptions {
 }
 
 /** The hosts a call can go to: the ones `rules.ts` fixes, and no other. */
-export type ServiceHost = typeof BREVO_API_HOST | typeof SLACK_WEBHOOK_HOST | typeof TELEGRAM_API_HOST;
+export type ServiceHost = typeof BREVO_API_HOST | typeof TELEGRAM_API_HOST;
 
-const SERVICE_HOSTS: readonly string[] = [BREVO_API_HOST, SLACK_WEBHOOK_HOST, TELEGRAM_API_HOST];
+const SERVICE_HOSTS: readonly string[] = [BREVO_API_HOST, TELEGRAM_API_HOST];
 
 /** One call to a service. */
 export interface ServiceCall {
-  /** The service, as a failure's sentence names it: `Brevo`, `Slack` or `Telegram`. */
+  /** The service, as a failure's sentence names it: `Brevo` or `Telegram`. */
   service: string;
   host: ServiceHost;
   /** The path on the host, from its first slash. */

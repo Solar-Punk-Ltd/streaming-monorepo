@@ -1,7 +1,6 @@
 /**
- * The channels a notice goes out on: email through its provider, Slack through an incoming webhook, Telegram through a
- * bot. {@link destinationChannelFrom} builds the channel to one person's destination, and {@link channelFrom} a channel
- * from its own settings. `channel.ts` says what each one sends, and `call.ts` makes the calls.
+ * The channels a notice goes out on, each to one person's destination, built by {@link destinationChannelFrom}: email
+ * through its provider, Telegram through a bot. `channel.ts` says what each one sends, and `call.ts` makes the calls.
  */
 
 import { BrevoEmailProvider } from './brevo.js';
@@ -9,15 +8,13 @@ import { callService, type NotificationCallOptions } from './call.js';
 import {
   NotificationSendError,
   type Channel,
-  type ChannelConfig,
   type DestinationChannelConfig,
   type EmailProvider,
   type NotificationFetch,
 } from './channel.js';
 import {
-  channelSecretProblem,
   noticeProblem,
-  SLACK_WEBHOOK_HOST,
+  serviceSecretProblem,
   storedChannelSecret,
   TELEGRAM_API_HOST,
   TELEGRAM_MESSAGE_MAX_LENGTH,
@@ -27,72 +24,44 @@ import {
 } from './rules.js';
 
 /**
- * The longest text one Slack message is sent with. A longer notice goes as several, cut at line breaks, and its length
- * is counted once `&`, `<` and `>` are escaped.
- *
- * Slack gives a message's length on its reference of `chat.postMessage`,
- * https://docs.slack.dev/reference/methods/chat.postMessage/: a `text` of 4,000 characters at most gives the best
- * results, and a message over 40,000 is cut short. An incoming webhook's message has the same `text`. The 4,000 is the
- * one taken, so a long notice reads on Slack as it does on Telegram, whose limit is 4,096.
+ * A line as pieces of at most `max` characters: the line itself when it fits, and otherwise cut at its last space that
+ * fits, or where it has to be. A cut falls between two characters, never inside one.
  */
-export const SLACK_MESSAGE_MAX_LENGTH = 4000;
-
-const SLACK_ESCAPES: Readonly<Record<string, string>> = { '&': '&amp;', '<': '&lt;', '>': '&gt;' };
-
-/** The text with `&`, `<` and `>` written as Slack asks, so nothing in it mentions a person or a channel, or makes a link. */
-export function escapeForSlack(text: string): string {
-  return text.replace(/[&<>]/g, (character) => SLACK_ESCAPES[character] ?? character);
-}
-
-/**
- * A line as rendered pieces of at most `max` characters: the line itself when it fits, and otherwise cut at its last
- * space that fits, or where it has to be. A cut falls between two characters, never inside one or inside what one
- * renders as.
- */
-function cutLine(line: string, max: number, render: (text: string) => string): string[] {
-  const rendered = render(line);
-  if (rendered.length <= max) return [rendered];
-  const characters = Array.from(line, (character) => ({ character, rendered: render(character) }));
+function cutLine(line: string, max: number): string[] {
+  if (line.length <= max) return [line];
+  const characters = Array.from(line);
   const pieces: string[] = [];
   let start = 0;
   while (start < characters.length) {
     let end = start;
     let length = 0;
-    while (end < characters.length && length + characters[end].rendered.length <= max) {
-      length += characters[end].rendered.length;
+    while (end < characters.length && length + characters[end].length <= max) {
+      length += characters[end].length;
       end += 1;
     }
     let cut = end;
     if (end < characters.length) {
       let space = end;
-      while (space > start && characters[space].character !== ' ') space -= 1;
+      while (space > start && characters[space] !== ' ') space -= 1;
       if (space > start) cut = space;
     }
-    // A character that renders longer than a whole part goes on its own.
+    // A character longer than a whole part goes on its own.
     if (cut === start) cut = start + 1;
-    const piece = characters
-      .slice(start, cut)
-      .map((character) => character.rendered)
-      .join('')
-      .trimEnd();
+    const piece = characters.slice(start, cut).join('').trimEnd();
     if (piece !== '') pieces.push(piece);
     start = cut;
-    while (start < characters.length && characters[start].character === ' ') start += 1;
+    while (start < characters.length && characters[start] === ' ') start += 1;
   }
   return pieces;
 }
 
 /**
- * The text, rendered, in parts of at most `max` characters, cut at line breaks: each part holds as many whole lines as
- * fit, and a line too long for a part of its own is cut at its last space that fits, or where it has to be. The blank
- * lines at a cut are dropped. A text that fits is one part, as it is.
- *
- * `render` takes one character at a time, as escaping does, so a part is measured as it is sent, and a cut never falls
- * inside what one character renders as.
+ * The text in parts of at most `max` characters, cut at line breaks: each part holds as many whole lines as fit, and a
+ * line too long for a part of its own is cut at its last space that fits, or where it has to be. The blank lines at a
+ * cut are dropped. A text that fits is one part, as it is.
  */
-export function cutAtLineBreaks(text: string, max: number, render: (text: string) => string = (raw) => raw): string[] {
-  const whole = render(text);
-  if (whole.length <= max) return [whole];
+export function cutAtLineBreaks(text: string, max: number): string[] {
+  if (text.length <= max) return [text];
   const parts: string[] = [];
   let lines: string[] = [];
   let length = 0;
@@ -103,7 +72,7 @@ export function cutAtLineBreaks(text: string, max: number, render: (text: string
     length = 0;
   };
   for (const line of text.split('\n')) {
-    for (const piece of cutLine(line, max, render)) {
+    for (const piece of cutLine(line, max)) {
       if (lines.length > 0 && length + 1 + piece.length > max) close();
       if (lines.length === 0 && piece.trim() === '') continue;
       length += (lines.length === 0 ? 0 : 1) + piece.length;
@@ -141,31 +110,31 @@ function checkNotice(notice: Notice): void {
   if (problem !== null) throw new NotificationSendError(problem);
 }
 
-/** How each email service's provider is made from the channel's secret: one entry for each of `EMAIL_PROVIDER_KINDS`. */
+/** How each email provider is made from the service's secret: one entry for each of `EMAIL_PROVIDER_KINDS`. */
 const EMAIL_PROVIDERS: {
   readonly [K in EmailProviderKind]: (apiKey: string, options: NotificationCallOptions) => EmailProvider;
 } = {
   brevo: (apiKey, options) => new BrevoEmailProvider(apiKey, options),
 };
 
-/** The provider of the service the settings name, or null for a service this package does not have. */
+/** The provider the settings name, or null for a provider this package does not have. */
 function emailProviderFrom(kind: string, apiKey: string, options: NotificationCallOptions): EmailProvider | null {
   return Object.hasOwn(EMAIL_PROVIDERS, kind) ? EMAIL_PROVIDERS[kind as EmailProviderKind](apiKey, options) : null;
 }
 
 /**
  * Email: the title is the subject, the text is the body, and the provider the settings name sends it from the
- * service's sender to the recipients, every one named in the one mail.
+ * service's sender to the one address.
  */
 class EmailChannel implements Channel {
   readonly kind = 'email';
   readonly #sender: EmailServiceSettings;
-  readonly #recipients: readonly string[];
+  readonly #address: string;
   readonly #provider: EmailProvider | null;
 
-  constructor(sender: EmailServiceSettings, recipients: readonly string[], provider: EmailProvider | null) {
+  constructor(sender: EmailServiceSettings, address: string, provider: EmailProvider | null) {
     this.#sender = sender;
-    this.#recipients = recipients;
+    this.#address = address;
     this.#provider = provider;
   }
 
@@ -177,45 +146,10 @@ class EmailChannel implements Channel {
     await this.#provider.send({
       senderAddress: this.#sender.senderAddress,
       senderName: this.#sender.senderName,
-      recipients: this.#recipients,
+      recipients: [this.#address],
       subject: notice.title,
       text: notice.text,
     });
-  }
-}
-
-/** Slack: `{ text }` posted to the incoming webhook, the title in bold, then an empty line, then the text. */
-class SlackChannel implements Channel {
-  readonly kind = 'slack';
-  // The language's private fields rather than TypeScript's, so no view of the object shows the webhook's URL.
-  readonly #webhookUrl: string;
-  readonly #fetch: NotificationFetch | undefined;
-
-  constructor(webhookUrl: string, options: NotificationCallOptions) {
-    this.#webhookUrl = webhookUrl;
-    this.#fetch = options.fetch;
-  }
-
-  async send(notice: Notice): Promise<void> {
-    checkNotice(notice);
-    const webhookUrl = storedChannelSecret(this.#webhookUrl);
-    if (channelSecretProblem('slack', webhookUrl) !== null) {
-      throw new NotificationSendError(
-        `The webhook's URL is not an incoming webhook on ${SLACK_WEBHOOK_HOST}, so Slack was not called.`,
-      );
-    }
-    // The call goes to Slack's host with the path the URL names. The URL is the secret, and the three parts of its
-    // path are cut out of Slack's words as well.
-    const path = new URL(webhookUrl).pathname;
-    const secrets = [webhookUrl, ...path.split('/').slice(2)];
-    const parts = cutAtLineBreaks(
-      `*${notice.title.trim()}*\n\n${notice.text}`,
-      SLACK_MESSAGE_MAX_LENGTH,
-      escapeForSlack,
-    );
-    await sendInOrder(parts, (text) =>
-      callService({ service: 'Slack', host: SLACK_WEBHOOK_HOST, path, body: { text }, secrets }, this.#fetch),
-    );
   }
 }
 
@@ -239,7 +173,7 @@ class TelegramChannel implements Channel {
   async send(notice: Notice): Promise<void> {
     checkNotice(notice);
     const token = storedChannelSecret(this.#token);
-    if (channelSecretProblem('telegram', token) !== null) {
+    if (serviceSecretProblem('telegram', token) !== null) {
       throw new NotificationSendError("The bot's token is not one BotFather gives out, so Telegram was not called.");
     }
     const path = `/bot${token}/sendMessage`;
@@ -262,32 +196,12 @@ class TelegramChannel implements Channel {
 }
 
 /**
- * Builds the channel that a saved channel's kind, settings and secret describe: the `ChannelFactory` the admin sends
- * its notices through. It makes no call. A channel whose secret no longer passes `channelSecretProblem` calls
- * nothing and fails its sends.
- */
-export function channelFrom(config: ChannelConfig, options: NotificationCallOptions = {}): Channel {
-  switch (config.kind) {
-    case 'email':
-      return new EmailChannel(
-        config.settings,
-        config.settings.recipients,
-        emailProviderFrom(config.settings.provider, config.secret, options),
-      );
-    case 'slack':
-      return new SlackChannel(config.secret, options);
-    case 'telegram':
-      return new TelegramChannel(config.settings.chatId, config.secret, options);
-  }
-}
-
-/**
  * Builds the channel a notice reaches one person on, from the service's kind, settings and secret and the person's
  * destination: the `DestinationChannelFactory` the admin sends each person's notice through. It makes no call.
  *
  * - **email** sends one mail, from the service's sender, to the destination's address alone, so two people's notices
  *   are two mails and neither names the other.
- * - **telegram** sends to the chat whose id the destination is, as the Telegram channel always does.
+ * - **telegram** sends to the chat whose id the destination is.
  *
  * A channel whose secret no longer passes `serviceSecretProblem` calls nothing and fails its sends.
  */
@@ -299,7 +213,7 @@ export function destinationChannelFrom(
     case 'email':
       return new EmailChannel(
         config.settings,
-        [config.address],
+        config.address,
         emailProviderFrom(config.settings.provider, config.secret, options),
       );
     case 'telegram':

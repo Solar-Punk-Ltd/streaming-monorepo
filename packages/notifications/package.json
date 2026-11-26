@@ -2,7 +2,7 @@
   "name": "@streaming-monorepo/notifications",
   "version": "0.1.0",
   "private": true,
-  "description": "Notices to people over email, Slack and Telegram: the notice, the channels, the email provider under the email channel, and the rules of each channel's settings.",
+  "description": "Notices to people over email and Telegram: the notice, the channel to one person's destination, the email provider under the email service, Find my chat's Telegram lookups, and the rules of each service's settings and of a destination.",
   "license": "MIT",
   "files": [
     "dist"
