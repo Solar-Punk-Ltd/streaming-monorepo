@@ -5,7 +5,7 @@
  * of the API to click through every screen: cookie sessions, the seeded admin
  * user, stream CRUD, thumbnails, publish/unpublish against a fake feed, the
  * ingest details, the stages, the catalogue stamp and its move, the Funding
- * page's three tabs, the build line and the host's look.
+ * page's four tabs, the Notifications page, the build line and the host's look.
  *
  * It is NOT the contract and never validates like yup does. Point the console
  * at it with these, from apps/web2-admin:
@@ -67,6 +67,12 @@
  * MOCK_FUNDING=off answers the page as not set up, and MOCK_FUNDING=refuse has
  * the chain's node refuse every transfer at the relay, which is then mined
  * anyway, and the nodes refuse every stamp and chequebook operation.
+ *
+ * The Auto top-up tab's numbers start saved at 21 days, so four stamps not on
+ * auto top-up read as running low, and the catalogue batch starts marked. The
+ * Notifications page starts with both services saved and on, as
+ * MOCK_NOTIFICATIONS decides below at its constants: `set`, `none` or
+ * `unavailable`.
  *
  * Exporting a recording works as the API holds it: one export at a time, read
  * for 45 seconds and joined for 5, then kept until the next one starts. Every
@@ -3069,6 +3075,477 @@ function removeLostRecordings(check, streamIds) {
   }
 }
 
+// --- notifications ---------------------------------------------------------------
+
+/*
+ * The Notifications page (`docs/architecture/notifications.md`): two shared services, email and Telegram, that a user
+ * with the admin role saves behind the password, switches and removes, and each user's own destinations and topics.
+ * MOCK_NOTIFICATIONS decides how it starts:
+ *
+ * - `set`, the default: both services saved by the seeded user and on, the email service with a failure a day old, and
+ *   three people the mock makes up, with no account, so the view's counts count more than the signed-in user: two get
+ *   the topics of stamp auto top-up by email, one of them on a Telegram chat as well, which failed its last notice and
+ *   has one waiting, and "Stage stamps"; the third gets "A top-up failed" on Telegram.
+ * - `none`: no service saved, and nobody else.
+ * - `unavailable`: as `none`, and the admin has no BRAND_WALLET_SECRET, so no service can be saved and no notice sent.
+ *
+ * Each user starts with no destination and no tick. A test notice goes out unless the address holds `fail`. Find my
+ * chat finds the signed-in user's own chat 5 seconds after their code starts, and nothing before. The mock sends
+ * nothing anywhere and keeps no secret: a save records that the service has one.
+ */
+const NOTICES_SEED = process.env.MOCK_NOTIFICATIONS ?? 'set';
+const NOTICES_AVAILABLE = NOTICES_SEED !== 'unavailable';
+const NOTICE_SERVICE_KINDS = ['email', 'telegram'];
+const NOTICE_TOPICS = [
+  'topups_coming',
+  'wallet_low',
+  'topup_failed',
+  'stamp_expired',
+  'unmarked_catalogue',
+  'unmarked_stage',
+];
+/** The four of stamp auto top-up, which a user's first saved destination ticks. */
+const STARTING_NOTICE_TOPICS = NOTICE_TOPICS.slice(0, 4);
+const NOTICE_TEST_EVERY_MS = 60_000;
+const TELEGRAM_CODE_HOLDS_MS = 600_000;
+const TELEGRAM_CHAT_FOUND_AFTER_MS = 5_000;
+const TELEGRAM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const MOCK_TELEGRAM_BOT = { username: 'mock_alerts_bot', name: 'Stream alerts (mock)' };
+
+/** The checks of the shared package's rules, in its sentences, as far as the mock checks them. */
+const NOTICE_EMAIL_PATTERN = /^[^\s@<>(),;:"\\]+@[^\s@<>(),;:"\\]+\.[^\s@<>(),;:"\\.]+$/;
+const NOTICE_CHAT_PATTERN = /^(-?[1-9][0-9]{0,18}|@[A-Za-z][A-Za-z0-9_]{4,31})$/;
+const NOTICE_SECRET_PATTERNS = { email: /^[\x21-\x7e]{20,512}$/, telegram: /^[0-9]{3,20}:[A-Za-z0-9_-]{20,100}$/ };
+const NOTICE_SECRET_PROBLEMS = {
+  email: 'Enter the API key the email service gave: one line of 20 characters or more, with no space.',
+  telegram: "Enter the bot's token as BotFather gave it: the bot's number, a colon, and its key.",
+};
+
+function unsavedNoticeService() {
+  return {
+    saved: false,
+    enabled: false,
+    settings: null,
+    savedBy: null,
+    savedAt: null,
+    lastSentAt: null,
+    lastFailure: null,
+    lastFailureAt: null,
+  };
+}
+
+function unsavedDestination(kind) {
+  return {
+    kind,
+    address: null,
+    enabled: false,
+    savedAt: null,
+    lastSentAt: null,
+    lastError: null,
+    lastErrorAt: null,
+    waiting: 0,
+    lastTestAt: null,
+    lastTestError: null,
+  };
+}
+
+/** kind -> the service as the admin keeps it, with no secret. */
+const noticeServices = new Map(NOTICE_SERVICE_KINDS.map((kind) => [kind, unsavedNoticeService()]));
+
+/**
+ * userId -> that user's destinations, by kind, their topics, null while they never saved any, and their code to find
+ * their Telegram chat. A user removed on the Access page goes with theirs.
+ */
+const myNotices = new Map();
+
+function myNoticesOf(userId) {
+  let mine = myNotices.get(userId);
+  if (!mine) {
+    mine = {
+      destinations: { email: unsavedDestination('email'), telegram: unsavedDestination('telegram') },
+      topics: null,
+      code: null,
+    };
+    myNotices.set(userId, mine);
+  }
+  return mine;
+}
+
+/** People the mock makes up, with no account: their destinations and ticks count in the view's numbers, and nothing else of them shows. */
+const otherPeople = [];
+
+if (NOTICES_SEED === 'set') {
+  const hoursAgo = (hours) => new Date(Date.now() - hours * 3_600_000).toISOString();
+  Object.assign(noticeServices.get('email'), {
+    saved: true,
+    enabled: true,
+    settings: { provider: 'brevo', senderAddress: 'alerts@example.org', senderName: 'Stream alerts' },
+    savedBy: SEED_USERNAME,
+    savedAt: hoursAgo(72),
+    lastSentAt: hoursAgo(2),
+    lastFailure: 'Brevo answered with status 502.',
+    lastFailureAt: hoursAgo(26),
+  });
+  Object.assign(noticeServices.get('telegram'), {
+    saved: true,
+    enabled: true,
+    settings: {},
+    savedBy: SEED_USERNAME,
+    savedAt: hoursAgo(72),
+    lastSentAt: hoursAgo(2),
+  });
+  // An address nobody reads: the view answers numbers alone of these people.
+  const on = (kind, extra = {}) => ({
+    ...unsavedDestination(kind),
+    address: 'made-up',
+    enabled: true,
+    savedAt: hoursAgo(48),
+    lastSentAt: hoursAgo(2),
+    ...extra,
+  });
+  otherPeople.push(
+    {
+      destinations: { email: on('email'), telegram: unsavedDestination('telegram') },
+      topics: [...STARTING_NOTICE_TOPICS],
+    },
+    {
+      destinations: {
+        email: on('email'),
+        telegram: on('telegram', {
+          lastError: 'Telegram answered with status 403.',
+          lastErrorAt: hoursAgo(2),
+          waiting: 1,
+        }),
+      },
+      topics: [...STARTING_NOTICE_TOPICS, 'unmarked_stage'],
+    },
+    { destinations: { email: unsavedDestination('email'), telegram: on('telegram') }, topics: ['topup_failed'] },
+  );
+}
+
+/** Everyone the view's numbers count: the users who saved something, and the people the mock makes up. */
+function noticePeople() {
+  return [...myNotices.values(), ...otherPeople];
+}
+
+function noticeDestinationOn(destination) {
+  return destination.address !== null && destination.enabled;
+}
+
+function noticeServiceOn(kind) {
+  const service = noticeServices.get(kind);
+  return service.saved && service.enabled;
+}
+
+/** How many people get a topic: they ticked it and have a destination that is on, on a service that is on. */
+function noticeReach(topic) {
+  return noticePeople().filter(
+    (person) =>
+      (person.topics ?? []).includes(topic) &&
+      NOTICE_SERVICE_KINDS.some((kind) => noticeDestinationOn(person.destinations[kind]) && noticeServiceOn(kind)),
+  ).length;
+}
+
+/** `GET /api/notifications` for `user`: their own destinations and topics, and of everyone else numbers alone. */
+function noticesView(user) {
+  const mine = myNoticesOf(user.id);
+  const people = noticePeople();
+  return {
+    available: NOTICES_AVAILABLE,
+    managesServices: user.isAdmin,
+    services: NOTICE_SERVICE_KINDS.map((kind) => {
+      const service = noticeServices.get(kind);
+      const on = people.map((person) => person.destinations[kind]).filter(noticeDestinationOn);
+      return {
+        kind,
+        saved: service.saved,
+        enabled: service.enabled,
+        lastSentAt: service.lastSentAt,
+        lastFailure: service.lastFailure,
+        lastFailureAt: service.lastFailureAt,
+        people: on.length,
+        failing: on.filter((destination) => destination.lastError !== null).length,
+        waiting: people.reduce((sum, person) => sum + person.destinations[kind].waiting, 0),
+        settings: user.isAdmin ? service.settings : null,
+        savedBy: user.isAdmin ? service.savedBy : null,
+        savedAt: user.isAdmin ? service.savedAt : null,
+      };
+    }),
+    destinations: NOTICE_SERVICE_KINDS.map((kind) => ({ ...mine.destinations[kind] })),
+    topics: NOTICE_TOPICS.filter((topic) => (mine.topics ?? []).includes(topic)),
+    reach: NOTICE_TOPICS.map((topic) => ({ topic, people: noticeReach(topic) })),
+  };
+}
+
+/** A service or a destination switched off or removed drops the notices that wait for its destinations. */
+function dropWaitingNotices(kind) {
+  for (const person of noticePeople()) person.destinations[kind].waiting = 0;
+}
+
+/** Why a service's settings and secret are refused, in the package's sentences, or an empty list. */
+function noticeServiceProblems(kind, settings, secret, saved) {
+  const problems = [];
+  if (kind === 'email') {
+    if (typeof settings !== 'object' || settings === null) return ['The Email settings are missing.'];
+    if (settings.provider !== 'brevo') problems.push('The email service is one of: brevo.');
+    const sender = typeof settings.senderAddress === 'string' ? settings.senderAddress.trim().toLowerCase() : '';
+    if (!NOTICE_EMAIL_PATTERN.test(sender)) {
+      problems.push('The sender address: Enter an email address such as name@example.org.');
+    }
+    if (typeof settings.senderName !== 'string' || settings.senderName.trim().length > 70) {
+      problems.push(
+        "The sender's name is one line of at most 70 characters, with no quotation mark, angle bracket or backslash.",
+      );
+    }
+  }
+  if (secret === null) {
+    if (!saved) problems.push(`Enter the ${kind === 'email' ? 'API key' : 'bot token'}.`);
+  } else if (typeof secret !== 'string' || !NOTICE_SECRET_PATTERNS[kind].test(secret.trim())) {
+    problems.push(NOTICE_SECRET_PROBLEMS[kind]);
+  }
+  return problems;
+}
+
+/** Why an address is refused as a destination on the service, in the package's sentence, or null. */
+function noticeDestinationProblem(kind, address) {
+  if (kind === 'email') {
+    return NOTICE_EMAIL_PATTERN.test(address) ? null : 'Enter an email address such as name@example.org.';
+  }
+  return NOTICE_CHAT_PATTERN.test(address)
+    ? null
+    : "The chat id is a whole number, such as 123456789 for your own chat with the bot, or a public channel's name, such as @channelname.";
+}
+
+/** The chat Find my chat finds for a user: their own chat with the mock's bot, its id made from theirs. */
+function mockTelegramChat(user) {
+  return {
+    id: String(100_000_000 + parseInt(user.id.slice(0, 7), 16)),
+    kind: 'private',
+    name: `${user.username} (mock)`,
+  };
+}
+
+/**
+ * Why a write behind the password is refused, as the API refuses it, or null when it is the user's: 429 while locked
+ * out, and 401 for a wrong one, four of which in a row lock it for a minute, the lockout the funding routes keep.
+ */
+function passwordRefusal(user, password) {
+  const lockedFor = Math.ceil(((fundingLockedUntil.get(user.id) ?? 0) - Date.now()) / 1000);
+  if (lockedFor > 0) {
+    return {
+      status: 429,
+      body: { error: 'too_many_attempts', retryAfterSeconds: lockedFor },
+      headers: { 'retry-after': String(lockedFor) },
+    };
+  }
+  if (passwords.get(user.id) !== password) {
+    const failed = (fundingFailures.get(user.id) ?? 0) + 1;
+    fundingFailures.set(user.id, failed);
+    if (failed >= LOCKOUT_FREE_ATTEMPTS) {
+      fundingFailures.delete(user.id);
+      fundingLockedUntil.set(user.id, Date.now() + LOCKOUT_SECONDS * 1000);
+    }
+    return { status: 401, body: { error: 'invalid_credentials' }, headers: {} };
+  }
+  fundingFailures.delete(user.id);
+  return null;
+}
+
+// --- stamp auto top-up -----------------------------------------------------------
+
+/*
+ * The Funding page's Auto top-up tab and the switches of its Stamps tab (`docs/architecture/funding.md`, "Auto
+ * top-up"). The numbers start saved by the seeded user at 21 days under and 42 to, so that four stamps not on auto
+ * top-up read as running low: the mock stage's uploader and 360p batches, the 720p one, which has expired, and the
+ * archive stamp "Autumn". The catalogue batch starts marked. The three jobs ran at the last 10 minutes and found
+ * nothing to do, no warning stands, and nothing is topped up or sent: the mock moves no money.
+ */
+const AUTO_TOPUP_JOBS = ['alert', 'wallet', 'stamp'];
+const AUTO_TOPUP_TICK_MS = 600_000;
+const AUTO_TOPUP_MONTH_DAYS = 30;
+const UNMARKED_LAST_DAYS = 2;
+const AUTO_TOPUP_JOB_OUTCOMES = {
+  alert: 'No top-up falls due within two days, and no warning stands.',
+  wallet: 'No due top-up needs a send.',
+  stamp: 'No marked stamp is due.',
+};
+/** The bounds of the numbers, with the names their sentences use, as the common package keeps them. */
+const AUTO_TOPUP_BOUNDS = {
+  topUpUnderDays: [2, 365, 'Top up when under'],
+  topUpToDays: [3, 730, 'Top up to'],
+  lookAheadDays: [1, 30, 'Look ahead'],
+  marginPercent: [0, 100, 'Margin'],
+};
+
+const autoTopUp = {
+  settings: {
+    topUpUnderDays: 21,
+    topUpToDays: 42,
+    lookAheadDays: 1,
+    marginPercent: 10,
+    xdaiWarningWei: '100000000000000000',
+    dailyCeilingPlur: null,
+  },
+  settingsSavedBy: SEED_USERNAME,
+  settingsSavedAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+  jobs: new Map(AUTO_TOPUP_JOBS.map((job) => [job, { paused: false, pausedBy: null, pausedAt: null, ranAt: null }])),
+};
+
+/** batchId -> a marked stamp: the node that holds it, and who marked it and when. */
+const autoTopUpMarks = new Map();
+{
+  const catalogue = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  if (catalogue?.batch) {
+    autoTopUpMarks.set(catalogue.batch.batchId, {
+      batchId: catalogue.batch.batchId,
+      nodeId: catalogue.nodeId,
+      nodeLabel: catalogue.label,
+      markedBy: SEED_USERNAME,
+      markedAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+    });
+  }
+}
+
+/** The last tick before `now`, when the jobs that run last ran. */
+function lastAutoTopUpTick(now = Date.now()) {
+  return new Date(Math.floor(now / AUTO_TOPUP_TICK_MS) * AUTO_TOPUP_TICK_MS).toISOString();
+}
+
+/**
+ * Every stamp the Stamps tab lists, with who holds it: the catalogue batch and the archive stamps, held by the
+ * catalogue, and each stage's batches.
+ */
+function watchedStamps() {
+  const catalogue = fundingNodes.get(ARCHIVE_CATALOGUE_NODE_ID);
+  const onStages = stages.flatMap((stage) =>
+    [...fundingNodes.values()].filter((node) => node.nodeId.startsWith(`${stage.stageId}:`) && node.batch),
+  );
+  return [
+    ...(catalogue?.batch
+      ? [{ batch: catalogue.batch, node: catalogue, holder: 'catalogue', what: 'The catalogue batch' }]
+      : []),
+    ...archiveStamps.map((stamp) => ({
+      batch: stamp,
+      node: fundingNodes.get(stamp.nodeId),
+      holder: 'catalogue',
+      what: `The archive stamp "${stamp.label}"`,
+    })),
+    ...onStages.map((node) => ({ batch: node.batch, node, holder: 'stage', what: `The batch of ${node.label}` })),
+  ];
+}
+
+/** A marked stamp's batch, on its node or among the archive stamps, or undefined once it is gone. */
+function markedBatch(mark) {
+  return watchedStamps().find(({ batch, node }) => batch.batchId === mark.batchId && node?.nodeId === mark.nodeId)
+    ?.batch;
+}
+
+/** `GET /api/funding/auto-top-up`, and what each of its writes answers. */
+function autoTopUpView() {
+  const now = Date.now();
+  const marks = [...autoTopUpMarks.values()];
+  const estimate = marks.reduce((sum, mark) => {
+    const batch = markedBatch(mark);
+    return batch && !batch.readError ? sum + topUpCost(AUTO_TOPUP_MONTH_DAYS, batch.depth) : sum;
+  }, 0n);
+  return {
+    settings: { ...autoTopUp.settings },
+    settingsSavedBy: autoTopUp.settingsSavedBy,
+    settingsSavedAt: autoTopUp.settingsSavedAt,
+    jobs: AUTO_TOPUP_JOBS.map((job) => {
+      const state = autoTopUp.jobs.get(job);
+      return {
+        job,
+        paused: state.paused,
+        pausedBy: state.pausedBy,
+        pausedAt: state.pausedAt,
+        lastRunAt: state.paused ? state.ranAt : lastAutoTopUpTick(now),
+        lastOk: true,
+        lastOutcome: AUTO_TOPUP_JOB_OUTCOMES[job],
+      };
+    }),
+    // The channels of before each user had destinations of their own, which the tab reads no more.
+    notifications: [],
+    stamps: marks.map((mark) => ({ ...mark, lastTopUp: null, coming: null, problem: null })),
+    monthlyEstimatePlur: estimate.toString(),
+    dailyCeilingPlur: autoTopUp.settings.dailyCeilingPlur ?? (estimate / 2n).toString(),
+    sentTodayPlur: '0',
+    warnings: [],
+  };
+}
+
+/**
+ * `GET /api/funding/auto-top-up/unmarked`: every stamp not marked for auto top-up under "Top up when under", read whole,
+ * the one with the least time left first, as the alert job would list it. A stamp is told of when it reaches its level
+ * while somebody gets its topic.
+ */
+function unmarkedStamps() {
+  const now = Date.now();
+  const under = autoTopUp.settings.topUpUnderDays * DAY_MS;
+  const last = UNMARKED_LAST_DAYS * DAY_MS;
+  const listed = [];
+  for (const { batch, node, holder, what } of watchedStamps()) {
+    if (batch.readError || autoTopUpMarks.has(batch.batchId)) continue;
+    const left = batch.expiresAt - now;
+    if (left >= under) continue;
+    const level = left <= 0 ? 'expired' : left < last ? 'last' : 'low';
+    const reached = { low: batch.expiresAt - under, last: batch.expiresAt - last, expired: batch.expiresAt }[level];
+    const days = Math.floor(left / DAY_MS);
+    const time = days < 1 ? 'less than a day' : days === 1 ? '1 day' : `${days} days`;
+    const message =
+      level === 'expired'
+        ? `${what} has expired. It takes a Buy new on the Stamps tab.`
+        : `${what} has ${time} left, under the ${autoTopUp.settings.topUpUnderDays} days of Top up when under. Top it up on the Stamps tab, or mark it for auto top-up.`;
+    const topic = holder === 'catalogue' ? 'unmarked_catalogue' : 'unmarked_stage';
+    listed.push({
+      left,
+      stamp: {
+        batchId: batch.batchId,
+        nodeId: node?.nodeId ?? '',
+        holder,
+        level,
+        since: new Date(batch.expiresAt - under).toISOString(),
+        levelSince: new Date(reached).toISOString(),
+        message,
+        notifiedAt: noticeReach(topic) > 0 ? new Date(Math.min(reached, now)).toISOString() : null,
+      },
+    });
+  }
+  return listed.sort((a, b) => a.left - b.left).map(({ stamp }) => stamp);
+}
+
+/** Why these numbers are refused, in the common package's sentences, or an empty list. */
+function autoTopUpProblems(settings) {
+  if (typeof settings !== 'object' || settings === null) return ['The numbers are missing.'];
+  const problems = [];
+  for (const [key, [min, max, name]] of Object.entries(AUTO_TOPUP_BOUNDS)) {
+    const value = settings[key];
+    if (!Number.isInteger(value) || value < min || value > max)
+      problems.push(`${name} is a whole number from ${min} to ${max}.`);
+  }
+  if (problems.length === 0) {
+    if (settings.topUpToDays <= settings.topUpUnderDays)
+      problems.push('Top up to is more days than Top up when under.');
+    if (settings.lookAheadDays * 2 > settings.topUpUnderDays)
+      problems.push('Look ahead is at most half of Top up when under.');
+  }
+  if (!/^(0|[1-9]\d{0,77})$/.test(String(settings.xdaiWarningWei)))
+    problems.push('The xDAI warning is an amount of xDAI.');
+  if (settings.dailyCeilingPlur !== null && !/^(0|[1-9]\d{0,77})$/.test(String(settings.dailyCeilingPlur))) {
+    problems.push('The daily ceiling is an amount of xBZZ, or empty.');
+  }
+  return problems;
+}
+
+/** The stamp a mark names, when the admin could top it up now: a usable batch it lists on that node, or undefined. */
+function markableStamp(item) {
+  const batchId = typeof item?.batchId === 'string' ? item.batchId.toLowerCase() : '';
+  return watchedStamps().find(
+    ({ batch, node }) =>
+      batch.batchId === batchId && node?.nodeId === item.nodeId && !batch.readError && batch.expiresAt > Date.now(),
+  );
+}
+
 const server = createServer((req, res) => {
   void handle(req, res).catch((e) => {
     send(res, 500, { error: 'internal_error', message: String(e) });
@@ -3328,6 +3805,8 @@ async function handle(req, res) {
       }
       users.delete(target.id);
       passwords.delete(target.id);
+      // Their destinations, their topics and the notices that waited for them go with them.
+      myNotices.delete(target.id);
       for (const [token, id] of [...sessions.entries()]) {
         if (id === target.id) sessions.delete(token);
       }
@@ -3667,6 +4146,206 @@ async function handle(req, res) {
     }));
     fundingBulks.set(bulkId, items);
     return send(res, 202, { bulkId, items: items.map(fundingItemAnswer) });
+  }
+
+  // Stamp auto top-up: the Auto top-up tab's view, its writes, the Stamps tab's marks, and the stamps not on it.
+  if ((path === '/api/funding/auto-top-up' || path.startsWith('/api/funding/auto-top-up/')) && !FUNDING_CONFIGURED) {
+    return send(res, 404, { error: 'not_found', path });
+  }
+  if (path === '/api/funding/auto-top-up' && method === 'GET') return send(res, 200, autoTopUpView());
+  if (path === '/api/funding/auto-top-up/unmarked' && method === 'GET') {
+    return send(res, 200, { stamps: unmarkedStamps() });
+  }
+  if (path === '/api/funding/auto-top-up/settings' && method === 'PUT') {
+    const body = await readJson(req);
+    const refused = passwordRefusal(user, body.password);
+    if (refused) return send(res, refused.status, refused.body, refused.headers);
+    const errors = autoTopUpProblems(body.settings);
+    if (errors.length > 0) return send(res, 400, { error: 'validation_error', errors });
+    const { topUpUnderDays, topUpToDays, lookAheadDays, marginPercent, xdaiWarningWei, dailyCeilingPlur } =
+      body.settings;
+    autoTopUp.settings = {
+      topUpUnderDays,
+      topUpToDays,
+      lookAheadDays,
+      marginPercent,
+      xdaiWarningWei,
+      dailyCeilingPlur,
+    };
+    autoTopUp.settingsSavedBy = user.username;
+    autoTopUp.settingsSavedAt = new Date().toISOString();
+    return send(res, 200, autoTopUpView());
+  }
+  const autoJobRoute = /^\/api\/funding\/auto-top-up\/jobs\/([^/]+)$/.exec(path);
+  if (autoJobRoute && method === 'PUT') {
+    const state = autoTopUp.jobs.get(autoJobRoute[1]);
+    if (!state) return send(res, 404, { error: 'not_found', path });
+    const { paused } = await readJson(req);
+    if (paused === true && !state.paused) {
+      Object.assign(state, {
+        paused: true,
+        pausedBy: user.username,
+        pausedAt: new Date().toISOString(),
+        ranAt: lastAutoTopUpTick(),
+      });
+    }
+    if (paused === false) Object.assign(state, { paused: false, pausedBy: null, pausedAt: null });
+    return send(res, 200, autoTopUpView());
+  }
+  if (path === '/api/funding/auto-top-up/marks' && method === 'PUT') {
+    const { marked, items } = await readJson(req);
+    const asked = Array.isArray(items) ? items : [];
+    if (marked === false) {
+      for (const item of asked) autoTopUpMarks.delete(String(item?.batchId ?? '').toLowerCase());
+      return send(res, 200, autoTopUpView());
+    }
+    const found = asked.map(markableStamp);
+    const refused = found.findIndex((stamp) => stamp === undefined);
+    if (asked.length === 0 || refused !== -1) {
+      return send(res, 409, {
+        error: 'not_markable',
+        message: `${asked[refused]?.batchId ?? 'That stamp'} is not a stamp the admin can top up now.`,
+      });
+    }
+    for (const { batch, node } of found) {
+      if (autoTopUpMarks.has(batch.batchId)) continue;
+      autoTopUpMarks.set(batch.batchId, {
+        batchId: batch.batchId,
+        nodeId: node.nodeId,
+        nodeLabel: node.label,
+        markedBy: user.username,
+        markedAt: new Date().toISOString(),
+      });
+    }
+    return send(res, 200, autoTopUpView());
+  }
+
+  // Notifications: the shared services, which a user with the admin role saves, switches and removes, and each
+  // user's own destinations, topics and Find my chat.
+  if (path === '/api/notifications' && method === 'GET') return send(res, 200, noticesView(user));
+  const noticeServiceRoute = /^\/api\/notifications\/services\/([^/]+)(\/enabled)?$/.exec(path);
+  if (noticeServiceRoute && NOTICE_SERVICE_KINDS.includes(noticeServiceRoute[1])) {
+    const kind = noticeServiceRoute[1];
+    if (!user.isAdmin) return send(res, 403, { error: 'admin_required' });
+    const service = noticeServices.get(kind);
+    if (noticeServiceRoute[2] && method === 'PUT') {
+      if (!service.saved) return send(res, 409, { error: 'service_not_saved' });
+      service.enabled = (await readJson(req)).enabled === true;
+      if (!service.enabled) dropWaitingNotices(kind);
+      return send(res, 200, noticesView(user));
+    }
+    if (!noticeServiceRoute[2] && method === 'DELETE') {
+      noticeServices.set(kind, unsavedNoticeService());
+      dropWaitingNotices(kind);
+      return send(res, 200, noticesView(user));
+    }
+    if (!noticeServiceRoute[2] && method === 'PUT') {
+      if (!NOTICES_AVAILABLE) return send(res, 409, { error: 'notifications_unavailable' });
+      const body = await readJson(req);
+      const refused = passwordRefusal(user, body.password);
+      if (refused) return send(res, refused.status, refused.body, refused.headers);
+      const errors = noticeServiceProblems(kind, body.settings, body.secret ?? null, service.saved);
+      if (errors.length > 0) return send(res, 400, { error: 'validation_error', errors });
+      Object.assign(service, {
+        saved: true,
+        enabled: service.saved ? service.enabled : true,
+        settings:
+          kind === 'email'
+            ? {
+                provider: body.settings.provider,
+                senderAddress: body.settings.senderAddress.trim().toLowerCase(),
+                senderName: body.settings.senderName.trim(),
+              }
+            : {},
+        savedBy: user.username,
+        savedAt: new Date().toISOString(),
+      });
+      return send(res, 200, noticesView(user));
+    }
+  }
+  const myDestinationRoute = /^\/api\/notifications\/me\/destinations\/([^/]+)(\/enabled|\/test)?$/.exec(path);
+  if (myDestinationRoute && NOTICE_SERVICE_KINDS.includes(myDestinationRoute[1])) {
+    const kind = myDestinationRoute[1];
+    const mine = myNoticesOf(user.id);
+    const destination = mine.destinations[kind];
+    const action = myDestinationRoute[2] ?? '';
+    if (action === '' && method === 'PUT') {
+      const body = await readJson(req);
+      const refused = passwordRefusal(user, body.password);
+      if (refused) return send(res, refused.status, refused.body, refused.headers);
+      const typed = typeof body.address === 'string' ? body.address.trim() : '';
+      const address = kind === 'email' ? typed.toLowerCase() : typed;
+      const problem = noticeDestinationProblem(kind, address);
+      if (problem) return send(res, 400, { error: 'validation_error', errors: [problem] });
+      // Saved for the first time it starts on, and a later save keeps its switch. Another address clears how the old
+      // one went.
+      const enabled = destination.address === null ? true : destination.enabled;
+      if (address !== destination.address) Object.assign(destination, unsavedDestination(kind));
+      Object.assign(destination, { address, enabled, savedAt: new Date().toISOString() });
+      if (mine.topics === null) mine.topics = [...STARTING_NOTICE_TOPICS];
+      return send(res, 200, noticesView(user));
+    }
+    if (action === '/enabled' && method === 'PUT') {
+      if (destination.address === null) return send(res, 409, { error: 'destination_not_saved' });
+      destination.enabled = (await readJson(req)).enabled === true;
+      if (!destination.enabled) destination.waiting = 0;
+      return send(res, 200, noticesView(user));
+    }
+    if (action === '' && method === 'DELETE') {
+      mine.destinations[kind] = unsavedDestination(kind);
+      return send(res, 200, noticesView(user));
+    }
+    if (action === '/test' && method === 'POST') {
+      if (!NOTICES_AVAILABLE) return send(res, 409, { error: 'notifications_unavailable' });
+      if (destination.address === null) return send(res, 409, { error: 'destination_not_saved' });
+      if (!noticeServices.get(kind).saved) return send(res, 409, { error: 'service_not_saved' });
+      const since = destination.lastTestAt === null ? Infinity : Date.now() - Date.parse(destination.lastTestAt);
+      if (since < NOTICE_TEST_EVERY_MS) {
+        const wait = Math.ceil((NOTICE_TEST_EVERY_MS - since) / 1000);
+        return send(res, 429, { error: 'test_too_soon', retryAfterSeconds: wait }, { 'retry-after': String(wait) });
+      }
+      const sent = !destination.address.includes('fail');
+      const error = sent
+        ? null
+        : kind === 'email'
+          ? 'Brevo answered with status 400: the address was refused.'
+          : 'Telegram answered with status 400: the chat was not found.';
+      Object.assign(destination, { lastTestAt: new Date().toISOString(), lastTestError: error });
+      return send(res, 200, { sent, error, view: noticesView(user) });
+    }
+  }
+  if (path === '/api/notifications/me/topics' && method === 'PUT') {
+    const { topics } = await readJson(req);
+    if (!Array.isArray(topics) || topics.some((topic) => !NOTICE_TOPICS.includes(topic))) {
+      return send(res, 400, {
+        error: 'validation_error',
+        errors: [`The topics are a list of: ${NOTICE_TOPICS.join(', ')}.`],
+      });
+    }
+    myNoticesOf(user.id).topics = NOTICE_TOPICS.filter((topic) => topics.includes(topic));
+    return send(res, 200, noticesView(user));
+  }
+  if (
+    (path === '/api/notifications/me/telegram/code' || path === '/api/notifications/me/telegram/chat') &&
+    method === 'POST'
+  ) {
+    if (!NOTICES_AVAILABLE) return send(res, 409, { error: 'notifications_unavailable' });
+    if (!noticeServices.get('telegram').saved) return send(res, 409, { error: 'service_not_saved' });
+    const mine = myNoticesOf(user.id);
+    const now = Date.now();
+    if (path.endsWith('/code')) {
+      const code = Array.from(randomBytes(10), (byte) => TELEGRAM_CODE_ALPHABET[byte % TELEGRAM_CODE_ALPHABET.length]);
+      mine.code = { code: code.join(''), startedAt: now, expiresAt: now + TELEGRAM_CODE_HOLDS_MS };
+      return send(res, 200, {
+        code: mine.code.code,
+        expiresAt: new Date(mine.code.expiresAt).toISOString(),
+        bot: MOCK_TELEGRAM_BOT,
+        error: null,
+      });
+    }
+    if (mine.code === null || mine.code.expiresAt <= now) return send(res, 409, { error: 'code_not_started' });
+    if (now - mine.code.startedAt < TELEGRAM_CHAT_FOUND_AFTER_MS) return send(res, 200, { chat: null, error: null });
+    return send(res, 200, { chat: mockTelegramChat(user), error: null });
   }
 
   // No manager pushes into the mock, so its stages are fixed and it has no

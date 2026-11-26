@@ -48,6 +48,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_ARCHIVE_STAMPS`  | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                                   |
 | `MOCK_BATCH_PURCHASES` | `fresh`                  | Buy new on the Stamps tab, as [below](#the-mock-funding): `fresh`, `stages`, `failed`, `failed_ran_out`, `catalogue`, `catalogue_off` or `unoffered` |
 | `MOCK_RECORDING_CHECK` | `none`                   | the latest check of the recordings, as [below](#the-mock-recording-check): `none`, `running`, `done` or `stopped`                                    |
+| `MOCK_NOTIFICATIONS`   | `set`                    | the notification services and the people counted, as [below](#the-mock-notifications): `set`, `none` or `unavailable`                                |
 | `MOCK_DEFAULT_THEME`   | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                        |
 | `VIEWER_BASE_URL`      | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                       |
 
@@ -133,10 +134,40 @@ as the API works them out, names an open one in `openBulkId`, `openStampBulkId` 
   gateway with none. A chequebook bulk is checked as the API checks it, sends its moves two seconds
   apart, reports each `mined` two seconds after it is sent and confirms it six seconds after that.
 
+- **Auto top-up.** The numbers start saved by the seeded user at 21 days under and 42 to, so four
+  stamps not on auto top-up read as running low: the mock stage's uploader and 360p batches, the
+  720p one, which has expired, and the archive stamp "Autumn". The catalogue batch starts marked.
+  The three jobs ran at the last 10 minutes and found nothing to do, and no warning stands: the mock
+  tops nothing up and sends nothing. Saving the numbers takes the seeded password, a switch pauses a
+  job, and marking a stamp on the Stamps tab takes it off the list of stamps not on auto top-up.
+
 With `MOCK_FUNDING=refuse`, every transfer fails at the relay with no block and is then mined
 anyway six seconds later, and every stamp and chequebook operation is refused. With
 `MOCK_FUNDING=lost`, every operation is first not known, as when the manager loses the chain's
 answer, then sent three seconds later and confirmed.
+
+#### The mock notifications
+
+The Notifications page and the notices on the Auto top-up tab work as the API holds them: two shared
+services, which `admin` saves behind the password, switches and removes, and each user's own email
+address, Telegram chat and ticks. Of the other users the view answers numbers alone.
+`MOCK_NOTIFICATIONS` seeds them:
+
+- `set`, the default: both services saved by `admin` and on, the email service with a failure a day
+  old, and three people the mock makes up, with no account, whose destinations and ticks count in
+  the numbers and nowhere else: two get the four notices of stamp auto top-up by email, one of them
+  on a Telegram chat as well, which failed its last notice and has one waiting, and "Stage stamps";
+  the third gets "A top-up failed" on Telegram.
+- `none`: no service saved, and nobody else.
+- `unavailable`: as `none`, and the page says no service can be saved, as an admin without
+  `BRAND_WALLET_SECRET` does.
+
+Each user starts with no destination and no tick, and their first saved address ticks the four
+notices of stamp auto top-up. A test notice goes out unless the address holds `fail`, and a second
+within a minute is refused. Find my chat shows a code for the mock's bot, and finds your own chat
+once 5 seconds have passed since the code started. To see the page as a user without the admin
+role, add one on the Access page and sign in as them. The mock sends nothing anywhere and keeps no
+secret.
 
 #### The mock recording check
 
