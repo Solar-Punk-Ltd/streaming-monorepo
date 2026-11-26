@@ -116,20 +116,27 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
+  MY_NOTICE_TOPICS_PATH,
+  MY_TELEGRAM_CHAT_PATH,
+  MY_TELEGRAM_CODE_PATH,
+  myDestinationEnabledPath,
+  myDestinationPath,
+  myDestinationTestPath,
+  noticeServiceEnabledPath,
+  noticeServicePath,
   NOTIFICATION_TEST_TOO_SOON_ERROR,
   NOTIFICATIONS_PATH,
-  notificationChannelEnabledPath,
-  notificationChannelPath,
-  notificationChannelTestPath,
-  type NotificationChannelEnabledRequest,
-  type NotificationChannelKind,
-  type NotificationChannelSaveRequest,
-  type NotificationChannelSettingsByKind,
-  type NotificationsView,
-  type NotificationTestResponse,
-  TELEGRAM_CHATS_PATH,
-  type TelegramChatsRequest,
-  type TelegramChatsResponse,
+  type MyDestinationSaveRequest,
+  type MyNoticeTestResponse,
+  type MyNoticeTopicsRequest,
+  type NoticeEnabledRequest,
+  type NoticeServiceKind,
+  type NoticeServiceSaveRequest,
+  type NoticeServiceSettingsByKind,
+  type NoticesView,
+  type NoticeTopic,
+  type TelegramChatResponse,
+  type TelegramCodeResponse,
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -597,77 +604,114 @@ export function setAutoTopUpJob(job: AutoTopUpJob, paused: boolean): Promise<Aut
 
 // --- notifications ----------------------------------------------------------
 
-/** The Notifications page's view: whether a channel can be saved, and every channel, saved or not. */
-export function fetchNotifications(): Promise<NotificationsView> {
-  return getJson<NotificationsView>(NOTIFICATIONS_PATH);
+/**
+ * The Notifications page's view, which the Auto top-up tab reads as well: whether a service can be saved, every
+ * service, my destination on each, the topics I ticked, and how many people get each topic.
+ */
+export function fetchNotifications(): Promise<NoticesView> {
+  return getJson<NoticesView>(NOTIFICATIONS_PATH);
 }
 
 /**
- * Saves a channel's settings and its secret behind the operator's password, since a changed channel changes where the
- * alerts go. `secret` null keeps the stored one. A 401 is a wrong password, as for a send.
+ * Saves a service's settings and its secret behind the operator's password, for a user with the admin role: every
+ * user's notices go out through it. `secret` null keeps the stored one. A 401 is a wrong password, as for a send.
  */
-export function saveNotificationChannel<K extends NotificationChannelKind>(
+export function saveNoticeService<K extends NoticeServiceKind>(
   kind: K,
   password: string,
-  settings: NotificationChannelSettingsByKind[K],
+  settings: NoticeServiceSettingsByKind[K],
   secret: string | null,
-): Promise<NotificationsView> {
-  const body: NotificationChannelSaveRequest<K> = { password, settings, secret };
-  return sendWithPassword<NotificationsView>(
-    notificationChannelPath(kind),
-    body,
-    'The channel could not be saved.',
-    'PUT',
-  );
+): Promise<NoticesView> {
+  const body: NoticeServiceSaveRequest<K> = { password, settings, secret };
+  return sendWithPassword<NoticesView>(noticeServicePath(kind), body, 'The service could not be saved.', 'PUT');
 }
 
-/** Switches a saved channel on or off. No password, as pausing a job. */
-export function setNotificationChannelEnabled(
-  kind: NotificationChannelKind,
-  enabled: boolean,
-): Promise<NotificationsView> {
-  const body: NotificationChannelEnabledRequest = { enabled };
-  return sendJson<NotificationsView>('PUT', notificationChannelEnabledPath(kind), body, {
-    fallback: 'The channel could not be switched.',
+/** Switches a saved service on or off, for a user with the admin role. No password, as pausing a job. */
+export function setNoticeServiceEnabled(kind: NoticeServiceKind, enabled: boolean): Promise<NoticesView> {
+  const body: NoticeEnabledRequest = { enabled };
+  return sendJson<NoticesView>('PUT', noticeServiceEnabledPath(kind), body, {
+    fallback: 'The service could not be switched.',
   });
 }
 
-/** Removes a channel with its secret. No password. */
-export async function removeNotificationChannel(kind: NotificationChannelKind): Promise<NotificationsView> {
-  const view = await sendDelete<NotificationsView>(notificationChannelPath(kind));
-  if (view === null) throw new ApiError('The channel was removed, but the page could not be read.', null, 204);
+/** Removes a service with its secret, for a user with the admin role. No password. Each user's destination stays. */
+export async function removeNoticeService(kind: NoticeServiceKind): Promise<NoticesView> {
+  const view = await sendDelete<NoticesView>(noticeServicePath(kind));
+  if (view === null) throw new ApiError('The service was removed, but the page could not be read.', null, 204);
+  return view;
+}
+
+/**
+ * Saves where my notices go on a service, behind my password: a changed address changes where my alerts go. My
+ * first saved destination ticks the topics of stamp auto top-up for me, which the answer shows.
+ */
+export function saveMyDestination(kind: NoticeServiceKind, password: string, address: string): Promise<NoticesView> {
+  const body: MyDestinationSaveRequest = { password, address };
+  return sendWithPassword<NoticesView>(myDestinationPath(kind), body, 'Your destination could not be saved.', 'PUT');
+}
+
+/** Switches my saved destination on or off. No password. */
+export function setMyDestinationEnabled(kind: NoticeServiceKind, enabled: boolean): Promise<NoticesView> {
+  const body: NoticeEnabledRequest = { enabled };
+  return sendJson<NoticesView>('PUT', myDestinationEnabledPath(kind), body, {
+    fallback: 'Your destination could not be switched.',
+  });
+}
+
+/** Removes my destination on a service. No password. */
+export async function removeMyDestination(kind: NoticeServiceKind): Promise<NoticesView> {
+  const view = await sendDelete<NoticesView>(myDestinationPath(kind));
+  if (view === null) throw new ApiError('Your destination was removed, but the page could not be read.', null, 204);
   return view;
 }
 
 /** The sentence for a test refused as too soon: how long is left until the next may go. */
 export function testTooSoonMessage(seconds: number): string {
   const wait = seconds === 1 ? '1 second' : `${seconds} seconds`;
-  return `A test notice went out on this channel less than a minute ago. Send another in ${wait}.`;
+  return `A test notice went here less than a minute ago. Send another in ${wait}.`;
 }
 
 /**
- * Sends a test notice on a saved channel and answers what became of it. A 429 `test_too_soon` says how long is left,
- * from its `retryAfterSeconds`.
+ * Sends me a test notice on my saved destination and answers what became of it. A 429 `test_too_soon` says how long
+ * is left, from its `retryAfterSeconds`.
  */
-export async function sendNotificationTest(kind: NotificationChannelKind): Promise<NotificationTestResponse> {
-  const res = await apiFetch(notificationChannelTestPath(kind), { method: 'POST' });
+export async function sendMyTestNotice(kind: NoticeServiceKind): Promise<MyNoticeTestResponse> {
+  const res = await apiFetch(myDestinationTestPath(kind), { method: 'POST' });
   if (res.status === 429) {
     const seconds = await retryAfterOf(res);
     throw new ApiError(testTooSoonMessage(seconds), NOTIFICATION_TEST_TOO_SOON_ERROR, 429);
   }
   if (!res.ok) await failWith(res, 'The test notice could not be sent.');
-  return (await res.json()) as NotificationTestResponse;
+  return (await res.json()) as MyNoticeTestResponse;
+}
+
+/** Saves the topics I get, all of them: a topic in the list is ticked, one out of it is not. No password. */
+export function saveMyNoticeTopics(topics: NoticeTopic[]): Promise<NoticesView> {
+  const body: MyNoticeTopicsRequest = { topics };
+  return sendJson<NoticesView>('PUT', MY_NOTICE_TOPICS_PATH, body, { fallback: 'Your notices could not be saved.' });
+}
+
+/** A POST that takes no body, answered with JSON, as the two routes of Find my chat are. */
+async function postForJson<T>(path: string, fallback: string): Promise<T> {
+  const res = await apiFetch(path, { method: 'POST' });
+  if (!res.ok) await failWith(res, fallback);
+  return (await res.json()) as T;
 }
 
 /**
- * Find chat id: the chats that wrote to the Telegram bot within the last day, read with the token as typed, or with
- * the saved channel's when `secret` is null. Why Telegram could not be asked is the answer's `error`. No password.
+ * Starts my code for Find my chat, with the bot to send it to. It replaces the code I had. Why the bot could not be
+ * read is the answer's `error`.
  */
-export function findTelegramChats(secret: string | null): Promise<TelegramChatsResponse> {
-  const body: TelegramChatsRequest = { secret };
-  return sendJson<TelegramChatsResponse>('POST', TELEGRAM_CHATS_PATH, body, {
-    fallback: "The bot's chats could not be read.",
-  });
+export function startMyTelegramCode(): Promise<TelegramCodeResponse> {
+  return postForJson<TelegramCodeResponse>(MY_TELEGRAM_CODE_PATH, 'No code could be started.');
+}
+
+/**
+ * Find my chat: the chat that sent my code to the bot, or null while none of the bot's latest messages holds it. Why
+ * Telegram could not be asked is the answer's `error`.
+ */
+export function findMyTelegramChat(): Promise<TelegramChatResponse> {
+  return postForJson<TelegramChatResponse>(MY_TELEGRAM_CHAT_PATH, 'Your chat could not be looked for.');
 }
 
 // --- public config ----------------------------------------------------------
