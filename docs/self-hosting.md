@@ -546,8 +546,9 @@ token on the Notifications page.
 
 1. Enters their email address and saves it behind their password.
 2. Presses **Find my chat** for Telegram, opens the bot's link it shows and presses Start, then
-   presses **I sent it** and saves the chat it found. In a group the bot is in, the code is sent as
-   a message there, and the group becomes that user's chat.
+   presses **I sent it** and saves the chat it found. For a group the bot is in, the user sends the
+   command the page shows, `/start@` with the bot's name and the code, in that group, and the group
+   becomes that user's chat.
 3. Presses **Send me a test notice** on each, which shows at once whether it works.
 4. Ticks the notices they want. The four of stamp auto top-up are ticked from the first saved
    destination, and the two of the stamps not on auto top-up are theirs to tick.

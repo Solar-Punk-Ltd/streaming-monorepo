@@ -109,8 +109,12 @@ every chat that did:
 
 1. **Find my chat** shows a code of ten letters and digits, and the bot's name with a link to it.
    The code holds for 10 minutes, and a new one replaces it.
-2. Open the link and press Start, which sends the code from your own chat with the bot. In a group
-   the bot is in, send the code as a message there.
+2. Send the code from the chat your notices are to go to, in the way that chat takes:
+   - **Your own chat with the bot:** open the link and press Start, which sends the code.
+   - **A group the bot is in:** send the command the page shows, `/start@`, the bot's name and the
+     code, as one message there. Telegram hands a bot in a group the commands addressed to it, and
+     a plain message there stays with the group.
+   - **A channel the bot is an administrator of:** post the code there.
 3. Press **I sent it**. The admin reads the bot's latest messages with the saved token and looks
    for the one that holds your code. It fills that chat in, with its name, and you save it behind
    your password.
