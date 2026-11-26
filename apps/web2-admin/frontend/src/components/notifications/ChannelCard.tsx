@@ -14,6 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
+import HelpOutlineOutlinedIcon from '@mui/icons-material/HelpOutlineOutlined';
 import {
   EMAIL_PROVIDER_KINDS,
   EMAIL_PROVIDER_NAMES,
@@ -41,6 +42,8 @@ import {
   secretName,
   type ChannelDraft,
 } from './channelDraft';
+import { ChannelSetup } from './ChannelSetup';
+import { TelegramChatField } from './TelegramChatField';
 
 /** What became of the last test notice asked for on this page, as the card says it. */
 type TestOutcome = { severity: 'success' | 'warning' | 'error'; text: string };
@@ -171,7 +174,9 @@ function EmailFields({ draft, onDraft }: { draft: ChannelDraft; onDraft: (next: 
 /**
  * One channel on the Notifications page: how it stands, its on/off switch, its form, Save behind the password, Undo
  * changes, Send a test notice and Remove. The secret is write-only: the field starts empty, says whether one is set,
- * and left empty keeps it. The form as typed, `draft`, is the page's; null follows the saved channel.
+ * and left empty keeps it. The form as typed, `draft`, is the page's; null follows the saved channel. The ? beside
+ * the channel's name shows and hides how to set it up. Telegram asks for its bot token above its chat id, beside which
+ * Find chat id lists the chats that wrote to the bot.
  */
 export function ChannelCard({
   channel,
@@ -196,6 +201,8 @@ export function ChannelCard({
   const [asking, setAsking] = useState<'save' | 'remove' | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [test, setTest] = useState<TestOutcome | null>(null);
+  const [setupShown, setSetupShown] = useState(false);
+  const setupId = `notifications-${kind}-setup`;
 
   const shown = draft ?? draftOf(channel);
   const problems = draft === null ? [] : draftProblems(kind, shown, channel.saved);
@@ -273,9 +280,22 @@ export function ChannelCard({
     <Paper variant="outlined" sx={{ p: 2 }} data-section>
       <Stack spacing={2}>
         <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
-          <Typography variant="h6" component="h2">
-            {name}
-          </Typography>
+          <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="h6" component="h2">
+              {name}
+            </Typography>
+            <Tooltip title={`How to set up ${name}`}>
+              <IconButton
+                size="small"
+                aria-label={`How to set up ${name}`}
+                aria-expanded={setupShown}
+                aria-controls={setupShown ? setupId : undefined}
+                onClick={() => setSetupShown((shown) => !shown)}
+              >
+                <HelpOutlineOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
           <FormControlLabel
             control={
               <Switch
@@ -292,6 +312,7 @@ export function ChannelCard({
             label={`${name} on`}
           />
         </Stack>
+        {setupShown ? <ChannelSetup kind={kind} id={setupId} /> : null}
         <ChannelState channel={channel} now={now} />
         {error ? (
           <Alert severity="error" onClose={() => setError(null)}>
@@ -299,17 +320,6 @@ export function ChannelCard({
           </Alert>
         ) : null}
         {kind === 'email' ? <EmailFields draft={shown} onDraft={onDraft} /> : null}
-        {kind === 'telegram' ? (
-          <TextField
-            id="notifications-telegram-chat-id"
-            label="Chat id"
-            value={shown.chatId}
-            onChange={(event) => onDraft({ ...shown, chatId: event.target.value })}
-            helperText="The group's number, such as -1001234567890, or a public channel's name, such as @channelname."
-            size="small"
-            sx={{ maxWidth: 480 }}
-          />
-        ) : null}
         <TextField
           id={`notifications-${kind}-secret`}
           label={secretLabel}
@@ -321,6 +331,15 @@ export function ChannelCard({
           size="small"
           sx={{ maxWidth: 480 }}
         />
+        {kind === 'telegram' ? (
+          <TelegramChatField
+            chatId={shown.chatId}
+            secret={shown.secret}
+            saved={channel.saved}
+            disabled={busy}
+            onChatId={(chatId) => onDraft({ ...shown, chatId })}
+          />
+        ) : null}
         {problems.map((problem) => (
           <Typography key={problem} variant="caption" sx={{ color: 'error.main' }}>
             {problem}

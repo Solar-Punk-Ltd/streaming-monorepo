@@ -571,13 +571,23 @@ answers the whole view, which the page then shows (`pages/NotificationsPage.tsx`
 
 - **How a channel stands:** not saved yet, or who saved it and when, when it last took a notice,
   why its last notice failed, how many notices wait for it, and how its last test went.
+- **The ?** beside a channel's name shows and hides how to set it up: what to make at the service,
+  with a link to it that opens in a new tab, and what to enter on the card
+  (`components/notifications/ChannelSetup.tsx`).
 - **The form:** email has the service, the sender's address and name, and a line per recipient with
-  Add recipient, up to 20, and Remove; Telegram has the chat id; Slack has nothing but its secret.
-  Every reason the form cannot be saved shows under it as it is typed, in the shared package's
-  sentences (`channelSettingsProblems` and `channelSecretProblem`), and a recipient line that is no
-  address or repeats one above it is outlined in red.
+  Add recipient, up to 20, and Remove, then its API key; Telegram has the bot token, then the chat
+  id; Slack has nothing but its secret. Every reason the form cannot be saved shows under it as it
+  is typed, in the shared package's sentences (`channelSettingsProblems` and
+  `channelSecretProblem`), and a recipient line that is no address or repeats one above it is
+  outlined in red.
 - **The secret** is write-only: the API key, the webhook URL or the bot token. Its field starts
   empty and says whether one is set; left empty, a save keeps the stored one.
+- **Find chat id**, beside Telegram's chat id, asks `POST /api/notifications/channels/telegram/chats`
+  for the chats that wrote to the bot within the last day, with the token typed or, with none
+  typed, the saved one, and lists them by name, kind and id. Picking one fills in the chat id; Save
+  keeps it. It is off until a token is typed that the rules take, or one is saved, and it says when
+  no chat wrote to the bot or why Telegram could not be asked
+  (`components/notifications/TelegramChatField.tsx`).
 - **Save** asks for the password. Undo changes goes back to the saved channel.
 - **The switch**, on while the channel is on, and **Remove**, which asks first, need no password.
 - **Send a test notice** shows what became of it. A second within the minute shows how long is

@@ -127,6 +127,9 @@ import {
   type NotificationChannelSettingsByKind,
   type NotificationsView,
   type NotificationTestResponse,
+  TELEGRAM_CHATS_PATH,
+  type TelegramChatsRequest,
+  type TelegramChatsResponse,
 } from '@streaming-monorepo/web2-admin-common';
 
 import {
@@ -654,6 +657,17 @@ export async function sendNotificationTest(kind: NotificationChannelKind): Promi
   }
   if (!res.ok) await failWith(res, 'The test notice could not be sent.');
   return (await res.json()) as NotificationTestResponse;
+}
+
+/**
+ * Find chat id: the chats that wrote to the Telegram bot within the last day, read with the token as typed, or with
+ * the saved channel's when `secret` is null. Why Telegram could not be asked is the answer's `error`. No password.
+ */
+export function findTelegramChats(secret: string | null): Promise<TelegramChatsResponse> {
+  const body: TelegramChatsRequest = { secret };
+  return sendJson<TelegramChatsResponse>('POST', TELEGRAM_CHATS_PATH, body, {
+    fallback: "The bot's chats could not be read.",
+  });
 }
 
 // --- public config ----------------------------------------------------------

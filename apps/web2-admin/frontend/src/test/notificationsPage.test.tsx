@@ -16,8 +16,10 @@ const VIEW = '/api/notifications';
 const EMAIL = '/api/notifications/channels/email';
 const SLACK = '/api/notifications/channels/slack';
 const TELEGRAM = '/api/notifications/channels/telegram';
+const TELEGRAM_CHATS = '/api/notifications/channels/telegram/chats';
 
 const API_KEY = 'xkeysib-0123456789abcdef0123456789abcdef';
+const BOT_TOKEN = `1234567890:${'A'.repeat(35)}`;
 const WEBHOOK = 'https://hooks.slack.com/services/T0000/B0000/abcdefghij';
 const UNAVAILABLE =
   "No channel can be saved: the admin has no BRAND_WALLET_SECRET to seal a channel's secret under. Set it on the admin's host and restart the admin.";
@@ -332,6 +334,111 @@ describe('the Notifications page', () => {
     fireEvent.click(email.getByRole('button', { name: 'Send a test notice' }));
     expect(await email.findByText('The test notice went out.')).toBeInTheDocument();
     expect(email.getByText('The last test went out less than a minute ago.')).toBeInTheDocument();
+  });
+
+  it('shows and hides how to set each channel up from the ? beside its name', async () => {
+    serve(() => makeNotificationsView());
+    await openPage();
+
+    const setups = [
+      { name: 'Email', step: 'xkeysib-', link: 'Brevo', href: 'https://app.brevo.com' },
+      {
+        name: 'Slack',
+        step: 'https://hooks.slack.com/services/',
+        link: 'api.slack.com/apps',
+        href: 'https://api.slack.com/apps',
+      },
+      { name: 'Telegram', step: '/newbot', link: 'BotFather', href: 'https://t.me/BotFather' },
+    ];
+    for (const { name, step, link, href } of setups) {
+      const where = card(name);
+      const help = where.getByRole('button', { name: `How to set up ${name}` });
+      expect(help).toHaveAttribute('aria-expanded', 'false');
+      expect(where.queryByRole('region', { name: `How to set up ${name}` })).not.toBeInTheDocument();
+
+      fireEvent.click(help);
+      expect(help).toHaveAttribute('aria-expanded', 'true');
+      const setup = where.getByRole('region', { name: `How to set up ${name}` });
+      expect(help).toHaveAttribute('aria-controls', setup.id);
+      expect(within(setup).getByText(step)).toBeInTheDocument();
+      const outside = within(setup).getByRole('link', { name: link });
+      expect(outside).toHaveAttribute('href', href);
+      expect(outside).toHaveAttribute('target', '_blank');
+      expect(outside).toHaveAttribute('rel', 'noopener noreferrer');
+
+      fireEvent.click(help);
+      expect(help).toHaveAttribute('aria-expanded', 'false');
+      expect(where.queryByRole('region', { name: `How to set up ${name}` })).not.toBeInTheDocument();
+    }
+  });
+
+  it("asks for Telegram's bot token above its chat id", async () => {
+    serve(() => makeNotificationsView());
+    await openPage();
+
+    const telegram = card('Telegram');
+    const token = telegram.getByLabelText('Bot token');
+    const chatId = telegram.getByLabelText('Chat id');
+    expect(token.compareDocumentPosition(chatId) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('finds the chat id with the token typed, and fills in the chat picked', async () => {
+    const fetchMock = serve(
+      () => makeNotificationsView(),
+      [
+        {
+          path: TELEGRAM_CHATS,
+          method: 'POST',
+          respond: () =>
+            jsonOk({
+              chats: [
+                { id: '111111111', kind: 'private', name: 'Ada Lovelace (@ada)' },
+                { id: '-1001234567890', kind: 'supergroup', name: 'Stream ops' },
+              ],
+              error: null,
+            }),
+        },
+      ],
+    );
+    await openPage();
+
+    const telegram = card('Telegram');
+    expect(telegram.getByRole('button', { name: 'Find chat id' })).toBeDisabled();
+    expect(
+      telegram.getByText('Enter the bot token, then Find chat id lists the chats that wrote to the bot.'),
+    ).toBeInTheDocument();
+    type(telegram, 'Bot token', ` ${BOT_TOKEN} `);
+    fireEvent.click(telegram.getByRole('button', { name: 'Find chat id' }));
+
+    const chats = within(await telegram.findByRole('group', { name: /Chats that wrote to the bot/ }));
+    expect(chats.getByRole('button', { name: 'Ada Lovelace (@ada) · Private chat · 111111111' })).toBeInTheDocument();
+    fireEvent.click(chats.getByRole('button', { name: 'Stream ops · Group · -1001234567890' }));
+
+    expect(telegram.getByLabelText('Chat id')).toHaveValue('-1001234567890');
+    expect(telegram.queryByRole('group', { name: /Chats that wrote to the bot/ })).not.toBeInTheDocument();
+    expect(telegram.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(bodiesOf(fetchMock, TELEGRAM_CHATS, 'POST')).toEqual([{ secret: BOT_TOKEN }]);
+  });
+
+  it('finds the chat id with the saved token, and says when no chat wrote to the bot or Telegram refused', async () => {
+    let answer: { chats: unknown[]; error: string | null } = { chats: [], error: null };
+    const fetchMock = serve(
+      () => makeNotificationsView({ telegram: savedTelegram() }),
+      [{ path: TELEGRAM_CHATS, method: 'POST', respond: () => jsonOk(answer) }],
+    );
+    await openPage();
+
+    const telegram = card('Telegram');
+    fireEvent.click(telegram.getByRole('button', { name: 'Find chat id' }));
+    expect(await telegram.findByText(/^No chat wrote to the bot in the last day\./)).toBeInTheDocument();
+
+    answer = { chats: [], error: 'Telegram answered with status 401: Unauthorized.' };
+    fireEvent.click(telegram.getByRole('button', { name: 'Find chat id' }));
+    expect(
+      await telegram.findByText("The bot's chats could not be read: Telegram answered with status 401: Unauthorized."),
+    ).toBeInTheDocument();
+    expect(telegram.getByLabelText('Chat id')).toHaveValue('-1001234567890');
+    expect(bodiesOf(fetchMock, TELEGRAM_CHATS, 'POST')).toEqual([{ secret: null }, { secret: null }]);
   });
 
   it('says channels cannot be saved while the admin has no BRAND_WALLET_SECRET', async () => {
