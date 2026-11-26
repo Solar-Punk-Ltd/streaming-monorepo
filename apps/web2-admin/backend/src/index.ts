@@ -1,4 +1,5 @@
 import { MANAGER_API_TOKEN_KEY } from '@streaming-monorepo/contracts';
+import { channelFrom } from '@streaming-monorepo/notifications';
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_IDLE_TIMEOUT_MS } from '@streaming-monorepo/web2-admin-common';
 
 import { useRestartWindow } from './api/presenters.js';
@@ -36,16 +37,26 @@ import { BrandWallet } from './domain/funding/BrandWallet.js';
 import { BrandWalletRepository } from './domain/funding/BrandWalletRepository.js';
 import { FundingChequebookRepository } from './domain/funding/FundingChequebookRepository.js';
 import { FundingChequebookService } from './domain/funding/FundingChequebookService.js';
+import { AutoTopUpAlertJob } from './domain/funding/AutoTopUpAlertJob.js';
+import { AutoTopUpStampJob } from './domain/funding/AutoTopUpStampJob.js';
+import { AutoTopUpTick } from './domain/funding/AutoTopUpTick.js';
+import { AutoTopUpWalletJob } from './domain/funding/AutoTopUpWalletJob.js';
 import { FundingPinRepository } from './domain/funding/FundingPinRepository.js';
 import { FundingService } from './domain/funding/FundingService.js';
 import { FundingStampRepository } from './domain/funding/FundingStampRepository.js';
 import { FundingStampService } from './domain/funding/FundingStampService.js';
 import { FundingTransferRepository } from './domain/funding/FundingTransferRepository.js';
 import { ManagerFundingClient } from './domain/funding/ManagerFundingClient.js';
+import { StampAutoTopUpRepository } from './domain/funding/StampAutoTopUpRepository.js';
+import { StampAutoTopUpService } from './domain/funding/StampAutoTopUpService.js';
 import { IngestService } from './domain/IngestService.js';
 import { LadderService } from './domain/LadderService.js';
 import { Logger } from './domain/Logger.js';
 import { Mutex } from './domain/Mutex.js';
+import { channelSecretKeyFrom } from './domain/notifications/channelSecrets.js';
+import { NotificationDispatcher } from './domain/notifications/NotificationDispatcher.js';
+import { NotificationRepository } from './domain/notifications/NotificationRepository.js';
+import { NotificationService } from './domain/notifications/NotificationService.js';
 import { PostgresAuditLog } from './domain/PostgresAuditLog.js';
 import { PublishService } from './domain/PublishService.js';
 import { createRecordings, type RecordingCheckService } from './domain/recordings/index.js';
@@ -158,6 +169,7 @@ let exportService: ExportService | undefined;
 let archiveService: ArchiveService | undefined;
 let recordings: RecordingCheckService | undefined;
 let batchPurchases: BatchPurchaseService | undefined;
+let autoTopUpTick: AutoTopUpTick | undefined;
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -176,6 +188,11 @@ async function gracefulShutdown(signal: string): Promise<void> {
     if (streamFinishSweep) {
       streamFinishSweep.stop();
       streamFinishSweep = undefined;
+    }
+    if (autoTopUpTick) {
+      // The tick under way ends first, so no send or stamp operation of its is left half asked.
+      await autoTopUpTick.stop();
+      autoTopUpTick = undefined;
     }
     if (apiServer) {
       await apiServer.close();
@@ -364,6 +381,26 @@ async function main(): Promise<void> {
     audit: auditLog,
   });
   batchPurchases.boot();
+  // The admin's notification channels, set on the Notifications page, and the notices that wait for one.
+  const notificationStore = new NotificationRepository(database.pool);
+  // Stamp auto top-up's settings, marks and pauses; its view shows each notification channel's status.
+  const autoTopUpStore = new StampAutoTopUpRepository(database.pool);
+  const autoTopUp = new StampAutoTopUpService({
+    store: autoTopUpStore,
+    manager: managerFunding,
+    audit: auditLog,
+    notifications: notificationStore,
+  });
+  // A channel's secret is sealed under a key derived from BRAND_WALLET_SECRET: without that secret no channel can be
+  // saved or tested, and the Notifications page says so.
+  const channelSecretKey = config.brandWalletSecret === null ? null : channelSecretKeyFrom(config.brandWalletSecret);
+  // The Notifications page: a channel's save, switch, removal and test notice.
+  const notifications = new NotificationService({
+    store: notificationStore,
+    secretKey: channelSecretKey,
+    channelFrom,
+    audit: auditLog,
+  });
   const fundingService = new FundingService({
     wallet: brandWallet,
     manager: managerFunding,
@@ -382,6 +419,32 @@ async function main(): Promise<void> {
     purchases: batchPurchases,
     audit: auditLog,
   });
+  // Stamp auto top-up's tick: every 10 minutes, from three minutes after the start, under a lock one backend holds,
+  // the alert job, the wallet job and the stamp job. The alert job sends its notices on the channels of the
+  // Notifications page, opened under the same key. The wallet job sends through the Balance tab's send, and the stamp
+  // job asks through the Stamps tab's stamp operation, as the system.
+  autoTopUpTick = new AutoTopUpTick({
+    store: autoTopUpStore,
+    manager: managerFunding,
+    wallet: brandWallet,
+    pins: new FundingPinRepository(database.pool),
+    jobs: [
+      new AutoTopUpAlertJob(
+        autoTopUpStore,
+        new NotificationDispatcher({ store: notificationStore, key: channelSecretKey, channelFrom, logger }),
+        logger,
+      ),
+      new AutoTopUpWalletJob({ funding: fundingService, store: autoTopUpStore }),
+      new AutoTopUpStampJob({
+        stamps: {
+          request: (actor, items) => fundingService.stampOperations(actor, items),
+          bulk: (bulkId) => fundingService.stampBulk(bulkId),
+        },
+        store: autoTopUpStore,
+      }),
+    ],
+  });
+  autoTopUpTick.start();
 
   // Archiving a recording: copied through the catalogue node onto an archive stamp, sharing the export's place. A job
   // left running by the last process goes on where it stopped. While a stream's "List only archived qualities"
@@ -440,6 +503,8 @@ async function main(): Promise<void> {
       archiveService,
       recordings,
       fundingService,
+      autoTopUp,
+      notifications,
       consoleSettings,
       internalApiToken: config.internalApiToken,
       uploaderTokens: stageRepository,

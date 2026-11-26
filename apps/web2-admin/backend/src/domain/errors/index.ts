@@ -10,6 +10,7 @@ export {
 export { CatalogueMoveRefusedError } from './CatalogueMoveRefusedError.js';
 export { CatalogueStampUnavailableError } from './CatalogueStampUnavailableError.js';
 export { ArchiveNotFoundError, ArchiveRefusedError } from './ArchiveRefusedError.js';
+export { AutoTopUpNotMarkableError } from './AutoTopUpNotMarkableError.js';
 export { ExportNotFoundError } from './ExportNotFoundError.js';
 export { ExportRefusedError } from './ExportRefusedError.js';
 export { FeedFormatError } from './FeedFormatError.js';
@@ -23,6 +24,9 @@ export { InvalidStateTransitionError } from './InvalidStateTransitionError.js';
 export { MediaTypeLockedError } from './MediaTypeLockedError.js';
 export { NoUsersError } from './NoUsersError.js';
 export { NotTestStreamError } from './NotTestStreamError.js';
+export { NotificationChannelNotSavedError } from './NotificationChannelNotSavedError.js';
+export { NotificationsUnavailableError } from './NotificationsUnavailableError.js';
+export { NotificationTestTooSoonError } from './NotificationTestTooSoonError.js';
 export { PublishFailedError } from './PublishFailedError.js';
 export { RequestShapeError } from './RequestShapeError.js';
 export { STAGE_LOCKED_MESSAGES, StageLockedError, type StageLockReason } from './StageLockedError.js';

@@ -44,9 +44,10 @@ const MAX_UINT256 = 2n ** 256n - 1n;
 
 /**
  * The operator's password, asked again for a pin or a send. Bounded and not shape-checked, as the password change's
- * current one: a wrong one answers the same way whatever it looked like.
+ * current one: a wrong one answers the same way whatever it looked like. The sentence for one that is not a string is
+ * the schema's own, since yup's default one repeats the value it refused.
  */
-const password = string().required('password is required').max(PASSWORD_MAX_LENGTH);
+const password = string().typeError('password is a string').required('password is required').max(PASSWORD_MAX_LENGTH);
 
 const nodeId = string()
   .strict()

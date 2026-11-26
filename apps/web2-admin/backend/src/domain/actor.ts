@@ -23,6 +23,38 @@ export type Actor =
 
 export type OperatorActor = Extract<Actor, { kind: 'operator' }>;
 
+export type SystemActor = Extract<Actor, { kind: 'system' }>;
+
+/**
+ * Who asks for a send from the brand wallet or for a stamp operation: a signed-in operator, or this process on its own
+ * account. The password a person's send is behind is checked in the route, so a requester that reaches the service has
+ * passed whatever stands before it.
+ */
+export type FundingRequester = OperatorActor | SystemActor;
+
+/** The kinds of {@link FundingRequester}, as the two journals' `requested_by_kind` holds them (migration 034). */
+export const FUNDING_REQUESTER_KINDS = ['operator', 'system'] as const;
+export type FundingRequesterKind = (typeof FUNDING_REQUESTER_KINDS)[number];
+
+/** Stamp auto top-up: the requester of the wallet job's sends and of the stamp job's top-ups. */
+export const STAMP_AUTO_TOPUP: SystemActor = { kind: 'system', reason: 'stamp auto top-up' };
+
+/** How a journal row names who asked for it. */
+export interface RequesterColumns {
+  /** The operator's user id, or null for the system. */
+  requestedByUserId: string | null;
+  /** The operator's username, or the system's reason. */
+  requestedBy: string;
+  requestedByKind: FundingRequesterKind;
+}
+
+/** The requester columns of a send's or a stamp operation's journal row. */
+export function requesterColumns(actor: FundingRequester): RequesterColumns {
+  return actor.kind === 'operator'
+    ? { requestedByUserId: actor.userId, requestedBy: actor.username, requestedByKind: 'operator' }
+    : { requestedByUserId: null, requestedBy: actor.reason, requestedByKind: 'system' };
+}
+
 export const UPLOADER: Actor = { kind: 'uploader' };
 
 export const MANAGER: Actor = { kind: 'manager' };

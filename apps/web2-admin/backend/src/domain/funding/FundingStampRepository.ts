@@ -6,6 +6,8 @@ import type {
 } from '@streaming-monorepo/web2-admin-common';
 import { Pool } from 'pg';
 
+import type { FundingRequesterKind } from '../actor.js';
+
 import {
   holdsSend,
   inTransaction,
@@ -67,8 +69,11 @@ export interface FundingStampRow {
    * manager ever answered for it. An `unknown` item's 30 minutes count from it.
    */
   relayedAt: Date | null;
+  /** The operator's user id while that user exists, and null for the system. */
   requestedByUserId: string | null;
+  /** The operator's username, or the system's reason (`requesterColumns`). */
   requestedBy: string;
+  requestedByKind: FundingRequesterKind;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -153,6 +158,7 @@ interface Row {
   relayed_at: Date | null;
   requested_by_user_id: string | null;
   requested_by: string;
+  requested_by_kind: FundingRequesterKind;
   created_at: Date;
   updated_at: Date;
 }
@@ -160,11 +166,11 @@ interface Row {
 const COLUMNS = `request_id::text AS request_id, bulk_id::text AS bulk_id, position, node_id, node_label, batch_id,
   kind, days, steps, expected_depth, new_depth, amount_per_chunk_plur::text AS amount_per_chunk_plur,
   cost_plur::text AS cost_plur, state, tx_hash, error, relayed_at,
-  requested_by_user_id::text AS requested_by_user_id, requested_by, created_at, updated_at`;
+  requested_by_user_id::text AS requested_by_user_id, requested_by, requested_by_kind, created_at, updated_at`;
 
 /** The columns a request writes, in the order {@link valuesOf} answers them. */
 const INSERTED = `request_id, bulk_id, position, node_id, node_label, batch_id, kind, days, steps, expected_depth,
-  new_depth, amount_per_chunk_plur, cost_plur, state, requested_by_user_id, requested_by`;
+  new_depth, amount_per_chunk_plur, cost_plur, state, requested_by_user_id, requested_by, requested_by_kind`;
 
 /** {@link OPEN_SQL} of the transfers, on this table: queued or submitted. */
 const OPEN_SQL = `state IN ('queued', 'submitted')`;
@@ -204,6 +210,7 @@ function rowOf(row: Row): FundingStampRow {
     relayedAt: row.relayed_at,
     requestedByUserId: row.requested_by_user_id,
     requestedBy: row.requested_by,
+    requestedByKind: row.requested_by_kind,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -228,6 +235,7 @@ function valuesOf(item: NewFundingStampOperation): unknown[] {
     'queued',
     item.requestedByUserId,
     item.requestedBy,
+    item.requestedByKind,
   ];
 }
 
@@ -275,7 +283,7 @@ export class FundingStampRepository implements FundingStampStore {
       for (const item of items) {
         await client.query(
           `INSERT INTO funding_stamp_operations (${INSERTED})
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::numeric, $13::numeric, $14, $15, $16)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::numeric, $13::numeric, $14, $15, $16, $17)`,
           valuesOf(item),
         );
       }

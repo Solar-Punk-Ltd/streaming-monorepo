@@ -1,6 +1,10 @@
 import {
+  AUTO_TOPUP_DEFAULTS,
+  AUTO_TOPUP_JOBS,
   parseBaseUnits,
   XBZZ_DECIMALS,
+  type AutoTopUpStampState,
+  type AutoTopUpView,
   type AdminFundingNode,
   type ArchiveStamp,
   type ArchiveStampPurchase,
@@ -12,6 +16,7 @@ import {
   type FundingStampItem,
   type FundingTransferItem,
   type FundingView,
+  type NotificationChannelStatus,
 } from '@streaming-monorepo/web2-admin-common';
 
 /** The brand wallet: the address of private key 1, which nobody signs with. */
@@ -419,6 +424,69 @@ export function makeArchiveStamps(over: Partial<ArchiveStampsResponse> = {}): Ar
     },
     buyUnavailable: null,
     ttlWarningDays: 30,
+    ...over,
+  };
+}
+
+/** A notification channel's status: never saved, so off, with nothing sent, no failure and nothing waiting. */
+export function makeChannelStatus(
+  over: Partial<NotificationChannelStatus> & Pick<NotificationChannelStatus, 'kind'>,
+): NotificationChannelStatus {
+  return {
+    saved: false,
+    enabled: false,
+    lastSentAt: null,
+    lastError: null,
+    lastErrorAt: null,
+    waiting: 0,
+    ...over,
+  };
+}
+
+/**
+ * The Auto top-up view: the default numbers, three jobs running that last ran fine, email on and the other channels
+ * never saved, no marked stamp, an estimate of 3 xBZZ a month with the ceiling at half of it, nothing sent today and
+ * no warning.
+ */
+export function makeAutoTopUpView(over: Partial<AutoTopUpView> = {}): AutoTopUpView {
+  return {
+    settings: { ...AUTO_TOPUP_DEFAULTS },
+    settingsSavedBy: null,
+    settingsSavedAt: null,
+    jobs: AUTO_TOPUP_JOBS.map((job) => ({
+      job,
+      paused: false,
+      pausedBy: null,
+      pausedAt: null,
+      lastRunAt: '2026-10-05T09:55:00.000Z',
+      lastOk: true,
+      lastOutcome: `The ${job} job found nothing to do.`,
+    })),
+    notifications: [
+      makeChannelStatus({ kind: 'email', saved: true, enabled: true, lastSentAt: '2026-10-04T08:00:00.000Z' }),
+      makeChannelStatus({ kind: 'slack' }),
+      makeChannelStatus({ kind: 'telegram' }),
+    ],
+    stamps: [],
+    monthlyEstimatePlur: xbzz('3'),
+    dailyCeilingPlur: xbzz('1.5'),
+    sentTodayPlur: '0',
+    warnings: [],
+    ...over,
+  };
+}
+
+/** A marked stamp: the catalogue batch, marked by an operator, never topped up automatically, nothing coming. */
+export function makeMark(over: Partial<AutoTopUpStampState> = {}): AutoTopUpStampState {
+  return {
+    batchId: BATCH.catalogue,
+    nodeId: 'catalogue:bee',
+    nodeLabel: 'catalogue-node',
+    markedBy: 'operator',
+    markedAt: '2026-10-01T12:00:00.000Z',
+    lastTopUp: null,
+    coming: null,
+    problem: null,
     ...over,
   };
 }

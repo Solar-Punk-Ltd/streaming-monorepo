@@ -3,7 +3,9 @@ import http from 'node:http';
 import {
   ARCHIVE_PATH,
   EXPORT_PATH,
+  FUNDING_AUTO_TOPUP_PATH,
   FUNDING_PATH,
+  NOTIFICATIONS_PATH,
   VERSION_PATH,
   type VersionInfo,
 } from '@streaming-monorepo/web2-admin-common';
@@ -18,9 +20,11 @@ import type { ArchiveService } from '../domain/archive/ArchiveService.js';
 import type { ExportService } from '../domain/export/ExportService.js';
 import type { FeedIdentity } from '../domain/feedIdentity.js';
 import type { FundingService } from '../domain/funding/FundingService.js';
+import type { StampAutoTopUpService } from '../domain/funding/StampAutoTopUpService.js';
 import { IngestService } from '../domain/IngestService.js';
 import { LadderService } from '../domain/LadderService.js';
 import { Logger } from '../domain/Logger.js';
+import type { NotificationService } from '../domain/notifications/NotificationService.js';
 import { PublishService } from '../domain/PublishService.js';
 import type { RecordingCheckService } from '../domain/recordings/index.js';
 import { StageService } from '../domain/StageService.js';
@@ -40,9 +44,11 @@ import { createConfigRouter } from './routes/config.js';
 import { createArchiveRouter } from './routes/archive.js';
 import { createExportRouter } from './routes/exports.js';
 import { createFeedRouter } from './routes/feed.js';
+import { createAutoTopUpRouter } from './routes/autoTopUp.js';
 import { createFundingRouter } from './routes/funding.js';
 import { createHealthRouter } from './routes/health.js';
 import { createInternalRouter } from './routes/internal.js';
+import { createNotificationsRouter } from './routes/notifications.js';
 import { createRecordingsRouter, RECORDINGS_PATH } from './routes/recordings.js';
 import { createCatalogueStampRouter, createStagesRouter } from './routes/stages.js';
 import { createStreamsRouter } from './routes/streams.js';
@@ -83,6 +89,16 @@ export interface ApiDeps {
    * relayed through the manager.
    */
   fundingService: FundingService;
+  /**
+   * Stamp auto top-up's settings: the numbers, the marks and the jobs' pauses. Absent in the tests that are not about
+   * it, and then `/api/funding/auto-top-up` answers 404.
+   */
+  autoTopUp?: StampAutoTopUpService;
+  /**
+   * The Notifications page: the channels a notice goes out on, and their save, switch, removal and test notice. Absent
+   * in the tests that are not about it, and then `/api/notifications` answers 404.
+   */
+  notifications?: NotificationService;
   /** The console's settings for this host: the look it starts in, on `/api/config`. */
   consoleSettings: ConsoleSettingsService;
   /**
@@ -193,10 +209,24 @@ export function startApiServer(deps: ApiDeps, port: number, host: string): ApiSe
     }),
   );
 
+  if (deps.autoTopUp) {
+    app.use(
+      FUNDING_AUTO_TOPUP_PATH,
+      createAutoTopUpRouter({ autoTopUp: deps.autoTopUp, authService: deps.authService, requireAuth }),
+    );
+  }
+
   app.use(
     FUNDING_PATH,
     createFundingRouter({ fundingService: deps.fundingService, authService: deps.authService, requireAuth }),
   );
+
+  if (deps.notifications) {
+    app.use(
+      NOTIFICATIONS_PATH,
+      createNotificationsRouter({ notifications: deps.notifications, authService: deps.authService, requireAuth }),
+    );
+  }
 
   app.use(notFound);
   app.use(errorHandler);

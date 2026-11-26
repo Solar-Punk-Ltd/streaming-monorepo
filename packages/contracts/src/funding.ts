@@ -136,6 +136,21 @@ export function fundingChequebookOperationPath(requestId: string): string {
 export const FUNDING_NODE_ROLES = ['uploader', 'gateway', 'rung'] as const;
 export type FundingNodeRole = (typeof FUNDING_NODE_ROLES)[number];
 
+/**
+ * The most blocks a node's view of the chain may be behind the chain's tip and still count as current: 120, ten
+ * minutes of Gnosis Chain. Past it, the time a node gives its batches and the price it reads are stale.
+ */
+export const FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS = 120;
+
+/**
+ * Whether a node's view of the chain is current: true within {@link FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS} of the tip,
+ * false past it, and null when the manager could not read it or does not say.
+ */
+export function fundingNodeChainCurrent(node: { chainLagBlocks?: number | null }): boolean | null {
+  if (node.chainLagBlocks === undefined || node.chainLagBlocks === null) return null;
+  return node.chainLagBlocks <= FUNDING_CHAIN_CURRENT_MAX_LAG_BLOCKS;
+}
+
 /** What a transfer sends: xDAI, the chain's own coin, or xBZZ, the token. */
 export const FUNDING_TRANSFER_KINDS = ['xdai', 'xbzz'] as const;
 export type FundingTransferKind = (typeof FUNDING_TRANSFER_KINDS)[number];
@@ -436,6 +451,10 @@ export type FundingReplacement = z.infer<typeof fundingReplacementSchema>;
  * {@link fundingReplacementSchema}. It is null for a node whose batch pays for nothing, a gateway and the own node of
  * a stage that uploads through a pool, and optional, so the answer of a manager that offers no purchases of this kind
  * still parses, and absent is read as no purchase offered.
+ *
+ * `chainLagBlocks` is how many blocks the node's view of the chain is behind the chain's tip, from the `block` and
+ * `chainTip` of its chain state, read with its wallet. It is null when the node's chain state could not be read, and
+ * optional, so the answer of a manager that does not read it still parses. {@link fundingNodeChainCurrent} reads it.
  */
 export const fundingNodeSchema = z.object({
   nodeId,
@@ -448,6 +467,7 @@ export const fundingNodeSchema = z.object({
   batch: fundingBatchSchema.nullable().optional(),
   chequebook: fundingChequebookSchema.nullable().optional(),
   replacement: fundingReplacementSchema.nullable().optional(),
+  chainLagBlocks: z.number().int().nonnegative().nullable().optional(),
 });
 export type FundingNode = z.infer<typeof fundingNodeSchema>;
 

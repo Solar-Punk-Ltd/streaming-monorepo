@@ -1,5 +1,6 @@
 import {
   FUNDING_KIND_DECIMALS,
+  NODE_GAS_FUND_WEI,
   sumBaseUnits,
   type AdminFundingNode,
   type FundingTransferKind,
@@ -93,7 +94,7 @@ export function hasDrafts(view: Inventory, drafts: Drafts): boolean {
  * The least xDAI Fund all leaves in the xDAI field of a node that holds none, in wei: 0.01 xDAI, for the gas of its
  * operations. The tabs count a node as having no xDAI only when it holds 0.
  */
-export const GAS_WEI = '10000000000000000';
+export const GAS_WEI = NODE_GAS_FUND_WEI;
 
 /** {@link GAS_WEI} as the xDAI field takes it: `0.01`. */
 export const GAS_XDAI = formatUnits(GAS_WEI, FUNDING_KIND_DECIMALS.xdai);
