@@ -418,7 +418,8 @@ into the admin (`docs/architecture/stages.md` at the repository root).
   answers
   the stage's SRT passphrase, read from the `stages` table's own column for
   this one answer. RTMP has no passphrase, so its stream key crosses the
-  network as readable text, and the console's OBS panel offers SRT only. The
+  network as readable text, and the console's OBS panel shows SRT first and
+  keeps RTMP under a folded Other protocols section. The
   answer names the stage (`stage: { stageId, name, retiredAt }`). With no
   stage, `stage`, `srt` and `rtmp` are null and only the stream id and key are
   answered. Every uploader that takes streams from this admin verifies the

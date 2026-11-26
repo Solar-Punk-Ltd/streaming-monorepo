@@ -360,7 +360,8 @@ images on the host itself.
    The generated table drops the RTMP port, the one ending in 2, like any other private port. The
    manager's console offers RTMP on every SRS stage all the same, because which ports are reachable
    is the firewall's job: open that port in the table if broadcasters are to use RTMP. The
-   admin shows a brand's broadcasters SRT only, because streaming uses SRT. SRS allows play
+   admin's stream page shows a brand's broadcasters SRT first, and keeps RTMP under a collapsed
+   Other protocols section on a stage that takes it. SRS allows play
    from its own container only, so an open RTMP port takes publishes and refuses playback.
 
    RTMP is not encrypted, so an open RTMP port puts every broadcaster's stream key at risk, as
