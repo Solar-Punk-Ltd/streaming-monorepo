@@ -1,10 +1,6 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Box, Link, Typography } from '@mui/material';
-import {
-  EMAIL_RECIPIENTS_MAX,
-  NOTIFICATION_CHANNEL_NAMES,
-  type NotificationChannelKind,
-} from '@streaming-monorepo/web2-admin-common';
+import { NOTICE_SERVICE_NAMES, type NoticeServiceKind } from '@streaming-monorepo/web2-admin-common';
 
 import { monoFont } from '../../theme/createAdminTheme';
 
@@ -67,35 +63,10 @@ function EmailSetup() {
         from an address it does not know.
       </Step>
       <Step>
-        {`Enter the API key, the sender address, a sender name if you want one, and the recipients, ${EMAIL_RECIPIENTS_MAX} at most. Save, then press Send a test notice.`}
+        Enter the API key, the sender address and a sender name if you want one, and Save. Each user then enters their
+        own email address under My notifications and sends themselves a test notice.
       </Step>
     </Steps>
-  );
-}
-
-function SlackSetup() {
-  return (
-    <>
-      <Steps>
-        <Step>
-          At <Outside href="https://api.slack.com/apps">api.slack.com/apps</Outside>, press Create New App, choose From
-          scratch, name the app, for example Stream alerts, and pick your workspace.
-        </Step>
-        <Step>Under Incoming Webhooks, switch Activate Incoming Webhooks on.</Step>
-        <Step>
-          Press Add New Webhook, choose the channel the notices go to and press Allow. Where the workspace approves
-          apps, an admin approves it first.
-        </Step>
-        <Step>
-          Copy the webhook&apos;s URL, which starts with <Literal>https://hooks.slack.com/services/</Literal>, into
-          Webhook URL. Save, then press Send a test notice.
-        </Step>
-      </Steps>
-      <Note>
-        A Workflow Builder webhook, whose URL holds <Literal>/triggers/</Literal>, is not taken. Each Slack channel
-        needs a webhook of its own.
-      </Note>
-    </>
   );
 }
 
@@ -108,38 +79,31 @@ function TelegramSetup() {
           <Literal>/newbot</Literal>. Give the bot a name, then a username that ends in bot. BotFather answers with the
           bot&apos;s token, which looks like <Literal>123456789:AAH…</Literal>.
         </Step>
+        <Step>Enter the token as the Bot token, and Save.</Step>
         <Step>
-          Open the new bot from the link in BotFather&apos;s answer and press Start. For a group, add the bot to it and
-          send <Literal>/start@yourbot</Literal> there, with the bot&apos;s username in place of yourbot. For a public
-          channel, make the bot an administrator: the chat id is then the channel&apos;s name, such as{' '}
-          <Literal>@channelname</Literal>, and the next step is not needed.
+          Each user then presses Find my chat under My notifications, which links their own chat with the bot, and sends
+          themselves a test notice.
         </Step>
-        <Step>
-          Enter the token as the Bot token, press Find chat id and pick the chat: it lists the chats that wrote to the
-          bot in the last day, a private chat by your name.
-        </Step>
-        <Step>Save, then press Send a test notice.</Step>
       </Steps>
       <Note>
-        If Find chat id lists no chat, send the bot a message and press it again: Telegram keeps a bot&apos;s messages
-        for a day. <Literal>Unauthorized</Literal> means the token is wrong.
+        For notices in a group, add the bot to the group. For a channel, make the bot an administrator of it. The user
+        whose notices go there then finds it with Find my chat.
       </Note>
     </>
   );
 }
 
-/** How to set each channel up: what to make at its service, then what to enter on its card. */
-const SETUP: Readonly<Record<NotificationChannelKind, () => ReactElement>> = {
+/** How to set each service up: what to make at the service, then what to enter on its card. */
+const SETUP: Readonly<Record<NoticeServiceKind, () => ReactElement>> = {
   email: EmailSetup,
-  slack: SlackSetup,
   telegram: TelegramSetup,
 };
 
 /**
- * The steps to set a channel up, which its card shows under the channel's name while the ? beside the name is
+ * The steps to set a service up, which its card shows under the service's name while the ? beside the name is
  * pressed. `id` is what the ? names as the part it opens.
  */
-export function ChannelSetup({ kind, id }: { kind: NotificationChannelKind; id: string }) {
+export function ServiceSetup({ kind, id }: { kind: NoticeServiceKind; id: string }) {
   const Setup = SETUP[kind];
   return (
     <Box
@@ -148,8 +112,8 @@ export function ChannelSetup({ kind, id }: { kind: NotificationChannelKind; id: 
       aria-labelledby={`${id}-title`}
       sx={{ p: 2, borderRadius: 1, bgcolor: 'action.hover', display: 'grid', gap: 1 }}
     >
-      <Typography id={`${id}-title`} variant="subtitle2" component="h3">
-        {`How to set up ${NOTIFICATION_CHANNEL_NAMES[kind]}`}
+      <Typography id={`${id}-title`} variant="subtitle2" component="h4">
+        {`How to set up ${NOTICE_SERVICE_NAMES[kind]}`}
       </Typography>
       <Setup />
     </Box>

@@ -10,13 +10,15 @@ import {
   type AutoTopUpSettings,
   type AutoTopUpStampPlan,
   type AutoTopUpWalletTopUp,
+  type AutoTopUpWarningKind,
   type FundingPinState,
   type FundingPostage,
   type Notice,
+  type NoticeTopic,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { Logger } from '../Logger.js';
-import type { Notifier } from '../notifications/Notifier.js';
+import type { NoticePartOutcome, Notifier, OutgoingNotice } from '../notifications/Notifier.js';
 
 import {
   autoTopUpComingSubject,
@@ -28,6 +30,7 @@ import {
   type AutoTopUpWarningRow,
   type StampAutoTopUpStore,
 } from './StampAutoTopUpStore.js';
+import type { UnmarkedStampPass } from './UnmarkedStampPass.js';
 import {
   comingNotice,
   newWarningsNotice,
@@ -57,14 +60,17 @@ import { estimateDepthsOf, stampNameOf } from './autoTopUpReadings.js';
  *   the margin and what the brand wallet sends its node, and records it anew when the node lacks more than it said;
  * - clears the alert of a stamp that is healthy again, which a top-up makes it, or that expired;
  * - sends the "top-ups coming up" notice when a stamp turns upcoming, at most once a day, listing every recorded alert
- *   not given yet, and with no notification channel on counts an alert as given when it is recorded;
+ *   not given yet, each as a part under that topic; an alert counts as given once a destination took its part, and
+ *   while nobody gets that topic it counts as given when it was recorded;
  * - raises, words anew and clears the warnings, and sends each one's first notice at once and the daily repeats of the
- *   standing ones together;
- * - tries the notices that wait for a channel again, through the `Notifier`, before it sends any new one, so a paused
- *   alert job sends and retries nothing.
+ *   standing ones together, each warning as a part under its topic, notified once a destination took its part;
+ * - tries the notices that wait for a destination again, through the `Notifier`, before it sends any new one, so a
+ *   paused alert job sends and retries nothing.
  *
- * Every notice goes out through the admin's `Notifier`, on the channels of the Notifications page. A notice no channel
- * took is sent again at the next run. It never stops a run.
+ * Every notice goes out through the admin's `Notifier`, to the people who get its topics, and its outcome is read part
+ * by part. A part that someone gets and no destination took fails the run and is sent again at the next run, except
+ * a standing warning left out of a daily repeat that a destination took for another warning: it goes again with the
+ * next day's repeat. A part nobody gets fails nothing and shows on the tab alone. It never stops a run.
  */
 
 /** The node that holds a marked stamp and pays for its top-ups, as the funding view reads it. */
@@ -128,8 +134,29 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** How a run's outcome begins the note of a notice no channel took. */
-const NOT_TAKEN = 'No channel took the notice';
+/** How a run's outcome begins the note of a notice no destination took. */
+const NOT_TAKEN = 'No destination took the notice';
+
+/** What became of the parts of one notice, by subject. */
+interface SendResult {
+  /** The parts one destination or more took. */
+  taken: ReadonlySet<string>;
+  /** The parts whose topic nobody gets. */
+  nobody: ReadonlySet<string>;
+  /** The note of the parts that someone gets and no destination took, or null when there are none. */
+  failed: string | null;
+}
+
+/** The topic each kind of warning is told of under. */
+const WARNING_TOPICS: Readonly<Record<AutoTopUpWarningKind, NoticeTopic>> = {
+  wallet_xbzz: 'wallet_low',
+  wallet_xdai: 'wallet_low',
+  topup_failed: 'topup_failed',
+  stamp_expired: 'stamp_expired',
+};
+
+/** The topics of the warnings, each once. */
+const WARNING_NOTICE_TOPICS: readonly NoticeTopic[] = [...new Set(Object.values(WARNING_TOPICS))];
 
 function warningId(key: AutoTopUpWarningKey): string {
   return `${key.kind}:${key.batchId ?? ''}`;
@@ -196,16 +223,21 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     private readonly store: StampAutoTopUpStore,
     private readonly notifier: Notifier,
     private readonly logger: Pick<Logger, 'info' | 'warn'>,
+    /** The stamps not on auto top-up, watched after the marked ones; absent in the tests that are not about them. */
+    private readonly unmarked: UnmarkedStampPass | null = null,
   ) {}
 
   /** One run in a tick: the tick's reading of the marked stamps, and whether the wallet job is paused. */
   async run(context: AutoTopUpTickContext): Promise<AutoTopUpJobResult> {
     const walletJob = (await this.store.jobs()).find((row) => row.job === 'wallet');
     const input = alertJobInputOf(context, walletJob?.paused === true);
-    return this.runReadings(
+    const result = await this.runReadings(
       input,
       context.stamps.map((stamp) => stamp.mark),
     );
+    // The stamps not on auto top-up, through the same notifier. What their pass says never fails the run.
+    const unmarked = this.unmarked === null ? null : await this.unmarked.run(context, this.notifier);
+    return unmarked === null ? result : { ok: result.ok, outcome: `${result.outcome} ${unmarked}` };
   }
 
   /** The run over readings already made, for these marks. */
@@ -267,15 +299,19 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
 
     const warnings = await this.reckonWarnings(input, marks, planned, lacks);
 
-    // The notices. With no channel on, the tab alone shows the alerts and the warnings.
-    const on = await this.notifier.on();
+    // The notices. With nobody to get them, the tab alone shows the alerts and the warnings.
+    const comingOn = await this.notifier.on('topups_coming');
+    const warningsOn = (await Promise.all(WARNING_NOTICE_TOPICS.map((topic) => this.notifier.on(topic)))).some(
+      (gets) => gets,
+    );
+    const on = comingOn || warningsOn;
     const noticesRow = await this.store.notices();
     const notes: string[] = [];
     const retryNote = await this.retryWaiting(now, alerts, warnings);
     if (retryNote !== null) notes.push(retryNote);
-    const comingNote = await this.giveComingAlerts(input, planned, alerts, lacks, on, noticesRow);
+    const comingNote = await this.giveComingAlerts(input, planned, alerts, lacks, comingOn, noticesRow);
     if (comingNote !== null) notes.push(comingNote);
-    const warningNote = await this.noticeWarnings(now, warnings, on, noticesRow);
+    const warningNote = await this.noticeWarnings(now, warnings, warningsOn, noticesRow);
     if (warningNote !== null) notes.push(warningNote);
 
     const coming = planned.filter((stamp) => stamp.plan.listed).length;
@@ -284,10 +320,10 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       ...(recorded > 0 ? [`${plural(recorded, 'alert')} recorded`] : []),
       ...(unread > 0 ? [`${unread} could not be read`] : []),
       `${plural(warnings.length, 'warning')} standing`,
-      ...(on ? [] : ['no notification channel is on']),
+      ...(on ? [] : ['nobody gets the notices']),
     ].join(', ');
     return {
-      ok: !notes.some((note) => note.startsWith(NOT_TAKEN)),
+      ok: !notes.some((note) => note.includes(NOT_TAKEN)),
       outcome: `${[summary, ...notes].join('. ')}.`,
     };
   }
@@ -392,7 +428,7 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
   }
 
   /**
-   * Tries the notices that wait for a channel again. A waiting notice tells of a warning that stands, or of a stamp
+   * Tries the notices that wait for a destination again. A waiting notice tells of a warning that stands, or of a stamp
    * whose alert is recorded; one about nothing that stands any more is dropped. Answers a note, or null with nothing
    * to tell.
    */
@@ -404,19 +440,22 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     const standing = new Set([
       ...warnings.map(autoTopUpWarningSubject),
       ...[...alerts].flatMap(([batchId, alert]) => (alert === null ? [] : [autoTopUpComingSubject(batchId)])),
+      // And a listed stamp not on auto top-up, the rows as the last run left them, an expired one included.
+      ...((await this.unmarked?.standingSubjects()) ?? []),
     ]);
     const outcome = await this.notifier.retryWaiting(now, (subject) => standing.has(subject));
     const parts = [
       ...(outcome.sent > 0 ? [`${plural(outcome.sent, 'waiting notice')} sent again`] : []),
-      ...(outcome.waiting > 0 ? [`${plural(outcome.waiting, 'notice')} still waiting for a channel`] : []),
+      ...(outcome.waiting > 0 ? [`${plural(outcome.waiting, 'notice')} still waiting for a destination`] : []),
     ];
     return parts.length > 0 ? parts.join(', ') : null;
   }
 
   /**
-   * Gives the recorded alerts not given yet. With a channel on, the "top-ups coming up" notice goes once a stamp among
-   * them is upcoming or due, at most once a day, and lists every one of them; they count as given once one channel
-   * took it. With no channel on each counts as given when it was recorded, since the tab has shown it since.
+   * Gives the recorded alerts not given yet. While someone gets "Top-ups coming up", its notice goes once a stamp
+   * among them is upcoming or due, at most once a day, and lists every one of them, each as a part; one counts as given
+   * once a destination took its part. While nobody gets it, each counts as given when it was recorded, since the tab
+   * has shown it since; so does a part the notifier answers nobody gets.
    */
   private async giveComingAlerts(
     input: AlertJobInput,
@@ -443,28 +482,50 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     const turned = ungiven.some((stamp) => stamp.plan.phase !== 'healthy');
     if (!turned || msSince(noticesRow.lastComingAt, now) < ONCE_PER_MS) return null;
 
-    const topUps: ComingTopUpText[] = ungiven.map((stamp) => ({
-      stamp: stamp.reading.name,
-      ttlSeconds: stamp.reading.ttlSeconds,
-      dueAt: new Date(now.getTime() + stamp.plan.dueInSeconds * 1000),
-      due: stamp.plan.phase === 'due',
-      days: stamp.plan.days,
-      costPlur: stamp.plan.costPlur,
-      costWithMarginPlur: stamp.plan.costWithMarginPlur,
-    }));
-    const notice = comingNotice({
-      topUps,
-      nodes: comingNodes(input, ungiven, alerts, lacks),
-      marginPercent: settings.marginPercent,
-      lookAheadDays: settings.lookAheadDays,
-      brandWallet: input.brandWallet,
+    // Each coming top-up is a part, and a notice lists the top-ups of the parts it is written from.
+    const write = (stamps: readonly PlannedStamp[]): Notice =>
+      comingNotice({
+        topUps: stamps.map((stamp): ComingTopUpText => ({
+          stamp: stamp.reading.name,
+          ttlSeconds: stamp.reading.ttlSeconds,
+          dueAt: new Date(now.getTime() + stamp.plan.dueInSeconds * 1000),
+          due: stamp.plan.phase === 'due',
+          days: stamp.plan.days,
+          costPlur: stamp.plan.costPlur,
+          costWithMarginPlur: stamp.plan.costWithMarginPlur,
+        })),
+        nodes: comingNodes(input, stamps, alerts, lacks),
+        marginPercent: settings.marginPercent,
+        lookAheadDays: settings.lookAheadDays,
+        brandWallet: input.brandWallet,
+      });
+    const subjectOf = (stamp: PlannedStamp): string => autoTopUpComingSubject(stamp.mark.batchId);
+    const result = await this.send<PlannedStamp>({
+      raisedAt: now,
+      parts: ungiven.map((stamp) => ({ topic: 'topups_coming', subject: subjectOf(stamp), item: stamp })),
+      compose: (parts) => write(parts.map((part) => part.item)),
     });
-    const batchIds = ungiven.map((stamp) => stamp.mark.batchId);
-    const failed = await this.send(notice, batchIds.map(autoTopUpComingSubject), now);
-    if (failed !== null) return failed;
-    await this.store.setAlerted(batchIds, now);
-    await this.store.recordNotices({ lastComingAt: now });
-    return `Sent the notice of ${plural(ungiven.length, 'coming top-up')}`;
+
+    // The day of the notice rule counts from the first destination that took a stamp's part, or, for a part nobody
+    // gets, from the alert showing on the tab.
+    for (const stamp of ungiven) {
+      if (result.nobody.has(subjectOf(stamp))) {
+        await this.store.setAlerted([stamp.mark.batchId], alerts.get(stamp.mark.batchId)!.recordedAt);
+      }
+    }
+    const given = ungiven.filter((stamp) => result.taken.has(subjectOf(stamp)));
+    if (given.length > 0) {
+      await this.store.setAlerted(
+        given.map((stamp) => stamp.mark.batchId),
+        now,
+      );
+      await this.store.recordNotices({ lastComingAt: now });
+    }
+    const notes = [
+      ...(given.length > 0 ? [`Sent the notice of ${plural(given.length, 'coming top-up')}`] : []),
+      ...(result.failed === null ? [] : [result.failed]),
+    ];
+    return notes.length > 0 ? notes.join('. ') : null;
   }
 
   /**
@@ -486,12 +547,33 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       since: warning.since,
     });
 
+    const outgoing = (
+      told: readonly AutoTopUpWarningRow[],
+      write: (items: readonly WarningNoticeItem[]) => Notice,
+    ): OutgoingNotice<AutoTopUpWarningRow> => ({
+      raisedAt: now,
+      parts: told.map((warning) => ({
+        topic: WARNING_TOPICS[warning.kind],
+        subject: autoTopUpWarningSubject(warning),
+        item: warning,
+      })),
+      compose: (parts) => write(parts.map((part) => item(part.item))),
+    });
+
+    const takenOf = (told: readonly AutoTopUpWarningRow[], result: SendResult): AutoTopUpWarningRow[] =>
+      told.filter((warning) => result.taken.has(autoTopUpWarningSubject(warning)));
+
+    // A warning is notified once a destination took its part. One whose topic nobody gets stays not notified, so its
+    // first notice goes to whoever ticks that topic later.
     const fresh = warnings.filter((warning) => warning.notifiedAt === null);
     if (fresh.length > 0) {
-      const failed = await this.send(newWarningsNotice(fresh.map(item)), fresh.map(autoTopUpWarningSubject), now);
-      if (failed !== null) return failed;
-      await this.store.setWarningsNotified(fresh, now);
-      notes.push(`Sent the notice of ${plural(fresh.length, 'new warning')}`);
+      const result = await this.send(outgoing(fresh, newWarningsNotice));
+      const notified = takenOf(fresh, result);
+      if (notified.length > 0) {
+        await this.store.setWarningsNotified(notified, now);
+        notes.push(`Sent the notice of ${plural(notified.length, 'new warning')}`);
+      }
+      if (result.failed !== null) return [...notes, result.failed].join('. ');
     }
 
     const freshIds = new Set(fresh.map(warningId));
@@ -502,33 +584,41 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       standing.some((warning) => msSince(warning.notifiedAt, now) >= ONCE_PER_MS) &&
       msSince(noticesRow.lastRepeatAt, now) >= ONCE_PER_MS;
     if (repeatDue) {
-      const failed = await this.send(
-        standingWarningsNotice(standing.map(item)),
-        standing.map(autoTopUpWarningSubject),
-        now,
-      );
-      if (failed !== null) return [...notes, failed].join('. ');
-      await this.store.setWarningsNotified(standing, now);
-      await this.store.recordNotices({ lastRepeatAt: now });
-      notes.push(`Sent the notice of ${plural(standing.length, 'standing warning')} again`);
+      const result = await this.send(outgoing(standing, standingWarningsNotice));
+      const notified = takenOf(standing, result);
+      if (notified.length > 0) {
+        await this.store.setWarningsNotified(notified, now);
+        await this.store.recordNotices({ lastRepeatAt: now });
+        notes.push(`Sent the notice of ${plural(notified.length, 'standing warning')} again`);
+      }
+      if (result.failed !== null) notes.push(result.failed);
     }
     return notes.length > 0 ? notes.join('. ') : null;
   }
 
   /**
-   * Sends one notice, raised now, through the notifier. Answers null once one channel took it, or the note of why none
-   * did, which is logged and never thrown; the next run sends it again. A channel that failed while another took it
-   * gets it again from the notifier.
+   * Sends one notice through the notifier and reads what became of each part. The parts that someone gets and no
+   * destination took have a note, which is logged and never thrown; it names the notice as it reads written from those
+   * parts alone. The next run sends them again, except standing warnings left out of a daily repeat that a destination
+   * took for another warning, which go again with the next day's repeat. A part nobody gets fails nothing. A
+   * destination that failed while another took its parts gets them again from the notifier.
    */
-  private async send(notice: Notice, subjects: readonly string[], now: Date): Promise<string | null> {
-    const outcome = await this.notifier.notify({ ...notice, raisedAt: now, subjects });
-    if (outcome.notified) return null;
+  private async send<T>(notice: OutgoingNotice<T>): Promise<SendResult> {
+    const outcome = await this.notifier.notify(notice);
+    const subjects = (pick: (part: NoticePartOutcome) => boolean): Set<string> =>
+      new Set(outcome.parts.filter(pick).map((part) => part.subject));
+    const taken = subjects((part) => part.taken);
+    const nobody = subjects((part) => !part.taken && part.people === 0);
+    const missed = subjects((part) => !part.taken && part.people > 0);
+    if (missed.size === 0) return { taken, nobody, failed: null };
+
+    const title = notice.compose(notice.parts.filter((part) => missed.has(part.subject))).title;
     const why =
-      outcome.failed.length === 0
-        ? 'no channel is on.'
-        : outcome.failed.map((failure) => `${failure.kind}: ${failure.error}`).join(' ');
-    this.logger.warn(`[AutoTopUp] no channel took the notice "${notice.title}": ${why}`);
-    return `${NOT_TAKEN} "${notice.title}": ${why}`;
+      outcome.failed === 0
+        ? 'none of its destinations could be tried.'
+        : `${plural(outcome.failed, 'destination')} could not take it.`;
+    this.logger.warn(`[AutoTopUp] no destination took the notice "${title}": ${why}`);
+    return { taken, nobody, failed: `${NOT_TAKEN} "${title}": ${why}` };
   }
 }
 

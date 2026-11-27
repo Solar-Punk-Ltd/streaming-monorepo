@@ -108,7 +108,7 @@ export function AddUserCard({ onAdded }: { onAdded: () => Promise<void> }) {
 
         <FormControlLabel
           control={<Checkbox checked={admin} onChange={(e) => setAdmin(e.target.checked)} disabled={pending} />}
-          label="Admin: can add and remove users, and sign anyone out"
+          label="Admin: can add and remove users, sign anyone out, and set up the notification services"
         />
 
         {error ? <Alert severity="error">{error}</Alert> : null}

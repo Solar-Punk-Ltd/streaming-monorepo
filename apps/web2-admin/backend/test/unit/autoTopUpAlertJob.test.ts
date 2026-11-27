@@ -1,7 +1,7 @@
 /**
  * The alert job of stamp auto top-up: the alerts it records and clears, the "top-ups coming up" notice and its
  * once-a-day rule, the warnings it raises, words anew, clears and sends notices of, the waiting notices it has tried
- * again, and a notice no channel took. Unit test over a store in memory and a notifier that records what it is handed,
+ * again, and a notice no destination took. Unit test over a store in memory and a notifier that records what it is handed,
  * and once over the notification dispatcher with fake channels. `pnpm test`.
  *
  * Addresses are fixtures the leak gate allows (`scripts/public-leaks/allow.json`).
@@ -15,10 +15,12 @@ import {
   autoTopUpStampPlan,
   type AutoTopUpSettings,
   type FundingPostage,
+  type Notice,
+  type NoticeTopic,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { FundingBatch, FundingInventory, FundingNode } from '@streaming-monorepo/contracts';
-import { NotificationSendError, type ChannelFactory } from '@streaming-monorepo/notifications';
+import { NotificationSendError, type DestinationChannelFactory } from '@streaming-monorepo/notifications';
 
 import {
   AutoTopUpAlertJob,
@@ -38,11 +40,11 @@ import {
 import type { NotifyOutcome, Notifier, OutgoingNotice, RetryOutcome } from '../../src/domain/notifications/Notifier.js';
 
 import { markedStampsOf, type AutoTopUpTickContext } from '../../src/domain/funding/autoTopUpJobs.js';
-import { NotificationDispatcher } from '../../src/domain/notifications/NotificationDispatcher.js';
+import { NoticeDispatcher } from '../../src/domain/notifications/NoticeDispatcher.js';
 import { channelSecretKeyFrom, sealChannelSecret } from '../../src/domain/notifications/channelSecrets.js';
 
 import { InMemoryStampAutoTopUpStore } from './support/autoTopUpFakes.js';
-import { InMemoryNotificationStore } from './support/notificationFakes.js';
+import { InMemoryNoticeStore } from './support/notificationFakes.js';
 import {
   BATCH_CATALOGUE,
   BATCH_STAGE,
@@ -74,25 +76,39 @@ function at(seconds: number): Date {
   return new Date(T0.getTime() + seconds * 1000);
 }
 
+/** A notice as a destination took it: written from all its parts, with when it was raised and what it tells of. */
+interface TakenNotice extends Notice {
+  raisedAt: Date;
+  subjects: string[];
+}
+
 /**
- * A notifier with one channel, email, that records each notice it takes, and fails while `failWith` is set. It records
- * each call to try the waiting notices again, with what stood then.
+ * A notifier with one person, who gets every topic on one destination. It records each notice that destination takes,
+ * fails while `failWith` is set, and has nobody to send to while `isOn` is false. It records each call to try the
+ * waiting notices again, with what stood then.
  */
 class RecordingNotifier implements Notifier {
   isOn = true;
   failWith: string | null = null;
-  sent: OutgoingNotice[] = [];
+  sent: TakenNotice[] = [];
   retries: { now: Date; stands: (subject: string) => boolean }[] = [];
   async on(): Promise<boolean> {
     return this.isOn;
   }
-  async notify(notice: OutgoingNotice): Promise<NotifyOutcome> {
-    if (!this.isOn) return { notified: false, taken: [], failed: [] };
-    if (this.failWith !== null) {
-      return { notified: false, taken: [], failed: [{ kind: 'email', error: this.failWith }] };
-    }
-    this.sent.push(notice);
-    return { notified: true, taken: ['email'], failed: [] };
+  async notify<T>(notice: OutgoingNotice<T>): Promise<NotifyOutcome> {
+    const outcome = (people: number, sent: number, failed: number): NotifyOutcome => ({
+      parts: notice.parts.map((part) => ({ subject: part.subject, people, taken: sent > 0 })),
+      sent,
+      failed,
+    });
+    if (!this.isOn) return outcome(0, 0, 0);
+    if (this.failWith !== null) return outcome(1, 0, 1);
+    this.sent.push({
+      ...notice.compose(notice.parts),
+      raisedAt: notice.raisedAt,
+      subjects: notice.parts.map((part) => part.subject),
+    });
+    return outcome(1, 1, 0);
   }
   async retryWaiting(now: Date, stands: (subject: string) => boolean): Promise<RetryOutcome> {
     this.retries.push({ now, stands });
@@ -245,13 +261,13 @@ describe('the alert job records an alert', () => {
     assert.equal(alertOf(BATCH_2)?.alertedAt?.getTime(), at(DAY).getTime());
   });
 
-  it('with no channel on, counts an alert given when it is recorded, and sends nothing', async () => {
+  it('with nobody to get the notices, counts an alert given when it is recorded, and sends nothing', async () => {
     notifier.isOn = false;
     const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
     assert.equal(notifier.sent.length, 0);
     assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
     assert.equal(outcome.ok, true);
-    assert.match(outcome.outcome, /no notification channel is on/);
+    assert.match(outcome.outcome, /nobody gets the notices/);
   });
 
   it('names what the brand wallet sends a short node, and when', async () => {
@@ -420,14 +436,14 @@ describe('the alert job keeps the warnings', () => {
   });
 });
 
-describe('a notice no channel took', () => {
+describe('a notice no destination took', () => {
   it('leaves the alert not given and sends it again at the next run, whose day counts from then', async () => {
     notifier.failWith = 'The email service answered 401: unauthorised.';
     const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
     assert.equal(outcome.ok, false);
     assert.match(
       outcome.outcome,
-      /No channel took the notice "Stamp auto top-up: 1 top-up coming up": email: The email service answered 401/,
+      /No destination took the notice "Stamp auto top-up: 1 top-up coming up": 1 destination could not take it/,
     );
     assert.ok(alertOf(BATCH_1) !== null, 'the alert is recorded all the same');
     assert.equal(alertOf(BATCH_1)?.alertedAt, null);
@@ -451,6 +467,229 @@ describe('a notice no channel took', () => {
     await run(input({}, at(10 * 60), { brandWallet: dry }));
     assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(10 * 60).getTime());
     assert.equal(notifier.sent[0]!.title, 'Stamp auto top-up: the brand wallet is low on xDAI');
+  });
+});
+
+/**
+ * A notifier with one person for each topic in `people`, on one destination of their own; a topic not in it has
+ * nobody. It records the notice each destination took, written from the parts of its topic, and the destination of a
+ * topic in `failing` fails. A topic in `untickedLate` answers `on` with someone and then has nobody when the notice
+ * goes, as when its last user unticks it between the two.
+ */
+class TopicNotifier implements Notifier {
+  people = new Set<NoticeTopic>(['topups_coming', 'wallet_low', 'topup_failed', 'stamp_expired']);
+  failing = new Set<NoticeTopic>();
+  untickedLate = new Set<NoticeTopic>();
+  sent: (TakenNotice & { topic: NoticeTopic })[] = [];
+  handed: OutgoingNotice<unknown>[] = [];
+  async on(topic: NoticeTopic): Promise<boolean> {
+    return this.people.has(topic) || this.untickedLate.has(topic);
+  }
+  async notify<T>(notice: OutgoingNotice<T>): Promise<NotifyOutcome> {
+    this.handed.push(notice as OutgoingNotice<unknown>);
+    const taken = new Set<NoticeTopic>();
+    let failed = 0;
+    for (const topic of new Set(notice.parts.map((part) => part.topic))) {
+      if (!this.people.has(topic)) continue;
+      if (this.failing.has(topic)) {
+        failed += 1;
+        continue;
+      }
+      const parts = notice.parts.filter((part) => part.topic === topic);
+      this.sent.push({
+        ...notice.compose(parts),
+        raisedAt: notice.raisedAt,
+        subjects: parts.map((part) => part.subject),
+        topic,
+      });
+      taken.add(topic);
+    }
+    return {
+      parts: notice.parts.map((part) => ({
+        subject: part.subject,
+        people: this.people.has(part.topic) ? 1 : 0,
+        taken: taken.has(part.topic),
+      })),
+      sent: taken.size,
+      failed,
+    };
+  }
+  async retryWaiting(): Promise<RetryOutcome> {
+    return { sent: 0, dropped: 0, waiting: 0 };
+  }
+}
+
+describe('the outcome read part by part', () => {
+  let topics: TopicNotifier;
+  const dry = { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: (XDAI / 20n).toString() };
+  const expired: AlertStampReading = { state: 'expired', name: stampName(BATCH_2) };
+
+  beforeEach(() => {
+    topics = new TopicNotifier();
+    job = new AutoTopUpAlertJob(store, topics, silent);
+  });
+
+  describe('the notice rule', () => {
+    it('counts the day from the first destination that took the "Top-ups coming up" part', async () => {
+      topics.failing.add('topups_coming');
+      const failed = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
+      assert.equal(failed.ok, false);
+      assert.equal(alertOf(BATCH_1)?.alertedAt, null, 'not given while no destination took it');
+
+      topics.failing.clear();
+      const taken = await run(input({ [BATCH_1]: operable(BATCH_1, 7.4 * DAY, RICH) }, at(10 * 60)));
+      assert.equal(taken.ok, true);
+      assert.equal(alertOf(BATCH_1)?.alertedAt?.getTime(), at(10 * 60).getTime());
+
+      await run(
+        input(
+          { [BATCH_1]: operable(BATCH_1, 6.4 * DAY, RICH), [BATCH_2]: operable(BATCH_2, 7.5 * DAY, RICH) },
+          at(DAY + HOUR),
+        ),
+      );
+      assert.equal(topics.sent.length, 2, 'the next day lists the new top-up');
+      assert.equal(alertOf(BATCH_1)?.alertedAt?.getTime(), at(10 * 60).getTime(), 'a given alert keeps its day');
+      assert.equal(alertOf(BATCH_2)?.alertedAt?.getTime(), at(DAY + HOUR).getTime());
+    });
+
+    it('while nobody gets "Top-ups coming up", counts the day from the alert showing on the tab', async () => {
+      topics.people.delete('topups_coming');
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
+      assert.deepEqual(
+        topics.sent.map((sent) => sent.topic),
+        ['wallet_low'],
+        'the warning goes to whoever gets it, the top-up to nobody',
+      );
+      assert.equal(outcome.ok, true);
+      assert.doesNotMatch(outcome.outcome, /nobody gets the notices/);
+    });
+
+    it('once every user unticked it, counts an alert not given yet from the tab', async () => {
+      await run(input({ [BATCH_1]: operable(BATCH_1, 8.5 * DAY, RICH) }, T0));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, null, 'recorded, and not given while the stamp is healthy');
+
+      topics.people.delete('topups_coming');
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, at(DAY)));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0, 'from when it was recorded and shown');
+      assert.equal(topics.sent.length, 0);
+      assert.equal(outcome.ok, true);
+    });
+
+    it('counts it from the tab too when the last user unticks it while the notice goes', async () => {
+      topics.people.delete('topups_coming');
+      topics.untickedLate.add('topups_coming');
+      await run(input({ [BATCH_1]: operable(BATCH_1, 8.5 * DAY, RICH) }, T0));
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, at(HOUR)));
+      assert.equal(topics.handed.length, 1, 'the notice was handed over');
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
+      assert.equal(store.noticesRow.lastComingAt, null);
+      assert.equal(outcome.ok, true);
+    });
+  });
+
+  it('writes a notice of coming top-ups from the parts it is handed', async () => {
+    await run(
+      input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH), [BATCH_2]: operable(BATCH_2, 8.5 * DAY, RICH) }, T0),
+    );
+    const notice = topics.handed[0]!;
+    assert.deepEqual(
+      notice.parts.map((part) => [part.topic, part.subject]),
+      [
+        ['topups_coming', autoTopUpComingSubject(BATCH_1)],
+        ['topups_coming', autoTopUpComingSubject(BATCH_2)],
+      ],
+    );
+    const one = notice.compose([notice.parts[1]!]);
+    assert.equal(one.title, 'Stamp auto top-up: 1 top-up coming up');
+    assert.match(one.text, /Stage c2/);
+    assert.doesNotMatch(one.text, /Stage b1/);
+  });
+
+  it('notifies a warning only where its part was taken, and a part nobody gets fails no run', async () => {
+    topics.people = new Set(['wallet_low']);
+    const outcome = await run(input({ [BATCH_2]: expired }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt, null, 'nobody gets it, so it waits for someone');
+    assert.deepEqual(
+      topics.sent.map((sent) => sent.title),
+      ['Stamp auto top-up: the brand wallet is low on xDAI'],
+    );
+    assert.equal(outcome.ok, true);
+    assert.match(outcome.outcome, /Sent the notice of 1 new warning\./);
+
+    topics.people.add('stamp_expired');
+    await run(input({ [BATCH_2]: expired }, at(HOUR), { brandWallet: dry }));
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt?.getTime(), at(HOUR).getTime());
+    assert.equal(topics.sent[1]!.title, 'Stamp auto top-up: a marked stamp expired', 'its first notice, once ticked');
+  });
+
+  it('fails the run for a part someone gets that no destination took, and keeps the parts taken', async () => {
+    topics.failing.add('stamp_expired');
+    const outcome = await run(input({ [BATCH_2]: expired }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt, null);
+    assert.equal(outcome.ok, false);
+    assert.match(
+      outcome.outcome,
+      /Sent the notice of 1 new warning\. No destination took the notice "Stamp auto top-up: a marked stamp expired": 1 destination could not take it\./,
+    );
+
+    topics.failing.clear();
+    const retried = await run(input({ [BATCH_2]: expired }, at(10 * 60), { brandWallet: dry }));
+    assert.equal(retried.ok, true);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt?.getTime(), at(10 * 60).getTime());
+    assert.equal(topics.sent.at(-1)!.title, 'Stamp auto top-up: a marked stamp expired');
+  });
+
+  it('repeats the standing warnings part by part', async () => {
+    topics.people.delete('topups_coming');
+    await store.raiseWarning({ kind: 'topup_failed', batchId: BATCH_1 }, 'The operation failed.', T0);
+    await run(input({ [BATCH_1]: operable(BATCH_1, 6.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+
+    topics.failing.add('topup_failed');
+    const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY, RICH) }, at(DAY), { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(DAY).getTime());
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(store.noticesRow.lastRepeatAt?.getTime(), at(DAY).getTime());
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.outcome, /No destination took the notice "Stamp auto top-up: 1 warning still standing"/);
+  });
+
+  it('sends a standing warning a repeat left out again with the next day repeat, not at the next run', async () => {
+    topics.people.delete('topups_coming');
+    const failed = { kind: 'topup_failed', batchId: BATCH_1 } as const;
+    const walletLow = { kind: 'wallet_xdai', batchId: null } as const;
+    await store.raiseWarning(failed, 'The operation failed.', T0);
+    await run(input({ [BATCH_1]: operable(BATCH_1, 6.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+
+    topics.failing.add('topup_failed');
+    const missed = await run(input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY, RICH) }, at(DAY), { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(DAY).getTime(), 'the part taken is notified');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0, 'the part missed is not');
+    assert.equal(store.noticesRow.lastRepeatAt?.getTime(), at(DAY).getTime());
+    assert.equal(missed.ok, false);
+
+    topics.failing.clear();
+    const handed = topics.handed.length;
+    const next = await run(
+      input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY - 10 * 60, RICH) }, at(DAY + 10 * 60), { brandWallet: dry }),
+    );
+    assert.equal(topics.handed.length, handed, 'no repeat goes at the next run');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(next.ok, true);
+
+    await run(input({ [BATCH_1]: operable(BATCH_1, 4.5 * DAY, RICH) }, at(2 * DAY), { brandWallet: dry }));
+    const repeat = topics.handed.at(-1)!;
+    assert.deepEqual(
+      repeat.parts.map((part) => part.subject).sort(),
+      [autoTopUpWarningSubject(failed), autoTopUpWarningSubject(walletLow)].sort(),
+    );
+    assert.equal(repeat.compose(repeat.parts).title, 'Stamp auto top-up: 2 warnings still standing');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt?.getTime(), at(2 * DAY).getTime());
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(2 * DAY).getTime());
   });
 });
 
@@ -483,40 +722,36 @@ describe('the waiting notices', () => {
     assert.equal(stands(autoTopUpComingSubject(BATCH_2)), false, 'a healthy stamp has no alert');
   });
 
-  it('are tried with no channel on as well', async () => {
+  it('are tried with nobody to get the notices as well', async () => {
     notifier.isOn = false;
     await run(input({}, T0));
     assert.equal(notifier.retries.length, 1);
   });
 
-  it('wait for a channel that failed while another took the notice, and are dropped once their warning clears', async () => {
-    const notices = new InMemoryNotificationStore();
+  it('wait for a destination that failed while another took the notice, and are dropped once their warning clears', async () => {
+    const notices = new InMemoryNoticeStore();
     const key = channelSecretKeyFrom('ab'.repeat(32));
-    await notices.saveChannel(
+    await notices.saveService(
       {
         kind: 'email',
-        settings: {
-          provider: 'brevo',
-          senderAddress: 'alerts@example.com',
-          senderName: '',
-          recipients: ['ops@example.com'],
-        },
+        settings: { provider: 'brevo', senderAddress: 'alerts@example.com', senderName: '' },
         secret: sealChannelSecret('email', 'xkeysib-made-up-for-the-test', key),
       },
       'operator',
       T0,
     );
-    await notices.saveChannel(
-      {
-        kind: 'telegram',
-        settings: { chatId: '-1001234567890' },
-        secret: sealChannelSecret('telegram', `1234567890:${'A'.repeat(35)}`, key),
-      },
+    await notices.saveService(
+      { kind: 'telegram', settings: {}, secret: sealChannelSecret('telegram', `1234567890:${'A'.repeat(35)}`, key) },
       'operator',
       T0,
     );
+    // One person, on email and on Telegram, with the topics a user starts with.
+    const userId = '00000000-0000-4000-8000-0000000000a1';
+    const topics = ['topups_coming', 'wallet_low', 'topup_failed', 'stamp_expired'] as const;
+    await notices.saveDestination({ userId, kind: 'email' }, 'ops@example.com', T0, topics);
+    await notices.saveDestination({ userId, kind: 'telegram' }, '-1001234567890', T0, topics);
     const taken: string[] = [];
-    const channelFrom: ChannelFactory = (config) => ({
+    const channelFrom: DestinationChannelFactory = (config) => ({
       kind: config.kind,
       send: async (notice) => {
         if (config.kind === 'telegram') throw new NotificationSendError('The telegram service answered 502.');
@@ -525,14 +760,14 @@ describe('the waiting notices', () => {
     });
     job = new AutoTopUpAlertJob(
       store,
-      new NotificationDispatcher({ store: notices, key, channelFrom, logger: silent }),
+      new NoticeDispatcher({ store: notices, key, channelFrom, logger: silent }),
       silent,
     );
 
     const dry = { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: (XDAI / 20n).toString() };
     await run(input({}, T0, { brandWallet: dry }));
     assert.deepEqual(taken, ['Stamp auto top-up: the brand wallet is low on xDAI']);
-    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0, 'notified once one channel took it');
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0, 'notified once one destination took it');
     assert.equal(notices.waitingRows.length, 1);
     assert.deepEqual(notices.waitingRows[0]!.subjects, [
       autoTopUpWarningSubject({ kind: 'wallet_xdai', batchId: null }),

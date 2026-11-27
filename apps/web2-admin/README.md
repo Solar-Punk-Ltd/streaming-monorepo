@@ -63,7 +63,7 @@ To work on the console with no database at all, run the mock API instead of the 
 - [docs/architecture/funding.md](../../docs/architecture/funding.md): how the admin funds the
   nodes through the manager.
 - [docs/architecture/notifications.md](../../docs/architecture/notifications.md): how the admin
-  sends its notices by email, Slack and Telegram.
+  sends each user its notices by email and Telegram.
 
 ## Checks
 

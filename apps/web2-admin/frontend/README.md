@@ -48,6 +48,7 @@ From this package, `pnpm mock-api` does the same. Sign in as `admin` with the pa
 | `MOCK_ARCHIVE_STAMPS`  | `some`                   | the archive stamps, as [below](#the-mock-funding): `some`, `none`, `buying`, `left` or `unoffered`                                                   |
 | `MOCK_BATCH_PURCHASES` | `fresh`                  | Buy new on the Stamps tab, as [below](#the-mock-funding): `fresh`, `stages`, `failed`, `failed_ran_out`, `catalogue`, `catalogue_off` or `unoffered` |
 | `MOCK_RECORDING_CHECK` | `none`                   | the latest check of the recordings, as [below](#the-mock-recording-check): `none`, `running`, `done` or `stopped`                                    |
+| `MOCK_NOTIFICATIONS`   | `set`                    | the notification services and the people counted, as [below](#the-mock-notifications): `set`, `none` or `unavailable`                                |
 | `MOCK_DEFAULT_THEME`   | `swarm`                  | the host's default look `GET /api/config` answers. The mock checks no name. Set `web3privacy` to see a host's default at work                        |
 | `VIEWER_BASE_URL`      | `http://localhost:10074` | the "open player catalogue" link. It must be a viewer built for this catalogue                                                                       |
 
@@ -133,10 +134,40 @@ as the API works them out, names an open one in `openBulkId`, `openStampBulkId` 
   gateway with none. A chequebook bulk is checked as the API checks it, sends its moves two seconds
   apart, reports each `mined` two seconds after it is sent and confirms it six seconds after that.
 
+- **Auto top-up.** The numbers start saved by the seeded user at 21 days under and 42 to, so four
+  stamps not on auto top-up read as running low: the mock stage's uploader and 360p batches, the
+  720p one, which has expired, and the archive stamp "Autumn". The catalogue batch starts marked.
+  The three jobs ran at the last 10 minutes and found nothing to do, and no warning stands: the mock
+  tops nothing up and sends nothing. Saving the numbers takes the seeded password, a switch pauses a
+  job, and marking a stamp on the Stamps tab takes it off the list of stamps not on auto top-up.
+
 With `MOCK_FUNDING=refuse`, every transfer fails at the relay with no block and is then mined
 anyway six seconds later, and every stamp and chequebook operation is refused. With
 `MOCK_FUNDING=lost`, every operation is first not known, as when the manager loses the chain's
 answer, then sent three seconds later and confirmed.
+
+#### The mock notifications
+
+The Notifications page and the notices on the Auto top-up tab work as the API holds them: two shared
+services, which `admin` saves behind the password, switches and removes, and each user's own email
+address, Telegram chat and ticks. Of the other users the view answers numbers alone.
+`MOCK_NOTIFICATIONS` seeds them:
+
+- `set`, the default: both services saved by `admin` and on, the email service with a failure a day
+  old, and three people the mock makes up, with no account, whose destinations and ticks count in
+  the numbers and nowhere else: two get the four notices of stamp auto top-up by email, one of them
+  on a Telegram chat as well, which failed its last notice and has one waiting, and "Stage stamps";
+  the third gets "A top-up failed" on Telegram.
+- `none`: no service saved, and nobody else.
+- `unavailable`: as `none`, and the page says no service can be saved, as an admin without
+  `BRAND_WALLET_SECRET` does.
+
+Each user starts with no destination and no tick, and their first saved address ticks the four
+notices of stamp auto top-up. A test notice goes out unless the address holds `fail`, and a second
+within a minute is refused. Find my chat shows a code for the mock's bot, and finds your own chat
+once 5 seconds have passed since the code started. To see the page as a user without the admin
+role, add one on the Access page and sign in as them. The mock sends nothing anywhere and keeps no
+secret.
 
 #### The mock recording check
 
@@ -547,13 +578,21 @@ write answers the whole view, which the tab then shows (`components/funding/Auto
 
 - **Where things stand:** the monthly estimate for the marked stamps beside the brand wallet's xBZZ
   and xDAI, the daily ceiling in force (said to be half the estimate while the field is empty), and
-  what the wallet job sent in the last 24 hours. Under them, a line per notification channel: not
-  set up, or on or off with when it last took a notice, and in red why its last notice failed and
-  how many notices wait for it, with a link to the [Notifications](#notifications-notifications)
-  page, and a line saying the alerts and warnings show on this tab alone while no channel is on;
-  the top-ups coming up, the soonest first, with each one's cost, the cost with the margin, what the
-  brand wallet sends its node, and when the alert went out and the send may go; and the warnings
-  that stand, with since when and when a notice last told of each.
+  what the wallet job sent in the last 24 hours; the top-ups coming up, the soonest first, with each
+  one's cost, the cost with the margin, what the brand wallet sends its node, and when the alert
+  went out and the send may go; the warnings that stand, with since when and when a notice last
+  told of each, or that nobody gets its notice and it shows here alone; and the stamps not on auto
+  top-up that are running low, the one with the least time left first, from
+  `GET /api/funding/auto-top-up/unmarked`: what the alert job said of each, its topic, node and
+  batch, since when it has been under Top up when under and under 2 days, or since when it
+  expired, and when a notice told of it, or that nobody gets its topic.
+- **Notices:** beside each kind of notice, in the groups of the Notifications page, how many people
+  get it, or that nobody does and it shows here alone; each service, whether it is set up and on,
+  when it last took a notice, how many destinations on it are on and how many of those failed their
+  last notice, and its latest failure; and the viewer's own destinations whose last notice failed,
+  with why. It reads `GET /api/notifications`, as the [Notifications](#notifications-notifications)
+  page does, with a link to it. When it or the list of stamps cannot be read, it says so with
+  Retry.
 - **Jobs:** the alert, wallet and stamp jobs, each with a pause switch that is on while it runs, who
   paused it and when, and its last run with its outcome, in red when it failed.
 - **Numbers:** Top up when under, Top up to, Look ahead, Margin, the xDAI warning and the daily
@@ -564,40 +603,57 @@ write answers the whole view, which the tab then shows (`components/funding/Auto
 
 ### Notifications, `#/notifications`
 
-The channels the admin's notices go out on: email by Brevo, Slack and Telegram, a card each
-(`docs/architecture/notifications.md`). The page reads `GET /api/notifications`, and each write
-answers the whole view, which the page then shows (`pages/NotificationsPage.tsx`,
-`components/notifications/`).
+Where the admin's notices go, in two parts (`docs/architecture/notifications.md`). The page reads
+`GET /api/notifications`, and each write answers the whole view, which the page then shows
+(`pages/NotificationsPage.tsx`, `components/notifications/`). Of the other users it shows numbers
+alone.
 
-- **How a channel stands:** not saved yet, or who saved it and when, when it last took a notice,
-  why its last notice failed, how many notices wait for it, and how its last test went.
-- **The ?** beside a channel's name shows and hides how to set it up: what to make at the service,
+**Shared services:** email by Brevo and a Telegram bot, through which every user's notices go out.
+
+- A user with the admin role has a card for each: how it stands (who saved it and when, when it last
+  took a notice, its latest failure, how many destinations on it are on and how many of those failed
+  their last notice, and how many notices wait for them), its switch, and its form: the email
+  service, the sender's address and name and the API key, or for Telegram the bot token alone.
+  Every reason the form cannot be saved shows under it as it is typed, in the shared package's
+  sentences (`serviceSettingsProblems` and `serviceSecretProblem`). The secret is write-only: its
+  field starts empty and says whether one is set; left empty, a save keeps the stored one. Save asks
+  for the password, and Undo changes goes back to the saved service. The switch, and Remove, which
+  asks first, need no password (`components/notifications/ServiceCard.tsx`).
+- **The ?** beside a service's name shows and hides how to set it up: what to make at the service,
   with a link to it that opens in a new tab, and what to enter on the card
-  (`components/notifications/ChannelSetup.tsx`).
-- **The form:** email has the service, the sender's address and name, and a line per recipient with
-  Add recipient, up to 20, and Remove, then its API key; Telegram has the bot token, then the chat
-  id; Slack has nothing but its secret. Every reason the form cannot be saved shows under it as it
-  is typed, in the shared package's sentences (`channelSettingsProblems` and
-  `channelSecretProblem`), and a recipient line that is no address or repeats one above it is
-  outlined in red.
-- **The secret** is write-only: the API key, the webhook URL or the bot token. Its field starts
-  empty and says whether one is set; left empty, a save keeps the stored one.
-- **Find chat id**, beside Telegram's chat id, asks `POST /api/notifications/channels/telegram/chats`
-  for the chats that wrote to the bot within the last day, with the token typed or, with none
-  typed, the saved one, and lists them by name, kind and id. Picking one fills in the chat id; Save
-  keeps it. It is off until a token is typed that the rules take, or one is saved, and it says when
-  no chat wrote to the bot or why Telegram could not be asked
-  (`components/notifications/TelegramChatField.tsx`).
-- **Save** asks for the password. Undo changes goes back to the saved channel.
-- **The switch**, on while the channel is on, and **Remove**, which asks first, need no password.
-- **Send a test notice** shows what became of it. A second within the minute shows how long is
-  left (`test_too_soon`).
-- With the admin's `BRAND_WALLET_SECRET` unset the page says no channel can be saved, and Save stays
-  off.
+  (`components/notifications/ServiceSetup.tsx`).
+- Every other user sees of each service whether it is set up and on, and nothing more.
+
+**My notifications:** the signed-in user's own, which no other user sees.
+
+- **My email address** and **My Telegram chat**, a card each: how it stands (when it was saved, when
+  it last took a notice, why its last one failed, how many notices wait for it, and how its last
+  test went), a line while its service is not set up or is switched off, its switch, and its field,
+  checked as it is typed with the package's `destinationAddressProblem`. Save asks for your
+  password. The switch, Remove, which asks first, and **Send me a test notice** need none; a second
+  test within the minute shows how long is left (`test_too_soon`)
+  (`components/notifications/DestinationCard.tsx`).
+- **Find my chat**, under My Telegram chat, starts a code with
+  `POST /api/notifications/me/telegram/code` and shows it with the bot to send it to and the three
+  ways to send it: the bot's link, which sends it from your own chat once you press Start; the
+  command `/start@` with the bot's name and the code, ready to copy, sent as one message in a group
+  the bot is in; or the code posted in a channel the bot administers. **I sent it** asks
+  `POST /api/notifications/me/telegram/chat` for the chat that sent it and fills it in, for you to
+  save behind your password. It says when the code is over, when none of the bot's latest messages
+  holds it yet, and why Telegram or the bot could not be read, and it is off until an admin has set
+  up the Telegram service (`components/notifications/TelegramChatFinder.tsx`).
+- **The notices I get:** a tick per topic, in the groups of `NOTICE_TOPIC_GROUPS`, each with what it
+  tells of and how many people get it, saved at once with no password
+  (`components/notifications/TopicsCard.tsx`). The card says when your first saved address will
+  tick the four notices of stamp auto top-up, and when none of your destinations is on, on a service
+  that is on, so no notice reaches you.
+- With the admin's `BRAND_WALLET_SECRET` unset the page says no service can be saved and no notice
+  sent, and the services' Save, the tests and Find my chat stay off.
 
 ### Access, `#/access`
 
-Who can sign in. An admin adds and removes users and signs anyone out. Everyone else sees the list.
+Who can sign in. An admin adds and removes users, signs anyone out, and sets up the notification
+services on the [Notifications](#notifications-notifications) page. Everyone else sees the list.
 Everyone can change their own password. `#/account` redirects here.
 
 ## How the console behaves

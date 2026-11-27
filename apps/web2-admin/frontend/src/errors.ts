@@ -46,10 +46,10 @@ export const FINALIZE_WHILE_LIVE = 'Stop the broadcast first.';
 
 /**
  * The Notifications page's line while the admin has no `BRAND_WALLET_SECRET`, and the answer to the API's
- * `notifications_unavailable`: no channel can be saved.
+ * `notifications_unavailable`: no service can be saved and no notice sent.
  */
 export const NOTIFICATIONS_UNAVAILABLE =
-  "No channel can be saved: the admin has no BRAND_WALLET_SECRET to seal a channel's secret under. Set it on the admin's host and restart the admin.";
+  "No service can be saved and no notice sent: the admin has no BRAND_WALLET_SECRET to seal a service's secret under. Set it on the admin's host and restart the admin.";
 
 /** Why a picked file is refused for its size, with both numbers so the operator can see by how much. */
 export function thumbnailTooLargeMessage(size: number): string {
@@ -97,8 +97,12 @@ const FRIENDLY: Record<string, string> = {
   archive_not_found: 'This archive is no longer on the server. The page shows what is there now.',
   internal_error: 'The server hit an unexpected error.',
   notifications_unavailable: NOTIFICATIONS_UNAVAILABLE,
-  // Another user removed the channel since the page was read. The page shows what is there now.
-  channel_not_saved: 'This channel is not saved any more. The page shows what is there now.',
+  // An admin removed the service since the page was read, or it was never saved. The page shows what is there now.
+  service_not_saved: 'That service is not set up now. The page shows what is there now.',
+  // The destination was removed since the page was read, in another tab. The page shows what is there now.
+  destination_not_saved: 'That destination is not saved now. The page shows what is there now.',
+  // Find my chat asked with no code that holds: its 10 minutes are over, or none was started.
+  code_not_started: 'Your code is over. Press Find my chat for a new one.',
 };
 
 /** The sentence for this code, or null when the console has none for it. */

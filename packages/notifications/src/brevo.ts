@@ -1,11 +1,11 @@
 /**
- * Brevo, the email service the email channel sends through: one call to its transactional email API per mail, the API
+ * Brevo, the email provider the email service sends through: one call to its transactional email API per mail, the API
  * key in a header. https://developers.brevo.com/reference/send-transac-email
  */
 
 import { callService, type NotificationCallOptions } from './call.js';
 import { NotificationSendError, type EmailProvider, type NotificationFetch, type OutgoingEmail } from './channel.js';
-import { BREVO_API_HOST, channelSecretProblem, storedChannelSecret } from './rules.js';
+import { BREVO_API_HOST, serviceSecretProblem, storedChannelSecret } from './rules.js';
 
 /** The path of Brevo's call that sends one transactional mail. */
 const BREVO_SEND_PATH = '/v3/smtp/email';
@@ -28,9 +28,9 @@ export class BrevoEmailProvider implements EmailProvider {
     this.#fetch = options.fetch;
   }
 
-  /** Sends the mail to every recipient at once. Calls nothing with a key `channelSecretProblem` refuses. */
+  /** Sends the mail to every recipient at once. Calls nothing with a key `serviceSecretProblem` refuses. */
   async send(email: OutgoingEmail): Promise<void> {
-    if (channelSecretProblem('email', this.#apiKey) !== null) {
+    if (serviceSecretProblem('email', this.#apiKey) !== null) {
       throw new NotificationSendError("The email service's API key is not one it gives out, so Brevo was not called.");
     }
     await callService(

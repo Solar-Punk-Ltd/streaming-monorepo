@@ -1,24 +1,76 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { AutoTopUpView } from '@streaming-monorepo/web2-admin-common';
+import {
+  NOTICE_TOPICS,
+  type AutoTopUpUnmarkedStamp,
+  type AutoTopUpView,
+  type NoticesView,
+} from '@streaming-monorepo/web2-admin-common';
 
 import { XDAI_WARNING_EMPTY } from '../components/funding/autoTopUp';
 import { formatAgo, formatDateTime } from '../dateUtil';
 import { FundingPage } from '../pages/FundingPage';
-import { BATCH, makeAutoTopUpView, makeChannelStatus, makeMark, makeView, xbzz } from './fundingFixtures';
+import { BATCH, makeAutoTopUpView, makeMark, makeView, xbzz } from './fundingFixtures';
 import { jsonError, jsonOk, mockFetch, renderWithProviders, type Route } from './helpers';
+import {
+  makeNoticesView,
+  reachOf,
+  savedEmailDestination,
+  savedEmailService,
+  savedTelegramDestination,
+  savedTelegramService,
+} from './notificationFixtures';
 
 const AUTO = '/api/funding/auto-top-up';
+const UNMARKED = '/api/funding/auto-top-up/unmarked';
+const NOTICES = '/api/notifications';
 const SETTINGS = '/api/funding/auto-top-up/settings';
 const JOB_WALLET = '/api/funding/auto-top-up/jobs/wallet';
 
-/** The Funding view and the Auto top-up view, from a getter a test can change, and the writes a test answers. */
-function serve(auto: () => AutoTopUpView, writes: Route[] = []) {
+/** Two people get every topic: the notices view the tab reads unless a test says otherwise. */
+const EVERYONE_GETS = makeNoticesView({
+  managesServices: false,
+  services: {
+    email: savedEmailService({ settings: null, savedBy: null, savedAt: null, people: 2 }),
+    telegram: savedTelegramService({ settings: null, savedBy: null, savedAt: null }),
+  },
+  reach: reachOf(Object.fromEntries(NOTICE_TOPICS.map((topic) => [topic, 2]))),
+});
+
+/**
+ * The Funding view, the Auto top-up view, the notices and the stamps not on auto top-up, from getters a test can
+ * change, and the writes a test answers.
+ */
+function serve(
+  auto: () => AutoTopUpView,
+  writes: Route[] = [],
+  {
+    notices = () => EVERYONE_GETS,
+    unmarked = () => [],
+  }: { notices?: () => NoticesView; unmarked?: () => AutoTopUpUnmarkedStamp[] } = {},
+) {
   return mockFetch([
     { path: '/api/funding', respond: () => jsonOk(makeView()) },
     { path: AUTO, respond: () => jsonOk(auto()) },
+    { path: NOTICES, respond: () => jsonOk(notices()) },
+    { path: UNMARKED, respond: () => jsonOk({ stamps: unmarked() }) },
     ...writes,
   ]);
+}
+
+/** A low unmarked stamp: a stage's batch on pool-360p, under 7 days for a day, told of by a notice. */
+function makeUnmarked(over: Partial<AutoTopUpUnmarkedStamp> = {}): AutoTopUpUnmarkedStamp {
+  return {
+    batchId: BATCH.rung,
+    nodeId: 'stage-2:360p',
+    holder: 'stage',
+    level: 'low',
+    since: '2026-10-04T10:00:00.000Z',
+    levelSince: '2026-10-04T10:00:00.000Z',
+    message: 'The batch of pool-360p has 6 days left. Top it up on the Stamps tab, or mark it for auto top-up.',
+    notifiedAt: '2026-10-04T10:10:00.000Z',
+    ...over,
+  };
 }
 
 async function openTab() {
@@ -120,55 +172,183 @@ describe('the Auto top-up tab', () => {
     expect(screen.getByText('No warnings.')).toBeInTheDocument();
   });
 
-  it('says how each notification channel stands, with a link to the Notifications page', async () => {
-    let auto = makeAutoTopUpView({
-      notifications: [
-        makeChannelStatus({ kind: 'email', saved: true, enabled: true, lastSentAt: '2026-10-04T08:00:00.000Z' }),
-        makeChannelStatus({
-          kind: 'slack',
-          saved: true,
-          enabled: true,
-          lastError: 'Slack answered 404: no_service.',
-          lastErrorAt: '2026-10-05T09:50:00.000Z',
-          waiting: 2,
-        }),
-        makeChannelStatus({ kind: 'telegram', saved: true, enabled: false }),
-      ],
+  it('says beside each notice how many people get it, or that nobody does and it shows here alone', async () => {
+    serve(() => makeAutoTopUpView(), [], {
+      notices: () => makeNoticesView({ reach: reachOf({ topups_coming: 3, topup_failed: 1 }) }),
     });
-    serve(() => auto);
     await openTab();
 
-    const stand = section('Where things stand');
-    expect(
-      await stand.findByText(`Email: on, last sent ${formatAgo('2026-10-04T08:00:00.000Z')}.`),
-    ).toBeInTheDocument();
-    expect(stand.getByText('Slack: on, nothing sent yet.')).toBeInTheDocument();
-    expect(
-      stand.getByText(
-        `The last notice could not be sent ${formatAgo('2026-10-05T09:50:00.000Z')}: Slack answered 404: no_service. 2 notices wait for it.`,
-      ),
-    ).toBeInTheDocument();
-    expect(stand.getByText('Telegram: off, nothing sent yet.')).toBeInTheDocument();
-    expect(stand.queryByText(/show on this page alone/)).not.toBeInTheDocument();
-    expect(stand.getByRole('link', { name: 'Set the channels up on the Notifications page' })).toHaveAttribute(
+    const notices = section('Notices');
+    await waitFor(() =>
+      expect(notices.getByText('Top-ups coming up').nextSibling).toHaveTextContent('3 people get it.'),
+    );
+    expect(notices.getByText('A top-up failed').nextSibling).toHaveTextContent('1 person gets it.');
+    expect(notices.getByText('The brand wallet is low').nextSibling).toHaveTextContent('Nobody: it shows here alone.');
+    expect(notices.getByRole('heading', { name: 'Stamp auto top-up' })).toBeInTheDocument();
+    expect(notices.getByRole('heading', { name: 'Stamps not on auto top-up' })).toBeInTheDocument();
+    expect(notices.getByText('Stage stamps').nextSibling).toHaveTextContent('Nobody: it shows here alone.');
+    expect(notices.getByRole('link', { name: 'Choose your notices on the Notifications page' })).toHaveAttribute(
       'href',
       '/notifications',
     );
+  });
 
-    auto = makeAutoTopUpView({
-      notifications: [
-        makeChannelStatus({ kind: 'email' }),
-        makeChannelStatus({ kind: 'slack' }),
-        makeChannelStatus({ kind: 'telegram', saved: true, enabled: false }),
+  it('says how each service stands and how many destinations failed, counts alone, and why mine failed', async () => {
+    serve(() => makeAutoTopUpView(), [], {
+      notices: () =>
+        makeNoticesView({
+          managesServices: false,
+          services: {
+            email: savedEmailService({
+              settings: null,
+              savedBy: null,
+              savedAt: null,
+              lastSentAt: '2026-10-04T08:00:00.000Z',
+              lastFailure: 'Brevo answered with status 502.',
+              lastFailureAt: '2026-10-05T09:50:00.000Z',
+              people: 3,
+              failing: 2,
+            }),
+            telegram: savedTelegramService({ enabled: false, settings: null, savedBy: null, savedAt: null }),
+          },
+          destinations: {
+            email: savedEmailDestination({
+              lastError: 'Brevo answered with status 400: the address was refused.',
+              lastErrorAt: '2026-10-05T09:50:00.000Z',
+            }),
+            telegram: savedTelegramDestination(),
+          },
+        }),
+    });
+    await openTab();
+
+    const notices = section('Notices');
+    expect(
+      await notices.findByText(
+        `Email: on, last took a notice ${formatAgo('2026-10-04T08:00:00.000Z')}. 3 destinations on it are on, and 2 of them failed their last notice.`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      notices.getByText(
+        `The latest failure, ${formatAgo('2026-10-05T09:50:00.000Z')}: Brevo answered with status 502.`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      notices.getByText('Telegram: set up, switched off, no notice sent yet. No destination on it is on.'),
+    ).toBeInTheDocument();
+    expect(
+      notices.getByText(
+        `The last notice to your email address could not be sent ${formatAgo('2026-10-05T09:50:00.000Z')}: Brevo answered with status 400: the address was refused.`,
+      ),
+    ).toBeInTheDocument();
+    expect(notices.queryByText(/your Telegram chat/)).not.toBeInTheDocument();
+  });
+
+  it('says beside a warning that nobody gets its notice, so it shows here alone', async () => {
+    serve(
+      () =>
+        makeAutoTopUpView({
+          warnings: [
+            {
+              kind: 'topup_failed',
+              batchId: BATCH.rung,
+              since: '2026-10-05T07:00:00.000Z',
+              message: 'The batch of pool-360p could not be topped up: its node holds too little xBZZ.',
+              notifiedAt: null,
+            },
+          ],
+        }),
+      [],
+      { notices: () => makeNoticesView() },
+    );
+    await openTab();
+
+    expect(
+      await screen.findByText(
+        `Since ${formatDateTime('2026-10-05T07:00:00.000Z')}. Nobody gets "A top-up failed", so it shows here alone.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('lists the stamps not on auto top-up that are running low', async () => {
+    serve(() => makeAutoTopUpView(), [], {
+      notices: () => makeNoticesView({ reach: reachOf({ unmarked_stage: 1 }) }),
+      unmarked: () => [
+        makeUnmarked({
+          batchId: BATCH.expired,
+          level: 'expired',
+          levelSince: '2026-10-05T06:00:00.000Z',
+          message: 'The batch of pool-360p has expired. It takes a Buy new on the Stamps tab.',
+        }),
+        makeUnmarked({
+          batchId: BATCH.catalogue,
+          nodeId: 'catalogue:bee',
+          holder: 'catalogue',
+          level: 'last',
+          levelSince: '2026-10-05T08:00:00.000Z',
+          message: 'The catalogue batch has 1 day left. Top it up on the Stamps tab, or mark it for auto top-up.',
+          notifiedAt: null,
+        }),
+        makeUnmarked({ nodeId: 'stage-9:gone', notifiedAt: null }),
       ],
     });
-    fireEvent.click(screen.getByRole('tab', { name: 'Balance' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Auto top-up' }));
+    await openTab();
+
+    const stand = section('Where things stand');
+    const expired = (await stand.findByText(/has expired\. It takes a Buy new/)).closest(
+      '[role="alert"]',
+    ) as HTMLElement;
     expect(
-      await screen.findByText('No channel is on, so the alerts and warnings show on this page alone.'),
+      within(expired).getByText(
+        `Expired since ${formatDateTime('2026-10-05T06:00:00.000Z')}. Notified ${formatDateTime('2026-10-04T10:10:00.000Z')}.`,
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Email: not set up.')).toBeInTheDocument();
-    expect(screen.getByText('Slack: not set up.')).toBeInTheDocument();
+    expect(within(expired).getByText(/^Stage stamps · pool-360p ·/)).toBeInTheDocument();
+
+    const last = stand.getByText(/The catalogue batch has 1 day left/).closest('[role="alert"]') as HTMLElement;
+    expect(
+      within(last).getByText(
+        `Under 7 days since ${formatDateTime('2026-10-04T10:00:00.000Z')}, under 2 days since ${formatDateTime('2026-10-05T08:00:00.000Z')}. Nobody gets "Catalogue and archive stamps", so it shows here alone.`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(last).getByText(/^Catalogue and archive stamps · catalogue-node ·/)).toBeInTheDocument();
+
+    const unknown = stand.getByText(/^Stage stamps · stage-9:gone ·/).closest('[role="alert"]') as HTMLElement;
+    expect(
+      within(unknown).getByText(`Under 7 days since ${formatDateTime('2026-10-04T10:00:00.000Z')}. Not notified yet.`),
+    ).toBeInTheDocument();
+  });
+
+  it('says when no stamp off auto top-up is running low', async () => {
+    serve(() => makeAutoTopUpView());
+    await openTab();
+    expect(await screen.findByText('No stamp off auto top-up is running low.')).toBeInTheDocument();
+  });
+
+  it('says when the notices or the stamps not on auto top-up could not be read, each with Retry', async () => {
+    let fail = true;
+    mockFetch([
+      { path: '/api/funding', respond: () => jsonOk(makeView()) },
+      { path: AUTO, respond: () => jsonOk(makeAutoTopUpView()) },
+      {
+        path: NOTICES,
+        respond: () => (fail ? jsonError(500, { message: 'The database did not answer.' }) : jsonOk(EVERYONE_GETS)),
+      },
+      {
+        path: UNMARKED,
+        respond: () => (fail ? jsonError(502, { message: 'The manager did not answer.' }) : jsonOk({ stamps: [] })),
+      },
+    ]);
+    await openTab();
+
+    expect(await screen.findByText('The notices could not be read: The database did not answer.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('The stamps not on auto top-up could not be read: The manager did not answer.'),
+    ).toBeInTheDocument();
+    fail = false;
+    for (const retry of screen.getAllByRole('button', { name: 'Retry' })) fireEvent.click(retry);
+    expect(await screen.findByText('No stamp off auto top-up is running low.')).toBeInTheDocument();
+    expect(await section('Notices').findByText('Top-ups coming up')).toBeInTheDocument();
   });
 
   it('shows each job with its pause switch, its last run and its outcome, and pauses one', async () => {
@@ -223,6 +403,8 @@ describe('the Auto top-up tab', () => {
             ? jsonError(500, { error: 'internal', message: 'The database did not answer.' })
             : jsonOk(makeAutoTopUpView()),
       },
+      { path: NOTICES, respond: () => jsonOk(EVERYONE_GETS) },
+      { path: UNMARKED, respond: () => jsonOk({ stamps: [] }) },
     ]);
     renderWithProviders(<FundingPage />);
     fireEvent.click(screen.getByRole('tab', { name: 'Auto top-up' }));

@@ -4,7 +4,8 @@
  * request here reaches. `pnpm test`.
  *
  * Pinned here: signing in, the password change (its current and its new password), adding a user, a funding pin and
- * a send, stamp auto top-up's settings and a notification channel's save each refuse a password that is not a string,
+ * a send, stamp auto top-up's settings, a notification service's save and a user's own destination's save each refuse
+ * a password that is not a string,
  * missing, or over `PASSWORD_MAX_LENGTH` characters with 400 `validation_error`, in a sentence of the schema's own that
  * repeats no part of the value sent. yup's default sentence for a value that is not a string prints the value.
  */
@@ -19,8 +20,9 @@ import {
   FUNDING_PATH,
   FUNDING_PINS_PATH,
   FUNDING_TRANSFERS_ADMIN_PATH,
+  myDestinationPath,
+  noticeServicePath,
   NOTIFICATIONS_PATH,
-  notificationChannelPath,
   PASSWORD_MAX_LENGTH,
 } from '@streaming-monorepo/web2-admin-common';
 import express from 'express';
@@ -32,7 +34,7 @@ import { requireSameSite } from '../../src/api/middleware/requireSameSite.js';
 import { createAuthRouter } from '../../src/api/routes/auth.js';
 import { type AutoTopUpRoutesDeps, createAutoTopUpRouter } from '../../src/api/routes/autoTopUp.js';
 import { createFundingRouter, type FundingRoutesDeps } from '../../src/api/routes/funding.js';
-import { createNotificationsRouter, type NotificationRoutesDeps } from '../../src/api/routes/notifications.js';
+import { createNoticesRouter, type NoticeRoutesDeps } from '../../src/api/routes/notifications.js';
 import { AuthService } from '../../src/domain/auth/AuthService.js';
 
 import {
@@ -77,13 +79,18 @@ const autoTopUp: AutoTopUpRoutesDeps['autoTopUp'] = {
   setJobPaused: notReached,
 };
 
-const notifications: NotificationRoutesDeps['notifications'] = {
+const notices: NoticeRoutesDeps['notices'] = {
   view: notReached,
-  save: notReached,
-  setEnabled: notReached,
-  remove: notReached,
+  saveService: notReached,
+  setServiceEnabled: notReached,
+  removeService: notReached,
+  saveDestination: notReached,
+  setDestinationEnabled: notReached,
+  removeDestination: notReached,
+  saveTopics: notReached,
   test: notReached,
-  telegramChats: notReached,
+  telegramCode: notReached,
+  telegramChat: notReached,
 };
 
 async function startPasswordTestApp(): Promise<AuthTestApp> {
@@ -99,7 +106,7 @@ async function startPasswordTestApp(): Promise<AuthTestApp> {
   app.use('/api/auth', createAuthRouter(authService, requireAuth));
   app.use(FUNDING_AUTO_TOPUP_PATH, createAutoTopUpRouter({ autoTopUp, authService, requireAuth }));
   app.use(FUNDING_PATH, createFundingRouter({ fundingService, authService, requireAuth }));
-  app.use(NOTIFICATIONS_PATH, createNotificationsRouter({ notifications, authService, requireAuth }));
+  app.use(NOTIFICATIONS_PATH, createNoticesRouter({ notices, authService, requireAuth }));
   app.use(notFound);
   app.use(errorHandler);
 
@@ -189,11 +196,19 @@ const ROUTES: PasswordRoute[] = [
     session: true,
   },
   {
-    name: "a notification channel's save",
+    name: "a notification service's save",
     method: 'PUT',
-    path: notificationChannelPath('telegram'),
+    path: noticeServicePath('email'),
     field: 'password',
-    rest: { settings: { chatId: '-1001234567890' }, secret: null },
+    rest: { settings: { provider: 'brevo', senderAddress: 'alerts@example.org', senderName: '' }, secret: null },
+    session: true,
+  },
+  {
+    name: "a user's own destination's save",
+    method: 'PUT',
+    path: myDestinationPath('email'),
+    field: 'password',
+    rest: { address: 'alice@example.org' },
     session: true,
   },
 ];
