@@ -16,6 +16,7 @@ import {
   type AutoTopUpSettings,
   type FundingPostage,
   type Notice,
+  type NoticeTopic,
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { FundingBatch, FundingInventory, FundingNode } from '@streaming-monorepo/contracts';
@@ -260,7 +261,7 @@ describe('the alert job records an alert', () => {
     assert.equal(alertOf(BATCH_2)?.alertedAt?.getTime(), at(DAY).getTime());
   });
 
-  it('with no channel on, counts an alert given when it is recorded, and sends nothing', async () => {
+  it('with nobody to get the notices, counts an alert given when it is recorded, and sends nothing', async () => {
     notifier.isOn = false;
     const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
     assert.equal(notifier.sent.length, 0);
@@ -435,7 +436,7 @@ describe('the alert job keeps the warnings', () => {
   });
 });
 
-describe('a notice no channel took', () => {
+describe('a notice no destination took', () => {
   it('leaves the alert not given and sends it again at the next run, whose day counts from then', async () => {
     notifier.failWith = 'The email service answered 401: unauthorised.';
     const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
@@ -469,6 +470,195 @@ describe('a notice no channel took', () => {
   });
 });
 
+/**
+ * A notifier with one person for each topic in `people`, on one destination of their own; a topic not in it has
+ * nobody. It records the notice each destination took, written from the parts of its topic, and the destination of a
+ * topic in `failing` fails. A topic in `untickedLate` answers `on` with someone and then has nobody when the notice
+ * goes, as when its last user unticks it between the two.
+ */
+class TopicNotifier implements Notifier {
+  people = new Set<NoticeTopic>(['topups_coming', 'wallet_low', 'topup_failed', 'stamp_expired']);
+  failing = new Set<NoticeTopic>();
+  untickedLate = new Set<NoticeTopic>();
+  sent: (TakenNotice & { topic: NoticeTopic })[] = [];
+  handed: OutgoingNotice<unknown>[] = [];
+  async on(topic: NoticeTopic): Promise<boolean> {
+    return this.people.has(topic) || this.untickedLate.has(topic);
+  }
+  async notify<T>(notice: OutgoingNotice<T>): Promise<NotifyOutcome> {
+    this.handed.push(notice as OutgoingNotice<unknown>);
+    const taken = new Set<NoticeTopic>();
+    let failed = 0;
+    for (const topic of new Set(notice.parts.map((part) => part.topic))) {
+      if (!this.people.has(topic)) continue;
+      if (this.failing.has(topic)) {
+        failed += 1;
+        continue;
+      }
+      const parts = notice.parts.filter((part) => part.topic === topic);
+      this.sent.push({
+        ...notice.compose(parts),
+        raisedAt: notice.raisedAt,
+        subjects: parts.map((part) => part.subject),
+        topic,
+      });
+      taken.add(topic);
+    }
+    return {
+      parts: notice.parts.map((part) => ({
+        subject: part.subject,
+        people: this.people.has(part.topic) ? 1 : 0,
+        taken: taken.has(part.topic),
+      })),
+      sent: taken.size,
+      failed,
+    };
+  }
+  async retryWaiting(): Promise<RetryOutcome> {
+    return { sent: 0, dropped: 0, waiting: 0 };
+  }
+}
+
+describe('the outcome read part by part', () => {
+  let topics: TopicNotifier;
+  const dry = { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: (XDAI / 20n).toString() };
+  const expired: AlertStampReading = { state: 'expired', name: stampName(BATCH_2) };
+
+  beforeEach(() => {
+    topics = new TopicNotifier();
+    job = new AutoTopUpAlertJob(store, topics, silent);
+  });
+
+  describe('the notice rule', () => {
+    it('counts the day from the first destination that took the "Top-ups coming up" part', async () => {
+      topics.failing.add('topups_coming');
+      const failed = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0));
+      assert.equal(failed.ok, false);
+      assert.equal(alertOf(BATCH_1)?.alertedAt, null, 'not given while no destination took it');
+
+      topics.failing.clear();
+      const taken = await run(input({ [BATCH_1]: operable(BATCH_1, 7.4 * DAY, RICH) }, at(10 * 60)));
+      assert.equal(taken.ok, true);
+      assert.equal(alertOf(BATCH_1)?.alertedAt?.getTime(), at(10 * 60).getTime());
+
+      await run(
+        input(
+          { [BATCH_1]: operable(BATCH_1, 6.4 * DAY, RICH), [BATCH_2]: operable(BATCH_2, 7.5 * DAY, RICH) },
+          at(DAY + HOUR),
+        ),
+      );
+      assert.equal(topics.sent.length, 2, 'the next day lists the new top-up');
+      assert.equal(alertOf(BATCH_1)?.alertedAt?.getTime(), at(10 * 60).getTime(), 'a given alert keeps its day');
+      assert.equal(alertOf(BATCH_2)?.alertedAt?.getTime(), at(DAY + HOUR).getTime());
+    });
+
+    it('while nobody gets "Top-ups coming up", counts the day from the alert showing on the tab', async () => {
+      topics.people.delete('topups_coming');
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
+      assert.deepEqual(
+        topics.sent.map((sent) => sent.topic),
+        ['wallet_low'],
+        'the warning goes to whoever gets it, the top-up to nobody',
+      );
+      assert.equal(outcome.ok, true);
+      assert.doesNotMatch(outcome.outcome, /nobody gets the notices/);
+    });
+
+    it('once every user unticked it, counts an alert not given yet from the tab', async () => {
+      await run(input({ [BATCH_1]: operable(BATCH_1, 8.5 * DAY, RICH) }, T0));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, null, 'recorded, and not given while the stamp is healthy');
+
+      topics.people.delete('topups_coming');
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, at(DAY)));
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0, 'from when it was recorded and shown');
+      assert.equal(topics.sent.length, 0);
+      assert.equal(outcome.ok, true);
+    });
+
+    it('counts it from the tab too when the last user unticks it while the notice goes', async () => {
+      topics.people.delete('topups_coming');
+      topics.untickedLate.add('topups_coming');
+      await run(input({ [BATCH_1]: operable(BATCH_1, 8.5 * DAY, RICH) }, T0));
+      const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH) }, at(HOUR)));
+      assert.equal(topics.handed.length, 1, 'the notice was handed over');
+      assert.equal(alertOf(BATCH_1)?.alertedAt, T0);
+      assert.equal(store.noticesRow.lastComingAt, null);
+      assert.equal(outcome.ok, true);
+    });
+  });
+
+  it('writes a notice of coming top-ups from the parts it is handed', async () => {
+    await run(
+      input({ [BATCH_1]: operable(BATCH_1, 7.5 * DAY, RICH), [BATCH_2]: operable(BATCH_2, 8.5 * DAY, RICH) }, T0),
+    );
+    const notice = topics.handed[0]!;
+    assert.deepEqual(
+      notice.parts.map((part) => [part.topic, part.subject]),
+      [
+        ['topups_coming', autoTopUpComingSubject(BATCH_1)],
+        ['topups_coming', autoTopUpComingSubject(BATCH_2)],
+      ],
+    );
+    const one = notice.compose([notice.parts[1]!]);
+    assert.equal(one.title, 'Stamp auto top-up: 1 top-up coming up');
+    assert.match(one.text, /Stage c2/);
+    assert.doesNotMatch(one.text, /Stage b1/);
+  });
+
+  it('notifies a warning only where its part was taken, and a part nobody gets fails no run', async () => {
+    topics.people = new Set(['wallet_low']);
+    const outcome = await run(input({ [BATCH_2]: expired }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt, null, 'nobody gets it, so it waits for someone');
+    assert.deepEqual(
+      topics.sent.map((sent) => sent.title),
+      ['Stamp auto top-up: the brand wallet is low on xDAI'],
+    );
+    assert.equal(outcome.ok, true);
+    assert.match(outcome.outcome, /Sent the notice of 1 new warning\./);
+
+    topics.people.add('stamp_expired');
+    await run(input({ [BATCH_2]: expired }, at(HOUR), { brandWallet: dry }));
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt?.getTime(), at(HOUR).getTime());
+    assert.equal(topics.sent[1]!.title, 'Stamp auto top-up: a marked stamp expired', 'its first notice, once ticked');
+  });
+
+  it('fails the run for a part someone gets that no destination took, and keeps the parts taken', async () => {
+    topics.failing.add('stamp_expired');
+    const outcome = await run(input({ [BATCH_2]: expired }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt, null);
+    assert.equal(outcome.ok, false);
+    assert.match(
+      outcome.outcome,
+      /Sent the notice of 1 new warning\. No destination took the notice "Stamp auto top-up: a marked stamp expired": 1 destination could not take it\./,
+    );
+
+    topics.failing.clear();
+    const retried = await run(input({ [BATCH_2]: expired }, at(10 * 60), { brandWallet: dry }));
+    assert.equal(retried.ok, true);
+    assert.equal(warningOf('stamp_expired', BATCH_2)?.notifiedAt?.getTime(), at(10 * 60).getTime());
+    assert.equal(topics.sent.at(-1)!.title, 'Stamp auto top-up: a marked stamp expired');
+  });
+
+  it('repeats the standing warnings part by part', async () => {
+    topics.people.delete('topups_coming');
+    await store.raiseWarning({ kind: 'topup_failed', batchId: BATCH_1 }, 'The operation failed.', T0);
+    await run(input({ [BATCH_1]: operable(BATCH_1, 6.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt, T0);
+
+    topics.failing.add('topup_failed');
+    const outcome = await run(input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY, RICH) }, at(DAY), { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(DAY).getTime());
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(store.noticesRow.lastRepeatAt?.getTime(), at(DAY).getTime());
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.outcome, /No destination took the notice "Stamp auto top-up: 1 warning still standing"/);
+  });
+});
+
 describe('the waiting notices', () => {
   it('are tried again on each run, before any new notice, with what stands: warnings and recorded alerts', async () => {
     const dry = { address: BRAND, xbzzPlur: (100n * XBZZ).toString(), xdaiWei: (XDAI / 20n).toString() };
@@ -498,7 +688,7 @@ describe('the waiting notices', () => {
     assert.equal(stands(autoTopUpComingSubject(BATCH_2)), false, 'a healthy stamp has no alert');
   });
 
-  it('are tried with no channel on as well', async () => {
+  it('are tried with nobody to get the notices as well', async () => {
     notifier.isOn = false;
     await run(input({}, T0));
     assert.equal(notifier.retries.length, 1);

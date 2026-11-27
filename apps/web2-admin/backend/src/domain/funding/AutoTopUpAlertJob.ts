@@ -18,7 +18,7 @@ import {
 } from '@streaming-monorepo/web2-admin-common';
 
 import type { Logger } from '../Logger.js';
-import type { Notifier, OutgoingNotice } from '../notifications/Notifier.js';
+import type { NoticePartOutcome, Notifier, OutgoingNotice } from '../notifications/Notifier.js';
 
 import {
   autoTopUpComingSubject,
@@ -60,14 +60,16 @@ import { estimateDepthsOf, stampNameOf } from './autoTopUpReadings.js';
  *   the margin and what the brand wallet sends its node, and records it anew when the node lacks more than it said;
  * - clears the alert of a stamp that is healthy again, which a top-up makes it, or that expired;
  * - sends the "top-ups coming up" notice when a stamp turns upcoming, at most once a day, listing every recorded alert
- *   not given yet, and while nobody gets that topic counts an alert as given when it is recorded;
+ *   not given yet, each as a part under that topic; an alert counts as given once a destination took its part, and
+ *   while nobody gets that topic it counts as given when it was recorded;
  * - raises, words anew and clears the warnings, and sends each one's first notice at once and the daily repeats of the
- *   standing ones together, each warning as a part under its topic;
+ *   standing ones together, each warning as a part under its topic, notified once a destination took its part;
  * - tries the notices that wait for a destination again, through the `Notifier`, before it sends any new one, so a
  *   paused alert job sends and retries nothing.
  *
- * Every notice goes out through the admin's `Notifier`, to the people who get its topics. A notice no destination took
- * is sent again at the next run. It never stops a run.
+ * Every notice goes out through the admin's `Notifier`, to the people who get its topics, and its outcome is read part
+ * by part. A part that someone gets and no destination took is sent again at the next run and fails the run; a part
+ * nobody gets fails nothing and shows on the tab alone. It never stops a run.
  */
 
 /** The node that holds a marked stamp and pays for its top-ups, as the funding view reads it. */
@@ -133,6 +135,16 @@ function plural(count: number, one: string, many = `${one}s`): string {
 
 /** How a run's outcome begins the note of a notice no destination took. */
 const NOT_TAKEN = 'No destination took the notice';
+
+/** What became of the parts of one notice, by subject. */
+interface SendResult {
+  /** The parts one destination or more took. */
+  taken: ReadonlySet<string>;
+  /** The parts whose topic nobody gets. */
+  nobody: ReadonlySet<string>;
+  /** The note of the parts that someone gets and no destination took, or null when there are none. */
+  failed: string | null;
+}
 
 /** The topic each kind of warning is told of under. */
 const WARNING_TOPICS: Readonly<Record<AutoTopUpWarningKind, NoticeTopic>> = {
@@ -310,7 +322,7 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       ...(on ? [] : ['nobody gets the notices']),
     ].join(', ');
     return {
-      ok: !notes.some((note) => note.startsWith(NOT_TAKEN)),
+      ok: !notes.some((note) => note.includes(NOT_TAKEN)),
       outcome: `${[summary, ...notes].join('. ')}.`,
     };
   }
@@ -440,9 +452,9 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
 
   /**
    * Gives the recorded alerts not given yet. While someone gets "Top-ups coming up", its notice goes once a stamp
-   * among them is upcoming or due, at most once a day, and lists every one of them; they count as given once one
-   * destination took it. While nobody gets it, each counts as given when it was recorded, since the tab has shown it
-   * since.
+   * among them is upcoming or due, at most once a day, and lists every one of them, each as a part; one counts as given
+   * once a destination took its part. While nobody gets it, each counts as given when it was recorded, since the tab
+   * has shown it since; so does a part the notifier answers nobody gets.
    */
   private async giveComingAlerts(
     input: AlertJobInput,
@@ -469,40 +481,50 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     const turned = ungiven.some((stamp) => stamp.plan.phase !== 'healthy');
     if (!turned || msSince(noticesRow.lastComingAt, now) < ONCE_PER_MS) return null;
 
-    const topUps: ComingTopUpText[] = ungiven.map((stamp) => ({
-      stamp: stamp.reading.name,
-      ttlSeconds: stamp.reading.ttlSeconds,
-      dueAt: new Date(now.getTime() + stamp.plan.dueInSeconds * 1000),
-      due: stamp.plan.phase === 'due',
-      days: stamp.plan.days,
-      costPlur: stamp.plan.costPlur,
-      costWithMarginPlur: stamp.plan.costWithMarginPlur,
-    }));
-    // One topic holds every coming top-up, so whoever gets one gets the notice whole, as it is written here.
-    const notice = comingNotice({
-      topUps,
-      nodes: comingNodes(input, ungiven, alerts, lacks),
-      marginPercent: settings.marginPercent,
-      lookAheadDays: settings.lookAheadDays,
-      brandWallet: input.brandWallet,
-    });
-    const batchIds = ungiven.map((stamp) => stamp.mark.batchId);
-    const failed = await this.send(
-      {
-        raisedAt: now,
-        parts: batchIds.map((batchId) => ({
-          topic: 'topups_coming' as const,
-          subject: autoTopUpComingSubject(batchId),
-          item: batchId,
+    // Each coming top-up is a part, and a notice lists the top-ups of the parts it is written from.
+    const write = (stamps: readonly PlannedStamp[]): Notice =>
+      comingNotice({
+        topUps: stamps.map((stamp): ComingTopUpText => ({
+          stamp: stamp.reading.name,
+          ttlSeconds: stamp.reading.ttlSeconds,
+          dueAt: new Date(now.getTime() + stamp.plan.dueInSeconds * 1000),
+          due: stamp.plan.phase === 'due',
+          days: stamp.plan.days,
+          costPlur: stamp.plan.costPlur,
+          costWithMarginPlur: stamp.plan.costWithMarginPlur,
         })),
-        compose: () => notice,
-      },
-      notice.title,
-    );
-    if (failed !== null) return failed;
-    await this.store.setAlerted(batchIds, now);
-    await this.store.recordNotices({ lastComingAt: now });
-    return `Sent the notice of ${plural(ungiven.length, 'coming top-up')}`;
+        nodes: comingNodes(input, stamps, alerts, lacks),
+        marginPercent: settings.marginPercent,
+        lookAheadDays: settings.lookAheadDays,
+        brandWallet: input.brandWallet,
+      });
+    const subjectOf = (stamp: PlannedStamp): string => autoTopUpComingSubject(stamp.mark.batchId);
+    const result = await this.send<PlannedStamp>({
+      raisedAt: now,
+      parts: ungiven.map((stamp) => ({ topic: 'topups_coming', subject: subjectOf(stamp), item: stamp })),
+      compose: (parts) => write(parts.map((part) => part.item)),
+    });
+
+    // The day of the notice rule counts from the first destination that took a stamp's part, or, for a part nobody
+    // gets, from the alert showing on the tab.
+    for (const stamp of ungiven) {
+      if (result.nobody.has(subjectOf(stamp))) {
+        await this.store.setAlerted([stamp.mark.batchId], alerts.get(stamp.mark.batchId)!.recordedAt);
+      }
+    }
+    const given = ungiven.filter((stamp) => result.taken.has(subjectOf(stamp)));
+    if (given.length > 0) {
+      await this.store.setAlerted(
+        given.map((stamp) => stamp.mark.batchId),
+        now,
+      );
+      await this.store.recordNotices({ lastComingAt: now });
+    }
+    const notes = [
+      ...(given.length > 0 ? [`Sent the notice of ${plural(given.length, 'coming top-up')}`] : []),
+      ...(result.failed === null ? [] : [result.failed]),
+    ];
+    return notes.length > 0 ? notes.join('. ') : null;
   }
 
   /**
@@ -537,13 +559,20 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       compose: (parts) => write(parts.map((part) => item(part.item))),
     });
 
+    const takenOf = (told: readonly AutoTopUpWarningRow[], result: SendResult): AutoTopUpWarningRow[] =>
+      told.filter((warning) => result.taken.has(autoTopUpWarningSubject(warning)));
+
+    // A warning is notified once a destination took its part. One whose topic nobody gets stays not notified, so its
+    // first notice goes to whoever ticks that topic later.
     const fresh = warnings.filter((warning) => warning.notifiedAt === null);
     if (fresh.length > 0) {
-      const freshNotice = outgoing(fresh, newWarningsNotice);
-      const failed = await this.send(freshNotice, freshNotice.compose(freshNotice.parts).title);
-      if (failed !== null) return failed;
-      await this.store.setWarningsNotified(fresh, now);
-      notes.push(`Sent the notice of ${plural(fresh.length, 'new warning')}`);
+      const result = await this.send(outgoing(fresh, newWarningsNotice));
+      const notified = takenOf(fresh, result);
+      if (notified.length > 0) {
+        await this.store.setWarningsNotified(notified, now);
+        notes.push(`Sent the notice of ${plural(notified.length, 'new warning')}`);
+      }
+      if (result.failed !== null) return [...notes, result.failed].join('. ');
     }
 
     const freshIds = new Set(fresh.map(warningId));
@@ -554,28 +583,40 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
       standing.some((warning) => msSince(warning.notifiedAt, now) >= ONCE_PER_MS) &&
       msSince(noticesRow.lastRepeatAt, now) >= ONCE_PER_MS;
     if (repeatDue) {
-      const repeatNotice = outgoing(standing, standingWarningsNotice);
-      const failed = await this.send(repeatNotice, repeatNotice.compose(repeatNotice.parts).title);
-      if (failed !== null) return [...notes, failed].join('. ');
-      await this.store.setWarningsNotified(standing, now);
-      await this.store.recordNotices({ lastRepeatAt: now });
-      notes.push(`Sent the notice of ${plural(standing.length, 'standing warning')} again`);
+      const result = await this.send(outgoing(standing, standingWarningsNotice));
+      const notified = takenOf(standing, result);
+      if (notified.length > 0) {
+        await this.store.setWarningsNotified(notified, now);
+        await this.store.recordNotices({ lastRepeatAt: now });
+        notes.push(`Sent the notice of ${plural(notified.length, 'standing warning')} again`);
+      }
+      if (result.failed !== null) notes.push(result.failed);
     }
     return notes.length > 0 ? notes.join('. ') : null;
   }
 
   /**
-   * Sends one notice through the notifier. Answers null once a destination took it, or the note of why none did, which
-   * is logged and never thrown; the next run sends it again. A destination that failed while another took the notice
-   * gets it again from the notifier. `title` names the notice in that note, as it reads written from all its parts.
+   * Sends one notice through the notifier and reads what became of each part. The parts that someone gets and no
+   * destination took have a note, which is logged and never thrown, and the next run sends them again; it names the
+   * notice as it reads written from those parts alone. A part nobody gets fails nothing. A destination that failed while
+   * another took its parts gets them again from the notifier.
    */
-  private async send<T>(notice: OutgoingNotice<T>, title: string): Promise<string | null> {
+  private async send<T>(notice: OutgoingNotice<T>): Promise<SendResult> {
     const outcome = await this.notifier.notify(notice);
-    if (outcome.parts.some((part) => part.taken)) return null;
+    const subjects = (pick: (part: NoticePartOutcome) => boolean): Set<string> =>
+      new Set(outcome.parts.filter(pick).map((part) => part.subject));
+    const taken = subjects((part) => part.taken);
+    const nobody = subjects((part) => !part.taken && part.people === 0);
+    const missed = subjects((part) => !part.taken && part.people > 0);
+    if (missed.size === 0) return { taken, nobody, failed: null };
+
+    const title = notice.compose(notice.parts.filter((part) => missed.has(part.subject))).title;
     const why =
-      outcome.failed === 0 ? 'nobody gets it.' : `${plural(outcome.failed, 'destination')} could not take it.`;
+      outcome.failed === 0
+        ? 'none of its destinations could be tried.'
+        : `${plural(outcome.failed, 'destination')} could not take it.`;
     this.logger.warn(`[AutoTopUp] no destination took the notice "${title}": ${why}`);
-    return `${NOT_TAKEN} "${title}": ${why}`;
+    return { taken, nobody, failed: `${NOT_TAKEN} "${title}": ${why}` };
   }
 }
 
