@@ -305,12 +305,14 @@ reading.
   tick. The daily repeats go as one notice that lists every warning still standing.
 - Each person reads one notice for what a tick raised under the topics they ticked: one for the
   coming top-ups, one for the new warnings, one for the warnings still standing.
-- A top-up or a warning is given once one destination took a notice that told of it. One that no
-  destination took is sent again at the next tick, and the alert job's run fails. A warning whose
-  topic nobody gets fails nothing and is not given: its first notice goes once someone ticks the
-  topic. A destination that could not take its notice,
-  while another took what it tells of, gets it again at each tick for a day, with the time it was
-  raised, while something it tells of still stands. Each user reads on the Notifications page why
+- A top-up or a warning is given once one destination took a notice that told of it. One that
+  someone gets and no destination took fails the alert job's run and is sent again at the next
+  tick. A standing warning no destination took in a daily repeat that a destination took for
+  another warning goes again with the next day's repeat, and the run fails all the same. A warning
+  whose topic nobody gets fails nothing and is not given: its first notice goes once someone ticks
+  the topic. A destination that could not take its notice, while another took what it tells of,
+  gets it again at each tick for a day, with the time it was raised, while something it tells of
+  still stands. Each user reads on the Notifications page why
   their destination failed, and the tab counts the destinations that did. The top-ups go on.
 - The alert job sends every notice and tries the waiting ones again, so while it is paused no
   notice goes out.

@@ -1,7 +1,7 @@
 /**
  * The alert job of stamp auto top-up: the alerts it records and clears, the "top-ups coming up" notice and its
  * once-a-day rule, the warnings it raises, words anew, clears and sends notices of, the waiting notices it has tried
- * again, and a notice no channel took. Unit test over a store in memory and a notifier that records what it is handed,
+ * again, and a notice no destination took. Unit test over a store in memory and a notifier that records what it is handed,
  * and once over the notification dispatcher with fake channels. `pnpm test`.
  *
  * Addresses are fixtures the leak gate allows (`scripts/public-leaks/allow.json`).
@@ -656,6 +656,40 @@ describe('the outcome read part by part', () => {
     assert.equal(store.noticesRow.lastRepeatAt?.getTime(), at(DAY).getTime());
     assert.equal(outcome.ok, false);
     assert.match(outcome.outcome, /No destination took the notice "Stamp auto top-up: 1 warning still standing"/);
+  });
+
+  it('sends a standing warning a repeat left out again with the next day repeat, not at the next run', async () => {
+    topics.people.delete('topups_coming');
+    const failed = { kind: 'topup_failed', batchId: BATCH_1 } as const;
+    const walletLow = { kind: 'wallet_xdai', batchId: null } as const;
+    await store.raiseWarning(failed, 'The operation failed.', T0);
+    await run(input({ [BATCH_1]: operable(BATCH_1, 6.5 * DAY, RICH) }, T0, { brandWallet: dry }));
+
+    topics.failing.add('topup_failed');
+    const missed = await run(input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY, RICH) }, at(DAY), { brandWallet: dry }));
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(DAY).getTime(), 'the part taken is notified');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0, 'the part missed is not');
+    assert.equal(store.noticesRow.lastRepeatAt?.getTime(), at(DAY).getTime());
+    assert.equal(missed.ok, false);
+
+    topics.failing.clear();
+    const handed = topics.handed.length;
+    const next = await run(
+      input({ [BATCH_1]: operable(BATCH_1, 5.5 * DAY - 10 * 60, RICH) }, at(DAY + 10 * 60), { brandWallet: dry }),
+    );
+    assert.equal(topics.handed.length, handed, 'no repeat goes at the next run');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt, T0);
+    assert.equal(next.ok, true);
+
+    await run(input({ [BATCH_1]: operable(BATCH_1, 4.5 * DAY, RICH) }, at(2 * DAY), { brandWallet: dry }));
+    const repeat = topics.handed.at(-1)!;
+    assert.deepEqual(
+      repeat.parts.map((part) => part.subject).sort(),
+      [autoTopUpWarningSubject(failed), autoTopUpWarningSubject(walletLow)].sort(),
+    );
+    assert.equal(repeat.compose(repeat.parts).title, 'Stamp auto top-up: 2 warnings still standing');
+    assert.equal(warningOf('topup_failed', BATCH_1)?.notifiedAt?.getTime(), at(2 * DAY).getTime());
+    assert.equal(warningOf('wallet_xdai')?.notifiedAt?.getTime(), at(2 * DAY).getTime());
   });
 });
 

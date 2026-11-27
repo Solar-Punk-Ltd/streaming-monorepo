@@ -68,8 +68,9 @@ import { estimateDepthsOf, stampNameOf } from './autoTopUpReadings.js';
  *   paused alert job sends and retries nothing.
  *
  * Every notice goes out through the admin's `Notifier`, to the people who get its topics, and its outcome is read part
- * by part. A part that someone gets and no destination took is sent again at the next run and fails the run; a part
- * nobody gets fails nothing and shows on the tab alone. It never stops a run.
+ * by part. A part that someone gets and no destination took fails the run and is sent again at the next run, except
+ * a standing warning left out of a daily repeat that a destination took for another warning: it goes again with the
+ * next day's repeat. A part nobody gets fails nothing and shows on the tab alone. It never stops a run.
  */
 
 /** The node that holds a marked stamp and pays for its top-ups, as the funding view reads it. */
@@ -427,7 +428,7 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
   }
 
   /**
-   * Tries the notices that wait for a channel again. A waiting notice tells of a warning that stands, or of a stamp
+   * Tries the notices that wait for a destination again. A waiting notice tells of a warning that stands, or of a stamp
    * whose alert is recorded; one about nothing that stands any more is dropped. Answers a note, or null with nothing
    * to tell.
    */
@@ -445,7 +446,7 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
     const outcome = await this.notifier.retryWaiting(now, (subject) => standing.has(subject));
     const parts = [
       ...(outcome.sent > 0 ? [`${plural(outcome.sent, 'waiting notice')} sent again`] : []),
-      ...(outcome.waiting > 0 ? [`${plural(outcome.waiting, 'notice')} still waiting for a channel`] : []),
+      ...(outcome.waiting > 0 ? [`${plural(outcome.waiting, 'notice')} still waiting for a destination`] : []),
     ];
     return parts.length > 0 ? parts.join(', ') : null;
   }
@@ -597,9 +598,10 @@ export class AutoTopUpAlertJob implements AutoTopUpJobRunner {
 
   /**
    * Sends one notice through the notifier and reads what became of each part. The parts that someone gets and no
-   * destination took have a note, which is logged and never thrown, and the next run sends them again; it names the
-   * notice as it reads written from those parts alone. A part nobody gets fails nothing. A destination that failed while
-   * another took its parts gets them again from the notifier.
+   * destination took have a note, which is logged and never thrown; it names the notice as it reads written from those
+   * parts alone. The next run sends them again, except standing warnings left out of a daily repeat that a destination
+   * took for another warning, which go again with the next day's repeat. A part nobody gets fails nothing. A
+   * destination that failed while another took its parts gets them again from the notifier.
    */
   private async send<T>(notice: OutgoingNotice<T>): Promise<SendResult> {
     const outcome = await this.notifier.notify(notice);
